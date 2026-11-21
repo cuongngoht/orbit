@@ -656,12 +656,15 @@ For one person, on their own machine, by default:
   loaded. **Its plugins are code** -- hooks that run at session start, MCP servers -- that would run in this container,
   where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
   repositories that declare them.
-- **A chat reaches your Claude account's claude.ai connectors** (the owner's decision, ADR 0064): Claude Docs, where
-  Claude makes its documents, and every other service the account connected at claude.ai (mail, files, chat ...) --
-  what the account can do there, Claude in any chat can too (in Autonomous, each call reviewed by auto mode's
-  classifier, like any tool's). To keep a service out of Orbit Web, disconnect it at claude.ai. A run
-  governance holds reaches none (`--strict-mcp-config`, and in the governed deployment
-  `ENABLE_CLAUDEAI_MCP_SERVERS=false` behind the egress proxy): its Constitution has no action for one. Research never.
+- **Claude connectors** (the owner's decision, ADR 0064; [above](#claude-connectors)): a chat and a research session
+  reach the signed-in account's connectors -- Claude Docs, where Claude makes its documents, and whatever else the
+  account connected at claude.ai (mail, files, chat …) -- each as far as that account's person checked it for chats and
+  for research; an unchecked one is denied by name (`--disallowedTools mcp__<connector>`), in every mode. What the account
+  can do in a service, Claude can do there too: in an Autonomous chat each call is reviewed by auto mode's classifier,
+  like any tool's; in research a checked connector is allowed by name and nothing else is (`dontAsk`), so the guard there
+  is the person's checkbox and the rule that a connector is used only when the person's own message asks. A run
+  governance holds reaches none (`--strict-mcp-config`, and in the governed deployment `ENABLE_CLAUDEAI_MCP_SERVERS=false`
+  behind the egress proxy): its Constitution has no action for one.
 - **Images in a chat message** are uploaded as their own bytes (`POST /api/images`, `application/octet-stream`: with a
   research source, the only two bodies that are not JSON, each on its one route under the same header and origin rules).
   What an image is, is read from its bytes -- PNG, JPEG, GIF or WebP, never SVG -- and it is held to Claude's limits; it
@@ -677,9 +680,10 @@ For one person, on their own machine, by default:
 - **Each account its own** ([above](#each-claude-account-its-own)): a chat or a research workspace answers only the
   account that owns it and the accounts it was shared with; any other gets 404, on every route under it (a test reads
   every route the application declares and holds each one).
-- **Research** ([above](#research)): a research run has no tool, reads no settings file, loads no MCP server, persists
-  nothing and is never in a bypass mode; a process that reports or uses a tool is stopped. Documents' words reach it only
-  between tags it cannot close, as data. Citations are verified against the passages the run was given. An upload is
+- **Research** ([above](#research)): a research run has no built-in tool, persists nothing and is never in a bypass
+  mode; with no connector checked for research it reads no settings file and loads no MCP server; with some, only those
+  are allowed. A process that reports a built-in tool, or reaches for a tool or connector research may not use, is
+  stopped. Documents' words reach it only between tags it cannot close, as references and data, never instructions. Citations are verified against the passages the run was given. An upload is
   the file's own bytes, on its one route, under the same header and origin rules; files are named by their hash.
   The URL fetcher reaches only the public internet's web ports, checks every address and every redirect, and connects
   to the address it checked. A research run's token (governed deployment) opens the egress proxy alone, never the

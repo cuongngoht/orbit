@@ -103,3 +103,28 @@ a choice is held to its shape alone.
   session's audit, and sharing has no read-only level. What the signed-in account connected at claude.ai (mail, files,
   chat ...) Claude in any chat reaches too; the way to keep a service out is to disconnect it there. Not built: web search or "deep research", OCR, serving the
   original file, a local model, resizable panels.
+
+## Amendment, 2026-11-21: research is a conversation with references; connectors are checked per account
+
+The owner's decisions while 0.8.0 was verified: "tôi muốn chỉ cần prompt thôi thì nó viết claude artifact rồi trả link"
+(a research prompt makes a Claude Doc and says its link), "thêm nơi cấu hình của user dùng connector gì dùng checkbox
+sau này có thể phát triển nhiều hơn" (a place where a person checks which connectors are used, able to grow), and "phần
+research như phần chat chỉ là reference dữ liệu thôi" (research like a chat, its sources only references).
+
+- **A research session is a conversation like a chat whose selected sources are references.** The passages retrieved
+  for a question (as above: only from the selected sources, frozen first) are given as reference material: a statement
+  resting on one cites it (verified by the server, as above), Claude says what comes from elsewhere, and a question
+  needs no source at all. The passages stay untrusted data, never instructions.
+- **Connectors are the account's, checked per account.** Settings → Claude connectors lists the signed-in account's
+  connectors -- its claude.ai connectors and the MCP servers of the plugins installed for it, as its Claude CLI reports
+  them over the control protocol (`mcp_status`, no model called) -- each with a box for chats and one for research,
+  kept per account and checked for both until unchecked. A chat is denied, by name, what is unchecked for chats.
+- **Research has no built-in tool, and only the connectors checked for research.** A research run keeps `--tools ""`,
+  `dontAsk`, no persistence; with no connector checked it stays restricted with no MCP server, as before. With some, it
+  reads the user's settings source (the only one the CLI brings the account's connectors with -- `--restricted` or any
+  other source lists none, checked with Claude Code 2.1.328), the connectors checked are allowed by name and the rest
+  denied by name, and its prompt says a connector is used only when the person's own message asks, never because a
+  passage or a tool's answer says to. A run that reaches for anything else is stopped. Checked with a real model: a
+  research-shaped run allowed Claude Docs alone made a doc and answered its link.
+- **Said plainly.** In research a checked connector acts as the account with no classifier reviewing the call: the
+  guard is the person's checkbox and the model's rule. A run governance holds still reaches no connector.

@@ -24,10 +24,16 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   owner deletes, shares on, or makes a public link); a chat from before owners is claimed once by the first account that
   signs in. The models and effort levels offered are the signed-in account's own, asked of its Claude CLI at every
   sign-in (a model a program gives an account appears for it alone), and every choice is held to them.
-- **A chat reaches your Claude account's claude.ai connectors** (ADR 0064, the owner's decision): Claude Docs, where Claude
-  makes its documents, and every other service the account connected at claude.ai. Chats ran with `--strict-mcp-config`,
-  which dropped them all -- so Claude in Orbit Web could make no document. A repository's `.mcp.json` still never starts;
-  a run governance holds, research and the model catalog's probe keep the flag.
+- **Claude connectors, checked per account** (ADR 0064, the owner's decisions). Settings → Claude connectors lists the
+  signed-in account's connectors (claude.ai's -- Claude Docs, Gmail, Drive … -- and installed plugins' servers, read from its
+  CLI's `mcp_status`, no model called) with a box for chats and one for research, kept per account, checked for both
+  until unchecked. Chats ran with `--strict-mcp-config`, which dropped them all -- so Claude in Orbit Web could make no
+  document; now an unchecked connector is denied by name. A repository's `.mcp.json` still never starts; a run
+  governance holds and the model catalog's probe keep the flag.
+- **Research is a conversation like a chat, its sources references** (ADR 0064). Claude answers freely, cites what it
+  takes from the selected sources (verified as before), says what comes from elsewhere, and needs no source to be asked;
+  ask it to make a Claude Doc and it does, with the link. A research run still has no built-in tool; it may use only the
+  connectors checked for research (allowed by name, `dontAsk`), and is stopped when it reaches for anything else.
 - **Images in a chat message** (ADR 0065). Paste a screenshot (⌘V / Ctrl+V), drop images on the composer or pick them:
   each is uploaded at once as its own bytes (PNG, JPEG, GIF or WebP, read from its bytes, never SVG; 6 a message, 5 MB and
   8000 pixels a side), kept under `/data/app/images` for the account that uploaded it, and sent with the message --
@@ -198,8 +204,8 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 531 deterministic tests (governance-core 33, contracts 19, API unit 156, API integration with mocked
-  processes 161, web 162), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
+- **Checked.** 545 deterministic tests (governance-core 33, contracts 21, API unit 161, API integration with mocked
+  processes 165, web 165), `scripts/ci.mjs` green; the Docker smoke test (34 checks) also checks the Azure Repos helper,
   the runtime user's file rights (it can read everything the image ships), Python, `/data/research` private to that user,
   and a research workspace with a source read and indexed in the container kept across a restart and a new container; the security lab's governed run is recorded in
   `tests/security-lab/results/0.8.0`. Research's definition of done was run in a real Chromium against the local image

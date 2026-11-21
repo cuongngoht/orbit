@@ -36,7 +36,8 @@ export interface ApprovalLine {
 
 export interface DailyReport {
   day: string;
-  organizationId: string;
+  // The account whose chain the report reads.
+  accountId: string;
   generatedAt: string;
   recordCount: number;
   integrity: { ok: boolean; count: number; head: string | null; problem: string | null; brokenAt: number | null };
@@ -51,7 +52,7 @@ export interface DailyReport {
 
 export interface ReportInput {
   day: string;
-  organizationId: string;
+  accountId: string;
   generatedAt: string;
   // The day's records, in the order they were recorded.
   events: readonly AuditEvent[];
@@ -104,7 +105,7 @@ export function dailyReport(input: ReportInput): DailyReport {
   const decisions = input.events.filter((e) => e.eventType === "policy.decision");
   return {
     day: input.day,
-    organizationId: input.organizationId,
+    accountId: input.accountId,
     generatedAt: input.generatedAt,
     recordCount: input.events.length,
     integrity: integrityOf(input.chain),
@@ -137,7 +138,7 @@ function list<T>(items: readonly T[], line: (item: T) => string, none: string): 
 // The same report as text: what a person reads, with the ids a person can look up.
 export function renderReport(r: DailyReport): string {
   const parts: string[][] = [
-    [`# Governance audit report — ${r.day}`, "", `Organization \`${r.organizationId}\` · generated ${r.generatedAt} · ${r.recordCount} record(s) that day`],
+    [`# Governance audit report — ${r.day}`, "", `Account \`${r.accountId}\` · generated ${r.generatedAt} · ${r.recordCount} record(s) that day`],
     ["## Audit integrity", "", ...integrityLines(r)],
     ["## Agent activity", "", ...list(r.agents, (a) => `\`${a.agentId}\`: ${a.runsStarted} run(s) started, ${a.runsRefused} refused, ${a.runsFinished} ended; decisions: ${tally(a.decisions)}${refs(a.evidenceIds)}`, "No agent did anything that was recorded.")],
     ["## Authorization", "", `${r.authorization.total} decision(s): ${tally(r.authorization.byVerdict)}`, `By action: ${tally(r.authorization.byAction)}`],

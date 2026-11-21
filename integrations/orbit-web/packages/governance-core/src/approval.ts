@@ -1,8 +1,10 @@
-// AN APPROVAL OF ONE PROTECTED ACTION. It is bound to a FINGERPRINT of exactly that action, decided once by a person,
-// spent once -- consumed BEFORE the action starts -- and never a standing permission. The words follow the Orbit
+// AN APPROVAL OF ONE PROTECTED ACTION. It is bound to a FINGERPRINT of exactly that action, decided once by a PERSON --
+// the account's owner, never an agent and never the run that asked for it -- spent once (consumed BEFORE the action
+// starts), and never a standing permission. The words follow the Orbit
 // engine's own approvals (requested, granted, rejected, expired, consumed) without importing them.
 //
 // These are the rules only; who stores an approval applies them inside one transaction.
+import type { AuditPrincipalType } from "./audit.js";
 import { canonicalJson, type Sha256 } from "./canonical.js";
 import { ACTIONS, type ActionKind, type Environment } from "./vocabulary.js";
 
@@ -38,9 +40,11 @@ export type AskRefusal = "ALREADY_ASKED";
 export const askRefusal = (existing: readonly ActionApproval[], fingerprint: string, now: string): AskRefusal | null =>
   existing.some((a) => a.fingerprint === fingerprint && isOpen(a, now)) ? "ALREADY_ASKED" : null;
 
-export type DecideRefusal = "APPROVAL_EXPIRED" | "APPROVAL_DECIDED";
+export type DecideRefusal = "DECIDER_NOT_A_PERSON" | "APPROVAL_EXPIRED" | "APPROVAL_DECIDED";
 
-export function decideRefusal(a: ActionApproval, now: string): DecideRefusal | null {
+// `decider`: who decides. Only a person does -- an agent (whatever run it is, the asking one included) or a service never.
+export function decideRefusal(a: ActionApproval, now: string, decider: AuditPrincipalType): DecideRefusal | null {
+  if (decider !== "human") return "DECIDER_NOT_A_PERSON";
   const state = stateAt(a, now);
   if (state === "expired") return "APPROVAL_EXPIRED";
   return state === "pending" ? null : "APPROVAL_DECIDED";

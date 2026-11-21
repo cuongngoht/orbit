@@ -19,6 +19,8 @@ import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
+import { viewer } from "../../common/request-scope.js";
+import { Db } from "../../infra/db/db.js";
 import { endedHow, succeeded, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
 import { SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
@@ -28,7 +30,7 @@ import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { MirrorService } from "../sources/mirror.service.js";
 import { SourcesService } from "../sources/sources.module.js";
 import { OwnershipService } from "../access/ownership.service.js";
-import { summaryOf } from "./sessions.service.js";
+import { levelFor, publishSummary, summaryOf } from "./sessions.service.js";
 
 const HEADS = "refs/heads/";
 const SCRATCH = "branch-fetch";
@@ -58,6 +60,7 @@ export class BranchService {
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
     @Inject(MirrorService) private readonly mirror: MirrorService,
     @Inject(OwnershipService) private readonly ownership: OwnershipService,
+    @Inject(Db) private readonly db: Db,
   ) {}
 
   // Read while Claude works too: listing changes nothing.
@@ -81,7 +84,7 @@ export class BranchService {
   private async switchTo(session: SessionRecord, name: string): Promise<SessionSummary> {
     const cwd = session.workspacePath;
     const list = await this.list(session);
-    if (list.current === name) return summaryOf(session, this.ownership.levelNow(session) ?? "owner");
+    if (list.current === name) return summaryOf(session, levelFor(session, viewer()));
     const entry = this.known(list, name);
     if (entry.isDefault) throw this.defaultRefused(name);
     this.clean(must(await this.git.status(cwd), "git status").stdout);
@@ -151,12 +154,15 @@ export class BranchService {
     return succeeded(r) ? r.stdout.trim() : this.head(cwd);
   }
 
-  private moved(session: SessionRecord, from: string | null, workBranch: string, created: boolean, baseCommit: string): SessionSummary {
-    const updated = this.sessions.update(session.id, { workBranch, baseCommit });
-    this.bus.publishSession(session.id, "workspace.branch", { from, workBranch, created, baseCommit });
-    const summary = summaryOf(updated, this.ownership.levelNow(updated) ?? "owner");
-    this.bus.publishApp("session.summary", { session: summary });
-    return summary;
+  // Kept and told together: the move is journaled in the transaction that records it.
+  private async moved(session: SessionRecord, from: string | null, workBranch: string, created: boolean, baseCommit: string): Promise<SessionSummary> {
+    const updated = await this.db.tx(async () => {
+      const next = await this.sessions.update(session.id, { workBranch, baseCommit });
+      await this.bus.publishSession(session.id, "workspace.branch", { from, workBranch, created, baseCommit });
+      return next;
+    });
+    await publishSummary(this.bus, this.ownership, updated);
+    return summaryOf(updated, levelFor(updated, viewer()));
   }
 
   private prepared(session: SessionRecord): void {

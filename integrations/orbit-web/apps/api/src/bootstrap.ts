@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { AppModule } from "./app.module.js";
 import { ApiExceptionFilter } from "./common/errors.js";
 import type { AppConfig } from "./config/config.js";
-import { accessGate, hostGuard, mutationGuard, securityHeaders } from "./infra/security/guards.js";
+import { requestScope } from "./common/request-scope.js";
+import { accessGate, hostGuard, mutationGuard, noStore, securityHeaders } from "./infra/security/guards.js";
 
 export const BODY_LIMIT = "256kb";
 
@@ -26,8 +27,10 @@ export function configureApp(app: NestExpressApplication, config: AppConfig): Ne
   // Routes match as written: `/API/sessions` is no route at all (the guards decide on the routed path as well).
   app.set("case sensitive routing", true);
   app.set("strict routing", true);
+  app.use(requestScope());
   app.use(hostGuard(config));
   app.use(securityHeaders());
+  app.use(noStore());
   app.use(accessGate(config));
   app.use(mutationGuard());
   app.useBodyParser("json", { limit: BODY_LIMIT });

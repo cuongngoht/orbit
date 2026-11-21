@@ -38,9 +38,9 @@ export interface CustomizationsChangedData {
   sessionId: string;
 }
 
-// What governance changed: a page that shows it reads it again. Ids only -- the app stream reaches every page, and
-// what changed is read through the routes an operator's permissions open.
-export const GOVERNANCE_AREAS = ["operators", "constitution", "overlays", "agents", "workspaces", "audit", "findings", "reports", "isolation"] as const;
+// What governance changed: a page that shows it reads it again. Ids only -- sent to the account it concerns, and what
+// changed is read through the routes the account's owner reaches.
+export const GOVERNANCE_AREAS = ["policy", "overrides", "resources", "audit", "findings", "reports", "isolation"] as const;
 
 export type GovernanceArea = (typeof GOVERNANCE_AREAS)[number];
 

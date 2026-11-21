@@ -41,9 +41,19 @@ test("claude auth login: the URL after visit:, and the prompt for the code (no n
   assert.deepEqual(readClaudeLogin(`If the browser didn't open, visit: ${url}\nPaste code here if prompted > `), { url, needsCode: true });
 });
 
-test("who owns what is the account's email in its organization -- and nothing at all without a Claude account's email", () => {
-  assert.deepEqual(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "Octo@Example.com", orgId: "org-1", orgName: "Octo Org" })), { email: "octo@example.com", org: "org-1", key: "octo@example.com|org-1" });
-  assert.equal(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgName: "Octo Org" }))?.org, "Octo Org", "an older CLI that names no organization id: its name");
+test("an identity is the account's email in the organization the CLI names by id -- never by a display name -- and nothing at all without a Claude account's email", () => {
+  assert.deepEqual(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "Octo@Example.com", orgId: "org-1", orgName: "Octo Org", subscriptionType: "team" })), {
+    email: "octo@example.com",
+    orgKey: "org-1",
+    orgName: "Octo Org",
+    plan: "team",
+    key: "octo@example.com|org-1",
+  });
+  const renamed = identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgId: "org-1", orgName: "Octo Org (renamed)" }));
+  assert.equal(renamed?.key, "octo@example.com|org-1", "renaming the organization changes nobody's identity");
+  const other = identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgId: "org-2", orgName: "Octo Org" }));
+  assert.notEqual(other?.key, "octo@example.com|org-1", "the same email in another organization is another identity, even under the same name");
+  assert.equal(identityOf(cli({ loggedIn: true, authMethod: "claude.ai", email: "octo@example.com", orgName: "Octo Org" }))?.orgKey, "", "a CLI that names no organization id: the email alone, never the organization's name");
   assert.equal(identityOf(cli({ loggedIn: true, authMethod: "claude.ai" })), null, "no email: no identity, so nothing is anybody's");
   assert.equal(identityOf(cli({ loggedIn: true, authMethod: "api_key", email: "octo@example.com" })), null, "an API key owns nothing");
   assert.equal(identityOf(cli({ email: "octo@example.com" })), null, "signed out");

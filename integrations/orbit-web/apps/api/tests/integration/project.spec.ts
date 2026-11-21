@@ -57,7 +57,7 @@ describe("a project's skills and plugins, with project plugins turned on", () =>
   before(async () => {
     fake = projectFake();
     h = await startHarness({ fake });
-    assert.equal((await (await h.owner()).send("PATCH", "/api/settings", { projectPlugins: true })).status, 200);
+    assert.equal((await h.send("PATCH", "/api/settings", { projectPlugins: true })).status, 200);
     const app = await h.stream("/api/events");
     session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "sonnet", prompt: "Hello." })).body as SessionSummary;
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
@@ -217,7 +217,7 @@ describe("a declared plugin that cannot be switched off for other chats", () => 
   before(async () => {
     fake = projectFake().on(program("claude", "plugin", "disable"), { run: { code: 1, stderr: "could not write settings" } });
     h = await startHarness({ fake });
-    assert.equal((await (await h.owner()).send("PATCH", "/api/settings", { projectPlugins: true })).status, 200);
+    assert.equal((await h.send("PATCH", "/api/settings", { projectPlugins: true })).status, 200);
   });
   after(() => h.close());
 

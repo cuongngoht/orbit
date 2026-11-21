@@ -41,7 +41,7 @@ export class OrbitService implements OnModuleInit {
   }
 
   async panel(sessionId: string): Promise<OrbitPanel> {
-    const session = this.sessions.get(sessionId);
+    const session = await this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
     return this.refresh(session);
   }
@@ -70,9 +70,13 @@ export class OrbitService implements OnModuleInit {
   }
 
   private async refreshById(sessionId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-    await this.refresh(session).catch((err: unknown) => this.logger.warn(`Orbit panel of ${sessionId} could not be read: ${err instanceof Error ? err.message : String(err)}`));
+    try {
+      const session = await this.sessions.get(sessionId);
+      if (!session) return;
+      await this.refresh(session);
+    } catch (err) {
+      this.logger.warn(`Orbit panel of ${sessionId} could not be read: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private refresh(session: SessionRecord): Promise<OrbitPanel> {
@@ -97,15 +101,15 @@ export class OrbitService implements OnModuleInit {
     return mapOrbitPanel({ live, task: shown, context, checkedAt });
   }
 
-  private publishIfChanged(sessionId: string, panel: OrbitPanel): OrbitPanel {
+  private async publishIfChanged(sessionId: string, panel: OrbitPanel): Promise<OrbitPanel> {
     const previous = this.last.get(sessionId);
     this.last.set(sessionId, panel);
     if (previous !== undefined && changeKey(previous) === changeKey(panel)) return panel;
-    if (!this.sessions.get(sessionId)) return panel;
-    this.bus.publishSession(sessionId, "orbit.updated", { panel });
+    if (!(await this.sessions.get(sessionId))) return panel;
+    await this.bus.publishSession(sessionId, "orbit.updated", { panel });
     const before = previous?.verdict ?? UNKNOWN_VERDICT("");
     if (previous === undefined || before.word !== panel.verdict.word || before.source !== panel.verdict.source) {
-      this.bus.publishSession(sessionId, "verification.updated", { word: panel.verdict.word, label: panel.verdict.label, source: panel.verdict.source });
+      await this.bus.publishSession(sessionId, "verification.updated", { word: panel.verdict.word, label: panel.verdict.label, source: panel.verdict.source });
     }
     return panel;
   }

@@ -82,13 +82,13 @@ export interface ClaudeRunOptions {
   maxBudgetUsd: number | null;
   // Paths the agent may not read or write through its file tools (the sign-ins, Orbit Web's own database).
   protectedDirs: string[];
-  // A governed run: whether the Constitution lets it run commands in its workspace (Bash), and what it is told about
-  // the agent gateway. Absent: as an ungoverned run.
+  // Whether the account's policy lets the run use commands in its workspace (Bash), and what the run is told about its
+  // governance and the agent gateway (run-governance.service.ts). Absent: commands allowed, nothing said.
   execute?: boolean;
   governanceNote?: string | null;
-  // Whether governance holds this run (it has a binding): then it reaches no MCP server at all. Required, so no caller
-  // leaves it to be guessed from anything else.
-  bound: boolean;
+  // Whether the run is ISOLATED -- the governed deployment: it holds no credential at all, reaches no MCP server
+  // (--strict-mcp-config), and is told so. Required, so no caller leaves it to be guessed from anything else.
+  isolated: boolean;
   // The message goes in as one stream-json user message -- how the CLI takes images headless -- instead of the
   // prompt's own text. Only a message that carries images.
   streamInput?: boolean;
@@ -97,7 +97,7 @@ export interface ClaudeRunOptions {
   deniedConnectors?: string[];
 }
 
-// A run under governance holds no credential at all: Orbit Web pushes for it, through the agent gateway.
+// An isolated run holds no credential at all: Orbit Web pushes for it, through the agent gateway.
 export const GOVERNED_NOTE =
   OPENING +
   "`git push` and the GitHub CLI are refused to you here (there is no credential in this run): never chain one into " +
@@ -124,7 +124,8 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
   const settings = runSettings(o);
   const execute = o.execute !== false;
   const allowed = execute ? BASE_TOOLS : BASE_TOOLS.filter((t) => t !== "Bash");
-  const governed = o.governanceNote !== undefined && o.governanceNote !== null;
+  const note = o.governanceNote ?? null;
+  const workspaceNote = o.isolated ? [GOVERNED_NOTE] : [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])];
   return [
     "-p",
     "--output-format",
@@ -148,17 +149,17 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     ...(execute ? [] : ["Bash"]),
     ...(o.deniedConnectors ?? []),
     "--append-system-prompt",
-    (governed ? [GOVERNED_NOTE, o.governanceNote as string] : [o.github ? WORKSPACE_NOTES.github : WORKSPACE_NOTES.local, ...(o.azure ? [AZURE_NOTE] : [])]).join(" "),
+    [...workspaceNote, ...(note !== null ? [note] : [])].join(" "),
     // The user's settings only: a repository's own .claude/settings.json is untrusted input and could set `env` (an
     // API base URL that would receive the credential) or hooks that run before any tool call.
     "--setting-sources",
     "user",
     // A chat reaches the signed-in account's claude.ai connectors -- Claude Docs, where Claude makes its documents, and
     // whatever else the account connected -- and the MCP servers of the user's settings and of the plugins loaded (the
-    // owner's decision, ADR 0064). A repository's own .mcp.json is still never started: Claude Code starts one only once
-    // settings approve it, and only the user's are read. A run governance holds reaches none: its Constitution decides
-    // what a run may reach, and has no action for a connector.
-    ...(o.bound ? ["--strict-mcp-config"] : []),
+    // owner's decision, ADR 0064) that the account's policy allowed this run -- every other one is denied by name. A
+    // repository's own .mcp.json is still never started: Claude Code starts one only once settings approve it, and only
+    // the user's are read. An isolated run reaches none: no way out leads to one.
+    ...(o.isolated ? ["--strict-mcp-config"] : []),
     ...(Object.keys(settings).length > 0 ? ["--settings", JSON.stringify(settings)] : []),
     ...(o.maxBudgetUsd !== null ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
   ];

@@ -3,9 +3,10 @@
 // again by anybody who holds both.
 //
 // The order is fixed, and every step can only make the answer stricter:
-//   1. a request that cannot be judged (no policy, no identity, an action nobody declared) is DENIED;
-//   2. the Constitution's rules that match -- the strictest wins; none matching gives the default decision;
-//   3. each overlay that applies to this project, workspace or agent -- the strictest wins again;
+//   1. a request that cannot be judged (no policy, no identity, an action nobody declared, another account) is DENIED;
+//   2. the account policy's rules that match -- the strictest wins; none matching gives the default decision;
+//   3. each override that applies to this chat or research workspace -- the strictest wins again (an override narrows,
+//      never widens);
 //   4. the action's ceiling for this kind of principal;
 //   5. an action nothing can carry out is denied.
 // Nothing an agent says about itself is read here: who asks is what the caller PROVED and passed in.
@@ -16,10 +17,11 @@ export interface GovernanceRequest {
   // Null when nobody was verified: such a request is never granted anything.
   principalId: string | null;
   principalType: PrincipalType;
-  organizationId: string;
-  projectId: string | null;
+  // The account whose policy decides: the requester's own (an owner's, a run's), never one a request names.
+  accountId: string;
+  // The chat (Claude Code workspace), or the research workspace, the request is about -- what an override targets.
   workspaceId: string | null;
-  agentId: string | null;
+  researchWorkspaceId: string | null;
   action: string;
   resource: string;
   environment: Environment;
@@ -53,13 +55,12 @@ const ruleMatches = (rule: Rule, request: GovernanceRequest): boolean =>
   (rule.environment === undefined || rule.environment === request.environment);
 
 const TARGET_OF: Record<PolicyOverlay["metadata"]["level"], (r: GovernanceRequest) => string | null> = {
-  project: (r) => r.projectId,
   workspace: (r) => r.workspaceId,
-  agent: (r) => r.agentId,
+  research_workspace: (r) => r.researchWorkspaceId,
 };
 
 export const overlayApplies = (overlay: PolicyOverlay, request: GovernanceRequest): boolean =>
-  overlay.metadata.organizationId === request.organizationId && TARGET_OF[overlay.metadata.level](request) === overlay.metadata.target;
+  overlay.metadata.accountId === request.accountId && TARGET_OF[overlay.metadata.level](request) === overlay.metadata.target;
 
 const layerOf = (overlay: PolicyOverlay): string => `${overlay.metadata.level}:${overlay.metadata.target}`;
 
@@ -68,7 +69,7 @@ function unjudgeable(policy: Policy, request: GovernanceRequest): Evaluation | n
   const enforcement = ACTIONS[request.action].enforcement;
   if (policy.constitution === null) return denied("NO_PUBLISHED_POLICY", enforcement);
   if (request.principalId === null || request.principalId === "") return denied("NO_VERIFIED_IDENTITY", enforcement);
-  if (policy.constitution.metadata.organizationId !== request.organizationId) return denied("ORGANIZATION_MISMATCH", enforcement);
+  if (policy.constitution.metadata.accountId !== request.accountId) return denied("ACCOUNT_MISMATCH", enforcement);
   return null;
 }
 
@@ -78,10 +79,10 @@ interface Step {
   reasonCodes: ReasonCode[];
 }
 
-function organizationStep(constitution: Constitution, request: GovernanceRequest): Step {
+function accountStep(constitution: Constitution, request: GovernanceRequest): Step {
   const matched = constitution.rules.filter((r) => ruleMatches(r, request));
   if (matched.length === 0) return { verdict: constitution.defaults.decision, matchedRules: [], reasonCodes: ["DEFAULT_DECISION"] };
-  return { verdict: matched.map((r) => r.effect).reduce(strictest), matchedRules: matched.map((r) => `organization:${r.id}`), reasonCodes: ["RULE_MATCHED"] };
+  return { verdict: matched.map((r) => r.effect).reduce(strictest), matchedRules: matched.map((r) => `account:${r.id}`), reasonCodes: ["RULE_MATCHED"] };
 }
 
 function overlayStep(step: Step, overlays: readonly PolicyOverlay[], request: GovernanceRequest): Step {
@@ -113,7 +114,7 @@ export function evaluate(policy: Policy, request: GovernanceRequest): Evaluation
   if (refused !== null) return refused;
   const action = request.action as ActionKind;
   const enforcement = ACTIONS[action].enforcement;
-  const base = organizationStep(policy.constitution as Constitution, request);
+  const base = accountStep(policy.constitution as Constitution, request);
   const layered = overlayStep(base, policy.overlays, request);
   const step = executorStep(ceilingStep(layered, action, request.principalType), enforcement);
   return { ...step, enforcement };

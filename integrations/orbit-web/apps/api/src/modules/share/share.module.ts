@@ -23,7 +23,7 @@ import {
 } from "@orbit-web/contracts";
 import type { Response } from "express";
 import { randomBytes } from "node:crypto";
-import { BeforeClaudeSignIn } from "../../common/before-claude-sign-in.js";
+import { Public } from "../auth/decorators.js";
 import { accepted, conflict, notFound } from "../../common/errors.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { redactSecrets } from "../../infra/security/redact.js";
@@ -65,35 +65,34 @@ export class ShareService {
     @Inject(ShareStore) private readonly shares: ShareStore,
   ) {}
 
-  state(sessionId: string): ShareState {
-    const share = this.shares.get(this.session(sessionId).id);
+  async state(sessionId: string): Promise<ShareState> {
+    const share = await this.shares.get((await this.session(sessionId)).id);
     return { share: share === null ? null : infoOf(share) };
   }
 
-  share(sessionId: string, body: unknown): ShareInfo {
+  async share(sessionId: string, body: unknown): Promise<ShareInfo> {
     const req = accepted(checkShareRequest(body));
-    const session = this.session(sessionId);
-    const snapshot = this.snapshotOf(session, req.includeTools);
+    const session = await this.session(sessionId);
+    const snapshot = await this.snapshotOf(session, req.includeTools);
     if (Buffer.byteLength(JSON.stringify(snapshot)) > SNAPSHOT_LIMIT_BYTES) {
       throw conflict("share_too_large", req.includeTools ? "This chat is too long to share with what its tools did: share it without them." : "This chat is too long to share.");
     }
-    const token = this.shares.get(session.id)?.token ?? randomBytes(32).toString("base64url");
-    return infoOf(this.shares.put(session.id, token, req.includeTools, snapshot));
+    const token = (await this.shares.get(session.id))?.token ?? randomBytes(32).toString("base64url");
+    return infoOf(await this.shares.put(session.id, token, req.includeTools, snapshot));
   }
 
-  stop(sessionId: string): void {
-    this.shares.delete(this.session(sessionId).id);
+  async stop(sessionId: string): Promise<void> {
+    await this.shares.delete((await this.session(sessionId)).id);
   }
 
-  read(token: string): SharedChat {
-    const share = SHARE_TOKEN.test(token) ? this.shares.byToken(token) : null;
+  async read(token: string): Promise<SharedChat> {
+    const share = SHARE_TOKEN.test(token) ? await this.shares.byToken(token) : null;
     if (share === null) throw notFound("Shared chat");
     return share.snapshot;
   }
 
-  private snapshotOf(session: SessionRecord, includeTools: boolean): SharedChat {
-    const events = this.events
-      .since(session.id, 0, EVENTS_READ)
+  private async snapshotOf(session: SessionRecord, includeTools: boolean): Promise<SharedChat> {
+    const events = (await this.events.since(session.id, 0, EVENTS_READ))
       .filter((e) => SHARED.has(e.type))
       .flatMap((e) => {
         const one = shown(e, includeTools);
@@ -103,8 +102,8 @@ export class ShareService {
     return { title: masked(session.title), repository: session.repository === null ? null : masked(session.repository), source: session.source, sharedAt: new Date().toISOString(), includeTools, events };
   }
 
-  private session(id: string): SessionRecord {
-    const s = isSessionId(id) ? this.sessions.get(id) : null;
+  private async session(id: string): Promise<SessionRecord> {
+    const s = isSessionId(id) ? await this.sessions.get(id) : null;
     if (s === null) throw notFound("Session");
     return s;
   }
@@ -115,26 +114,26 @@ export class ShareController {
   constructor(@Inject(ShareService) private readonly shares: ShareService) {}
 
   @Get("sessions/:id/share")
-  state(@Param("id") id: string): ShareState {
+  state(@Param("id") id: string): Promise<ShareState> {
     return this.shares.state(id);
   }
 
   @Post("sessions/:id/share")
   @HttpCode(200)
-  share(@Param("id") id: string, @Body() body: unknown): ShareInfo {
+  share(@Param("id") id: string, @Body() body: unknown): Promise<ShareInfo> {
     return this.shares.share(id, body);
   }
 
   @Delete("sessions/:id/share")
   @HttpCode(204)
-  stop(@Param("id") id: string): void {
-    this.shares.stop(id);
+  stop(@Param("id") id: string): Promise<void> {
+    return this.shares.stop(id);
   }
 
   // Open before the access token and the Claude sign-in: a link's token is all it takes, and all it opens.
   @Get("shared/:token")
-  @BeforeClaudeSignIn()
-  read(@Param("token") token: string, @Res({ passthrough: true }) res: Response): SharedChat {
+  @Public()
+  read(@Param("token") token: string, @Res({ passthrough: true }) res: Response): Promise<SharedChat> {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Robots-Tag", "noindex, nofollow");
     return this.shares.read(token);

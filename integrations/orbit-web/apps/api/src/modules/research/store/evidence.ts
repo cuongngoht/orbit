@@ -1,7 +1,8 @@
 // What research keeps of its evidence: verified citations (each with a copy of the passage it verified), notes and
-// findings. Nothing else writes these tables.
+// findings. Nothing else writes these tables. Each row carries its workspace's account, taken from the workspace's row
+// when it is written: a citation, a note or a finding of another account's workspace cannot be made.
 import type { FindingStatus, PassageMatch } from "@orbit-web/contracts";
-import type { Database } from "../../../infra/storage/database.js";
+import { Db } from "../../../infra/db/db.js";
 import { now, num, numOrNull, str, strOrNull, type Row } from "./rows.js";
 
 export interface CitationRecord {
@@ -107,108 +108,133 @@ const findingOf = (r: Row): FindingRecord => ({
 });
 
 export class EvidenceStore {
-  constructor(private readonly database: Database) {}
+  constructor(private readonly db: Db) {}
 
-  addCitations(citations: readonly Omit<CitationRecord, "createdAt">[]): void {
+  async addCitations(citations: readonly Omit<CitationRecord, "createdAt">[]): Promise<void> {
+    if (citations.length === 0) return;
     const at = now();
-    const insert = this.database.db.prepare(
-      "INSERT INTO research_citations (id, workspace_id, session_id, run_id, message_id, label, source_id, revision_id, revision_number, chunk_ordinal, page, section, char_start, char_end, source_title, quote, match, rank, score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    );
-    this.database.transaction(() => {
-      for (const c of citations) insert.run(c.id, c.workspaceId, c.sessionId, c.runId, c.messageId, c.label, c.sourceId, c.revisionId, c.revisionNumber, c.chunkOrdinal, c.page, c.section, c.charStart, c.charEnd, c.sourceTitle, c.quote, c.match, c.rank, c.score, at);
+    await this.db.tx(async () => {
+      for (const c of citations) {
+        await this.db.query(
+          "INSERT INTO research_citations (id, account_id, workspace_id, session_id, run_id, message_id, label, source_id, revision_id, revision_number, chunk_ordinal, page, section, char_start, char_end, source_title, quote, match, rank, score, created_at) SELECT $1, w.account_id, w.id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20 FROM research_workspaces w WHERE w.id = $2",
+          [c.id, c.workspaceId, c.sessionId, c.runId, c.messageId, c.label, c.sourceId, c.revisionId, c.revisionNumber, c.chunkOrdinal, c.page, c.section, c.charStart, c.charEnd, c.sourceTitle, c.quote, c.match, c.rank, c.score, at],
+        );
+      }
     });
   }
 
-  citation(id: string): CitationRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM research_citations WHERE id = ?").get(id) as Row | undefined;
-    return row ? citationOf(row) : null;
+  async citation(id: string): Promise<CitationRecord | null> {
+    const row = await this.db.one("SELECT * FROM research_citations WHERE id = $1", [id]);
+    return row === null ? null : citationOf(row);
   }
 
-  citationsOfSession(sessionId: string): CitationRecord[] {
-    return (this.database.db.prepare("SELECT * FROM research_citations WHERE session_id = ? ORDER BY created_at DESC, message_id, rank").all(sessionId) as Row[]).map(citationOf);
+  async citations(ids: readonly string[]): Promise<Map<string, CitationRecord>> {
+    if (ids.length === 0) return new Map();
+    return new Map((await this.db.query("SELECT * FROM research_citations WHERE id = ANY($1::text[])", [ids])).map((r) => [str(r.id), citationOf(r)]));
   }
 
-  citationsOfMessages(messageIds: readonly string[]): CitationRecord[] {
-    return (this.database.db.prepare("SELECT * FROM research_citations WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY rank").all(JSON.stringify(messageIds)) as Row[]).map(citationOf);
+  async citationsOfSession(sessionId: string): Promise<CitationRecord[]> {
+    return (await this.db.query("SELECT * FROM research_citations WHERE session_id = $1 ORDER BY created_at DESC, message_id, rank", [sessionId])).map(citationOf);
+  }
+
+  async citationsOfMessages(messageIds: readonly string[]): Promise<CitationRecord[]> {
+    if (messageIds.length === 0) return [];
+    return (await this.db.query("SELECT * FROM research_citations WHERE message_id = ANY($1::text[]) ORDER BY rank", [messageIds])).map(citationOf);
   }
 
   // A session is gone: the citations no note or finding refers to go with it; the others stay, without their session.
-  dropUnreferenced(workspaceId: string): void {
-    this.database.db
-      .prepare(
-        "DELETE FROM research_citations WHERE workspace_id = ? AND session_id IS NULL AND id NOT IN (SELECT citation_id FROM research_finding_citations) AND id NOT IN (SELECT citation_id FROM research_notes WHERE citation_id IS NOT NULL)",
-      )
-      .run(workspaceId);
+  async dropUnreferenced(workspaceId: string): Promise<void> {
+    await this.db.query(
+      "DELETE FROM research_citations WHERE workspace_id = $1 AND session_id IS NULL AND id NOT IN (SELECT citation_id FROM research_finding_citations) AND id NOT IN (SELECT citation_id FROM research_notes WHERE citation_id IS NOT NULL)",
+      [workspaceId],
+    );
   }
 
-  addNote(n: Omit<NoteRecord, "createdAt" | "updatedAt">): NoteRecord {
+  async addNote(n: Omit<NoteRecord, "createdAt" | "updatedAt">): Promise<NoteRecord> {
     const at = now();
-    this.database.db
-      .prepare("INSERT INTO research_notes (id, workspace_id, session_id, title, body, source_id, citation_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(n.id, n.workspaceId, n.sessionId, n.title, n.body, n.sourceId, n.citationId, n.createdBy, at, at);
-    return this.note(n.id) as NoteRecord;
+    const row = await this.db.one(
+      "INSERT INTO research_notes (id, account_id, workspace_id, session_id, title, body, source_id, citation_id, created_by, created_at, updated_at) SELECT $1, w.account_id, w.id, $3, $4, $5, $6, $7, $8, $9, $9 FROM research_workspaces w WHERE w.id = $2 RETURNING *",
+      [n.id, n.workspaceId, n.sessionId, n.title, n.body, n.sourceId, n.citationId, n.createdBy, at],
+    );
+    if (row === null) throw new Error(`no research workspace ${n.workspaceId}`);
+    return noteOf(row);
   }
 
-  note(id: string): NoteRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM research_notes WHERE id = ?").get(id) as Row | undefined;
-    return row ? noteOf(row) : null;
+  async note(id: string): Promise<NoteRecord | null> {
+    const row = await this.db.one("SELECT * FROM research_notes WHERE id = $1", [id]);
+    return row === null ? null : noteOf(row);
   }
 
-  notes(workspaceId: string): NoteRecord[] {
-    return (this.database.db.prepare("SELECT * FROM research_notes WHERE workspace_id = ? ORDER BY updated_at DESC, created_at DESC").all(workspaceId) as Row[]).map(noteOf);
+  async notes(workspaceId: string): Promise<NoteRecord[]> {
+    return (await this.db.query("SELECT * FROM research_notes WHERE workspace_id = $1 ORDER BY updated_at DESC, created_at DESC", [workspaceId])).map(noteOf);
   }
 
-  updateNote(id: string, patch: { title?: string; body?: string }): NoteRecord {
-    const n = this.note(id) as NoteRecord;
-    this.database.db.prepare("UPDATE research_notes SET title = ?, body = ?, updated_at = ? WHERE id = ?").run(patch.title ?? n.title, patch.body ?? n.body, now(), id);
-    return this.note(id) as NoteRecord;
+  async updateNote(id: string, patch: { title?: string; body?: string }): Promise<NoteRecord> {
+    const row = await this.db.one("UPDATE research_notes SET title = COALESCE($2, title), body = COALESCE($3, body), updated_at = $4 WHERE id = $1 RETURNING *", [id, patch.title ?? null, patch.body ?? null, now()]);
+    if (row === null) throw new Error(`no research note ${id}`);
+    return noteOf(row);
   }
 
-  deleteNote(id: string): void {
-    this.database.db.prepare("DELETE FROM research_notes WHERE id = ?").run(id);
+  async deleteNote(id: string): Promise<void> {
+    await this.db.query("DELETE FROM research_notes WHERE id = $1", [id]);
   }
 
-  addFinding(f: Omit<FindingRecord, "createdAt" | "updatedAt" | "reviewedBy" | "reviewedAt" | "status">, citationIds: readonly string[]): FindingRecord {
+  async addFinding(f: Omit<FindingRecord, "createdAt" | "updatedAt" | "reviewedBy" | "reviewedAt" | "status">, citationIds: readonly string[]): Promise<FindingRecord> {
     const at = now();
-    this.database.db
-      .prepare("INSERT INTO research_findings (id, workspace_id, session_id, number, title, statement, status, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)")
-      .run(f.id, f.workspaceId, f.sessionId, f.number, f.title, f.statement, f.createdBy, at, at);
-    this.writeFindingCitations(f.id, citationIds);
-    return this.finding(f.id) as FindingRecord;
-  }
-
-  finding(id: string): FindingRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM research_findings WHERE id = ?").get(id) as Row | undefined;
-    return row ? findingOf(row) : null;
-  }
-
-  findings(workspaceId: string): FindingRecord[] {
-    return (this.database.db.prepare("SELECT * FROM research_findings WHERE workspace_id = ? ORDER BY number DESC").all(workspaceId) as Row[]).map(findingOf);
-  }
-
-  findingCitations(findingId: string): CitationRecord[] {
-    return (this.database.db.prepare("SELECT c.* FROM research_finding_citations f JOIN research_citations c ON c.id = f.citation_id WHERE f.finding_id = ? ORDER BY f.position").all(findingId) as Row[]).map(citationOf);
-  }
-
-  updateFinding(id: string, patch: Partial<Pick<FindingRecord, "title" | "statement" | "status" | "reviewedBy" | "reviewedAt">>, citationIds: readonly string[] | null): FindingRecord {
-    const f = this.finding(id) as FindingRecord;
-    const next = { ...f, ...patch };
-    this.database.transaction(() => {
-      this.database.db
-        .prepare("UPDATE research_findings SET title = ?, statement = ?, status = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ?")
-        .run(next.title, next.statement, next.status, next.reviewedBy, next.reviewedAt, now(), id);
-      if (citationIds !== null) this.writeFindingCitations(id, citationIds);
+    return this.db.tx(async () => {
+      const row = await this.db.one(
+        "INSERT INTO research_findings (id, account_id, workspace_id, session_id, number, title, statement, status, created_by, created_at, updated_at) SELECT $1, w.account_id, w.id, $3, $4, $5, $6, 'draft', $7, $8, $8 FROM research_workspaces w WHERE w.id = $2 RETURNING *",
+        [f.id, f.workspaceId, f.sessionId, f.number, f.title, f.statement, f.createdBy, at],
+      );
+      if (row === null) throw new Error(`no research workspace ${f.workspaceId}`);
+      await this.writeFindingCitations(f.id, citationIds);
+      return findingOf(row);
     });
-    return this.finding(id) as FindingRecord;
   }
 
-  deleteFinding(id: string): void {
-    this.database.db.prepare("DELETE FROM research_findings WHERE id = ?").run(id);
+  async finding(id: string): Promise<FindingRecord | null> {
+    const row = await this.db.one("SELECT * FROM research_findings WHERE id = $1", [id]);
+    return row === null ? null : findingOf(row);
   }
 
-  private writeFindingCitations(findingId: string, citationIds: readonly string[]): void {
-    this.database.db.prepare("DELETE FROM research_finding_citations WHERE finding_id = ?").run(findingId);
-    const insert = this.database.db.prepare("INSERT INTO research_finding_citations (finding_id, citation_id, position) VALUES (?, ?, ?)");
-    citationIds.forEach((c, i) => insert.run(findingId, c, i));
+  async findings(workspaceId: string): Promise<FindingRecord[]> {
+    return (await this.db.query("SELECT * FROM research_findings WHERE workspace_id = $1 ORDER BY number DESC", [workspaceId])).map(findingOf);
+  }
+
+  async findingCitations(findingId: string): Promise<CitationRecord[]> {
+    return (await this.db.query("SELECT c.* FROM research_finding_citations f JOIN research_citations c ON c.id = f.citation_id WHERE f.finding_id = $1 ORDER BY f.position", [findingId])).map(citationOf);
+  }
+
+  async updateFinding(id: string, patch: Partial<Pick<FindingRecord, "title" | "statement" | "status" | "reviewedBy" | "reviewedAt">>, citationIds: readonly string[] | null): Promise<FindingRecord> {
+    return this.db.tx(async () => {
+      const f = await this.finding(id);
+      if (f === null) throw new Error(`no research finding ${id}`);
+      const next = { ...f, ...patch };
+      const row = await this.db.one("UPDATE research_findings SET title = $2, statement = $3, status = $4, reviewed_by = $5, reviewed_at = $6, updated_at = $7 WHERE id = $1 RETURNING *", [
+        id,
+        next.title,
+        next.statement,
+        next.status,
+        next.reviewedBy,
+        next.reviewedAt,
+        now(),
+      ]);
+      if (citationIds !== null) await this.writeFindingCitations(id, citationIds);
+      return findingOf(row as Row);
+    });
+  }
+
+  async deleteFinding(id: string): Promise<void> {
+    await this.db.query("DELETE FROM research_findings WHERE id = $1", [id]);
+  }
+
+  // The citations a finding rests on, in order; each with the finding's own account (the database refuses another's).
+  private async writeFindingCitations(findingId: string, citationIds: readonly string[]): Promise<void> {
+    await this.db.query("DELETE FROM research_finding_citations WHERE finding_id = $1", [findingId]);
+    if (citationIds.length === 0) return;
+    await this.db.query(
+      "INSERT INTO research_finding_citations (account_id, finding_id, citation_id, position) SELECT f.account_id, f.id, c.citation_id, c.position - 1 FROM research_findings f, unnest($2::text[]) WITH ORDINALITY AS c(citation_id, position) WHERE f.id = $1",
+      [findingId, citationIds],
+    );
   }
 }

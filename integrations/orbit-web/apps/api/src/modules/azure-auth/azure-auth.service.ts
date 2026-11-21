@@ -6,7 +6,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { AzureAccount, AzureStatus, ConnectionState, LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
-import { EventBus } from "../../core/events/event-bus.js";
+import { EventBus, everyone } from "../../core/events/event-bus.js";
+import { viewer } from "../../common/request-scope.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
 import { azureEnv } from "../../infra/process/env.js";
@@ -58,19 +59,21 @@ export class AzureAuthService {
     @Inject(EventBus) private readonly bus: EventBus,
   ) {
     this.flow = new LoginFlow(process);
-    // The sign-in flow is told to every page on the app stream; its end, with what az says now.
+    // The sign-in flow is told to every signed-in page on the app stream (the Azure CLI's sign-in is the deployment's,
+    // not one account's); its end, with what az says now.
     this.flow.subscribe((flow) => {
-      this.bus.publishApp("connector.flow", { connector: "azure", flow });
-      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c));
+      this.bus.publishApp("connector.flow", { connector: "azure", flow }, everyone);
+      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c)).catch(() => undefined);
     });
   }
 
   private announce(c: AzureConnection): void {
-    this.bus.publishApp("connector.status", { connector: "azure", state: c.state, account: c.account?.user ?? null });
+    this.bus.publishApp("connector.status", { connector: "azure", state: c.state, account: c.account?.user ?? null }, everyone);
   }
 
+  // As the account of the request sees it: whether ITS chats may use the sign-in is its own switch.
   async status(): Promise<AzureStatus> {
-    return { ...(await this.connection()), flow: this.flow.current(), availableToClaude: this.settings.get().azureForClaude };
+    return { ...(await this.connection()), flow: this.flow.current(), availableToClaude: (await this.settings.get(viewer().accountId)).azureForClaude };
   }
 
   connection(fresh = false): Promise<AzureConnection> {

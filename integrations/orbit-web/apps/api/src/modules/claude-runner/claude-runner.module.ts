@@ -5,11 +5,11 @@ import { ProjectModule } from "../project/project.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { AutoModeService } from "./auto-mode.js";
 import { ClaudeRunnerService } from "./claude-runner.service.js";
-import { TranscriptProjection } from "./transcript.js";
+import { Transcript } from "./transcript.js";
 
 @Module({
   imports: [SettingsModule, ProjectModule, GovernanceModule, ClaudeAuthModule],
-  providers: [ClaudeRunnerService, TranscriptProjection, AutoModeService],
+  providers: [ClaudeRunnerService, Transcript, AutoModeService],
   exports: [ClaudeRunnerService],
 })
 export class ClaudeRunnerModule {}

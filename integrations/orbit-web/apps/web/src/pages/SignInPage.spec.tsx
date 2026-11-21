@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 import { fakeApi } from "../testing/fakeApi";
 import { FakeEventSource } from "../testing/fakeEventSource";
-import { idleFlow, signedOutClaude } from "../testing/fixtures";
+import { claudeStatus, idleFlow, signedOutClaude } from "../testing/fixtures";
 import { renderUi } from "../testing/render";
 import { SignInPage } from "./SignInPage";
 
@@ -51,12 +51,20 @@ describe("the sign-in page: Orbit Web signs in with a Claude account", () => {
     }
   });
 
-  test("a verified sign-in has the app read the sign-in again", async () => {
-    fakeApi();
+  test("a verified sign-in is exchanged, once, for this browser's session, and the app reads the sign-in again", async () => {
+    const api = fakeApi().on("POST", "/api/claude/session", () => claudeStatus());
     const changed = vi.fn();
     renderUi(<SignInPage status={signedOutClaude()} onChanged={changed} />);
     act(() => FakeEventSource.last("/api/claude/login/events").emit({ ...idleFlow(), state: "connected", message: "Signed in to Claude as octo@example.com.", updatedAt: "2026-11-19T00:02:00.000Z" }));
     await waitFor(() => expect(changed).toHaveBeenCalled());
+    expect(api.calls.filter((c) => c.method === "POST" && c.path === "/api/claude/session")).toHaveLength(1);
+  });
+
+  test("a browser with no session runs the sign-in itself even when the Claude CLI is signed in already", async () => {
+    const api = fakeApi().on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }));
+    renderUi(<SignInPage status={signedOutClaude({ runtime: "connected" })} onChanged={() => undefined} />);
+    await waitFor(() => expect(api.calls.filter((c) => c.path === "/api/claude/login")).toHaveLength(1));
+    expect(screen.getByText(/no password of its own/)).toBeInTheDocument();
   });
 
   test("says why a sign-in does not count, and that the container's credential variables are ignored", () => {

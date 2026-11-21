@@ -1,22 +1,20 @@
 // A RESEARCH RUN IS NO CODING RUN, AND ONE ACCOUNT'S RESEARCH IS NOT ANOTHER'S. A research run is started with no tool, no
 // settings file, no MCP server and nothing persisted, outside every chat's workspace; one that reports or uses a tool is
 // stopped. A document's words stay data between tags it cannot close. What a run writes is masked by token shape before
-// it is kept. Another account reaches nothing of a workspace through any route. A research run's token never opens the
+// it is kept. Another account reaches nothing of a workspace through any route, hears nothing of it on the app stream,
+// and a page of one account stops hearing anything the moment another signs in. A research run's token never opens the
 // agent gateway. A run a stop or a restart cut short is interrupted -- never completed, never run again -- and the
 // account is not signed out under it.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { after, before, describe, test } from "node:test";
 import { RUN_TOKEN_HEADER, type ResearchFinding, type ResearchNote, type ResearchSessionDetail, type ResearchSessionSummary, type ResearchSourceSummary, type ResearchWorkspaceSummary, type SessionSummary } from "@orbit-web/contracts";
 import { RunBindingStore } from "../../src/infra/governance/stores.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { ClaudeAuthService } from "../../src/modules/claude-auth/claude-auth.service.js";
-import { RESEARCH_AGENT } from "../../src/modules/governance/principal.js";
 import { RESEARCH_SYSTEM_PROMPT } from "../../src/modules/research/runner/research-args.js";
+import { ResearchViews } from "../../src/modules/research/views.js";
 import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, eventually, researchRun, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
+import { CLAUDE_SIGNED_IN, eventually, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { answered, errorCode, newWorkspace, settledSource } from "../../src/testing/research-client.js";
 import { passagesOf, researchAnswer } from "../../src/testing/research-fixtures.js";
 import { filled, routesOf } from "../../src/testing/routes.js";
@@ -32,11 +30,11 @@ const echo = (prompt: string): string => passagesOf(prompt).map((p) => `${p.text
 
 const researchCalls = (fake: FakeProcessPort): { call: Call; child: FakeChild }[] => fake.children.filter((c) => researchRun(c.call.file, c.call.args));
 
-async function workspaceWith(h: Harness, name: string, text: string): Promise<{ workspace: ResearchWorkspaceSummary; source: ResearchSourceSummary; session: ResearchSessionDetail }> {
-  const workspace = await newWorkspace(h, name);
-  const made = await h.send("POST", `/api/research/workspaces/${workspace.id}/sources/text`, { title: `${name} notes`, text });
-  const source = await settledSource(h, (made.body as ResearchSourceSummary).id);
-  const session = (await h.send("POST", `/api/research/workspaces/${workspace.id}/sessions`, { model: "sonnet" })).body as ResearchSessionDetail;
+async function workspaceWith(as: Browser, name: string, text: string): Promise<{ workspace: ResearchWorkspaceSummary; source: ResearchSourceSummary; session: ResearchSessionDetail }> {
+  const workspace = await newWorkspace(as, name);
+  const made = await as.send("POST", `/api/research/workspaces/${workspace.id}/sources/text`, { title: `${name} notes`, text });
+  const source = await settledSource(as, (made.body as ResearchSourceSummary).id);
+  const session = (await as.send("POST", `/api/research/workspaces/${workspace.id}/sessions`, { model: "sonnet" })).body as ResearchSessionDetail;
   return { workspace, source, session };
 }
 
@@ -112,20 +110,37 @@ describe("a research run is no coding run", () => {
     assert.equal(done.status, "completed");
     assert.match(done.messages.at(-1)?.text ?? "", /\[redacted-anthropic-key\]/);
     assert.match(done.messages.at(-1)?.citations[0]?.quote ?? "", /\[redacted-github-token\]/);
-    const db = new DatabaseSync(join(h.config.data.app, "orbit-web.db"));
-    try {
-      const kept = [db.prepare("SELECT group_concat(data, ' ') AS t FROM research_events").get(), db.prepare("SELECT group_concat(text, ' ') AS t FROM research_messages").get(), db.prepare("SELECT group_concat(quote, ' ') AS t FROM research_citations").get()].map((r) => String((r as { t: unknown }).t));
-      for (const secret of [ANTHROPIC_KEY, GITHUB_TOKEN]) assert.equal(kept.some((t) => t.includes(secret)), false, "never kept in an answer, the journal or a citation");
-    } finally {
-      db.close();
-    }
+    const [kept] = await h.sql(
+      "SELECT (SELECT string_agg(data::text, ' ') FROM research.research_events) AS events, (SELECT string_agg(text, ' ') FROM research.research_messages) AS messages, (SELECT string_agg(quote, ' ') FROM research.research_citations) AS citations",
+    );
+    const texts = [kept?.events, kept?.messages, kept?.citations].map((t) => String(t));
+    assert.ok(texts.every((t) => t.length > 10), "there was something to look in");
+    for (const secret of [ANTHROPIC_KEY, GITHUB_TOKEN]) assert.equal(texts.some((t) => t.includes(secret)), false, "never kept in an answer, the journal or a citation");
     assert.ok(workspace.id);
   });
 
   test("a research run's token never opens the agent gateway", async () => {
+    const { workspace, session } = await workspaceWith(h, "Token", "A token's reach.");
+    const [policy] = await h.sql("SELECT id FROM governance.policy_revisions WHERE account_id = $1 AND state = 'PUBLISHED'", [h.accountId]);
+    assert.ok(policy, "the account has a policy in effect");
     const token = randomBytes(32).toString("base64url");
     const now = Date.now();
-    h.app.get(RunBindingStore).insert({ runId: "r-research", sessionId: "00000000-0000-4000-8000-000000000001", agentId: RESEARCH_AGENT, organizationId: "org", policyRevision: "none", workBranch: null, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 60_000).toISOString(), endedAt: null, tokenHash: createHash("sha256").update(token).digest("hex") });
+    await h.app.get(RunBindingStore).insert({
+      runId: "r-research",
+      accountId: h.accountId as string,
+      kind: "research",
+      resourceKind: "research_workspace",
+      resourceId: workspace.id,
+      researchSessionId: session.id,
+      agentId: "claude-research",
+      policyRevision: String(policy.id),
+      startedBy: `owner:${h.accountId}`,
+      workBranch: null,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + 60_000).toISOString(),
+      endedAt: null,
+      tokenHash: createHash("sha256").update(token).digest("hex"),
+    });
     for (const path of ["/api/agent/whoami", "/api/agent/approvals/x"]) {
       const r = await fetch(`${h.url}${path}`, { headers: { [RUN_TOKEN_HEADER]: token } });
       assert.ok(r.status === 401 || r.status === 403, `${path}: ${r.status}`);
@@ -144,9 +159,10 @@ describe("a research run is no coding run", () => {
 describe("one account's research is not another's", () => {
   let h: Harness;
   const state = { who: ALICE as Record<string, unknown> };
-  const as = async (account: Record<string, unknown>) => {
-    state.who = account;
-    await h.app.get(ClaudeAuthService).account(true);
+  // One Claude identity per runtime: signing in as another account ends the sessions of the one before.
+  const signInAs = async (who: Record<string, unknown>): Promise<Browser> => {
+    state.who = who;
+    return h.browser();
   };
   let alice: { workspace: ResearchWorkspaceSummary; source: ResearchSourceSummary; session: ResearchSessionDetail };
   let note: ResearchNote;
@@ -165,52 +181,94 @@ describe("one account's research is not another's", () => {
   });
   after(() => h.close());
 
+  test("a page of one account stops hearing anything the moment another account signs in", async () => {
+    const page = await h.stream(`/api/research/sessions/${alice.session.id}/events`);
+    await page.until((es) => es.length > 0);
+    const bob = await signInAs(BOB);
+    await Promise.race([page.ended, new Promise((_, reject) => setTimeout(() => reject(new Error("Alice's research stream was still open after Bob signed in")), 5_000))]);
+    assert.equal((await h.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 401, "Alice's session ended with the switch");
+    assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404);
+  });
+
   test("another account reaches nothing of it, through any research route", async () => {
-    await as(BOB);
-    assert.deepEqual((await h.get("/api/research/workspaces")).body, []);
-    assert.deepEqual((await h.get("/api/research/sessions")).body, []);
+    const bob = await signInAs(BOB);
+    assert.deepEqual((await bob.get("/api/research/workspaces")).body, []);
+    assert.deepEqual((await bob.get("/api/research/sessions")).body, []);
     const ids: Record<string, string> = { workspaces: alice.workspace.id, sources: alice.source.id, sessions: alice.session.id, notes: note.id, findings: finding.id };
     const routes = routesOf(h).filter((r) => r.path.startsWith("/api/research/") && r.path.includes(":id"));
     assert.ok(routes.length >= 30, `every research route with an id was read (${routes.length})`);
     for (const r of routes) {
       const kind = r.path.split("/")[3] as string;
       const path = filled(r.path, { id: ids[kind] as string });
-      const reply = r.method === "GET" ? await h.get(path) : await h.send(r.method, path, r.path.endsWith("/upload") ? undefined : {});
+      const reply = r.method === "GET" ? await bob.get(path) : await bob.send(r.method, path, r.path.endsWith("/upload") ? undefined : {});
       assert.ok(reply.status === 404 || (reply.status === 415 && r.path.endsWith("/upload")), `${r.method} ${r.path}: ${reply.status}`);
       assert.doesNotMatch(JSON.stringify(reply.body), /merger|Alice's research/i, `${r.method} ${r.path}`);
     }
   });
 
+  test("another account hears nothing of it on the app stream, while it hears its own", async () => {
+    const bob = await signInAs(BOB);
+    const own = await workspaceWith(bob, "Bob's stream", "Bob's own words.");
+    const stream = await bob.stream("/api/events");
+    try {
+      const views = h.app.get(ResearchViews);
+      await views.notifyWorkspace(alice.workspace.id);
+      await views.notifySource(alice.source.id);
+      await views.notifySession(alice.session.id);
+      await views.notifyWorkspace(own.workspace.id);
+      await stream.until((es) => es.some((e) => JSON.stringify(e).includes(own.workspace.id)));
+      await new Promise((r) => setTimeout(r, 200));
+      assert.equal(stream.events.some((e) => JSON.stringify(e).includes(alice.workspace.id)), false, "nothing about Alice's workspace reached Bob's page");
+      assert.doesNotMatch(JSON.stringify(stream.events), /merger|Alice's research/i);
+    } finally {
+      stream.close();
+    }
+  });
+
   test("its own records cannot reach into it: a selection, a note or a finding naming another workspace's ids is refused", async () => {
-    await as(BOB);
-    const bob = await workspaceWith(h, "Bob's research", "Bob's own notes.");
-    assert.equal((await h.send("PUT", `/api/research/sessions/${bob.session.id}/sources`, { sources: [bob.source.id, alice.source.id] })).status, 404);
-    assert.equal((await h.send("POST", `/api/research/workspaces/${bob.workspace.id}/findings`, { title: "Stolen", statement: "x", citations: [finding.citations[0]?.id] })).status, 404);
-    assert.equal((await h.send("POST", `/api/research/workspaces/${bob.workspace.id}/notes`, { title: "Stolen", body: "x", sourceId: alice.source.id })).status, 404);
-    assert.equal((await h.send("POST", `/api/research/workspaces/${bob.workspace.id}/sessions`, { model: "sonnet", sources: [alice.source.id] })).status, 404);
+    const bob = await signInAs(BOB);
+    const mine = await workspaceWith(bob, "Bob's research", "Bob's own notes.");
+    assert.equal((await bob.send("PUT", `/api/research/sessions/${mine.session.id}/sources`, { sources: [mine.source.id, alice.source.id] })).status, 404);
+    assert.equal((await bob.send("POST", `/api/research/workspaces/${mine.workspace.id}/findings`, { title: "Stolen", statement: "x", citations: [finding.citations[0]?.id] })).status, 404);
+    assert.equal((await bob.send("POST", `/api/research/workspaces/${mine.workspace.id}/notes`, { title: "Stolen", body: "x", sourceId: alice.source.id })).status, 404);
+    assert.equal((await bob.send("POST", `/api/research/workspaces/${mine.workspace.id}/sessions`, { model: "sonnet", sources: [alice.source.id] })).status, 404);
+    const [counts] = await h.sql("SELECT (SELECT count(*) FROM research.research_session_sources s JOIN research.research_sources r ON r.id = s.source_id WHERE s.account_id <> r.account_id) AS crossed");
+    assert.equal(counts?.crossed, 0, "no selection joins a source of another account");
+  });
+
+  test("an account id a request names changes nothing: the session's account decides", async () => {
+    const bob = await signInAs(BOB);
+    const aliceAccount = String((await h.sql("SELECT account_id FROM research.research_workspaces WHERE id = $1", [alice.workspace.id]))[0]?.account_id);
+    assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}?accountId=${aliceAccount}`)).status, 404);
+    assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}`, { "x-account-id": aliceAccount })).status, 404);
+    const made = await bob.send("POST", "/api/research/workspaces", { name: "Forged", accountId: aliceAccount });
+    assert.ok(made.status === 400 || made.status === 201, String(made.status));
+    if (made.status === 201) assert.equal(String((await h.sql("SELECT account_id FROM research.research_workspaces WHERE id = $1", [(made.body as ResearchWorkspaceSummary).id]))[0]?.account_id), bob.accountId);
   });
 
   test("shared by email, it opens -- to read and ask in -- but only its owner deletes it or shares it on", async () => {
-    await as(ALICE);
-    assert.equal((await h.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: ["bob@example.com"] })).status, 200);
-    await as(BOB);
-    const listed = (await h.get("/api/research/workspaces")).body as ResearchWorkspaceSummary[];
+    const owner = await signInAs(ALICE);
+    assert.equal((await owner.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: ["bob@example.com"] })).status, 200);
+    const bob = await signInAs(BOB);
+    const listed = (await bob.get("/api/research/workspaces")).body as ResearchWorkspaceSummary[];
     assert.deepEqual(listed.find((w) => w.id === alice.workspace.id)?.access, "shared");
-    assert.equal((await h.send("POST", `/api/research/sessions/${alice.session.id}/messages`, { text: "Anything else?" })).status, 202);
-    await answered(h, alice.session.id);
-    assert.equal(errorCode(await h.send("DELETE", `/api/research/workspaces/${alice.workspace.id}`, { confirmName: "Alice's research" })), "owner_only");
-    assert.equal(errorCode(await h.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })), "owner_only");
-    assert.equal(errorCode(await h.send("DELETE", `/api/research/notes/${note.id}`)), "owner_only", "a note is its writer's or the owner's to delete");
-    const mine = (await h.send("POST", `/api/research/workspaces/${alice.workspace.id}/notes`, { title: "Bob's", body: "mine" })).body as ResearchNote;
-    assert.equal((await h.send("DELETE", `/api/research/notes/${mine.id}`)).status, 204);
-    assert.equal(errorCode(await h.send("PATCH", `/api/research/findings/${finding.id}`, { statement: "June." })), "owner_only", "another's finding: its words are not this account's to change");
-    assert.equal(errorCode(await h.send("PATCH", `/api/research/notes/${note.id}`, { body: "June." })), "owner_only");
-    const reviewed = await h.send("PATCH", `/api/research/findings/${finding.id}`, { status: "needs_review" });
+    assert.equal((await bob.send("POST", `/api/research/sessions/${alice.session.id}/messages`, { text: "Anything else?" })).status, 202);
+    await answered(bob, alice.session.id);
+    assert.equal(errorCode(await bob.send("DELETE", `/api/research/workspaces/${alice.workspace.id}`, { confirmName: "Alice's research" })), "owner_only");
+    assert.equal(errorCode(await bob.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })), "owner_only");
+    assert.equal(errorCode(await bob.send("DELETE", `/api/research/notes/${note.id}`)), "owner_only", "a note is its writer's or the owner's to delete");
+    const mine = (await bob.send("POST", `/api/research/workspaces/${alice.workspace.id}/notes`, { title: "Bob's", body: "mine" })).body as ResearchNote;
+    assert.equal((await bob.send("DELETE", `/api/research/notes/${mine.id}`)).status, 204);
+    assert.equal(errorCode(await bob.send("PATCH", `/api/research/findings/${finding.id}`, { statement: "June." })), "owner_only", "another's finding: its words are not this account's to change");
+    assert.equal(errorCode(await bob.send("PATCH", `/api/research/notes/${note.id}`, { body: "June." })), "owner_only");
+    const reviewed = await bob.send("PATCH", `/api/research/findings/${finding.id}`, { status: "needs_review" });
     assert.equal((reviewed.body as ResearchFinding).status, "needs_review", "but it may review it");
-    await as(ALICE);
-    assert.equal((await h.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })).status, 200);
-    await as(BOB);
-    assert.equal((await h.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404, "unshared: closed again");
+    const shared = (await h.sql("SELECT account_id FROM research.research_messages WHERE session_id = $1", [alice.session.id])).map((r) => String(r.account_id));
+    assert.equal(new Set(shared).size, 1, "what Bob asked in Alice's session is the session's -- Alice's account's");
+    const again = await signInAs(ALICE);
+    assert.equal((await again.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })).status, 200);
+    const closed = await signInAs(BOB);
+    assert.equal((await closed.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404, "unshared: closed again");
   });
 });
 
@@ -228,7 +286,7 @@ describe("a research run a stop or a restart cut short is interrupted -- never c
     await first.close(true);
 
     const again = signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(() => "never") });
-    const second = await startHarness({ dataDir: first.dataDir, fake: again });
+    const second = await startHarness({ dataDir: first.dataDir, database: first.database, fake: again });
     try {
       const detail = (await second.get(`/api/research/sessions/${session.id}`)).body as ResearchSessionDetail;
       assert.equal(detail.status, "interrupted");
@@ -245,12 +303,11 @@ describe("a research run a stop or a restart cut short is interrupted -- never c
   test("after a crash (the record still says running), the next start marks it interrupted", async () => {
     const first = await startHarness({ fake: signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(() => "Done [S1].") }) });
     const { session } = await workspaceWith(first, "Crash", "Text.");
+    // What a crash leaves: the record still says it runs.
+    await first.sql("UPDATE research.research_sessions SET status = 'running' WHERE id = $1", [session.id]);
+    await first.sql("INSERT INTO research.research_runs (id, account_id, session_id, workspace_id, status, model, effort, started_at) SELECT 'crashed', account_id, id, workspace_id, 'running', 'sonnet', 'medium', '2026-11-20T00:00:00Z' FROM research.research_sessions WHERE id = $1", [session.id]);
     await first.close(true);
-    const db = new DatabaseSync(join(first.dataDir, "app", "orbit-web.db"));
-    db.prepare("UPDATE research_sessions SET status = 'running' WHERE id = ?").run(session.id);
-    db.prepare("INSERT INTO research_runs (id, session_id, workspace_id, status, model, effort, started_at) VALUES ('crashed', ?, ?, 'running', 'sonnet', 'medium', '2026-11-20T00:00:00Z')").run(session.id, session.workspaceId);
-    db.close();
-    const second = await startHarness({ dataDir: first.dataDir });
+    const second = await startHarness({ dataDir: first.dataDir, database: first.database });
     try {
       const detail = (await second.get(`/api/research/sessions/${session.id}`)).body as ResearchSessionDetail;
       assert.deepEqual([detail.status, detail.lastRun?.status], ["interrupted", "interrupted"]);

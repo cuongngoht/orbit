@@ -1,8 +1,10 @@
-// The sign-in of Orbit Web, which is the Claude account's: `claude auth login --claudeai`, verified by
-// `claude auth status`. The page starts that sign-in by itself when nothing is under way (never again after a person
-// cancelled it or it failed: then Continue with Claude does), shows the whole URL the CLI printed to open or copy, and
-// hands the code a person pastes to that process, and nothing else. There is no other way in: no API key, no token, no
-// Anthropic Console account.
+// The sign-in of Orbit Web, which is the Claude account's -- and this BROWSER's: `claude auth login --claudeai`, verified
+// by `claude auth status`, then exchanged for this browser's session (POST /api/claude/session). The page starts that
+// sign-in by itself when nothing is under way (never again after a person cancelled it or it failed: then Continue with
+// Claude does), shows the whole URL the CLI printed to open or copy, and hands the code a person pastes to that process,
+// and nothing else. Even when the CLI is signed in already (a terminal, another browser), this browser signs in itself:
+// the CLI being signed in is not this browser being signed in. There is no other way in: no API key, no token, no Orbit
+// password, no registration.
 import { Button, Field, Input, Link, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import type { ClaudeStatus, LoginSnapshot } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
@@ -18,7 +20,6 @@ const useStyles = makeStyles({
   url: { wordBreak: "break-all" },
   link: { display: "flex", flexDirection: "column", gap: "8px", padding: "10px 12px", borderRadius: tokens.borderRadiusMedium, border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground3 },
   hint: { color: tokens.colorNeutralForeground3 },
-  mono: { display: "block", margin: "4px 0", fontFamily: tokens.fontFamilyMonospace, overflowWrap: "anywhere" },
 });
 
 export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | null; onChanged: () => void }) {
@@ -29,9 +30,19 @@ export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | nul
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // A verified sign-in is exchanged, once, for this browser's session; a failed one shows why.
+  const claimed = useRef<string | null>(null);
   useEffect(() => {
-    if (flow?.state === "connected" || flow?.state === "failed") onChanged();
-  }, [flow?.state, onChanged]);
+    if (flow?.state === "failed") onChanged();
+    if (flow?.state !== "connected" || claimed.current === flow.updatedAt) return;
+    claimed.current = flow.updatedAt;
+    void send<ClaudeStatus>("POST", "/api/claude/session")
+      .then(() => onChanged())
+      .catch((err: unknown) => {
+        setError(errorText(err));
+        onChanged();
+      });
+  }, [flow?.state, flow?.updatedAt, onChanged]);
 
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true);
@@ -76,8 +87,7 @@ export function ClaudeSignIn({ status, onChanged }: { status: ClaudeStatus | nul
         </Button>
       )}
       <Text size={200} className={s.hint}>
-        If signing in here does not finish, sign in from a terminal, then reload this page:
-        <span className={s.mono}>docker exec -it orbit-web claude auth login --claudeai</span>
+        Orbit Web keeps no password of its own: your Claude account is your sign-in, and this browser stays signed in until you sign it out or its session ends.
       </Text>
     </div>
   );
@@ -125,11 +135,10 @@ function FlowView(p: { flow: LoginSnapshot | null; code: string; setCode: (v: st
   );
 }
 
-// Only a signed-out Orbit Web whose sign-in never began (or ended signed in elsewhere) starts one by itself.
+// Only a browser with no session whose sign-in never began starts one by itself.
 function startsByItself(status: ClaudeStatus | null): boolean {
   if (status === null || status.state !== "not_connected") return false;
-  const state = status.flow?.state ?? "idle";
-  return state === "idle" || state === "connected";
+  return (status.flow?.state ?? "idle") === "idle";
 }
 
 // The whole authorize URL, as a link to open in a new tab and a button that copies it (for another browser or device).

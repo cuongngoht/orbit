@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { matchExpression, queryTerms } from "../retrieval/retriever.js";
 import { verifyLabels } from "./citations.js";
 import { researchPrompt } from "./prompt.js";
 import { connectorOfTool, forbiddenInit } from "./research-runner.service.js";
@@ -78,12 +77,4 @@ test("a citation is a label the run was given; any other is removed and named as
   assert.deepEqual(verifyLabels("A [S2]. B [S1, S3]. C [S9]. D [S1; S7].", valid), { text: "A [S2]. B [S1][S3]. C. D [S1].", used: ["S2", "S1", "S3"], rejected: ["S9", "S7"] });
   assert.deepEqual(verifyLabels("No evidence in the selected sources.", valid), { text: "No evidence in the selected sources.", used: [], rejected: [] });
   assert.deepEqual(verifyLabels("Made up [S12] here, and ( [S4] ) there.", new Set()).rejected, ["S12", "S4"]);
-});
-
-test("a question's words become a full-text query: stopwords out, each word quoted, any may match", () => {
-  assert.deepEqual(queryTerms("What does the NIST AI RMF say about prompt-injection?"), ["nist", "ai", "rmf", "say", "prompt", "injection"]);
-  assert.deepEqual(queryTerms("Rò rỉ dữ liệu là gì?"), ["rò", "rỉ", "dữ", "liệu"]);
-  assert.deepEqual(queryTerms("the of and"), []);
-  assert.equal(matchExpression(["ai", 'a"b']), '"ai" OR "a""b"');
-  assert.equal(queryTerms(Array.from({ length: 50 }, (_, i) => `word${i}`).join(" ")).length, 24);
 });

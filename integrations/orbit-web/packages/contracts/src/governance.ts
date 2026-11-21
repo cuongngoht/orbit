@@ -1,31 +1,13 @@
-// GOVERNANCE: what the API and the web app say to each other about operators, the Company Constitution, decisions,
-// approvals, the audit record, findings and reports -- and what the agent gateway says to a governed run. The rules
-// themselves live in @orbit-web/governance-core; this file is the transport: request and response shapes, and the
-// checks the API holds every request body to (plain functions over `unknown`, like validate.ts).
+// GOVERNANCE: what the API and the web app say to each other about an ACCOUNT's governance -- its policy and the
+// overrides that narrow it for one chat or one research workspace, decisions, approvals, the audit record, findings
+// and reports -- and what the agent gateway says to a run. The rules themselves live in @orbit-web/governance-core;
+// this file is the transport: request and response shapes, and the checks the API holds every request body to (plain
+// functions over `unknown`, like validate.ts).
 //
-// Two sign-ins, never one: the Claude sign-in is the instance's (it opens the workspace); an OPERATOR's sign-in is a
-// person's, verified by Orbit Web itself, and only it may administer governance. Nothing here derives the second from
-// the first.
-import {
-  isOperatorRole,
-  type ActionKind,
-  type AuditEvent,
-  type ChainProblem,
-  type DailyReport,
-  type EnforcementPoint,
-  type EnforcementScope,
-  type Environment,
-  type Evaluation,
-  type Finding,
-  type Impact,
-  type OperatorRole,
-  type Permission,
-  type PolicyOverlay,
-  type PolicyWarning,
-  type PrincipalType,
-  type RevisionState,
-  type RiskLevel,
-} from "@orbit-web/governance-core";
+// One sign-in: the person whose browser finished the Claude sign-in is the OWNER of the account of that identity, and
+// governs it -- its chats, its research, its policy. There is no operator, no password and no organization to set up.
+// What is governed is that account's alone: nothing here names another account, and no request picks the account.
+import { type ActionKind, type AuditEvent, type ChainProblem, type DailyReport, type EnforcementPoint, type EnforcementScope, type Environment, type Evaluation, type Finding, type Impact, type PolicyOverlay, type PolicyWarning, type PrincipalType, type RevisionState, type RiskLevel } from "@orbit-web/governance-core";
 
 type Checked<T> = { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -40,181 +22,64 @@ const checked = <T>(errors: string[], value: () => T): Checked<T> => (errors.len
 
 const objectOf = (body: unknown): Record<string, unknown> | null => (isRecord(body) ? body : null);
 
-// The header an operator's change carries beside its session cookie: the session's own CSRF token.
-export const OPERATOR_CSRF_HEADER = "x-orbit-operator-csrf";
-
-// The header a governed run's agent sends to the agent gateway: the run's own token, minted when the run started.
+// The header a run's agent sends to the agent gateway: the run's own token, minted when the run started.
 export const RUN_TOKEN_HEADER = "x-orbit-run-token";
 
-// The error codes a page answers with the operator sign-in, or with what governance refused.
-export const OPERATOR_REQUIRED = "operator_required";
-export const PERMISSION_REQUIRED = "permission_required";
+// A change without this browser session's CSRF token (CSRF_HEADER) is refused with this code.
 export const CSRF_INVALID = "csrf_invalid";
 
 export const GOVERNANCE_LIMITS = {
-  usernameLength: 64,
-  displayNameLength: 120,
-  passwordMin: 12,
-  passwordMax: 256,
-  organizationNameLength: 120,
   noteLength: 500,
+  nameLength: 120,
   resourceLength: 256,
-  bootstrapCodeLength: 128,
+  rules: 500,
   documentBytes: 128 * 1024,
 } as const;
 
-const USERNAME = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 // eslint-disable-next-line no-control-regex -- refusing control characters is the point
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-export const isUsername = (v: unknown): v is string => typeof v === "string" && USERNAME.test(v);
-const isPassword = (v: unknown): v is string => typeof v === "string" && v.length >= GOVERNANCE_LIMITS.passwordMin && v.length <= GOVERNANCE_LIMITS.passwordMax;
 const isName = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max && !CONTROL.test(v);
 export const isDigest = (v: unknown): v is string => typeof v === "string" && DIGEST.test(v);
 const isNote = (v: unknown): boolean => v === undefined || (typeof v === "string" && v.length <= GOVERNANCE_LIMITS.noteLength);
 
-const USERNAME_SAID = "username must be 2-64 characters: lower-case letters, digits, dots, dashes and underscores";
-const PASSWORD_SAID = `password must be ${GOVERNANCE_LIMITS.passwordMin}-${GOVERNANCE_LIMITS.passwordMax} characters`;
+const RISK_WORDS: readonly RiskLevel[] = ["low", "elevated", "high"];
 
-// ---- operators ---------------------------------------------------------------------------------------------------
+const documentFits = (v: unknown): boolean => {
+  try {
+    return JSON.stringify(v).length <= GOVERNANCE_LIMITS.documentBytes;
+  } catch {
+    return false;
+  }
+};
 
-export const OPERATOR_STATUSES = ["active", "suspended"] as const;
-export type OperatorStatus = (typeof OPERATOR_STATUSES)[number];
-
-export interface OperatorView {
-  id: string;
-  username: string;
-  displayName: string;
-  status: OperatorStatus;
-  roles: OperatorRole[];
-  createdAt: string;
-}
-
-export interface OperatorSessionView {
-  operator: OperatorView;
-  permissions: Permission[];
-  // Sent back as the OPERATOR_CSRF_HEADER of every change this session makes.
-  csrfToken: string;
-  expiresAt: string;
-}
+// ---- the deployment -----------------------------------------------------------------------------------------------
 
 export const DEPLOYMENTS = ["single", "governed"] as const;
 // `single`: one container, the agent beside the control plane (isolation is not proven there). `governed`: the agent in a
 // container of its own, reached through a runner, its egress through the control plane's proxy.
 export type Deployment = (typeof DEPLOYMENTS)[number];
 
-// GET /api/operator/state: whether governance is set up, and who is signed in as an operator in this browser.
-export interface GovernanceState {
-  initialized: boolean;
-  organization: { id: string; name: string } | null;
-  // Whether a first-owner code is waiting (it is printed in Orbit Web's own log, never shown here).
-  bootstrapOpen: boolean;
-  session: OperatorSessionView | null;
-  deployment: Deployment;
-}
+// ---- what an account governs: its chats and its research workspaces --------------------------------------------------
 
-export interface BootstrapRequest {
-  code: string;
-  organizationName: string;
-  username: string;
-  displayName: string;
-  password: string;
-}
+export const RESOURCE_KINDS = ["workspace", "research_workspace"] as const;
+// `workspace`: a chat (a Claude Code workspace); `research_workspace`: a research workspace.
+export type ResourceKind = (typeof RESOURCE_KINDS)[number];
 
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
+export const isResourceKind = (v: unknown): v is ResourceKind => typeof v === "string" && (RESOURCE_KINDS as readonly string[]).includes(v);
 
-export interface ChangePasswordRequest {
-  currentPassword: string;
-  newPassword: string;
-}
+// ---- the account's policy -------------------------------------------------------------------------------------------
 
-export interface CreateOperatorRequest {
-  username: string;
-  displayName: string;
-  password: string;
-  roles: OperatorRole[];
-}
-
-export interface RoleChangeRequest {
-  grant: OperatorRole[];
-  revoke: OperatorRole[];
-}
-
-export interface OperatorList {
-  operators: OperatorView[];
-}
-
-const rolesOf = (v: unknown): v is OperatorRole[] => Array.isArray(v) && v.every(isOperatorRole) && new Set(v).size === v.length;
-
-export function checkBootstrap(body: unknown): Checked<BootstrapRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["code", "organizationName", "username", "displayName", "password"]);
-  if (typeof b.code !== "string" || b.code.length === 0 || b.code.length > GOVERNANCE_LIMITS.bootstrapCodeLength) errors.push("code must be the one-time code from Orbit Web's log");
-  if (!isName(b.organizationName, GOVERNANCE_LIMITS.organizationNameLength)) errors.push(`organizationName must be 1-${GOVERNANCE_LIMITS.organizationNameLength} printable characters`);
-  if (!isUsername(b.username)) errors.push(USERNAME_SAID);
-  if (b.displayName !== undefined && !isName(b.displayName, GOVERNANCE_LIMITS.displayNameLength)) errors.push(`displayName must be 1-${GOVERNANCE_LIMITS.displayNameLength} printable characters`);
-  if (!isPassword(b.password)) errors.push(PASSWORD_SAID);
-  return checked(errors, () => ({ code: b.code as string, organizationName: (b.organizationName as string).trim(), username: b.username as string, displayName: typeof b.displayName === "string" ? b.displayName.trim() : (b.username as string), password: b.password as string }));
-}
-
-export function checkLogin(body: unknown): Checked<LoginRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["username", "password"]);
-  if (typeof b.username !== "string" || b.username.length === 0 || b.username.length > GOVERNANCE_LIMITS.usernameLength) errors.push("username is required");
-  if (typeof b.password !== "string" || b.password.length === 0 || b.password.length > GOVERNANCE_LIMITS.passwordMax) errors.push("password is required");
-  return checked(errors, () => ({ username: (b.username as string).toLowerCase(), password: b.password as string }));
-}
-
-export function checkChangePassword(body: unknown): Checked<ChangePasswordRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["currentPassword", "newPassword"]);
-  if (typeof b.currentPassword !== "string" || b.currentPassword.length === 0) errors.push("currentPassword is required");
-  if (!isPassword(b.newPassword)) errors.push(`newPassword must be ${GOVERNANCE_LIMITS.passwordMin}-${GOVERNANCE_LIMITS.passwordMax} characters`);
-  return checked(errors, () => ({ currentPassword: b.currentPassword as string, newPassword: b.newPassword as string }));
-}
-
-export function checkCreateOperator(body: unknown): Checked<CreateOperatorRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["username", "displayName", "password", "roles"]);
-  if (!isUsername(b.username)) errors.push(USERNAME_SAID);
-  if (b.displayName !== undefined && !isName(b.displayName, GOVERNANCE_LIMITS.displayNameLength)) errors.push(`displayName must be 1-${GOVERNANCE_LIMITS.displayNameLength} printable characters`);
-  if (!isPassword(b.password)) errors.push(PASSWORD_SAID);
-  if (!rolesOf(b.roles)) errors.push("roles must be a list of distinct operator roles");
-  return checked(errors, () => ({ username: b.username as string, displayName: typeof b.displayName === "string" ? b.displayName.trim() : (b.username as string), password: b.password as string, roles: b.roles as OperatorRole[] }));
-}
-
-export function checkRoleChange(body: unknown): Checked<RoleChangeRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["grant", "revoke"]);
-  const grant = b.grant ?? [];
-  const revoke = b.revoke ?? [];
-  if (!rolesOf(grant)) errors.push("grant must be a list of distinct operator roles");
-  if (!rolesOf(revoke)) errors.push("revoke must be a list of distinct operator roles");
-  if (rolesOf(grant) && rolesOf(revoke) && grant.some((r) => revoke.includes(r))) errors.push("a role cannot be granted and revoked at once");
-  if (rolesOf(grant) && rolesOf(revoke) && grant.length + revoke.length === 0) errors.push("name a role to grant or revoke");
-  return checked(errors, () => ({ grant: grant as OperatorRole[], revoke: revoke as OperatorRole[] }));
-}
-
-// ---- the Constitution ------------------------------------------------------------------------------------------------
-
-export const REVISION_SOURCES = ["operator", "agent", "default", "copy"] as const;
-// Who wrote a revision's first content: a person, an agent's proposal, the default Constitution, or a copy of another
-// revision (a rollback is a copy of an earlier one, taken through the whole lifecycle again).
+export const REVISION_SOURCES = ["owner", "agent", "default", "copy"] as const;
+// Who wrote a revision's first content: the account's owner, an agent's proposal, the default policy, or a copy of
+// another revision (a rollback is a copy of an earlier one, taken through the whole lifecycle again).
 export type RevisionSource = (typeof REVISION_SOURCES)[number];
 
 export interface RevisionSummary {
   id: string;
-  // Assigned when it is published: 1, 2, 3 ...
+  // Assigned when it is published: 1, 2, 3 ... (1 is the default the account was given when it was created).
   revision: number | null;
   state: RevisionState;
   digest: string;
@@ -225,11 +90,15 @@ export interface RevisionSummary {
   createdAt: string;
   createdBy: string;
   updatedAt: string;
+  // The owner's confirmation of exactly this content (null for one nobody confirmed: a draft, or the provisioned default).
+  confirmedBy: string | null;
+  confirmedAt: string | null;
   publishedAt: string | null;
+  publishedBy: string | null;
 }
 
 export interface RevisionStep {
-  // What happened: created, edited, validated, approval requested, approved, rejected, withdrawn, published, superseded.
+  // What happened: provisioned, created, edited, validated, discarded, confirmed, published.
   what: string;
   by: string;
   at: string;
@@ -242,21 +111,22 @@ export interface RevisionView extends RevisionSummary {
   document: unknown;
   errors: string[];
   warnings: PolicyWarning[];
-  // What publishing it would change, against the revision in effect (or the default Constitution before any).
+  // What publishing it would change, against the revision in effect.
   impact: Impact | null;
-  // Everybody who wrote any of it: who created, edited, or asked for its approval. A high-risk change is approved by
-  // somebody else.
+  // The revision in effect it is compared with (what a publication names as `base`), null when none.
+  base: string | null;
+  // Everybody who wrote any of it.
   authors: string[];
   history: RevisionStep[];
 }
 
-export interface ConstitutionOverview {
+export interface PolicyOverview {
   effective: RevisionView | null;
   revisions: RevisionSummary[];
 }
 
 export interface CreateRevisionRequest {
-  // The content to start from: a document, a copy of a revision, or (neither) the revision in effect or the default.
+  // The content to start from: a document, a copy of a revision, or (neither) the revision in effect.
   document?: unknown;
   from?: string;
 }
@@ -268,18 +138,19 @@ export interface UpdateRevisionRequest {
 }
 
 export interface DigestRequest {
-  // The digest the person read: what is approved, rejected or published is exactly that content.
+  // The digest of the content the person read.
   digest: string;
   note?: string;
 }
 
-const documentFits = (v: unknown): boolean => {
-  try {
-    return JSON.stringify(v).length <= GOVERNANCE_LIMITS.documentBytes;
-  } catch {
-    return false;
-  }
-};
+// THE OWNER'S CONFIRMATION of a publication: exactly this content (`digest`), compared with exactly that revision in
+// effect (`base`), having read its risk (`acknowledgedRisk`: at least the risk the server works out -- an elevated or
+// high-risk change is refused without it). One person confirms; nobody else is asked.
+export interface PublishRevisionRequest {
+  digest: string;
+  base: string | null;
+  acknowledgedRisk: RiskLevel | null;
+}
 
 export function checkCreateRevision(body: unknown): Checked<CreateRevisionRequest> {
   if (body === undefined || body === null) return { ok: true, value: {} };
@@ -310,7 +181,17 @@ export function checkDigestRequest(body: unknown): Checked<DigestRequest> {
   return checked(errors, () => ({ digest: b.digest as string, ...(typeof b.note === "string" ? { note: b.note } : {}) }));
 }
 
-// ---- simulation, overlays ------------------------------------------------------------------------------------------
+export function checkPublishRevision(body: unknown): Checked<PublishRevisionRequest> {
+  const b = objectOf(body);
+  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(b, ["digest", "base", "acknowledgedRisk"]);
+  if (!isDigest(b.digest)) errors.push("digest must be the digest of the content that was read");
+  if (b.base !== undefined && b.base !== null && (typeof b.base !== "string" || b.base.length === 0 || b.base.length > 64)) errors.push("base must name the revision in effect that was compared, or be null");
+  if (b.acknowledgedRisk !== undefined && b.acknowledgedRisk !== null && !RISK_WORDS.includes(b.acknowledgedRisk as RiskLevel)) errors.push("acknowledgedRisk must be low, elevated or high");
+  return checked(errors, () => ({ digest: b.digest as string, base: (b.base as string | null | undefined) ?? null, acknowledgedRisk: (b.acknowledgedRisk as RiskLevel | null | undefined) ?? null }));
+}
+
+// ---- simulation, overrides ------------------------------------------------------------------------------------------
 
 export interface SimulatedRequest {
   principalType: PrincipalType;
@@ -318,13 +199,12 @@ export interface SimulatedRequest {
   resource: string;
   environment: Environment;
   workspaceId: string | null;
-  agentId: string | null;
-  projectId: string | null;
+  researchWorkspaceId: string | null;
 }
 
 export interface SimulateRequest {
   request: SimulatedRequest;
-  // A revision to ask (a draft, an earlier one); the revision in effect when absent.
+  // A revision of the account to ask (a draft, an earlier one); the revision in effect when absent.
   revisionId?: string;
 }
 
@@ -334,7 +214,7 @@ export interface SimulateResult {
   evaluation: Evaluation;
 }
 
-const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "agentId", "projectId"];
+const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "researchWorkspaceId"];
 const ENVIRONMENT_WORDS = ["local", "test", "development", "staging", "production", "unknown"];
 const PRINCIPAL_WORDS = ["human", "agent", "service"];
 const optionalId = (v: unknown): boolean => v === undefined || v === null || (typeof v === "string" && v.length > 0 && v.length <= 128);
@@ -350,7 +230,7 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
   if (typeof r.action !== "string" || r.action.length === 0 || r.action.length > 128) errors.push("request.action must name an action");
   if (typeof r.resource !== "string" || r.resource.length > GOVERNANCE_LIMITS.resourceLength) errors.push("request.resource must be text");
   if (!ENVIRONMENT_WORDS.includes(String(r.environment ?? "local"))) errors.push("request.environment is not an environment Orbit Web knows");
-  for (const f of ["workspaceId", "agentId", "projectId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
+  for (const f of ["workspaceId", "researchWorkspaceId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
   if (b.revisionId !== undefined && (typeof b.revisionId !== "string" || b.revisionId.length === 0)) errors.push("revisionId must name a revision");
   return checked(errors, () => ({
     request: {
@@ -359,97 +239,64 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
       resource: r.resource as string,
       environment: (r.environment ?? "local") as Environment,
       workspaceId: (r.workspaceId as string | undefined) ?? null,
-      agentId: (r.agentId as string | undefined) ?? null,
-      projectId: (r.projectId as string | undefined) ?? null,
+      researchWorkspaceId: (r.researchWorkspaceId as string | undefined) ?? null,
     },
     ...(typeof b.revisionId === "string" ? { revisionId: b.revisionId } : {}),
   }));
 }
 
-export interface OverlayView {
-  overlay: PolicyOverlay;
+// An OVERRIDE: rules that narrow the account's policy for one chat or one research workspace -- never widen it (an
+// allow in it changes nothing, and says so).
+export interface OverrideView {
+  kind: ResourceKind;
+  resourceId: string;
+  override: PolicyOverlay;
   digest: string;
   setAt: string;
   setBy: string;
+  warnings: PolicyWarning[];
 }
 
-export interface OverlayList {
-  overlays: OverlayView[];
+// The rules of an override (its document -- the account, the resource -- is made by the API, never taken from a body).
+export interface SetOverrideRequest {
+  name?: string;
+  rules: unknown[];
 }
 
-export interface SetOverlayRequest {
-  overlay: unknown;
-}
-
-export function checkSetOverlay(body: unknown): Checked<SetOverlayRequest> {
+export function checkSetOverride(body: unknown): Checked<SetOverrideRequest> {
   const b = objectOf(body);
   if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["overlay"]);
-  if (!isRecord(b.overlay) || !documentFits(b.overlay)) errors.push("overlay must be a PolicyOverlay document");
-  return checked(errors, () => ({ overlay: b.overlay }));
+  const errors = unknownFields(b, ["name", "rules"]);
+  if (b.name !== undefined && !isName(b.name, GOVERNANCE_LIMITS.nameLength)) errors.push(`name must be 1-${GOVERNANCE_LIMITS.nameLength} printable characters`);
+  if (!Array.isArray(b.rules) || b.rules.length > GOVERNANCE_LIMITS.rules || !documentFits(b.rules)) errors.push(`rules must be a list of at most ${GOVERNANCE_LIMITS.rules} rules`);
+  return checked(errors, () => ({ ...(typeof b.name === "string" ? { name: b.name.trim() } : {}), rules: b.rules as unknown[] }));
 }
 
-// ---- agents and workspaces --------------------------------------------------------------------------------------------
+// ---- the resources of the account, as governance sees them ------------------------------------------------------------
 
-export const AGENT_RUNTIMES = ["claude-code"] as const;
-export type AgentRuntime = (typeof AGENT_RUNTIMES)[number];
-
-export interface AgentView {
+export interface ResourceGovernanceSummary {
+  kind: ResourceKind;
   id: string;
-  name: string;
-  runtime: AgentRuntime;
-  status: OperatorStatus;
-  createdAt: string;
-  createdBy: string;
-}
-
-export interface AgentList {
-  agents: AgentView[];
-}
-
-export interface RegisterAgentRequest {
-  name: string;
-}
-
-export function checkRegisterAgent(body: unknown): Checked<RegisterAgentRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["name"]);
-  if (!isName(b.name, GOVERNANCE_LIMITS.displayNameLength)) errors.push(`name must be 1-${GOVERNANCE_LIMITS.displayNameLength} printable characters`);
-  return checked(errors, () => ({ name: (b.name as string).trim() }));
-}
-
-export const ENFORCEMENT_PROFILES = ["strict"] as const;
-export type EnforcementProfile = (typeof ENFORCEMENT_PROFILES)[number];
-
-export interface WorkspaceGovernanceView {
-  sessionId: string;
   title: string;
-  repository: string | null;
-  status: string;
-  scope: EnforcementScope;
-  agentId: string | null;
-  profile: EnforcementProfile | null;
-  governedAt: string | null;
-  governedBy: string | null;
+  createdAt: string;
+  // Set when the chat or research workspace was deleted: what concerned it stays on record.
+  deletedAt: string | null;
+  // Whether an override narrows the account's policy for it.
+  overridden: boolean;
+  runningRuns: number;
+  pendingApprovals: number;
 }
 
-export interface WorkspaceList {
-  workspaces: WorkspaceGovernanceView[];
+export interface ResourceGovernanceList {
+  resources: ResourceGovernanceSummary[];
 }
 
-export interface GovernWorkspaceRequest {
-  agentId: string;
-  profile: EnforcementProfile;
-}
-
-export function checkGovernWorkspace(body: unknown): Checked<GovernWorkspaceRequest> {
-  const b = objectOf(body);
-  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(b, ["agentId", "profile"]);
-  if (typeof b.agentId !== "string" || b.agentId.length === 0 || b.agentId.length > 64) errors.push("agentId must name a registered agent");
-  if (b.profile !== undefined && b.profile !== "strict") errors.push('profile must be "strict"');
-  return checked(errors, () => ({ agentId: b.agentId as string, profile: "strict" as const }));
+export interface ResourceGovernanceView extends ResourceGovernanceSummary {
+  // The account's policy in effect, which it inherits.
+  policy: { revisionId: string; revision: number | null; digest: string } | null;
+  override: OverrideView | null;
+  // Its most recent audit records, newest first.
+  activity: AuditEvent[];
 }
 
 // ---- decisions and approvals ------------------------------------------------------------------------------------------
@@ -492,6 +339,8 @@ export interface ApprovalView {
   summary: string;
   requestedAt: string;
   requestedBy: string;
+  // Who asked: the account's owner, or one of its runs' agents (which can never decide anything).
+  requestedByType: string;
   agentId: string | null;
   workspaceId: string | null;
   runId: string | null;
@@ -617,6 +466,8 @@ export interface IsolationCheck {
   detail: string;
 }
 
+// The DEPLOYMENT's isolation of the agent from the control plane, said as what was checked. An account id in a record is
+// not isolation: in the single deployment every account's runs share one container.
 export interface IsolationStatus {
   deployment: Deployment;
   state: IsolationState;
@@ -627,21 +478,24 @@ export interface IsolationStatus {
 }
 
 export interface GovernanceOverview {
-  organization: { id: string; name: string };
-  effective: { id: string; revision: number; digest: string; publishedAt: string } | null;
-  counts: { operators: number; agents: number; governedWorkspaces: number; pendingApprovals: number; openFindings: number; revisionsInReview: number };
+  account: { id: string; displayName: string; email: string };
+  deployment: Deployment;
+  effective: { id: string; revision: number; digest: string; publishedAt: string; source: RevisionSource } | null;
+  counts: { workspaces: number; researchWorkspaces: number; runningRuns: number; pendingApprovals: number; openFindings: number; draftRevisions: number; overrides: number };
   isolation: IsolationStatus;
   audit: { count: number; head: string | null; lastVerification: ChainVerification | null };
 }
 
-// ---- the agent gateway: what a governed run may ask ------------------------------------------------------------------
+// ---- the agent gateway: what a run may ask ---------------------------------------------------------------------------
 
 export interface AgentWhoAmI {
   runId: string;
-  sessionId: string;
+  accountId: string;
+  // A chat's run (the gateway answers only those).
+  kind: "chat" | "research";
+  // The chat it works in.
   workspaceId: string;
   agentId: string;
-  organizationId: string;
   policyRevision: string;
   scope: EnforcementScope;
 }
@@ -713,4 +567,3 @@ export function checkAgentProposal(body: unknown): Checked<AgentProposalRequest>
   if (!isNote(b.note)) errors.push(`note must be text of at most ${GOVERNANCE_LIMITS.noteLength} characters`);
   return checked(errors, () => ({ document: b.document, ...(typeof b.note === "string" ? { note: b.note } : {}) }));
 }
-

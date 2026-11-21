@@ -53,7 +53,7 @@ export interface AuditorInput {
 
 export const REPEAT_THRESHOLD = 3;
 
-const ESCALATION_ACTIONS = ["governance.policy.modify", "governance.role.grant", "governance.approval.decide", "governance.audit.modify", "settings.privileged.write"];
+const ESCALATION_ACTIONS = ["governance.policy.modify", "governance.approval.decide", "governance.audit.modify", "settings.privileged.write"];
 
 function finding(kind: FindingKind, status: FindingStatus, severity: Severity, events: readonly AuditEvent[], title: string, summary: string): Finding {
   const first = events[0] as AuditEvent;
@@ -86,24 +86,29 @@ function repeatedDenials(events: readonly AuditEvent[]): Finding[] {
 }
 
 const isPolicyRefusal = (e: AuditEvent): boolean =>
-  (e.eventType === "authz.denied" && String(e.data.permission ?? "").startsWith("constitution.")) || (isDeniedDecision(e) && e.data.action === "governance.policy.modify");
+  (e.eventType === "authz.denied" && String(e.data.action ?? "").startsWith("governance.policy")) || (isDeniedDecision(e) && e.data.action === "governance.policy.modify");
 
-function unapprovedPublications(input: AuditorInput): Finding[] {
-  const approved = new Set(input.events.filter((e) => e.eventType === "constitution.approved").map((e) => `${String(e.data.revisionId)}\u0001${String(e.data.digest)}`));
+const contentOf = (e: AuditEvent): string => `${String(e.data.revisionId)}\u0001${String(e.data.digest)}`;
+
+// A publication stands on the account owner's confirmation of exactly that content, recorded by a person. The policy
+// Orbit Web itself published when the account was created is another record (policy.provisioned): no person confirmed
+// it, and none needed to -- it is the default every account starts from.
+function unconfirmedPublications(input: AuditorInput): Finding[] {
+  const confirmed = new Set(input.events.filter((e) => e.eventType === "policy.confirmed" && e.principalType === "human").map(contentOf));
   return input.events
-    .filter((e) => e.eventType === "constitution.published" && !approved.has(`${String(e.data.revisionId)}\u0001${String(e.data.digest)}`))
+    .filter((e) => e.eventType === "policy.published" && !confirmed.has(contentOf(e)))
     .map((e) => {
       const status: FindingStatus = input.complete ? "SUSPECTED" : "INCONCLUSIVE";
-      const tail = input.complete ? "No approval of that content is recorded." : "The records read do not reach back to where its approval would be.";
-      return finding("UNAUTHORIZED_POLICY_CHANGE", status, "critical", [e], "A revision is in effect with no recorded approval of its content", `Revision ${String(e.data.revisionId)} was published. ${tail}`);
+      const tail = input.complete ? "No confirmation of that content by the account's owner is recorded." : "The records read do not reach back to where its confirmation would be.";
+      return finding("UNAUTHORIZED_POLICY_CHANGE", status, "critical", [e], "A revision is in effect with no recorded confirmation of its content", `Revision ${String(e.data.revisionId)} was published. ${tail}`);
     });
 }
 
 function policyChanges(input: AuditorInput): Finding[] {
   const refused = grouped(input.events.filter(isPolicyRefusal), (e) => `${e.principalType}\u0001${e.principalId}`).map((g) =>
-    finding("UNAUTHORIZED_POLICY_CHANGE", "CONFIRMED", "high", g, "A change of the Constitution was attempted without the authority", `${who(g[0] as AuditEvent)} tried ${g.length} time(s) and was refused.`),
+    finding("UNAUTHORIZED_POLICY_CHANGE", "CONFIRMED", "high", g, "A change of the account's policy was attempted without the authority", `${who(g[0] as AuditEvent)} tried ${g.length} time(s) and was refused.`),
   );
-  return [...refused, ...unapprovedPublications(input)];
+  return [...refused, ...unconfirmedPublications(input)];
 }
 
 const isEscalation = (e: AuditEvent): boolean =>
@@ -111,8 +116,8 @@ const isEscalation = (e: AuditEvent): boolean =>
   (e.eventType === "settings.privileged.refused" && byAgent(e)) ||
   (isDeniedDecision(e) && byAgent(e) && ESCALATION_ACTIONS.includes(String(e.data.action)));
 
-// A refused privileged change from a caller nobody verified fits an agent reaching for authority, and a person who
-// has not signed in as an operator: suspected, never confirmed.
+// A refused privileged change from a caller nobody verified fits an agent reaching for authority, and a person whose
+// browser has not signed in: suspected, never confirmed.
 const isUnverifiedReach = (e: AuditEvent): boolean => e.eventType === "settings.privileged.refused" && e.principalType === "anonymous";
 
 function escalations(events: readonly AuditEvent[]): Finding[] {
@@ -120,7 +125,7 @@ function escalations(events: readonly AuditEvent[]): Finding[] {
     finding("AGENT_PRIVILEGE_ESCALATION", "CONFIRMED", "critical", g, "An agent reached for authority it does not have", `${who(g[0] as AuditEvent)} made ${g.length} attempt(s) at an administrative or privileged operation; each was refused.`),
   );
   const suspected = grouped(events.filter(isUnverifiedReach), (e) => String(e.data.setting)).map((g) =>
-    finding("AGENT_PRIVILEGE_ESCALATION", "SUSPECTED", "high", g, "Somebody unverified tried to turn on a privileged setting", `${g.length} refused attempt(s) on ${String((g[0] as AuditEvent).data.setting)} came from a caller with no operator session: an agent, or a person who had not signed in.`),
+    finding("AGENT_PRIVILEGE_ESCALATION", "SUSPECTED", "high", g, "Somebody unverified tried to turn on a privileged setting", `${g.length} refused attempt(s) on ${String((g[0] as AuditEvent).data.setting)} came from a caller with no session of the account: an agent, or a person who had not signed in.`),
   );
   return [...confirmed, ...suspected];
 }

@@ -1,16 +1,22 @@
-// What every module shares: the configuration, the process port, the database and its stores, and the event layer
-// (the bus every producer publishes to, the live-text subscriber, the SSE gateway).
-import { type DynamicModule, Global, Inject, Injectable, Module, type OnApplicationShutdown, type Provider } from "@nestjs/common";
+// What every module shares: the configuration, the process port, THE DATABASE and its stores, and the event layer (the
+// bus every producer publishes to, the live-text subscriber, the SSE gateway).
+//
+// The database is opened, brought to this build's schema and checked (pgvector included) BEFORE any module that uses
+// it is made: a module's own start (reconciling runs a restart cut short, say) never meets a database that is not
+// ready. One that cannot be reached, or cannot be migrated, stops the start with what is wrong -- there is no other
+// store to fall back to.
+import { type DynamicModule, Global, Inject, Injectable, Logger, Module, type OnApplicationShutdown, type Provider } from "@nestjs/common";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.js";
+import { AccountSettingsStore, AccountStore, BrowserSessionStore, RuntimeIdentityStore } from "../infra/accounts/stores.js";
+import { Db } from "../infra/db/db.js";
+import { migrate } from "../infra/db/migrate.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { RunnerProcessPort } from "../infra/process/runner-port.js";
 import { AgentFs } from "../infra/process/agent-fs.js";
 import { SignInChannel } from "../infra/egress/sign-in-channel.js";
-import { GovernanceDatabase } from "../infra/governance/governance-db.js";
-import { AgentStore, ApprovalStore, AuditStore, FindingStore, GovernedWorkspaceStore, IsolationStore, OperatorStore, OverlayStore, ReportStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
-import { Database } from "../infra/storage/database.js";
+import { ApprovalStore, AuditStore, FindingStore, IsolationStore, OverrideStore, ReportStore, ResourceStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { ImageFiles } from "../infra/storage/image-files.js";
 import { EventStore, ImageStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
@@ -18,24 +24,56 @@ import { LiveText } from "./events/live-text.js";
 import { StreamGateway } from "./events/stream-gateway.js";
 import { APP_CONFIG, PROCESS_PORT } from "./tokens.js";
 
+// The schemas unqualified names resolve in, in order (`public` last: pgvector's types live there).
+export const SEARCH_PATH = ["app", "research", "governance", "public"] as const;
+
 @Injectable()
 class DatabaseCloser implements OnApplicationShutdown {
-  constructor(
-    @Inject(Database) private readonly database: Database,
-    @Inject(GovernanceDatabase) private readonly governance: GovernanceDatabase,
-  ) {}
+  constructor(@Inject(Db) private readonly db: Db) {}
 
-  onApplicationShutdown(): void {
-    this.database.close();
-    this.governance.close();
+  async onApplicationShutdown(): Promise<void> {
+    await this.db.close();
   }
 }
 
-const store = <T>(Store: new (db: Database) => T) => ({ provide: Store, useFactory: (db: Database) => new Store(db), inject: [Database] });
+export async function openDatabase(config: AppConfig): Promise<Db> {
+  const db = new Db({ url: config.database.url, poolMax: config.database.poolMax, connectTimeoutMs: config.database.connectTimeoutMs, statementTimeoutMs: config.database.statementTimeoutMs, searchPath: SEARCH_PATH });
+  try {
+    const state = await migrate(db);
+    new Logger("Database").log(`PostgreSQL ${state.server}, schema version ${state.version}, pgvector ${state.vector ?? "missing"}`);
+    return db;
+  } catch (err) {
+    await db.close();
+    throw err;
+  }
+}
 
-const GOVERNANCE_STORES: (new (db: GovernanceDatabase) => unknown)[] = [OperatorStore, AuditStore, RevisionStore, OverlayStore, AgentStore, GovernedWorkspaceStore, RunBindingStore, ApprovalStore, FindingStore, ReportStore, IsolationStore];
+const STORES: (new (db: Db) => unknown)[] = [
+  SettingsStore,
+  SessionStore,
+  SessionAccessStore,
+  MessageStore,
+  EventStore,
+  RunStore,
+  ProjectStore,
+  ShareStore,
+  ImageStore,
+  AccountStore,
+  RuntimeIdentityStore,
+  BrowserSessionStore,
+  AccountSettingsStore,
+  ResourceStore,
+  AuditStore,
+  RevisionStore,
+  OverrideStore,
+  RunBindingStore,
+  ApprovalStore,
+  FindingStore,
+  ReportStore,
+  IsolationStore,
+];
 
-const governanceStore = (Store: new (db: GovernanceDatabase) => unknown): Provider => ({ provide: Store, useFactory: (db: GovernanceDatabase) => new Store(db), inject: [GovernanceDatabase] });
+const store = (Store: new (db: Db) => unknown): Provider => ({ provide: Store, useFactory: (db: Db) => new Store(db), inject: [Db] });
 
 @Global()
 @Module({})
@@ -55,27 +93,16 @@ export class CoreModule {
         AgentFs,
         // The Claude sign-in's own way out of the agent's container (governed deployment): the sign-in and the proxy share it.
         SignInChannel,
-        { provide: Database, useFactory: () => new Database(join(config.data.app, "orbit-web.db")) },
-        // Governance's own database, apart from the chats': deleting a chat never reaches it.
-        { provide: GovernanceDatabase, useFactory: () => new GovernanceDatabase(join(config.data.governance, "governance.db")) },
-        ...GOVERNANCE_STORES.map(governanceStore),
-        store(SettingsStore),
-        store(SessionStore),
-        store(SessionAccessStore),
-        store(MessageStore),
-        store(EventStore),
-        store(RunStore),
-        store(ProjectStore),
-        store(ShareStore),
-        store(ImageStore),
-        // Chat images' bytes: the control plane's own room, beside the database.
+        { provide: Db, useFactory: () => openDatabase(config) },
+        ...STORES.map(store),
+        // Chat images' bytes: the control plane's own room, beside the database's data directory.
         { provide: ImageFiles, useFactory: () => new ImageFiles(join(config.data.app, "images")) },
         EventBus,
         LiveText,
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Database, SettingsStore, SessionStore, SessionAccessStore, MessageStore, EventStore, RunStore, ProjectStore, ShareStore, ImageStore, ImageFiles, EventBus, LiveText, StreamGateway, GovernanceDatabase, ...GOVERNANCE_STORES],
+      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Db, ...STORES, ImageFiles, EventBus, LiveText, StreamGateway],
     };
   }
 }

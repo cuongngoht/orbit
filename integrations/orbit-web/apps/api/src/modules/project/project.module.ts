@@ -11,7 +11,7 @@
 //
 // A projection turns a project's session events into the app stream's `customizations.changed`, so Settings → Skills
 // and Plugins follow without polling.
-import { Controller, Get, Inject, Injectable, Module, Param, Query, type OnModuleInit } from "@nestjs/common";
+import { Controller, Get, Inject, Injectable, Logger, Module, Param, Query, type OnModuleInit } from "@nestjs/common";
 import { REPOSITORY_SOURCES, type Customizations, type OrbitCustomizations, type ProjectInventory, type ProjectItem, type RepositorySource, type SlashCommand, type SlashCommands } from "@orbit-web/contracts";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -19,6 +19,7 @@ import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { badRequest, notFound } from "../../common/errors.js";
+import { viewer } from "../../common/request-scope.js";
 import { isSessionId } from "../../common/workspace-path.js";
 import { ProjectStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { AccessModule } from "../access/access.module.js";
@@ -69,6 +70,7 @@ function versionOf(pluginDir: string): string | null {
 
 @Injectable()
 export class CustomizationsService implements OnModuleInit {
+  private readonly logger = new Logger("Customizations");
   private orbit: OrbitCustomizations | null = null;
   private orbitSlash: SlashCommand[] | null = null;
 
@@ -79,40 +81,53 @@ export class CustomizationsService implements OnModuleInit {
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(ProjectService) private readonly project: ProjectService,
     @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(OwnershipService) private readonly ownership: OwnershipService,
   ) {}
 
+  // A chat's project changed: the pages of whoever may open that chat (its owner, and who it is shared with) are told.
   onModuleInit(): void {
     this.bus.subscribe({ stream: "session", types: ["project.inventory", "project.plugin"] }, (e) => {
-      if (e.sessionId !== null) this.bus.publishApp("customizations.changed", { sessionId: e.sessionId });
+      if (e.sessionId !== null) void this.changed(e.sessionId);
     });
   }
 
+  private async changed(sessionId: string): Promise<void> {
+    try {
+      const session = await this.sessions.get(sessionId);
+      if (session !== null) this.bus.publishApp("customizations.changed", { sessionId }, await this.ownership.audience(session));
+    } catch (err) {
+      this.logger.warn(`customizations.changed for ${sessionId} was not sent: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Orbit's own, and the projects of the chats this account may open (another account's are not its to see).
-  all(visible: ReadonlySet<string>): Customizations {
+  async all(visible: readonly SessionRecord[]): Promise<Customizations> {
     this.orbit ??= readOrbitPlugin(this.config.pluginDir);
-    const projects = this.projects.list().flatMap(({ sessionId, inventory }) => {
-      const session = visible.has(sessionId) ? this.sessions.get(sessionId) : null;
-      return session === null ? [] : [{ sessionId, title: session.title, inventory }];
+    const titles = new Map(visible.map((s) => [s.id, s.title]));
+    const projects = (await this.projects.list([...titles.keys()])).flatMap(({ sessionId, inventory }) => {
+      const title = titles.get(sessionId);
+      return title === undefined ? [] : [{ sessionId, title, inventory }];
     });
     return { orbit: this.orbit, projects };
   }
 
   // An open chat: what its next run loads (the project's plugins, as `runtime` names them, then Orbit's).
-  forSession(session: SessionRecord): SlashCommands {
-    const project = this.project.runtime(session).pluginDirs.flatMap((dir) => pluginCommands(dir, "project"));
-    return { commands: [...project, ...this.orbitCommands()], note: this.sessionNote(session, this.projects.get(session.id)) };
+  async forSession(session: SessionRecord): Promise<SlashCommands> {
+    const project = (await this.project.runtime(session)).pluginDirs.flatMap((dir) => pluginCommands(dir, "project"));
+    return { commands: [...project, ...this.orbitCommands()], note: this.sessionNote(session, await this.projects.get(session.id)) };
   }
 
   // A new chat: Orbit's, and the project's as the newest earlier chat of that repository that loaded them read them --
-  // an earlier chat this account may open.
-  forRepository(source: RepositorySource | null, repositoryId: string | null, visible: ReadonlySet<string>): SlashCommands {
+  // an earlier chat this account may open. Whether project skills load is the account's own preference.
+  async forRepository(source: RepositorySource | null, repositoryId: string | null, accountId: string, visible: readonly SessionRecord[]): Promise<SlashCommands> {
     const orbit = this.orbitCommands();
     if (source === null || repositoryId === null) return { commands: orbit, note: null };
-    if (!this.settings.get().projectSkills) return { commands: orbit, note: SLASH_NOTES.off };
-    const earlier = this.sessions.list().filter((s) => visible.has(s.id)).flatMap((s) => {
-      const inventory = s.source === source && s.repositoryId === repositoryId ? this.projects.get(s.id) : null;
-      return inventory === null ? [] : [{ session: s, inventory }];
-    });
+    if (!(await this.settings.get(accountId)).projectSkills) return { commands: orbit, note: SLASH_NOTES.off };
+    const earlier: { session: SessionRecord; inventory: ProjectInventory }[] = [];
+    for (const s of visible) {
+      const inventory = s.source === source && s.repositoryId === repositoryId ? await this.projects.get(s.id) : null;
+      if (inventory !== null) earlier.push({ session: s, inventory });
+    }
     const loaded = earlier.find((e) => e.inventory.loaded);
     if (loaded !== undefined) return { commands: [...pluginCommands(this.project.pluginDir(loaded.session.id), "project"), ...orbit], note: SLASH_NOTES.earlier(loaded.session.title) };
     return { commands: orbit, note: earlier[0] !== undefined && !hasOwn(earlier[0].inventory) ? null : SLASH_NOTES.notRead };
@@ -142,30 +157,30 @@ export class ProjectController {
   ) {}
 
   @Get("sessions/:id/project")
-  inventory(@Param("id") id: string): { inventory: ProjectInventory | null } {
-    if (!isSessionId(id) || this.sessions.get(id) === null) throw notFound("Session");
-    return { inventory: this.project.get(id) };
+  async inventory(@Param("id") id: string): Promise<{ inventory: ProjectInventory | null }> {
+    if (!isSessionId(id) || (await this.sessions.get(id)) === null) throw notFound("Session");
+    return { inventory: await this.project.get(id) };
   }
 
   @Get("customizations")
   async all(): Promise<Customizations> {
-    return this.customizations.all(this.ownership.visibleIds(await this.ownership.viewer()));
+    return this.customizations.all(await this.ownership.visible(viewer()));
   }
 
   @Get("sessions/:id/commands")
-  sessionCommands(@Param("id") id: string): SlashCommands {
-    const session = isSessionId(id) ? this.sessions.get(id) : null;
+  async sessionCommands(@Param("id") id: string): Promise<SlashCommands> {
+    const session = isSessionId(id) ? await this.sessions.get(id) : null;
     if (session === null) throw notFound("Session");
     return this.customizations.forSession(session);
   }
 
   @Get("commands")
   async commands(@Query("source") source?: unknown, @Query("repository") repository?: unknown): Promise<SlashCommands> {
-    const visible = this.ownership.visibleIds(await this.ownership.viewer());
-    if (source === undefined && repository === undefined) return this.customizations.forRepository(null, null, visible);
+    const who = viewer();
+    if (source === undefined && repository === undefined) return this.customizations.forRepository(null, null, who.accountId, []);
     const known = typeof source === "string" && (REPOSITORY_SOURCES as readonly string[]).includes(source);
     if (!known || typeof repository !== "string" || repository.length === 0 || repository.length > REPOSITORY_ID_MAX) throw badRequest(`source must be ${REPOSITORY_SOURCES.join(" or ")}, with the repository's id`);
-    return this.customizations.forRepository(source as RepositorySource, repository, visible);
+    return this.customizations.forRepository(source as RepositorySource, repository, who.accountId, await this.ownership.visible(who));
   }
 }
 

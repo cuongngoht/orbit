@@ -5,6 +5,8 @@ import {
   type ApprovalView,
   type GovernanceState,
   type AzureStatus,
+  type AccountView,
+  type BrowserSession,
   type ClaudeStatus,
   type ConnectionState,
   type GitHubStatus,
@@ -88,12 +90,30 @@ export const idleFlow = (): LoginSnapshot => ({ state: "idle", url: null, code: 
 
 const ok = { ok: true, detail: null };
 
-// The Claude sign-in, as GET /api/claude/status says it: by default signed in to a Claude account.
+export const ACCOUNT_ID = "0b6f1f0e-9c1e-4a5e-8a8b-1f2a3b4c5d6e";
+
+// This browser's session, as the API says it.
+export const browserSession = (over: Partial<BrowserSession> = {}): BrowserSession => ({ accountId: ACCOUNT_ID, displayName: "", email: "octo@example.com", csrfToken: "c".repeat(64), expiresAt: "2026-12-01T00:00:00.000Z", ...over });
+
+// The Claude sign-in, as GET /api/claude/status says it: by default this browser is signed in to a Claude account.
 export function claudeStatus(over: Partial<ClaudeStatus> = {}): ClaudeStatus {
-  return { state: "connected", method: "claude.ai", account: { email: "octo@example.com", organization: "Octo Org", plan: "max" }, detail: null, flow: idleFlow(), ...over };
+  return { state: "connected", runtime: "connected", method: "claude.ai", account: { email: "octo@example.com", organization: "Octo Org", plan: "max" }, session: browserSession(), detail: null, flow: idleFlow(), ...over };
 }
 
-export const signedOutClaude = (over: Partial<ClaudeStatus> = {}): ClaudeStatus => claudeStatus({ state: "not_connected", method: null, account: null, ...over });
+// GET /api/account: the account of this browser's session, and the browsers signed in to it.
+export const accountView = (over: Partial<AccountView> = {}): AccountView => ({
+  id: ACCOUNT_ID,
+  displayName: "",
+  email: "octo@example.com",
+  organization: "Octo Org",
+  plan: "max",
+  createdAt: "2026-11-19T00:00:00.000Z",
+  sessions: [{ id: "s-1", current: true, createdAt: "2026-11-19T00:00:00.000Z", lastSeenAt: "2026-11-19T00:00:00.000Z", expiresAt: "2026-11-26T00:00:00.000Z", userAgent: "Firefox" }],
+  ...over,
+});
+
+// A browser with no session: the CLI signed out (by default), or signed in already (`runtime: "connected"`).
+export const signedOutClaude = (over: Partial<ClaudeStatus> = {}): ClaudeStatus => claudeStatus({ state: "not_connected", runtime: "not_connected", method: null, account: null, session: null, ...over });
 
 // GET /api/setup/status, which answers only once Orbit Web is signed in to Claude: so Claude is signed in by default.
 export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {

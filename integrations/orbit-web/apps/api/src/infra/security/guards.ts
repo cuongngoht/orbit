@@ -157,6 +157,15 @@ const CSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
+// An API answer is never kept by a cache between the browser and Orbit Web: it may hold an account's records or a
+// session's CSRF token.
+export function noStore() {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (isApi(req)) res.setHeader("Cache-Control", "no-store");
+    next();
+  };
+}
+
 export function securityHeaders() {
   return (_req: Request, res: Response, next: NextFunction): void => {
     res.setHeader("Content-Security-Policy", CSP);

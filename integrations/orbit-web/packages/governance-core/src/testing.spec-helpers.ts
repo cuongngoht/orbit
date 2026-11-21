@@ -5,15 +5,14 @@ import type { GovernanceRequest } from "./evaluate.js";
 
 export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
-export const ORG = "org-1";
+export const ACCOUNT = "acc-1";
 
 export const ask = (over: Partial<GovernanceRequest> = {}): GovernanceRequest => ({
-  principalId: "agt-1",
+  principalId: "claude-code",
   principalType: "agent",
-  organizationId: ORG,
-  projectId: null,
+  accountId: ACCOUNT,
   workspaceId: "ws-1",
-  agentId: "agt-1",
+  researchWorkspaceId: null,
   action: "repository.write",
   resource: "ws-1",
   environment: "local",
@@ -38,7 +37,7 @@ const bodyOf = (s: Sketch, n: number): AuditBody => ({
   eventType: s.type,
   occurredAt: s.at ?? `2026-11-20T10:00:${String(n).padStart(2, "0")}.000Z`,
   recordedAt: s.at ?? `2026-11-20T10:00:${String(n).padStart(2, "0")}.000Z`,
-  organizationId: ORG,
+  accountId: ACCOUNT,
   principalId: s.principalId ?? "agt-1",
   principalType: s.principalType ?? "agent",
   agentId: s.agentId === undefined ? "agt-1" : s.agentId,

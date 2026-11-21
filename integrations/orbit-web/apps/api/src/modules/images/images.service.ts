@@ -1,16 +1,15 @@
 // IMAGES IN CHAT MESSAGES. An upload is the image's own bytes: what it is is read from them (sniff.ts), it is held to
-// Claude's own limits, kept as a file named by an id the server makes, and recorded as the uploading account's. A
-// message names its images by id: each must be the sender's, and unsent -- an image goes with one message, in one chat,
-// and is read by whoever may read that chat. What no chat claims within a day is swept, with its file; a chat's images
-// go with the chat.
+// Claude's own limits, kept as a file named by an id the server makes, and recorded as the uploading ACCOUNT's. A
+// message names its images by id: each must be the sender's (or already claimed for that very chat and unsent), and
+// unsent -- an image goes with one message, in one chat, and from then on is that chat's (its account's), read by
+// whoever may read that chat. What no chat claims within a day is swept, with its file; a chat's images go with the chat.
 import { createHash, randomUUID } from "node:crypto";
 import { Inject, Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from "@nestjs/common";
 import { IMAGE_LIMITS, type ImageRef } from "@orbit-web/contracts";
 import { ApiError, conflict, notFound } from "../../common/errors.js";
 import { ImageFiles } from "../../infra/storage/image-files.js";
 import { imageRefOf, ImageStore, type ImageRecord } from "../../infra/storage/stores.js";
-import type { Identity } from "../claude-auth/claude-auth.service.js";
-import { requireIdentity } from "../access/ownership.service.js";
+import type { Viewer } from "../../infra/storage/stores.js";
 import { sniffImage } from "./sniff.js";
 
 // An upload no chat claimed is kept this long, then swept; the sweep runs at start and every hour.
@@ -41,8 +40,7 @@ export class ImagesService implements OnModuleInit, OnApplicationShutdown {
     if (this.sweeper !== null) clearInterval(this.sweeper);
   }
 
-  async upload(bytes: Buffer, identity: Identity | null): Promise<ImageRef> {
-    const who = requireIdentity(identity);
+  async upload(bytes: Buffer, who: Viewer): Promise<ImageRef> {
     if (bytes.length === 0) throw new ApiError(400, "invalid_request", "The image is empty.");
     if (bytes.length > IMAGE_LIMITS.bytes) throw imageTooLarge(IMAGE_LIMITS.bytes);
     const kind = sniffImage(bytes);
@@ -51,34 +49,37 @@ export class ImagesService implements OnModuleInit, OnApplicationShutdown {
       throw new ApiError(422, "image_dimensions", `An image may be at most ${IMAGE_LIMITS.side} pixels on a side.`);
     const id = randomUUID();
     await this.files.put(id, bytes);
-    const record = { id, ownerEmail: who.email, ownerOrg: who.org, mediaType: kind.mediaType, width: kind.width, height: kind.height, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), createdAt: new Date().toISOString() };
-    this.images.insert(record);
+    const record = { id, accountId: who.accountId, mediaType: kind.mediaType, width: kind.width, height: kind.height, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), createdAt: new Date().toISOString() };
+    await this.images.insert(record);
     return imageRefOf({ ...record, sessionId: null, messageId: null, position: null });
   }
 
-  // The images a person names for a message: each theirs, uploaded and unsent, and not another chat's. Refused whole.
-  owned(ids: readonly string[], identity: Identity | null, sessionId: string | null): ImageRecord[] {
+  // The images a person names for a message: each theirs (an upload of their account, unclaimed) or already claimed for
+  // this very chat and unsent; never another chat's. Refused whole.
+  async owned(ids: readonly string[], who: Viewer, sessionId: string | null): Promise<ImageRecord[]> {
     if (ids.length === 0) return [];
-    const who = requireIdentity(identity);
-    return ids.map((id) => {
-      const image = this.images.get(id);
+    const images: ImageRecord[] = [];
+    for (const id of ids) {
+      const image = await this.images.get(id);
+      const claimedHere = image !== null && image.sessionId !== null && image.sessionId === sessionId;
       // Somebody else's image is not found here: whether it exists is theirs to know.
-      if (image === null || image.ownerEmail !== who.email || image.ownerOrg !== who.org) throw notFound("Image");
-      if (image.messageId !== null || (image.sessionId !== null && image.sessionId !== sessionId)) throw conflict("image_sent", "That image was already sent with a message: paste it again to send it again.");
-      return image;
-    });
+      if (image === null || (!claimedHere && image.accountId !== who.accountId)) throw notFound("Image");
+      if (image.messageId !== null || (image.sessionId !== null && !claimedHere)) throw conflict("image_sent", "That image was already sent with a message: paste it again to send it again.");
+      images.push(image);
+    }
+    return images;
   }
 
-  // Checked as `owned`, then claimed for the chat (still unsent).
-  claim(ids: readonly string[], identity: Identity | null, sessionId: string): ImageRef[] {
-    const images = this.owned(ids, identity, sessionId);
-    this.images.claim(ids, sessionId);
+  // Checked as `owned`, then claimed for the chat (still unsent): from then on it is the chat's.
+  async claim(ids: readonly string[], who: Viewer, session: { id: string; accountId: string }): Promise<ImageRef[]> {
+    const images = await this.owned(ids, who, session.id);
+    await this.images.claim(ids, session, who.accountId);
     return images.map(imageRefOf);
   }
 
   // One image of a chat, as it was sent: its kind and bytes (the chat's own access rule was held before this).
-  sent(sessionId: string, imageId: string): { image: ImageRef; bytes: Buffer } {
-    const image = this.images.get(imageId);
+  async sent(sessionId: string, imageId: string): Promise<{ image: ImageRef; bytes: Buffer }> {
+    const image = await this.images.get(imageId);
     if (image === null || image.sessionId !== sessionId || image.messageId === null) throw notFound("Image");
     return { image: imageRefOf(image), bytes: this.files.read(image.id) };
   }
@@ -86,11 +87,11 @@ export class ImagesService implements OnModuleInit, OnApplicationShutdown {
   // Unclaimed uploads past their day, files nothing names, and writes cut short.
   async sweep(now = Date.now()): Promise<number> {
     try {
-      const stale = this.images.unclaimedSince(new Date(now - UNCLAIMED_MS).toISOString());
-      this.images.remove(stale);
+      const stale = await this.images.unclaimedSince(new Date(now - UNCLAIMED_MS).toISOString());
+      await this.images.remove(stale);
       await this.files.remove(stale);
       const files = await this.files.list();
-      const named = this.images.known(files.filter((f) => f.image).map((f) => f.name));
+      const named = await this.images.known(files.filter((f) => f.image).map((f) => f.name));
       const orphans = files.filter((f) => f.image && !named.has(f.name) && now - f.changedMs > UNCLAIMED_MS).map((f) => f.name);
       await this.files.remove(orphans);
       for (const f of files.filter((x) => !x.image && now - x.changedMs > LEFTOVER_MS)) await this.files.removeLeftover(f.name);

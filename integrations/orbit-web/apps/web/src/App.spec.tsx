@@ -7,7 +7,7 @@ import { takeAccessLink } from "./services/accessLink";
 import { fakeApi, withStatus, type FakeApi } from "./testing/fakeApi";
 import { FakeEventSource } from "./testing/fakeEventSource";
 import { pushApp } from "./testing/events";
-import { SESSION_ID, claudeStatus, idleFlow, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
+import { SESSION_ID, accountView, claudeStatus, idleFlow, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
 
 const refused = (status: number, code: string, message: string) => withStatus(status, { error: { code, message } });
 
@@ -18,7 +18,8 @@ function signedIn(chats: SessionSummary[] = []): FakeApi {
     .on("GET", "/api/settings", () => settings())
     .on("GET", "/api/sessions", () => chats)
     .on("GET", "/api/sources", () => sources())
-    .on("GET", "/api/setup/status", () => setupStatus());
+    .on("GET", "/api/setup/status", () => setupStatus())
+    .on("GET", "/api/account", () => accountView());
 }
 
 afterEach(() => {
@@ -71,6 +72,32 @@ describe("Orbit Web opens on the Claude sign-in, and the Claude account is its s
     expect(window.location.href).not.toContain(TOKEN);
   });
 
+  test("a browser with no session signs in itself even when the CLI is signed in, and the verified sign-in is exchanged for its session", async () => {
+    let session = false;
+    const api = fakeApi()
+      .on("GET", "/api/claude/status", () => (session ? claudeStatus() : signedOutClaude({ runtime: "connected" })))
+      .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }))
+      .on("POST", "/api/claude/session", () => ((session = true), claudeStatus()))
+      .on("GET", "/api/settings", () => settings())
+      .on("GET", "/api/sessions", () => [])
+      .on("GET", "/api/sources", () => sources());
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/api/claude/login")).toBe(true));
+    act(() => FakeEventSource.last("/api/claude/login/events").emit({ ...idleFlow(), state: "connected", message: "Signed in to Claude as octo@example.com.", updatedAt: "2026-11-19T00:02:00.000Z" }));
+    expect(await screen.findByRole("heading", { name: "What should Orbit work on?" })).toBeInTheDocument();
+    expect(api.calls.filter((c) => c.path === "/api/claude/session").length).toBe(1);
+  });
+
+  test("a change carries this browser session's CSRF token", async () => {
+    const api = signedIn().on("PATCH", "/api/settings", () => settings());
+    render(<App />);
+    await screen.findByRole("heading", { name: "What should Orbit work on?" });
+    const { send } = await import("./services/api");
+    await send("PATCH", "/api/settings", { theme: "dark" });
+    expect(api.calls.find((c) => c.method === "PATCH")?.headers?.["x-orbit-csrf"]).toBe("c".repeat(64));
+  });
+
   test("a sign-in that ended elsewhere (a terminal, an expiry) closes the workspace", async () => {
     let signedInNow = true;
     fakeApi()
@@ -101,11 +128,11 @@ describe("signed in: the workspace, as in Claude Code", () => {
     expect(FakeEventSource.instances.map((s) => s.url)).toContain("/api/events");
   });
 
-  test("the account sits at the bottom of the sidebar; its menu opens Settings, and Sign out returns to the sign-in page, which opens a new sign-in", async () => {
+  test("the account sits at the bottom of the sidebar; its menu opens Settings, and Sign out signs this browser out and returns to the sign-in page, which opens a new sign-in", async () => {
     let signedInNow = true;
     const api = signedIn()
-      .on("GET", "/api/claude/status", () => (signedInNow ? claudeStatus() : signedOutClaude()))
-      .on("POST", "/api/claude/logout", () => ((signedInNow = false), signedOutClaude()))
+      .on("GET", "/api/claude/status", () => (signedInNow ? claudeStatus() : signedOutClaude({ runtime: "connected" })))
+      .on("DELETE", "/api/claude/session", () => ((signedInNow = false), signedOutClaude({ runtime: "connected" })))
       .on("POST", "/api/claude/login", () => ({ ...idleFlow(), state: "starting" }));
     render(<App />);
     await userEvent.click(await screen.findByRole("button", { name: "Signed in as octo@example.com" }));
@@ -113,25 +140,26 @@ describe("signed in: the workspace, as in Claude Code", () => {
     await userEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(window.location.hash).toBe("#/?settings=account");
-    expect(within(dialog).getByLabelText("Claude Account").textContent).toContain("octo@example.com");
-    expect(within(dialog).getByLabelText("Claude Account").textContent).toContain("Octo Org · max");
+    expect(within(dialog).getByLabelText("Account").textContent).toContain("octo@example.com");
+    expect(within(dialog).getByLabelText("Account").textContent).toContain("Octo Org · max");
     await userEvent.click(within(dialog).getByRole("button", { name: "Close settings" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull());
     // The dialog's close transition hides the rest of the page from assistive technology for a moment: wait for it.
     await userEvent.click(await screen.findByRole("button", { name: "Signed in as octo@example.com" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(await screen.findByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
-    await waitFor(() => expect(api.calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/claude/logout", "/api/claude/login"]));
+    await waitFor(() => expect(api.calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`)).toEqual(["DELETE /api/claude/session", "POST /api/claude/login"]));
   });
 
-  test("a sign-out the API refuses while Claude works in a chat is said, and Orbit Web stays open", async () => {
+  test("signing the account out everywhere, which the API refuses while Claude works in a chat, is said, and Orbit Web stays open", async () => {
     signedIn().on("POST", "/api/claude/logout", () => refused(409, "run_active", "Claude is still working in a chat. Stop it before signing out."));
+    window.location.hash = "#/?settings=account";
     render(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: "Signed in as octo@example.com" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
-    expect(await screen.findByText("Claude is still working in a chat. Stop it before signing out.")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Sign the account out everywhere" }));
+    expect(await within(dialog).findByText("Claude is still working in a chat. Stop it before signing out.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Sign in to Orbit Web" })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message", hidden: true })).toBeInTheDocument();
   });
 
   test("sending the first message creates the chat -- with no repository -- and opens it", async () => {

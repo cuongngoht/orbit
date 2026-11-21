@@ -25,6 +25,7 @@ import { fileURLToPath } from "node:url";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
+import { Db } from "../../infra/db/db.js";
 import { baseEnv, claudeEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
@@ -66,23 +67,25 @@ export class ProjectService {
     @Inject(ProjectStore) private readonly store: ProjectStore,
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(Db) private readonly db: Db,
   ) {}
 
   pluginDir(sessionId: string): string {
     return join(this.config.data.sessions, sessionId, "project-plugin");
   }
 
-  get(sessionId: string): ProjectInventory | null {
+  get(sessionId: string): Promise<ProjectInventory | null> {
     return this.store.get(sessionId);
   }
 
   // The "project" step of preparing a workspace. Never throws: what fails is said in the inventory.
   async load(session: SessionRecord): Promise<ProjectInventory> {
     try {
-      const prefs = this.settings.get();
+      // The chat's own account decides what its project may run.
+      const prefs = await this.settings.get(session.accountId);
       const runPlugins = prefs.projectPlugins;
       const { readout, built } = await this.read(session, prefs.projectSkills);
-      const inventory = this.save(session.id, this.inventoryOf(session, readout, runPlugins, built?.built === true, built?.truncated === true));
+      const inventory = await this.save(session.id, this.inventoryOf(session, readout, runPlugins, built?.built === true, built?.truncated === true));
       return runPlugins ? await this.installDeclared(session, inventory, readout.marketplaces) : inventory;
     } catch (err) {
       this.logger.warn(`the project of ${session.id} could not be read: ${err instanceof Error ? err.message : String(err)}`);
@@ -101,8 +104,8 @@ export class ProjectService {
 
   // What a run of this chat loads beside Orbit: the project plugin, the repository's own plugins, and the declared
   // plugins that installed.
-  runtime(session: SessionRecord): ProjectRuntime {
-    const inventory = this.store.get(session.id);
+  async runtime(session: SessionRecord): Promise<ProjectRuntime> {
+    const inventory = await this.store.get(session.id);
     if (inventory === null) return { pluginDirs: [], enabledPlugins: {} };
     const dirs: string[] = [];
     if (inventory.loaded && isRegularDir(this.pluginDir(session.id))) dirs.push(this.pluginDir(session.id));
@@ -136,16 +139,21 @@ export class ProjectService {
     };
   }
 
-  private save(sessionId: string, inventory: ProjectInventory): ProjectInventory {
-    this.store.set(sessionId, inventory);
-    this.bus.publishSession(sessionId, "project.inventory", { inventory });
+  // Kept and told together: the event is journaled in the transaction that keeps the inventory.
+  private async save(sessionId: string, inventory: ProjectInventory): Promise<ProjectInventory> {
+    await this.db.tx(async () => {
+      await this.store.set(sessionId, inventory);
+      await this.bus.publishSession(sessionId, "project.inventory", { inventory });
+    });
     return inventory;
   }
 
-  private setPlugin(sessionId: string, inventory: ProjectInventory, plugin: ProjectPlugin): ProjectInventory {
+  private async setPlugin(sessionId: string, inventory: ProjectInventory, plugin: ProjectPlugin): Promise<ProjectInventory> {
     const next = { ...inventory, plugins: inventory.plugins.map((p) => (p.id === plugin.id && p.kind === plugin.kind ? plugin : p)) };
-    this.store.set(sessionId, next);
-    this.bus.publishSession(sessionId, "project.plugin", { plugin });
+    await this.db.tx(async () => {
+      await this.store.set(sessionId, next);
+      await this.bus.publishSession(sessionId, "project.plugin", { plugin });
+    });
     return next;
   }
 
@@ -159,8 +167,8 @@ export class ProjectService {
     for (const plugin of declared) {
       const marketplace = marketplaceOf(plugin.id);
       if (!added.has(marketplace)) added.set(marketplace, known.has(marketplace) ? null : await this.addMarketplace(session, marketplaces.find((m) => m.name === marketplace) ?? null));
-      inventory = this.setPlugin(session.id, inventory, { ...plugin, state: "installing", detail: null });
-      inventory = this.setPlugin(session.id, inventory, await this.install(plugin, installed.has(plugin.id), added.get(marketplace) ?? null));
+      inventory = await this.setPlugin(session.id, inventory, { ...plugin, state: "installing", detail: null });
+      inventory = await this.setPlugin(session.id, inventory, await this.install(plugin, installed.has(plugin.id), added.get(marketplace) ?? null));
     }
     return inventory;
   }

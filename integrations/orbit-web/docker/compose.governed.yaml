@@ -1,11 +1,15 @@
 # Orbit Web, GOVERNED: the control plane and the coding agent in two containers of the same image.
 #
 #   cd integrations/orbit-web/docker && docker compose -f compose.governed.yaml up -d --build
-#   docker compose -f compose.governed.yaml logs orbit-web     # the first owner's one-time code (Governance)
 #
-#   orbit-web    the control plane: the API and the web app, Orbit Web's database, governance's records, the GitHub and
-#                Azure CLIs' sign-ins, the control plane's own copies of the repositories, and the egress proxy -- the
-#                agent's only way out. Published on this machine only.
+#   postgres     PostgreSQL 17 with pgvector: every record Orbit Web keeps -- accounts, chats, research and governance's
+#                records. On a network only the control plane joins: the agent's container cannot reach it, and holds
+#                no credential of it. Never published on this machine. Its role for Orbit Web is made by
+#                docker/postgres/init/10-orbit.sh (a login, never a superuser); set ORBIT_WEB_DB_PASSWORD and
+#                ORBIT_WEB_POSTGRES_PASSWORD in a .env file beside this one before the first start.
+#   orbit-web    the control plane: the API and the web app, the GitHub and Azure CLIs' sign-ins, the control plane's
+#                own copies of the repositories, and the egress proxy -- the agent's only way out. Published on this
+#                machine only.
 #   orbit-agent  Claude Code and everything that touches a workspace, started through its runner. It has the Claude
 #                account's configuration, the workspaces, the chats' sessions, Orbit's store and a home -- and none of
 #                the rooms above: they are not mounted. Its network is internal: it reaches the control plane's gateway
@@ -16,8 +20,8 @@
 # run (Governance → Overview says what was checked); a check the agent's container answers is a check of the wiring,
 # not proof against a runner the agent has taken over (README, "The limit, said plainly").
 #
-# Nothing leaves the agent's container until a Constitution is published (Governance → Company Constitution): every
-# connection through the proxy is one of its decisions.
+# Every connection through the proxy is a decision of the policy of the account whose run it is (Governance → Policy):
+# an account is given the strict default policy of this deployment when it first signs in.
 name: orbit-web-governed
 
 x-hardened: &hardened
@@ -29,6 +33,37 @@ x-hardened: &hardened
   restart: unless-stopped
 
 services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: orbit-postgres-local
+      POSTGRES_DB: postgres
+      ORBIT_DB_PASSWORD: orbit-local
+    volumes:
+      - orbit-web-postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U orbit -d orbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
   orbit-web:
     <<: *hardened
     build:
@@ -41,15 +76,20 @@ services:
       - orbit-web-data:/data
     environment:
       ORBIT_WEB_DEPLOYMENT: governed
+      ORBIT_WEB_DATABASE_URL: postgres://orbit:orbit-local@postgres:5432/orbit
       ORBIT_WEB_RUNNER: orbit-agent:7070
       ORBIT_WEB_AGENT_NETWORKS: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
       ORBIT_WEB_AGENT_CONTROL_HOST: orbit-web
       ORBIT_WEB_EGRESS_PROXY_PORT: "3128"
       # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - default
       - agent
+      - db
     stop_grace_period: 20s
 
   orbit-agent:
@@ -85,6 +125,9 @@ services:
     stop_grace_period: 20s
 
 networks:
+  # The database's network: internal, joined by the control plane and the database alone -- never by the agent.
+  db:
+    internal: true
   agent:
     internal: true
     ipam:
@@ -93,3 +136,4 @@ networks:
 
 volumes:
   orbit-web-data:
+  orbit-web-postgres:

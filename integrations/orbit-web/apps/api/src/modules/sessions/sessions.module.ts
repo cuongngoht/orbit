@@ -9,7 +9,7 @@ import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
 import { GovernanceModule } from "../governance/governance.module.js";
 import { ImagesModule } from "../images/images.module.js";
-import { PrincipalResolver } from "../governance/principals.js";
+import { PrincipalResolver } from "../auth/principals.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
 import { ProjectModule } from "../project/project.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
@@ -39,7 +39,7 @@ export class SessionsController {
   }
 
   @Get(":id")
-  detail(@Param("id") id: string): SessionDetail {
+  detail(@Param("id") id: string): Promise<SessionDetail> {
     return this.sessions.detail(id);
   }
 
@@ -50,14 +50,14 @@ export class SessionsController {
 
   // The working branch (branch.service.ts): the branches a chat can work on, and moving it to one.
   @Get(":id/branches")
-  workBranches(@Param("id") id: string): Promise<WorkBranches> {
-    return this.branches.list(this.sessions.record(id));
+  async workBranches(@Param("id") id: string): Promise<WorkBranches> {
+    return this.branches.list(await this.sessions.record(id));
   }
 
   @Post(":id/branch")
   @HttpCode(200)
-  moveBranch(@Param("id") id: string, @Body() body: unknown): Promise<SessionSummary> {
-    return this.branches.change(this.sessions.record(id), body);
+  async moveBranch(@Param("id") id: string, @Body() body: unknown): Promise<SessionSummary> {
+    return this.branches.change(await this.sessions.record(id), body);
   }
 
   @Delete(":id")

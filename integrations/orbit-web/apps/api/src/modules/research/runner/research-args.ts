@@ -4,7 +4,8 @@
 // research has no workspace), no slash command or skill, nothing persisted (each run is answered from what Orbit Web
 // gives it on stdin), and the permission mode that refuses whatever was not allowed beforehand (`dontAsk`). Never a
 // bypass mode. Its system prompt is Orbit Web's own, fixed text: nothing a request, a document or a setting says becomes
-// an argument but the model, the effort, and the connectors the account's person checked for research.
+// an argument but the model, the effort, and the connectors the account's owner checked for research and the account's
+// policy allowed (tool.connector, decided for each before the run starts).
 //
 // Two profiles (owner's decision, ADR 0064): with no connector checked for research, restricted (`--restricted`: no
 // settings file -- no hook, no plugin, no permission rule of anybody's) and no MCP server (`--strict-mcp-config`). With

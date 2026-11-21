@@ -6,7 +6,7 @@ import type { SettingsSection } from "../../hooks/useHashRoute";
 import { fakeApi, type FakeApi } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
-import { SESSION_ID, claudeStatus, idleFlow, inventory, settings, setupStatus } from "../../testing/fixtures";
+import { SESSION_ID, accountView, claudeStatus, idleFlow, inventory, settings, setupStatus } from "../../testing/fixtures";
 import { renderLive } from "../../testing/render";
 import type { SignOut } from "../auth/useSignOut";
 import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
@@ -34,8 +34,9 @@ function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "
   const api = (o.api ?? fakeApi())
     .on("GET", "/api/setup/status", () => status)
     .on("GET", "/api/customizations", () => CUSTOMIZATIONS)
-    .on("PATCH", "/api/settings", (body) => settings(body as object));
-  const signOut: SignOut = { signOut: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+    .on("PATCH", "/api/settings", (body) => settings(body as object))
+    .on("GET", "/api/account", () => accountView());
+  const signOut: SignOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
   const p: SettingsDialogProps = { section, connector: o.connector ?? null, claude: claudeStatus(), signOut, settings: settings(), onSettings: vi.fn(), onSection: vi.fn(), onClose: vi.fn() };
   renderLive(<SettingsDialog {...p} />);
   return { p, api, signOut, setStatus: (s: SetupStatus) => (status = s), statusReads: () => api.calls.filter((c) => c.path === "/api/setup/status").length };
@@ -71,13 +72,28 @@ describe("Settings: the sections, over the page", () => {
     expect(p.onClose).toHaveBeenCalled();
   });
 
-  test("Account: who Orbit Web is signed in as, and Sign out", async () => {
-    const { signOut } = show("account");
-    const account = await screen.findByLabelText("Claude Account");
+  test("Account: the account this browser is signed in to, its business name, its browsers, and the two ways out", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/account", () => accountView({ displayName: "Octo & Co", sessions: [...accountView().sessions, { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" }] }))
+      .on("PUT", "/api/account", (body) => accountView(body as object))
+      .on("DELETE", "/api/account/sessions/s-2", () => undefined);
+    const { signOut } = show("account", { api });
+    const account = await screen.findByLabelText("Account");
+    expect(await within(account).findByText("Octo & Co")).toBeInTheDocument();
     expect(account.textContent).toContain("octo@example.com");
     expect(account.textContent).toContain("Octo Org · max");
+    expect(within(account).getByText("This browser")).toBeInTheDocument();
+    const name = within(account).getByRole("textbox", { name: /Business name/ });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Octo Labs");
+    await userEvent.click(within(account).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ displayName: "Octo Labs" }));
     await userEvent.click(within(account).getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "DELETE" && c.path === "/api/account/sessions/s-2")).toBe(true));
+    await userEvent.click(within(account).getByRole("button", { name: "Sign out of this browser" }));
     expect(signOut.signOut).toHaveBeenCalled();
+    await userEvent.click(within(account).getByRole("button", { name: "Sign the account out everywhere" }));
+    expect(signOut.signOutAccount).toHaveBeenCalled();
   });
 
   test("Account: the access link, to copy or open in another browser -- given only to whoever is in", async () => {

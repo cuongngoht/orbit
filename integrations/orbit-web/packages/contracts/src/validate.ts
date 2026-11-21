@@ -240,6 +240,18 @@ export function checkClaudeLogin(body: unknown): Checked<null> {
   return checked(unknownFields(body, []), () => null);
 }
 
+// The account's display name (a business name): plain text, bounded; empty clears it.
+export const ACCOUNT_NAME_LENGTH = 120;
+
+export function checkUpdateAccount(body: unknown): Checked<{ displayName: string }> {
+  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
+  const errors = unknownFields(body, ["displayName"]);
+  const name = typeof body.displayName === "string" ? body.displayName.trim() : null;
+  // eslint-disable-next-line no-control-regex -- refusing control characters is the point
+  if (name === null || name.length > ACCOUNT_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(name)) errors.push(`displayName must be text of at most ${ACCOUNT_NAME_LENGTH} characters`);
+  return checked(errors, () => ({ displayName: name ?? "" }));
+}
+
 // The code a person copies from the Claude sign-in page: printable, no whitespace, bounded.
 export function checkLoginCode(body: unknown): Checked<ClaudeLoginCodeRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };

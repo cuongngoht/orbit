@@ -1,56 +1,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { askRefusal, consumeRefusal, decideRefusal, fingerprintOf, stateAt, type ActionApproval } from "./approval.js";
-import { approvalRefusal, IMMUTABLE_STATES, LIFECYCLE, move, REVISION_STATES, type RevisionState } from "./lifecycle.js";
-import { can, OPERATOR_ROLES, permissionsOf, PERMISSIONS, ROLE_PERMISSIONS } from "./rbac.js";
+import { confirmationRefusal, IMMUTABLE_STATES, LIFECYCLE, LIFECYCLE_OPS, move, REVISION_STATES, type Confirmation, type RevisionState } from "./lifecycle.js";
 import { sha256 } from "./testing.spec-helpers.js";
 
-test("a revision moves only along the table: draft, validated, pending, approved, published", () => {
+test("a revision moves only along the table: draft, validated, published -- or discarded", () => {
   const path: [RevisionState, Parameters<typeof move>[1], RevisionState][] = [
     ["DRAFT", "validate", "VALIDATED"],
-    ["VALIDATED", "request_approval", "PENDING_APPROVAL"],
-    ["PENDING_APPROVAL", "approve", "APPROVED"],
-    ["APPROVED", "publish", "PUBLISHED"],
+    ["VALIDATED", "publish", "PUBLISHED"],
     ["PUBLISHED", "supersede", "SUPERSEDED"],
-    ["PENDING_APPROVAL", "reject", "REJECTED"],
-    ["REJECTED", "edit", "DRAFT"],
     ["VALIDATED", "edit", "DRAFT"],
-    ["APPROVED", "withdraw", "DRAFT"],
+    ["DRAFT", "edit", "DRAFT"],
+    ["DRAFT", "discard", "DISCARDED"],
+    ["VALIDATED", "discard", "DISCARDED"],
   ];
   for (const [from, op, to] of path) assert.deepEqual(move(from, op), { ok: true, to }, `${from} ${op}`);
-  // Nothing skips a state, and what is published never changes.
-  for (const [from, op] of [["DRAFT", "publish"], ["DRAFT", "approve"], ["VALIDATED", "publish"], ["PENDING_APPROVAL", "publish"], ["DRAFT", "request_approval"]] as const) assert.equal(move(from, op).ok, false, `${from} ${op}`);
-  for (const state of IMMUTABLE_STATES) for (const op of ["edit", "validate", "request_approval", "approve", "reject", "withdraw", "publish"] as const) assert.equal(move(state, op).ok, false, `${state} ${op}`);
-  assert.equal(REVISION_STATES.length, 7);
-  assert.deepEqual(LIFECYCLE.filter((t) => t.permission === null).map((t) => t.op), ["supersede"]);
+  // Nothing skips a state, and what is published (or thrown away) never changes.
+  for (const [from, op] of [["DRAFT", "publish"], ["DRAFT", "supersede"], ["VALIDATED", "validate"]] as const) assert.equal(move(from, op).ok, false, `${from} ${op}`);
+  for (const state of IMMUTABLE_STATES) for (const op of LIFECYCLE_OPS.filter((o) => o !== "supersede")) assert.equal(move(state, op).ok, false, `${state} ${op}`);
+  assert.deepEqual([...REVISION_STATES], ["DRAFT", "VALIDATED", "PUBLISHED", "SUPERSEDED", "DISCARDED"]);
+  // Every move is the owner's but one: the engine supersedes what a new publication replaces.
+  assert.deepEqual(LIFECYCLE.filter((t) => t.by === null).map((t) => t.op), ["supersede"]);
+  assert.deepEqual(LIFECYCLE.filter((t) => t.by === "owner").map((t) => t.op), ["edit", "validate", "publish", "discard"]);
 });
 
-test("a high-risk change is approved by somebody who wrote none of it, and an approval is of the content read", () => {
-  const attempt = { risk: "high" as const, authors: ["op-author", "op-editor"], approverId: "op-other", readDigest: "d1", digest: "d1" };
-  assert.equal(approvalRefusal(attempt), null);
-  assert.equal(approvalRefusal({ ...attempt, approverId: "op-author" }), "SELF_APPROVAL");
-  assert.equal(approvalRefusal({ ...attempt, approverId: "op-editor" }), "SELF_APPROVAL");
-  assert.equal(approvalRefusal({ ...attempt, risk: "elevated", approverId: "op-author" }), null);
-  assert.equal(approvalRefusal({ ...attempt, risk: "low", approverId: "op-author" }), null);
-  assert.equal(approvalRefusal({ ...attempt, digest: "d2" }), "STALE_CONTENT");
-});
-
-test("roles are a table: an auditor reads evidence and edits nothing, an editor cannot approve or publish", () => {
-  assert.deepEqual([...ROLE_PERMISSIONS.organization_owner], [...PERMISSIONS]);
-  const auditor = permissionsOf(["auditor"]);
-  assert.ok(auditor.includes("audit.read") && auditor.includes("reports.generate") && auditor.includes("governance.read"));
-  for (const p of ["constitution.edit", "constitution.approve", "constitution.publish", "roles.manage", "operators.manage", "approvals.decide", "settings.privileged.write", "agents.manage"] as const) assert.equal(can(["auditor"], p), false, p);
-  assert.equal(can(["policy_editor"], "constitution.edit"), true);
-  assert.equal(can(["policy_editor"], "constitution.approve"), false);
-  assert.equal(can(["policy_editor"], "constitution.publish"), false);
-  assert.equal(can(["policy_approver"], "constitution.approve"), true);
-  assert.equal(can(["policy_approver"], "constitution.edit"), false);
-  assert.equal(can(["agent_operator"], "workspaces.govern"), true);
-  assert.equal(can(["agent_operator"], "approvals.decide"), false);
-  assert.equal(can([], "governance.read"), false);
-  assert.equal(can(["policy_editor", "policy_approver"], "constitution.approve"), true);
-  // Only the owner manages roles and operators.
-  for (const role of OPERATOR_ROLES.filter((r) => r !== "organization_owner")) assert.equal(can([role], "roles.manage") || can([role], "operators.manage"), false, role);
+test("one owner confirms a publication alone -- of the content and base they read, the risk acknowledged -- and nothing waits for a second person", () => {
+  const c: Confirmation = { actorType: "human", risk: "low", acknowledgedRisk: null, readDigest: "d1", digest: "d1", readBase: "rev-1", base: "rev-1" };
+  assert.equal(confirmationRefusal(c), null, "a low-risk change needs no acknowledgement");
+  // The author confirms it: there is no separation of duties to pretend with one person, and no approver to wait for.
+  assert.equal(confirmationRefusal({ ...c, risk: "high", acknowledgedRisk: "high" }), null);
+  assert.equal(confirmationRefusal({ ...c, risk: "high", acknowledgedRisk: null }), "RISK_NOT_ACKNOWLEDGED");
+  assert.equal(confirmationRefusal({ ...c, risk: "high", acknowledgedRisk: "elevated" }), "RISK_NOT_ACKNOWLEDGED");
+  assert.equal(confirmationRefusal({ ...c, risk: "elevated", acknowledgedRisk: null }), "RISK_NOT_ACKNOWLEDGED");
+  assert.equal(confirmationRefusal({ ...c, risk: "elevated", acknowledgedRisk: "high" }), null, "acknowledging more than it is, is acknowledging it");
+  assert.equal(confirmationRefusal({ ...c, digest: "d2" }), "STALE_CONTENT");
+  assert.equal(confirmationRefusal({ ...c, base: "rev-2" }), "STALE_BASE", "the policy in effect moved since it was compared");
+  assert.equal(confirmationRefusal({ ...c, readBase: null }), "STALE_BASE");
+  // Only a person confirms: never an agent, a service or Orbit Web itself.
+  for (const actorType of ["agent", "service", "system", "anonymous"] as const) assert.equal(confirmationRefusal({ ...c, actorType }), "NOT_A_PERSON", actorType);
 });
 
 const NOW = "2026-11-20T10:00:00.000Z";
@@ -77,9 +64,11 @@ test("an approval is asked once, decided once, spent once -- and only on the act
   for (const state of ["consumed", "rejected", "expired"] as const) assert.equal(askRefusal([approval({ state })], "f1", NOW), null, state);
   assert.equal(askRefusal([approval()], "f1", LATER), null);
 
-  assert.equal(decideRefusal(approval(), NOW), null);
-  assert.equal(decideRefusal(approval(), LATER), "APPROVAL_EXPIRED");
-  for (const state of ["granted", "rejected", "consumed"] as const) assert.equal(decideRefusal(approval({ state }), NOW), "APPROVAL_DECIDED", state);
+  assert.equal(decideRefusal(approval(), NOW, "human"), null);
+  assert.equal(decideRefusal(approval(), LATER, "human"), "APPROVAL_EXPIRED");
+  for (const state of ["granted", "rejected", "consumed"] as const) assert.equal(decideRefusal(approval({ state }), NOW, "human"), "APPROVAL_DECIDED", state);
+  // Only a person decides -- an agent never approves anything, a request of its own run least of all.
+  for (const decider of ["agent", "service", "system", "anonymous"] as const) assert.equal(decideRefusal(approval(), NOW, decider), "DECIDER_NOT_A_PERSON", decider);
 
   const granted = approval({ state: "granted" });
   assert.equal(consumeRefusal(granted, "f1", NOW), null);

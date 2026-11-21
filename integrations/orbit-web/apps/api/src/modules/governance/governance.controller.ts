@@ -1,59 +1,38 @@
-// THE GOVERNANCE CONSOLE'S ROUTES (each says the one permission it needs; the global gate enforces it):
+// THE GOVERNANCE CONSOLE'S ROUTES -- the account owner's, every one (the auth guard holds each to a browser session of
+// the account, and a change to that session's CSRF token). The account is ALWAYS the session's: no route, body or query
+// names one, and another account's revision, approval or decision is simply not found.
 //
-//   GET  /api/governance/overview                                 governance.read
-//   GET  /api/governance/constitution                             governance.read   the revision in effect, and all
-//   GET  /api/governance/revisions/:id                            governance.read
-//   POST /api/governance/revisions                                constitution.edit  { document } | { from } | {}
-//   PUT  /api/governance/revisions/:id                            constitution.edit  { document, expectedDigest }
-//   POST /api/governance/revisions/:id/validate                   constitution.edit
-//   POST /api/governance/revisions/:id/request-approval           constitution.edit
-//   POST /api/governance/revisions/:id/withdraw                   constitution.edit
-//   POST /api/governance/revisions/:id/approve | reject           constitution.approve  { digest }
-//   POST /api/governance/revisions/:id/publish                    constitution.publish  { digest }
-//   POST /api/governance/simulate                                 governance.read   a decision asked, nothing recorded
-//   GET  /api/governance/overlays                                 governance.read
-//   PUT  /api/governance/overlays                                 constitution.publish  { overlay }
-//   DELETE /api/governance/overlays/:level/:target                constitution.publish
-//   GET  /api/governance/agents                                   governance.read
-//   POST /api/governance/agents                                   agents.manage     { name }
-//   POST /api/governance/agents/:id/suspend | reinstate           agents.manage
-//   GET  /api/governance/workspaces                               governance.read
-//   PUT  /api/governance/workspaces/:sessionId                    workspaces.govern  { agentId, profile }
-//   DELETE /api/governance/workspaces/:sessionId                  agents.manage     (releasing loosens: an admin's)
-//   GET  /api/governance/decisions?limit=&verdict=&workspace=     audit.read
-//   GET  /api/governance/approvals | /:id                         approvals.read
-//   POST /api/governance/approvals/:id/grant | reject             approvals.decide  { fingerprint }
-//   POST /api/governance/approvals/:id/execute                    approvals.decide  (a granted one, once)
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
-import type {
-  AgentList,
-  AgentView,
-  ApprovalList,
-  ApprovalView,
-  ConstitutionOverview,
-  DecisionList,
-  DecisionView,
-  GovernanceOverview,
-  OverlayList,
-  RevisionView,
-  SimulateResult,
-  WorkspaceGovernanceView,
-  WorkspaceList,
-} from "@orbit-web/contracts";
+//   GET  /api/governance/overview                           the account: its policy in effect, counts, isolation, audit
+//   GET  /api/governance/policy                             the revision in effect, and every revision
+//   GET  /api/governance/revisions/:id
+//   POST /api/governance/revisions                          { document } | { from } | {}   a draft
+//   PUT  /api/governance/revisions/:id                      { document, expectedDigest }
+//   POST /api/governance/revisions/:id/validate
+//   POST /api/governance/revisions/:id/publish              { digest, base, acknowledgedRisk }   the owner's confirmation
+//   POST /api/governance/revisions/:id/discard              { digest }
+//   POST /api/governance/simulate                           a decision asked, nothing recorded
+//   GET  /api/governance/decisions?limit=&verdict=&workspace=
+//   GET  /api/governance/approvals | /:id
+//   POST /api/governance/approvals/:id/grant | reject       { fingerprint }
+//   POST /api/governance/approvals/:id/execute              (a granted one, once)
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query, Req } from "@nestjs/common";
+import type { ApprovalList, ApprovalView, DecisionList, DecisionView, GovernanceOverview, PolicyOverview, RevisionView, SimulateResult } from "@orbit-web/contracts";
 import type { AuditEvent } from "@orbit-web/governance-core";
 import type { Request } from "express";
-import { badRequest } from "../../common/errors.js";
-import { AgentStore, ApprovalStore, AuditStore, GovernedWorkspaceStore, OperatorStore, RevisionStore } from "../../infra/governance/stores.js";
+import type { AppConfig } from "../../config/config.js";
+import { APP_CONFIG } from "../../core/tokens.js";
+import { badRequest, notFound } from "../../common/errors.js";
+import { viewer } from "../../common/request-scope.js";
+import { AuditStore, OverrideStore, ResourceStore, RevisionStore, RunBindingStore } from "../../infra/governance/stores.js";
+import { AccountsService } from "../auth/accounts.service.js";
+import { PrincipalResolver } from "../auth/principals.js";
 import { ApprovalService } from "./approvals.service.js";
 import { AuditService } from "./audit.service.js";
-import { ConstitutionService } from "./constitution.service.js";
-import { RequirePermission } from "./decorators.js";
 import { FindingsService } from "./findings.service.js";
 import { IsolationService } from "./isolation.service.js";
-import { PrincipalResolver } from "./principals.js";
-import { RegistryService } from "./registry.service.js";
+import { RevisionsService } from "./revisions.service.js";
 
-const decisionOf = (e: AuditEvent): DecisionView => ({
+export const decisionOf = (e: AuditEvent): DecisionView => ({
   decisionId: e.decisionId ?? e.eventId,
   eventId: e.eventId,
   at: e.occurredAt,
@@ -74,231 +53,137 @@ const decisionOf = (e: AuditEvent): DecisionView => ({
   scope: typeof e.data.scope === "string" ? e.data.scope : null,
 });
 
+const VERDICTS = ["allow", "require_approval", "deny"];
+
 @Controller("governance")
 export class GovernanceController {
   constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
-    @Inject(ConstitutionService) private readonly constitution: ConstitutionService,
-    @Inject(RegistryService) private readonly registry: RegistryService,
+    @Inject(AccountsService) private readonly accounts: AccountsService,
+    @Inject(RevisionsService) private readonly revisions: RevisionsService,
     @Inject(ApprovalService) private readonly approvals: ApprovalService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(AuditStore) private readonly auditStore: AuditStore,
     @Inject(FindingsService) private readonly findings: FindingsService,
     @Inject(IsolationService) private readonly isolation: IsolationService,
-    @Inject(OperatorStore) private readonly operators: OperatorStore,
-    @Inject(RevisionStore) private readonly revisions: RevisionStore,
-    @Inject(AgentStore) private readonly agents: AgentStore,
-    @Inject(GovernedWorkspaceStore) private readonly governed: GovernedWorkspaceStore,
-    @Inject(ApprovalStore) private readonly approvalStore: ApprovalStore,
+    @Inject(RevisionStore) private readonly revisionStore: RevisionStore,
+    @Inject(OverrideStore) private readonly overrides: OverrideStore,
+    @Inject(ResourceStore) private readonly resources: ResourceStore,
+    @Inject(RunBindingStore) private readonly runs: RunBindingStore,
   ) {}
 
   @Get("overview")
-  @RequirePermission("governance.read")
-  overview(): GovernanceOverview {
-    const org = this.operators.organization();
-    const effective = this.revisions.effective();
-    const head = this.auditStore.head();
+  async overview(): Promise<GovernanceOverview> {
+    const owner = viewer();
+    const accountId = owner.accountId;
+    const account = await this.accounts.account(accountId);
+    const effective = await this.revisionStore.effective(accountId);
+    const head = await this.auditStore.head(accountId);
+    const live = (kind: "workspace" | "research_workspace") => this.resources.list(accountId, kind).then((rs) => rs.filter((r) => r.deletedAt === null).length);
     return {
-      organization: { id: org?.id ?? "uninitialized", name: org?.name ?? "" },
-      effective: effective === null ? null : { id: effective.id, revision: effective.revision as number, digest: effective.digest, publishedAt: effective.publishedAt as string },
+      account: { id: accountId, displayName: account?.displayName ?? "", email: owner.email },
+      deployment: this.config.governance.deployment,
+      effective: effective === null ? null : { id: effective.id, revision: effective.revision as number, digest: effective.digest, publishedAt: effective.publishedAt as string, source: effective.source },
       counts: {
-        operators: this.operators.list().filter((o) => o.status === "active").length,
-        agents: this.agents.list().filter((a) => a.status === "active").length,
-        governedWorkspaces: this.governed.list().length,
-        pendingApprovals: this.approvalStore.pendingCount(new Date().toISOString()),
-        openFindings: this.findings.openCount(),
-        revisionsInReview: this.revisions.list().filter((r) => r.state === "PENDING_APPROVAL" || r.state === "APPROVED").length,
+        workspaces: await live("workspace"),
+        researchWorkspaces: await live("research_workspace"),
+        runningRuns: (await this.runs.running(accountId)).length,
+        pendingApprovals: await this.approvals.pendingCount(accountId),
+        openFindings: await this.findings.openCount(accountId),
+        draftRevisions: (await this.revisionStore.list(accountId)).filter((r) => r.state === "DRAFT" || r.state === "VALIDATED").length,
+        overrides: (await this.overrides.list(accountId)).length,
       },
-      isolation: this.isolation.status(),
-      audit: { count: this.auditStore.count(), head: head?.hash ?? null, lastVerification: this.audit.latestVerification() },
+      isolation: await this.isolation.status(),
+      audit: { count: await this.auditStore.count(accountId), head: head?.hash ?? null, lastVerification: this.audit.latestVerification(accountId) },
     };
   }
 
-  // ---- the Constitution -----------------------------------------------------------------------------------------------
+  // ---- the account's policy -------------------------------------------------------------------------------------------
 
-  @Get("constitution")
-  @RequirePermission("governance.read")
-  constitutionOverview(): ConstitutionOverview {
-    return this.constitution.overview();
+  @Get("policy")
+  policy(): Promise<PolicyOverview> {
+    return this.revisions.overview(viewer().accountId);
   }
 
   @Get("revisions/:id")
-  @RequirePermission("governance.read")
-  revision(@Param("id") id: string): RevisionView {
-    return this.constitution.view(id);
+  revision(@Param("id") id: string): Promise<RevisionView> {
+    return this.revisions.view(viewer().accountId, id);
   }
 
   @Post("revisions")
-  @RequirePermission("constitution.edit")
-  createRevision(@Req() req: Request, @Body() body: unknown): RevisionView {
-    return this.constitution.create(this.principals.context(req), body);
+  createRevision(@Req() req: Request, @Body() body: unknown): Promise<RevisionView> {
+    return this.revisions.create(this.principals.context(req), body);
   }
 
   @Put("revisions/:id")
-  @RequirePermission("constitution.edit")
-  updateRevision(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): RevisionView {
-    return this.constitution.update(this.principals.context(req), id, body);
+  updateRevision(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<RevisionView> {
+    return this.revisions.update(this.principals.context(req), id, body);
   }
 
   @Post("revisions/:id/validate")
-  @RequirePermission("constitution.edit")
   @HttpCode(200)
-  validate(@Req() req: Request, @Param("id") id: string): RevisionView {
-    return this.constitution.validate(this.principals.context(req), id);
-  }
-
-  @Post("revisions/:id/request-approval")
-  @RequirePermission("constitution.edit")
-  @HttpCode(200)
-  requestApproval(@Req() req: Request, @Param("id") id: string): RevisionView {
-    return this.constitution.requestApproval(this.principals.context(req), id);
-  }
-
-  @Post("revisions/:id/withdraw")
-  @RequirePermission("constitution.edit")
-  @HttpCode(200)
-  withdraw(@Req() req: Request, @Param("id") id: string): RevisionView {
-    return this.constitution.withdraw(this.principals.context(req), id);
-  }
-
-  @Post("revisions/:id/approve")
-  @RequirePermission("constitution.approve")
-  @HttpCode(200)
-  approve(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): RevisionView {
-    return this.constitution.approve(this.principals.context(req), id, body);
-  }
-
-  @Post("revisions/:id/reject")
-  @RequirePermission("constitution.approve")
-  @HttpCode(200)
-  reject(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): RevisionView {
-    return this.constitution.reject(this.principals.context(req), id, body);
+  validate(@Req() req: Request, @Param("id") id: string): Promise<RevisionView> {
+    return this.revisions.validate(this.principals.context(req), id);
   }
 
   @Post("revisions/:id/publish")
-  @RequirePermission("constitution.publish")
   @HttpCode(200)
-  publish(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): RevisionView {
-    return this.constitution.publish(this.principals.context(req), id, body);
+  publish(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<RevisionView> {
+    return this.revisions.publish(this.principals.context(req), id, body);
+  }
+
+  @Post("revisions/:id/discard")
+  @HttpCode(200)
+  discard(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<RevisionView> {
+    return this.revisions.discard(this.principals.context(req), id, body);
   }
 
   @Post("simulate")
-  @RequirePermission("governance.read")
   @HttpCode(200)
-  simulate(@Body() body: unknown): SimulateResult {
-    return this.constitution.simulate(body);
-  }
-
-  // ---- overlays ------------------------------------------------------------------------------------------------------
-
-  @Get("overlays")
-  @RequirePermission("governance.read")
-  overlays(): OverlayList {
-    return this.registry.overlayList();
-  }
-
-  @Put("overlays")
-  @RequirePermission("constitution.publish")
-  setOverlay(@Req() req: Request, @Body() body: unknown) {
-    return this.registry.setOverlay(this.principals.context(req), body);
-  }
-
-  @Delete("overlays/:level/:target")
-  @RequirePermission("constitution.publish")
-  @HttpCode(204)
-  removeOverlay(@Req() req: Request, @Param("level") level: string, @Param("target") target: string): void {
-    this.registry.removeOverlay(this.principals.context(req), level, target);
-  }
-
-  // ---- agents and workspaces ---------------------------------------------------------------------------------------------
-
-  @Get("agents")
-  @RequirePermission("governance.read")
-  agentList(): AgentList {
-    return { agents: this.registry.agentList() };
-  }
-
-  @Post("agents")
-  @RequirePermission("agents.manage")
-  register(@Req() req: Request, @Body() body: unknown): AgentView {
-    return this.registry.register(this.principals.context(req), body);
-  }
-
-  @Post("agents/:id/suspend")
-  @RequirePermission("agents.manage")
-  @HttpCode(200)
-  suspendAgent(@Req() req: Request, @Param("id") id: string): AgentView {
-    return this.registry.setAgentStatus(this.principals.context(req), id, "suspended");
-  }
-
-  @Post("agents/:id/reinstate")
-  @RequirePermission("agents.manage")
-  @HttpCode(200)
-  reinstateAgent(@Req() req: Request, @Param("id") id: string): AgentView {
-    return this.registry.setAgentStatus(this.principals.context(req), id, "active");
-  }
-
-  @Get("workspaces")
-  @RequirePermission("governance.read")
-  workspaces(): WorkspaceList {
-    return { workspaces: this.registry.workspaceList() };
-  }
-
-  @Put("workspaces/:sessionId")
-  @RequirePermission("workspaces.govern")
-  govern(@Req() req: Request, @Param("sessionId") sessionId: string, @Body() body: unknown): WorkspaceGovernanceView {
-    return this.registry.govern(this.principals.context(req), sessionId, body);
-  }
-
-  @Delete("workspaces/:sessionId")
-  @RequirePermission("agents.manage")
-  @HttpCode(204)
-  release(@Req() req: Request, @Param("sessionId") sessionId: string): void {
-    this.registry.release(this.principals.context(req), sessionId);
+  simulate(@Body() body: unknown): Promise<SimulateResult> {
+    return this.revisions.simulate(viewer().accountId, body);
   }
 
   // ---- decisions and approvals ---------------------------------------------------------------------------------------------
 
   @Get("decisions")
-  @RequirePermission("audit.read")
-  decisions(@Query("limit") limit?: string, @Query("verdict") verdict?: string, @Query("workspace") workspace?: string): DecisionList {
+  async decisions(@Query("limit") limit?: string, @Query("verdict") verdict?: string, @Query("workspace") workspace?: string): Promise<DecisionList> {
     const n = limit === undefined ? 100 : Number(limit);
     if (!Number.isInteger(n) || n < 1 || n > 500) throw badRequest("limit must be 1-500");
-    const events = this.auditStore.page({ limit: verdict === undefined && workspace === undefined ? n : 2000, types: ["policy.decision"] });
-    const kept = events.filter((e) => (verdict === undefined || e.outcome === verdict) && (workspace === undefined || e.workspaceId === workspace));
-    return { decisions: kept.slice(0, n).map(decisionOf) };
+    if (verdict !== undefined && !VERDICTS.includes(verdict)) throw badRequest("verdict must be allow, require_approval or deny");
+    if (workspace !== undefined && (workspace.length === 0 || workspace.length > 128)) throw badRequest("workspace must name a chat or a research workspace");
+    const events = await this.auditStore.page(viewer().accountId, { limit: n, types: ["policy.decision"], ...(verdict !== undefined ? { outcome: verdict } : {}), ...(workspace !== undefined ? { workspaceId: workspace } : {}) });
+    return { decisions: events.map(decisionOf) };
   }
 
   @Get("approvals")
-  @RequirePermission("approvals.read")
-  approvalList(): ApprovalList {
-    return { approvals: this.approvals.list() };
+  async approvalList(): Promise<ApprovalList> {
+    return { approvals: await this.approvals.list(viewer().accountId) };
   }
 
   @Get("approvals/:id")
-  @RequirePermission("approvals.read")
-  approval(@Param("id") id: string): ApprovalView {
-    return this.approvals.view(id);
+  approval(@Param("id") id: string): Promise<ApprovalView> {
+    return this.approvals.view(viewer().accountId, id);
   }
 
   @Post("approvals/:id/grant")
-  @RequirePermission("approvals.decide")
   @HttpCode(200)
   grant(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<ApprovalView> {
     return this.approvals.grant(this.principals.context(req), id, body);
   }
 
   @Post("approvals/:id/reject")
-  @RequirePermission("approvals.decide")
   @HttpCode(200)
-  rejectApproval(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): ApprovalView {
+  rejectApproval(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<ApprovalView> {
     return this.approvals.reject(this.principals.context(req), id, body);
   }
 
   @Post("approvals/:id/execute")
-  @RequirePermission("approvals.decide")
   @HttpCode(200)
-  execute(@Req() req: Request, @Param("id") id: string): Promise<ApprovalView> {
-    return this.approvals.execute(this.principals.context(req), id);
+  async execute(@Req() req: Request, @Param("id") id: string): Promise<ApprovalView> {
+    const ctx = this.principals.context(req);
+    if (ctx.accountId === null) throw notFound("The approval");
+    return this.approvals.execute(ctx, id);
   }
 }

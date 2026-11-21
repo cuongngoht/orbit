@@ -1,6 +1,6 @@
 // THE GOVERNANCE AUDIT RECORD. It is not the chat's event journal: that one is a conversation, deleted with its chat.
-// This one is evidence -- who was verified, what was decided under which policy revision, what a person approved --
-// and nothing here is ever changed or removed.
+// This one is evidence -- who was verified, what was decided under which revision of the account's policy, what the
+// account's owner confirmed or approved -- and nothing here is ever changed or removed.
 //
 // Every event type declares the metadata it may carry (AUDIT_EVENTS); a key nobody declared is dropped before the
 // record is sealed, so a prompt, a token or a file's contents cannot ride along by accident.
@@ -8,53 +8,41 @@
 // The chain: each record holds the hash of the one before it, and its own hash is taken over everything it says
 // together with that link. Changing, removing or reordering a record breaks every hash after it. That is TAMPER
 // EVIDENCE inside one threat model -- somebody who can rewrite the whole store and every copy of its head can forge
-// a consistent chain, which is why the head is also said out loud where the store's writer cannot reach.
+// a consistent chain, which is why the head is also said out loud where the store's writer cannot reach. Each account
+// has a chain of its own; what concerns no account (a refused stranger, the deployment's own checks) has the
+// deployment's.
 import { canonicalJson, type Sha256 } from "./canonical.js";
 
-export const AUDIT_SCHEMA_VERSION = 1;
+export const AUDIT_SCHEMA_VERSION = 2;
 
 export type AuditValue = string | number | boolean | null;
 
 const row = <K extends string>(summary: string, ...data: K[]) => ({ summary, data });
 
 export const AUDIT_EVENTS = {
-  "governance.initialized": row("The organization and its first owner were created.", "organizationName"),
-  "operator.bootstrap.refused": row("A first-owner enrolment was refused.", "cause"),
-  "operator.created": row("An operator was created.", "operatorId", "username", "roles"),
-  "operator.suspended": row("An operator was suspended.", "operatorId"),
-  "operator.reinstated": row("An operator was reinstated.", "operatorId"),
-  "operator.role.granted": row("An operator was given a role.", "operatorId", "role"),
-  "operator.role.revoked": row("An operator's role was taken away.", "operatorId", "role"),
-  "operator.password.changed": row("An operator's password was changed.", "operatorId"),
-  "operator.signed_in": row("An operator signed in.", "sessionId"),
-  "operator.sign_in.failed": row("An operator sign-in failed.", "username", "cause"),
-  "operator.signed_out": row("An operator signed out.", "sessionId"),
-  "operator.session.revoked": row("An operator's sessions were ended.", "operatorId", "sessions"),
-  "operator.recovery.issued": row("An owner recovery was issued from the installation's own terminal.", "operatorId"),
-  "authz.denied": row("A request was refused for want of a permission.", "permission", "route", "cause"),
+  "account.created": row("An account was created for a verified Claude identity, the first time it signed in.", "provider"),
+  "auth.signed_in": row("A browser finished the Claude sign-in and was given a session of the account.", "sessionId"),
+  "auth.signed_out": row("A browser's session of the account ended.", "sessionId", "reason"),
+  "auth.account.ended": row("The account stopped being the runtime's: every browser session of it ended.", "reason"),
+  "auth.sessions.revoked": row("Browser sessions of the account were revoked from the installation's own terminal.", "sessions", "reason"),
+  "authz.denied": row("A request was refused at the gate.", "route", "cause", "action"),
   "boundary.violation": row("A caller reached for something outside what it is.", "kind", "route", "target"),
-  "constitution.draft.created": row("A draft revision was created.", "revisionId", "digest", "source"),
-  "constitution.draft.edited": row("A draft revision was edited.", "revisionId", "digest"),
-  "constitution.validated": row("A revision was validated.", "revisionId", "digest"),
-  "constitution.approval.requested": row("Approval of a revision was requested.", "revisionId", "digest", "risk"),
-  "constitution.withdrawn": row("A revision was taken back to a draft.", "revisionId"),
-  "constitution.approved": row("A revision was approved.", "revisionId", "digest", "risk"),
-  "constitution.rejected": row("A revision was rejected.", "revisionId", "digest"),
-  "constitution.published": row("A revision was published and is in effect.", "revisionId", "revision", "digest", "replaces", "risk"),
-  "overlay.set": row("A narrowing overlay was set.", "level", "target", "digest"),
-  "overlay.removed": row("A narrowing overlay was removed.", "level", "target"),
-  "agent.registered": row("An agent was registered.", "runtime", "name"),
-  "agent.suspended": row("An agent was suspended."),
-  "agent.reinstated": row("An agent was reinstated."),
-  "workspace.governed": row("A workspace was placed under governance.", "profile", "previousAgentId"),
-  "workspace.released": row("A workspace was released from governance."),
-  "policy.decision": row("A request was decided under the policy in effect.", "action", "resource", "environment", "enforcement", "fingerprint", "scope", "matchedRules"),
-  "run.started": row("A governed run started.", "scope", "runtime", "runtimeVersion", "mode", "isolation"),
-  "run.refused": row("A governed run was refused before it started.", "scope", "cause"),
-  "run.finished": row("A governed run ended.", "status", "exitCode"),
+  "policy.provisioned": row("The account's default policy was published by Orbit Web when the account was created (no person's confirmation).", "revisionId", "revision", "digest", "deployment"),
+  "policy.draft.created": row("A draft revision of the account's policy was created.", "revisionId", "digest", "source"),
+  "policy.draft.edited": row("A draft revision was edited.", "revisionId", "digest"),
+  "policy.validated": row("A revision was validated.", "revisionId", "digest"),
+  "policy.discarded": row("A draft revision was discarded.", "revisionId", "digest"),
+  "policy.confirmed": row("The account's owner confirmed exactly this content, against exactly that revision in effect, at that risk.", "revisionId", "digest", "base", "risk"),
+  "policy.published": row("A revision was published and is in effect.", "revisionId", "revision", "digest", "replaces", "risk"),
+  "override.set": row("A narrowing override was set for a chat or a research workspace.", "kind", "target", "digest"),
+  "override.removed": row("A narrowing override was removed.", "kind", "target"),
+  "policy.decision": row("A request was decided under the account's policy in effect.", "action", "resource", "environment", "enforcement", "fingerprint", "scope", "matchedRules"),
+  "run.started": row("A run of an agent started, bound to the account's policy in effect.", "scope", "runtime", "runtimeVersion", "mode", "isolation", "startedBy"),
+  "run.refused": row("A run was refused before it started.", "scope", "cause"),
+  "run.finished": row("A run ended.", "status", "exitCode"),
   "approval.requested": row("Approval of one protected action was asked for.", "approvalId", "action", "fingerprint", "expiresAt"),
-  "approval.granted": row("A person approved one protected action.", "approvalId", "fingerprint"),
-  "approval.rejected": row("A person rejected one protected action.", "approvalId", "fingerprint"),
+  "approval.granted": row("The account's owner approved one protected action.", "approvalId", "fingerprint"),
+  "approval.rejected": row("The account's owner rejected one protected action.", "approvalId", "fingerprint"),
   "approval.expired": row("An approval ran out of time.", "approvalId"),
   "approval.consumed": row("An approval was spent, before its action started.", "approvalId", "fingerprint"),
   "approval.consume.refused": row("An approval could not be spent.", "approvalId", "fingerprint", "cause"),
@@ -66,7 +54,7 @@ export const AUDIT_EVENTS = {
   "egress.sign_in": row("A connection of Orbit Web's own Claude sign-in, decided by its fixed channel: the Claude account's hosts, nothing else.", "resource"),
   "isolation.attested": row("The agent runtime's isolation was checked and held.", "runner", "checks"),
   "isolation.failed": row("The agent runtime's isolation could not be shown.", "cause"),
-  "session.deleted": row("A chat was deleted; its governance records stay.", "scope"),
+  "resource.deleted": row("A chat or a research workspace was deleted; its governance records stay.", "kind"),
   "audit.verified": row("The audit chain was checked and held.", "count", "head"),
   "audit.integrity.failed": row("The audit chain does not hold.", "brokenAt", "cause"),
   "finding.status.changed": row("A finding's handling was changed.", "findingId", "resolution"),
@@ -87,10 +75,12 @@ export interface AuditBody {
   eventType: AuditEventType;
   occurredAt: string;
   recordedAt: string;
-  organizationId: string;
+  // The account whose chain the record is on (null: the deployment's own chain).
+  accountId: string | null;
   principalId: string;
   principalType: AuditPrincipalType;
   agentId: string | null;
+  // The chat (Claude Code workspace) or research workspace the record is about.
   workspaceId: string | null;
   runId: string | null;
   correlationId: string;

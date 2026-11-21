@@ -8,12 +8,17 @@
 // citations that cite it. A source whose newest snapshot could not be read keeps the one it had, as `stale`. Every
 // failure says why, and a failed source can be tried again. A restart picks up what was pending, from the start of the
 // document (what an interrupted attempt indexed is removed first), so nothing is half indexed.
+//
+// Ingestion works outside any request: it acts for the account its own records name (a revision's, a source's), and a
+// source deleted while it is read simply stops being read -- what was written of it goes with it (the database's
+// cascade), and nothing writes it back.
 import { Inject, Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from "@nestjs/common";
+import { pgCode } from "../../../infra/db/db.js";
 import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
 import { ObjectStore } from "../sources/object-store.js";
-import { CHUNK_BATCH, SourceStore, type RevisionRecord, type SourceRecord } from "../store/sources.js";
+import { CHUNK_BATCH, SourceStore, type ChunkDraft, type RevisionRecord, type SourceRecord } from "../store/sources.js";
 import { WorkspaceStore } from "../store/workspaces.js";
 import { ResearchViews } from "../views.js";
 import { detectFetched } from "./detect.js";
@@ -25,6 +30,9 @@ export const OBJECT_STORE = Symbol("OBJECT_STORE");
 type Job = { kind: "read"; revisionId: string } | { kind: "fetch"; sourceId: string };
 
 const yieldNow = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+// PostgreSQL's code for a row whose parent is gone.
+const FOREIGN_KEY_VIOLATION = "23503";
 
 @Injectable()
 export class IngestionService implements OnModuleInit, OnApplicationShutdown {
@@ -45,11 +53,11 @@ export class IngestionService implements OnModuleInit, OnApplicationShutdown {
   ) {}
 
   // What a restart cut short is picked up again.
-  onModuleInit(): void {
-    void this.objects.sweep();
-    for (const r of this.sources.pendingRevisions()) this.enqueue({ kind: "read", revisionId: r.id });
-    for (const s of this.sources.inState(["queued", "processing"])) {
-      const pending = this.sources.latestRevision(s.id)?.status === "pending";
+  async onModuleInit(): Promise<void> {
+    await this.objects.sweep().catch(() => undefined);
+    for (const r of await this.sources.pendingRevisions()) this.enqueue({ kind: "read", revisionId: r.id });
+    for (const s of await this.sources.inState(["queued", "processing"])) {
+      const pending = (await this.sources.latestRevision(s.id))?.status === "pending";
       if (s.kind === "url" && !pending) this.enqueue({ kind: "fetch", sourceId: s.id });
     }
   }
@@ -102,17 +110,20 @@ export class IngestionService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
-  private moved(source: SourceRecord): void {
-    this.workspaces.touch(source.workspaceId);
-    this.views.notifySource(source.id);
+  // The source moved (a state, a revision): its workspace moves up its list, and whoever may see it is told. A source
+  // deleted meanwhile (null) moves nothing.
+  private async moved(source: SourceRecord | null): Promise<void> {
+    if (source === null) return;
+    await this.workspaces.touch(source.workspaceId);
+    await this.views.notifySource(source.id);
   }
 
   private async readRevision(revisionId: string): Promise<void> {
-    const revision = this.sources.revision(revisionId);
-    const source = revision === null ? null : this.sources.get(revision.sourceId);
+    const revision = await this.sources.revision(revisionId);
+    const source = revision === null ? null : await this.sources.get(revision.sourceId);
     if (revision === null || source === null || revision.status !== "pending") return;
-    this.sources.restart(revision.id);
-    this.moved(this.sources.setState(source.id, "processing", null));
+    await this.sources.restart(revision.id);
+    await this.moved(await this.sources.setState(source.id, "processing", null));
     let bytes: Buffer;
     try {
       bytes = await this.objects.read(revision.workspaceId, revision.contentHash);
@@ -120,31 +131,43 @@ export class IngestionService implements OnModuleInit, OnApplicationShutdown {
       return this.failed(source, revision, "The stored file could not be read back.");
     }
     const extraction = await extractInWorker(revision.mediaType, bytes, this.config.research.extractTimeoutMs);
-    if (this.sources.get(source.id) === null) return;
+    if ((await this.sources.get(source.id)) === null) return;
     if (!extraction.ok) return this.failed(source, revision, extraction.reason);
     const { chunks, chars, pages } = extraction.processed;
     for (let i = 0; i < chunks.length; i += CHUNK_BATCH) {
-      if (this.sources.get(source.id) === null) return;
-      this.sources.writeChunkBatch(revision, chunks.slice(i, i + CHUNK_BATCH));
+      if (!(await this.wrote(revision, chunks.slice(i, i + CHUNK_BATCH)))) return;
       await yieldNow();
     }
-    this.sources.indexed(revision.id, { pages, chars, chunks: chunks.length });
-    this.moved(this.sources.promote(source.id, revision.id));
+    await this.sources.indexed(revision.id, { pages, chars, chunks: chunks.length });
+    await this.moved(await this.sources.promote(source.id, revision.id));
+  }
+
+  // One batch of chunks written; false when the source (and so its revision) was deleted meanwhile -- the database then
+  // refuses the chunks of a revision that is gone, and that is the end of reading it.
+  private async wrote(revision: RevisionRecord, chunks: readonly ChunkDraft[]): Promise<boolean> {
+    try {
+      await this.sources.writeChunkBatch(revision, chunks);
+      return true;
+    } catch (err) {
+      if (pgCode(err) === FOREIGN_KEY_VIOLATION && (await this.sources.revision(revision.id)) === null) return false;
+      throw err;
+    }
   }
 
   // A revision that could not be read: the source keeps the revision it had (stale), or has none (failed).
-  private failed(source: SourceRecord, revision: RevisionRecord, reason: string): void {
-    this.sources.failed(revision.id, reason);
-    const current = this.sources.get(source.id);
+  private async failed(source: SourceRecord, revision: RevisionRecord, reason: string): Promise<void> {
+    await this.sources.failed(revision.id, reason);
+    const current = await this.sources.get(source.id);
     if (current === null) return;
-    this.moved(current.currentRevisionId !== null ? this.sources.setState(source.id, "stale", `The newest snapshot (revision ${revision.number}) could not be read: ${reason} The earlier one is still used.`) : this.sources.setState(source.id, "failed", reason));
+    await this.moved(current.currentRevisionId !== null ? await this.sources.setState(source.id, "stale", `The newest snapshot (revision ${revision.number}) could not be read: ${reason} The earlier one is still used.`) : await this.sources.setState(source.id, "failed", reason));
   }
 
   private async fetchSource(sourceId: string): Promise<void> {
-    const source = this.sources.get(sourceId);
+    const source = await this.sources.get(sourceId);
     if (source === null || source.kind !== "url" || source.origin === null) return;
-    this.moved(this.sources.setState(source.id, "processing", null));
-    const keep = (reason: string) => this.moved(source.currentRevisionId !== null ? this.sources.setState(source.id, "stale", `It could not be fetched again: ${reason} The snapshot taken earlier is still used.`) : this.sources.setState(source.id, "failed", reason));
+    await this.moved(await this.sources.setState(source.id, "processing", null));
+    const keep = async (reason: string): Promise<void> =>
+      this.moved(source.currentRevisionId !== null ? await this.sources.setState(source.id, "stale", `It could not be fetched again: ${reason} The snapshot taken earlier is still used.`) : await this.sources.setState(source.id, "failed", reason));
     if (!this.config.research.urlImport) return keep("Importing from a URL is switched off on this Orbit Web (ORBIT_WEB_RESEARCH_URL_IMPORT=off).");
     let fetched;
     try {
@@ -154,14 +177,21 @@ export class IngestionService implements OnModuleInit, OnApplicationShutdown {
     }
     const detected = detectFetched(fetched.contentType, fetched.finalUrl, fetched.bytes);
     if (!detected.ok) return keep(detected.reason);
-    if (this.sources.get(source.id) === null) return;
+    if ((await this.sources.get(source.id)) === null) return;
     const stored = await this.objects.put(source.workspaceId, fetched.bytes);
-    const current = source.currentRevisionId === null ? null : this.sources.revision(source.currentRevisionId);
+    const current = source.currentRevisionId === null ? null : await this.sources.revision(source.currentRevisionId);
     if (current !== null && current.contentHash === stored.hash) {
-      this.moved(this.sources.promote(source.id, current.id));
+      await this.moved(await this.sources.promote(source.id, current.id));
       return;
     }
-    const revision = this.sources.addRevision({ id: randomUUID(), sourceId: source.id, workspaceId: source.workspaceId, contentHash: stored.hash, byteSize: stored.size, mediaType: detected.mediaType, fileName: null, url: source.origin, finalUrl: fetched.finalUrl, fetchedAt: fetched.fetchedAt });
+    let revision: RevisionRecord;
+    try {
+      revision = await this.sources.addRevision({ id: randomUUID(), sourceId: source.id, contentHash: stored.hash, byteSize: stored.size, mediaType: detected.mediaType, fileName: null, url: source.origin, finalUrl: fetched.finalUrl, fetchedAt: fetched.fetchedAt });
+    } catch (err) {
+      // Deleted while its page was fetched: nothing to add it to.
+      if ((await this.sources.get(source.id)) === null) return;
+      throw err;
+    }
     await this.readRevision(revision.id);
   }
 }

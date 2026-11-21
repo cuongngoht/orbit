@@ -1,9 +1,9 @@
-// WHICH CONNECTORS a run may use, the signed-in account's own and each as its person chose. The list is asked of the
-// account's Claude CLI (claude-connectors.ts), kept per account and read again after every sign-in and on request; the
-// choices are kept per account (`connectors:<account>` in settings), each connector with where it may be used -- a
-// chat, research -- and a connector nobody chose for is what CONNECTOR_DEFAULTS says. A run reads what applies to it
-// with `forRun`, without asking the CLI: a chat is denied the connectors unchecked for chats; research may use the ones
-// checked for research. A run governance holds uses none, whatever is checked (its Constitution has no such action).
+// WHICH CONNECTORS a run may use, the account's own and each as its owner chose. The list is asked of the runtime's
+// Claude CLI (claude-connectors.ts) -- which holds the account signed in now -- kept per account and read again after
+// every sign-in and on request; the choices are the account's own settings (`connectors`), each connector with where it
+// may be used -- a chat, research -- and a connector nobody chose for is what CONNECTOR_DEFAULTS says. A run reads what
+// applies to it with `forRun(account)`, without asking the CLI: a chat is denied the connectors unchecked for chats;
+// research may use the ones checked for research. The account's policy then decides each one (tool.connector).
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { CONNECTOR_DEFAULTS, connectorKindOf, connectorLabelOf, connectorToolPrefix, type Connector, type ConnectorList, type ConnectorUse, type UpdateConnectorsRequest } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
@@ -11,29 +11,33 @@ import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { claudeEnv } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
-import { SettingsStore } from "../../infra/storage/stores.js";
-import { ClaudeAuthService } from "./claude-auth.service.js";
+import { AccountSettingsStore } from "../../infra/accounts/stores.js";
+import { AuthHooks } from "../auth/auth-hooks.js";
 import { connectorsOf, controlRequest, CONNECTORS_PROBE_ARGS, settledOver, type ProbedConnector } from "./claude-connectors.js";
 
 type Choices = Record<string, Partial<ConnectorUse>>;
 
-// A connector research may use: its tools' prefix, and what a person calls it.
+// A connector a run may be given: its name, its tools' prefix, and what a person calls it.
 export interface RunConnector {
+  name: string;
   prefix: string;
   label: string;
 }
 
+// What the owner chose, for a run to ask the account's policy about (run-governance: tool.connector, one decision each).
 export interface RunConnectors {
-  // The tool prefixes a chat is denied (connectors unchecked for chats).
-  chatDenied: string[];
-  // Those research may use (checked for research), and those it is denied (the rest it knows of).
-  researchAllowed: RunConnector[];
-  researchDenied: string[];
+  // Every connector known for the account (listed by its CLI, or chosen for before).
+  known: RunConnector[];
+  // Those checked for chats, and those checked for research.
+  chat: RunConnector[];
+  research: RunConnector[];
 }
 
-const NONE: RunConnectors = { chatDenied: [], researchAllowed: [], researchDenied: [] };
+const NONE: RunConnectors = { known: [], chat: [], research: [] };
 
-const choicesKey = (accountKey: string): string => `connectors:${accountKey}`;
+export const runConnectorOf = (name: string): RunConnector => ({ name, prefix: connectorToolPrefix(name), label: connectorLabelOf(name) });
+
+const CHOICES = "connectors";
 
 @Injectable()
 export class ClaudeConnectorsService implements OnModuleInit {
@@ -44,25 +48,26 @@ export class ClaudeConnectorsService implements OnModuleInit {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
-    @Inject(ClaudeAuthService) private readonly claude: ClaudeAuthService,
-    @Inject(SettingsStore) private readonly settings: SettingsStore,
+    @Inject(AccountSettingsStore) private readonly settings: AccountSettingsStore,
+    @Inject(AuthHooks) private readonly hooks: AuthHooks,
   ) {}
 
-  // Each sign-in reads the account's connectors again.
+  // Each sign-in reads the account's connectors again; an account that ends forgets them.
   onModuleInit(): void {
-    this.claude.subscribe((flow) => {
-      if (flow.state === "connected") void this.list(true);
+    this.hooks.onSignedIn((ctx) => {
+      if (ctx.accountId !== null) void this.list(ctx.accountId, true).catch(() => undefined);
+    });
+    this.hooks.onEnded((e) => {
+      if (e.scope === "account" && this.known?.key === e.accountId) this.known = null;
     });
   }
 
-  // The connectors of the account signed in now, with its choices: read from its CLI when `fresh`, or when this account
-  // has not been read yet.
-  async list(fresh = false): Promise<ConnectorList> {
-    const identity = await this.claude.identity();
-    if (identity === null) return { source: "unavailable", connectors: [], detail: "No Claude account is signed in.", readAt: null };
-    if (fresh || this.known?.key !== identity.key) await this.read(identity.key);
-    const choices = this.choices(identity.key);
-    const known = this.known?.key === identity.key ? this.known : null;
+  // The account's connectors, with its choices: read from the runtime's CLI when `fresh`, or when this account has not
+  // been read yet. Only the account the CLI holds now may be read (the gate made sure an owner's is).
+  async list(accountId: string, fresh = false): Promise<ConnectorList> {
+    if (fresh || this.known?.key !== accountId) await this.read(accountId);
+    const choices = await this.choices(accountId);
+    const known = this.known?.key === accountId ? this.known : null;
     if (known === null) {
       const kept = Object.keys(choices).map((name) => this.connectorOf({ name, status: "unknown", tools: null }, choices));
       return { source: "unavailable", connectors: kept, detail: "The Claude CLI could not be asked which connectors this account has; the choices kept so far are shown.", readAt: null };
@@ -70,33 +75,26 @@ export class ClaudeConnectorsService implements OnModuleInit {
     return { source: "account", connectors: known.connectors.map((c) => this.connectorOf(c, choices)), detail: null, readAt: known.at };
   }
 
-  // A person's choices for the account signed in now, merged into what it had.
-  async update(change: UpdateConnectorsRequest): Promise<ConnectorList> {
-    const identity = await this.claude.identity();
-    if (identity === null) return this.list();
-    const choices = this.choices(identity.key);
+  // The owner's choices for the account, merged into what it had.
+  async update(accountId: string, change: UpdateConnectorsRequest): Promise<ConnectorList> {
+    const choices = await this.choices(accountId);
     for (const [name, use] of Object.entries(change.connectors)) choices[name] = { ...choices[name], ...use };
-    this.settings.set(choicesKey(identity.key), choices);
-    return this.list();
+    await this.settings.set(accountId, CHOICES, choices);
+    return this.list(accountId);
   }
 
-  // What a run of the account signed in now may use -- from what is known, asking nothing.
-  forRun(): RunConnectors {
-    const identity = this.claude.currentIdentity();
-    if (identity === null) return NONE;
-    const choices = this.choices(identity.key);
-    const names = new Set([...Object.keys(choices), ...(this.known?.key === identity.key ? this.known.connectors.map((c) => c.name) : [])]);
+  // What a run of the account may use -- from what is known, asking nothing.
+  async forRun(accountId: string | null): Promise<RunConnectors> {
+    if (accountId === null) return NONE;
+    const choices = await this.choices(accountId);
+    const names = new Set([...Object.keys(choices), ...(this.known?.key === accountId ? this.known.connectors.map((c) => c.name) : [])]);
     const use = (name: string, where: keyof ConnectorUse): boolean => choices[name]?.[where] ?? CONNECTOR_DEFAULTS[where];
     const all = [...names].sort();
-    return {
-      chatDenied: all.filter((n) => !use(n, "chat")).map(connectorToolPrefix),
-      researchAllowed: all.filter((n) => use(n, "research")).map((n) => ({ prefix: connectorToolPrefix(n), label: connectorLabelOf(n) })),
-      researchDenied: all.filter((n) => !use(n, "research")).map(connectorToolPrefix),
-    };
+    return { known: all.map(runConnectorOf), chat: all.filter((n) => use(n, "chat")).map(runConnectorOf), research: all.filter((n) => use(n, "research")).map(runConnectorOf) };
   }
 
-  private choices(accountKey: string): Choices {
-    return this.settings.get<Choices>(choicesKey(accountKey)) ?? {};
+  private async choices(accountId: string): Promise<Choices> {
+    return (await this.settings.get<Choices>(accountId, CHOICES)) ?? {};
   }
 
   private connectorOf(c: ProbedConnector, choices: Choices): Connector {

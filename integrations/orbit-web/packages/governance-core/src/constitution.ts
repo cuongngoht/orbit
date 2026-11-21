@@ -1,9 +1,11 @@
-// THE COMPANY CONSTITUTION: a declarative document, never prose. It is data a machine evaluates, and the only source
-// of an authorization: a sentence in a document nobody parses authorizes nothing.
+// THE ACCOUNT POLICY: a declarative document, never prose. It is data a machine evaluates, and the only source of an
+// authorization: a sentence in a document nobody parses authorizes nothing. (The type keeps its older name,
+// `Constitution`: it is the same kind of document, now one per account.)
 //
-// Layers narrow and never widen. The Constitution is the organization's; a PolicyOverlay belongs to a project, a
-// workspace or an agent and can only make a decision stricter (../evaluate.ts takes the strictest of every layer, so
-// an overlay that says "allow" changes nothing).
+// Layers narrow and never widen. The policy is the account's; an OVERRIDE (a `PolicyOverlay`) belongs to one of the
+// account's chats or research workspaces and can only make a decision stricter (../evaluate.ts takes the strictest of
+// every layer, so an override that says "allow" changes nothing). The deployment's own limits -- each action's ceiling,
+// an action nothing can carry out -- stand above both.
 //
 // The document carries no revision number and no author: those are facts ABOUT a revision, kept by whoever stores it,
 // so that the same content always has the same digest.
@@ -22,7 +24,7 @@ import {
   type PrincipalType,
 } from "./vocabulary.js";
 
-export const API_VERSION = "orbit.governance/v1";
+export const API_VERSION = "orbit.governance/v2";
 
 export const LIMITS = { rules: 500, idLength: 64, nameLength: 120, resourceLength: 256, noteLength: 500 } as const;
 
@@ -37,38 +39,46 @@ export interface Rule {
   note?: string;
 }
 
-// What the organization owes itself whatever the rules say. Each has a strong and a weak word; moving to the weak one
+// What the account owes itself whatever the rules say. Each has a strong and a weak word; moving to the weak one
 // is a high-risk change (../risk.ts).
 export interface Obligations {
   // Which decisions leave an audit record: every one, or only those that did not simply allow.
   auditDecisions: "all" | "non_allow";
   dailyReport: boolean;
-  // Whether a governed run may start where the agent's isolation was not proven.
+  // Whether a run may start where the agent's isolation from the control plane was not proven.
   isolation: "required" | "optional";
 }
 
 export const DEFAULT_DECISIONS = ["deny", "require_approval"] as const;
 export type DefaultDecision = (typeof DEFAULT_DECISIONS)[number];
 
+export const POLICY_KIND = "AccountPolicy";
+export const OVERRIDE_KIND = "PolicyOverride";
+
 export interface Constitution {
   apiVersion: typeof API_VERSION;
-  kind: "CompanyConstitution";
-  metadata: { organizationId: string; name: string };
+  kind: typeof POLICY_KIND;
+  metadata: { accountId: string; name: string };
   // What an action no rule speaks about receives. Never "allow": an action nobody thought of is not permitted.
   defaults: { decision: DefaultDecision };
   obligations: Obligations;
   rules: Rule[];
 }
 
-export const OVERLAY_LEVELS = ["project", "workspace", "agent"] as const;
+export type AccountPolicy = Constitution;
+
+// What an override applies to: one chat (Claude Code workspace), or one research workspace, of the account.
+export const OVERLAY_LEVELS = ["workspace", "research_workspace"] as const;
 export type OverlayLevel = (typeof OVERLAY_LEVELS)[number];
 
 export interface PolicyOverlay {
   apiVersion: typeof API_VERSION;
-  kind: "PolicyOverlay";
-  metadata: { organizationId: string; level: OverlayLevel; target: string; name: string };
+  kind: typeof OVERRIDE_KIND;
+  metadata: { accountId: string; level: OverlayLevel; target: string; name: string };
   rules: Rule[];
 }
+
+export type PolicyOverride = PolicyOverlay;
 
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 // A resource names a thing, never a pattern language: one `*`, and only as the last character; no control character.
@@ -132,8 +142,8 @@ function obligationErrors(o: unknown): string[] {
 
 function constitutionMetadataErrors(m: unknown): string[] {
   if (!isRecord(m)) return ["metadata must be an object"];
-  const errors = unknownFields(m, ["organizationId", "name"], "metadata.");
-  if (!isText(m.organizationId, LIMITS.idLength)) errors.push("metadata.organizationId must name the organization");
+  const errors = unknownFields(m, ["accountId", "name"], "metadata.");
+  if (!isText(m.accountId, LIMITS.idLength)) errors.push("metadata.accountId must name the account");
   if (!isText(m.name, LIMITS.nameLength)) errors.push(`metadata.name must be text of at most ${LIMITS.nameLength} characters`);
   return errors;
 }
@@ -146,10 +156,10 @@ function defaultsErrors(d: unknown): string[] {
 }
 
 export function checkConstitution(body: unknown): Checked<Constitution> {
-  if (!isRecord(body)) return { ok: false, errors: ["a Constitution is a JSON object"] };
+  if (!isRecord(body)) return { ok: false, errors: ["a policy is a JSON object"] };
   const errors = [
     ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "rules"]),
-    ...headErrors(body, "CompanyConstitution"),
+    ...headErrors(body, POLICY_KIND),
     ...constitutionMetadataErrors(body.metadata),
     ...defaultsErrors(body.defaults),
     ...obligationErrors(body.obligations),
@@ -160,17 +170,17 @@ export function checkConstitution(body: unknown): Checked<Constitution> {
 
 function overlayMetadataErrors(m: unknown): string[] {
   if (!isRecord(m)) return ["metadata must be an object"];
-  const errors = unknownFields(m, ["organizationId", "level", "target", "name"], "metadata.");
-  if (!isText(m.organizationId, LIMITS.idLength)) errors.push("metadata.organizationId must name the organization");
-  if (typeof m.level !== "string" || !(OVERLAY_LEVELS as readonly string[]).includes(m.level)) errors.push("metadata.level must be project, workspace or agent");
-  if (!isText(m.target, LIMITS.resourceLength)) errors.push("metadata.target must name what the overlay applies to");
+  const errors = unknownFields(m, ["accountId", "level", "target", "name"], "metadata.");
+  if (!isText(m.accountId, LIMITS.idLength)) errors.push("metadata.accountId must name the account");
+  if (typeof m.level !== "string" || !(OVERLAY_LEVELS as readonly string[]).includes(m.level)) errors.push("metadata.level must be workspace or research_workspace");
+  if (!isText(m.target, LIMITS.resourceLength)) errors.push("metadata.target must name what the override applies to");
   if (!isText(m.name, LIMITS.nameLength)) errors.push(`metadata.name must be text of at most ${LIMITS.nameLength} characters`);
   return errors;
 }
 
 export function checkOverlay(body: unknown): Checked<PolicyOverlay> {
-  if (!isRecord(body)) return { ok: false, errors: ["an overlay is a JSON object"] };
-  const errors = [...unknownFields(body, ["apiVersion", "kind", "metadata", "rules"]), ...headErrors(body, "PolicyOverlay"), ...overlayMetadataErrors(body.metadata), ...rulesErrors(body.rules, "rules")];
+  if (!isRecord(body)) return { ok: false, errors: ["an override is a JSON object"] };
+  const errors = [...unknownFields(body, ["apiVersion", "kind", "metadata", "rules"]), ...headErrors(body, OVERRIDE_KIND), ...overlayMetadataErrors(body.metadata), ...rulesErrors(body.rules, "rules")];
   return checked(errors, () => body as unknown as PolicyOverlay);
 }
 
@@ -184,29 +194,41 @@ export interface PolicyWarning {
 export function lintRules(rules: readonly Rule[], overlay = false): PolicyWarning[] {
   return rules.flatMap((rule): PolicyWarning[] => {
     const spec = ACTIONS[rule.action];
-    if (overlay && rule.effect === "allow") return [{ ruleId: rule.id, code: "OVERLAY_CANNOT_WIDEN", message: "An overlay only narrows: an allow rule in it changes nothing." }];
+    if (overlay && rule.effect === "allow") return [{ ruleId: rule.id, code: "OVERLAY_CANNOT_WIDEN", message: "An override only narrows: an allow rule in it changes nothing." }];
     if (spec.enforcement === "none" && rule.effect !== "deny") return [{ ruleId: rule.id, code: "NO_EXECUTOR", message: `Nothing in Orbit Web can carry out ${rule.action}: it is denied whatever this rule says.` }];
     if (spec.enforcement === "runtime" && rule.effect !== "allow") return [{ ruleId: rule.id, code: "RUNTIME_ONLY", message: `${rule.action} is held by the agent runtime's own configuration: defence in depth, not a boundary.` }];
     return [];
   });
 }
 
-// The Constitution a new organization starts from, and what a first revision is compared with: an agent may work in
-// its own workspace and reach the model's own service; everything that leaves the workspace is denied or waits for a
-// person; nothing about governance is the agent's.
-export function defaultConstitution(organizationId: string, name = "default"): Constitution {
+// THE DEPLOYMENTS a default policy is made for: one container (`single`, where the agent shares the control plane's user
+// and isolation can never be proven) or the governed deployment (the agent in a container of its own).
+export type PolicyDeployment = "single" | "governed";
+
+// The policy a new account starts from -- published for it when the account is created, so a person can start right
+// after signing in -- and what a first change is compared with. An agent may work in its own workspace and reach the
+// model's own service; git with the remote waits for the owner; nothing about governance is the agent's; production is
+// never reached.
+//
+//   single    what one container always allowed: the web tools and the account's connectors (as its owner chooses
+//             them), and isolation OPTIONAL -- it can never be proven there, and requiring it would refuse every run.
+//   governed  the strict default: the web tools and connectors denied (the agent's only way out is the egress proxy),
+//             isolation REQUIRED.
+export function defaultAccountPolicy(accountId: string, deployment: PolicyDeployment, name = "default"): Constitution {
+  const single = deployment === "single";
   return {
     apiVersion: API_VERSION,
-    kind: "CompanyConstitution",
-    metadata: { organizationId, name },
+    kind: POLICY_KIND,
+    metadata: { accountId, name },
     defaults: { decision: "deny" },
-    obligations: { auditDecisions: "all", dailyReport: true, isolation: "required" },
+    obligations: { auditDecisions: "all", dailyReport: true, isolation: single ? "optional" : "required" },
     rules: [
       { id: "run-start", action: "agent.run.start", effect: "allow" },
       { id: "workspace-read", action: "repository.read", effect: "allow" },
       { id: "workspace-write", action: "repository.write", effect: "allow" },
       { id: "workspace-execute", action: "workspace.execute", effect: "allow" },
-      { id: "web-tools", action: "tool.web", effect: "deny" },
+      { id: "web-tools", action: "tool.web", effect: single ? "allow" : "deny" },
+      { id: "connectors", action: "tool.connector", effect: single ? "allow" : "deny" },
       ...CLAUDE_ACCOUNT_HOSTS.map((h): Rule => ({ id: h.rule, action: "network.egress", resource: `${h.host}:${h.port}`, effect: "allow" })),
       { id: "outside-workspace", action: "filesystem.outside_workspace", effect: "deny" },
       { id: "raw-secret-access", action: "credential.read_raw", effect: "deny" },

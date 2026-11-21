@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkConstitution, checkOverlay, defaultConstitution, lintRules, type Constitution, type PolicyOverlay, type Rule } from "./constitution.js";
+import { checkConstitution, checkOverlay, defaultAccountPolicy, lintRules, type Constitution, type PolicyOverlay, type Rule } from "./constitution.js";
 import { evaluate, resourceMatches } from "./evaluate.js";
 import { impactOf } from "./risk.js";
 import { ACTION_KINDS, ACTIONS, CLAUDE_ACCOUNT_HOSTS, isClaudeAccountHost, strictest } from "./vocabulary.js";
-import { ask, ORG } from "./testing.spec-helpers.js";
+import { ACCOUNT, ask } from "./testing.spec-helpers.js";
 
-const base = (): Constitution => defaultConstitution(ORG);
+const base = (): Constitution => defaultAccountPolicy(ACCOUNT, "governed");
 const withRules = (rules: Rule[], over: Partial<Constitution> = {}): Constitution => ({ ...base(), rules, ...over });
 const policy = (constitution: Constitution | null, overlays: PolicyOverlay[] = []) => ({ constitution, overlays });
-const overlay = (level: PolicyOverlay["metadata"]["level"], target: string, rules: Rule[]): PolicyOverlay => ({ apiVersion: "orbit.governance/v1", kind: "PolicyOverlay", metadata: { organizationId: ORG, level, target, name: "narrow" }, rules });
+const overlay = (level: PolicyOverlay["metadata"]["level"], target: string, rules: Rule[]): PolicyOverlay => ({ apiVersion: "orbit.governance/v2", kind: "PolicyOverride", metadata: { accountId: ACCOUNT, level, target, name: "narrow" }, rules });
 
 test("the vocabulary is closed: every action says where it is enforced and what an approval of it is bound to", () => {
   for (const kind of ACTION_KINDS) {
@@ -26,7 +26,7 @@ test("a decision is deterministic: the same policy and request give the same ans
   const a = evaluate(policy(base()), ask());
   const b = evaluate(policy(base()), ask());
   assert.deepEqual(a, b);
-  assert.deepEqual(a, { verdict: "allow", matchedRules: ["organization:workspace-write"], reasonCodes: ["RULE_MATCHED"], enforcement: "runtime" });
+  assert.deepEqual(a, { verdict: "allow", matchedRules: ["account:workspace-write"], reasonCodes: ["RULE_MATCHED"], enforcement: "runtime" });
 });
 
 test("deny overrides allow, and approval overrides allow, whatever order the rules are written in", () => {
@@ -42,16 +42,16 @@ test("deny overrides allow, and approval overrides allow, whatever order the rul
   }
 });
 
-test("what cannot be judged is denied: no policy, no verified identity, an unknown action, another organization", () => {
+test("what cannot be judged is denied: no policy, no verified identity, an unknown action, another account", () => {
   assert.deepEqual(evaluate(policy(null), ask()).reasonCodes, ["NO_PUBLISHED_POLICY"]);
   assert.deepEqual(evaluate(policy(base()), ask({ principalId: null })).reasonCodes, ["NO_VERIFIED_IDENTITY"]);
   assert.deepEqual(evaluate(policy(base()), ask({ principalId: "" })).reasonCodes, ["NO_VERIFIED_IDENTITY"]);
   assert.deepEqual(evaluate(policy(base()), ask({ action: "system.reboot" })), { verdict: "deny", matchedRules: [], reasonCodes: ["UNKNOWN_ACTION"], enforcement: "none" });
-  assert.deepEqual(evaluate(policy(base()), ask({ organizationId: "other" })).reasonCodes, ["ORGANIZATION_MISMATCH"]);
-  for (const r of [evaluate(policy(null), ask()), evaluate(policy(base()), ask({ principalId: null })), evaluate(policy(base()), ask({ organizationId: "other" }))]) assert.equal(r.verdict, "deny");
+  assert.deepEqual(evaluate(policy(base()), ask({ accountId: "other" })).reasonCodes, ["ACCOUNT_MISMATCH"]);
+  for (const r of [evaluate(policy(null), ask()), evaluate(policy(base()), ask({ principalId: null })), evaluate(policy(base()), ask({ accountId: "other" }))]) assert.equal(r.verdict, "deny");
 });
 
-test("the Claude account's hosts are declared once: the default Constitution lets an agent reach exactly them", () => {
+test("the Claude account's hosts are declared once: the default policy lets an agent reach exactly them", () => {
   const reach = (resource: string) => evaluate(policy(base()), ask({ action: "network.egress", resource })).verdict;
   assert.deepEqual(CLAUDE_ACCOUNT_HOSTS.map((h) => reach(`${h.host}:${h.port}`)), CLAUDE_ACCOUNT_HOSTS.map(() => "allow"));
   assert.deepEqual(CLAUDE_ACCOUNT_HOSTS.map((h) => [h.host, h.port]), [["api.anthropic.com", 443], ["platform.claude.com", 443], ["claude.ai", 443]]);
@@ -69,24 +69,23 @@ test("an action no rule names gets the default decision, which is never allow", 
 test("an agent can never be granted authority over its own governance, whatever a rule says", () => {
   const generous = withRules([
     { id: "all-modify", action: "governance.policy.modify", effect: "allow" },
-    { id: "all-roles", action: "governance.role.grant", effect: "allow" },
     { id: "all-settings", action: "settings.privileged.write", effect: "allow" },
     { id: "all-approve", action: "governance.approval.decide", effect: "allow" },
     { id: "all-secrets", action: "credential.read_raw", effect: "allow" },
     { id: "all-audit", action: "governance.audit.modify", effect: "allow" },
   ]);
-  for (const action of ["governance.policy.modify", "governance.role.grant", "settings.privileged.write", "governance.approval.decide", "credential.read_raw", "governance.audit.modify"]) {
+  for (const action of ["governance.policy.modify", "settings.privileged.write", "governance.approval.decide", "credential.read_raw", "governance.audit.modify"]) {
     const r = evaluate(policy(generous), ask({ action }));
     assert.equal(r.verdict, "deny", action);
     assert.ok(r.reasonCodes.includes("PRINCIPAL_CEILING"), action);
   }
-  // A person may be allowed the people-only ones; nobody is ever allowed a raw credential or an audit change.
-  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "op-1", action: "settings.privileged.write" })).verdict, "allow");
-  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "op-1", action: "credential.read_raw" })).verdict, "deny");
-  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "op-1", action: "governance.audit.modify" })).verdict, "deny");
+  // The account's owner may be allowed the people-only ones; nobody is ever allowed a raw credential or an audit change.
+  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "owner:acc-1", action: "settings.privileged.write" })).verdict, "allow");
+  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "owner:acc-1", action: "credential.read_raw" })).verdict, "deny");
+  assert.equal(evaluate(policy(generous), ask({ principalType: "human", principalId: "owner:acc-1", action: "governance.audit.modify" })).verdict, "deny");
 });
 
-test("git is the Constitution's to decide for an agent: allowed, it pushes; by default it waits for one approval", () => {
+test("git is the account policy's to decide for an agent: allowed, it pushes; by default it waits for one approval", () => {
   const generous = withRules([{ id: "push", action: "repository.push", effect: "allow" }]);
   const r = evaluate(policy(generous), ask({ action: "repository.push", resource: "github.com/o/r" }));
   assert.deepEqual([r.verdict, r.reasonCodes, r.enforcement], ["allow", ["RULE_MATCHED"], "boundary"]);
@@ -108,18 +107,22 @@ test("an action nothing can carry out is denied, even when a rule allows it", ()
   assert.deepEqual(lintRules(generous.rules).map((w) => w.code), ["NO_EXECUTOR"]);
 });
 
-test("an overlay only narrows: its deny binds, its allow changes nothing, and it applies only to its own target", () => {
+test("an override only narrows: its deny binds, its allow changes nothing, and it applies only to its own target", () => {
   const narrow = overlay("workspace", "ws-1", [{ id: "no-write", action: "repository.write", effect: "deny" }]);
   const r = evaluate(policy(base(), [narrow]), ask());
-  assert.deepEqual(r, { verdict: "deny", matchedRules: ["organization:workspace-write", "workspace:ws-1:no-write"], reasonCodes: ["RULE_MATCHED", "OVERLAY_NARROWED"], enforcement: "runtime" });
+  assert.deepEqual(r, { verdict: "deny", matchedRules: ["account:workspace-write", "workspace:ws-1:no-write"], reasonCodes: ["RULE_MATCHED", "OVERLAY_NARROWED"], enforcement: "runtime" });
   assert.equal(evaluate(policy(base(), [narrow]), ask({ workspaceId: "ws-2", resource: "ws-2" })).verdict, "allow");
   const widen = overlay("workspace", "ws-1", [{ id: "push-free", action: "repository.push", effect: "allow" }, { id: "web", action: "tool.web", effect: "allow" }]);
   assert.equal(evaluate(policy(base(), [widen]), ask({ action: "tool.web" })).verdict, "deny");
   assert.equal(evaluate(policy(base(), [widen]), ask({ action: "repository.push", resource: "x" })).verdict, "require_approval");
   assert.deepEqual(lintRules(widen.rules, true).map((w) => w.code), ["OVERLAY_CANNOT_WIDEN", "OVERLAY_CANNOT_WIDEN"]);
-  const agentOnly = overlay("agent", "agt-9", [{ id: "x", action: "repository.write", effect: "deny" }]);
-  assert.equal(evaluate(policy(base(), [agentOnly]), ask()).verdict, "allow");
-  assert.equal(evaluate(policy(base(), [agentOnly]), ask({ agentId: "agt-9", principalId: "agt-9" })).verdict, "deny");
+  // A research workspace's override reaches only requests about that research workspace.
+  const research = overlay("research_workspace", "rws-9", [{ id: "x", action: "repository.write", effect: "deny" }]);
+  assert.equal(evaluate(policy(base(), [research]), ask()).verdict, "allow");
+  assert.equal(evaluate(policy(base(), [research]), ask({ workspaceId: null, researchWorkspaceId: "rws-9" })).verdict, "deny");
+  // Another account's override never applies, even to the same target.
+  const foreign = { ...narrow, metadata: { ...narrow.metadata, accountId: "acc-2" } };
+  assert.equal(evaluate(policy(base(), [foreign]), ask()).verdict, "allow");
   assert.equal(checkOverlay(narrow).ok, true);
   assert.equal(checkOverlay({ ...narrow, metadata: { ...narrow.metadata, level: "galaxy" } }).ok, false);
 });
@@ -140,8 +143,8 @@ test("a Constitution is refused for anything it does not declare correctly, and 
   assert.equal(checkConstitution("rules: allow everything").ok, false);
   const bad = checkConstitution({
     apiVersion: "v0",
-    kind: "CompanyConstitution",
-    metadata: { organizationId: ORG, name: "x", revision: 3 },
+    kind: "AccountPolicy",
+    metadata: { accountId: ACCOUNT, name: "x", revision: 3 },
     defaults: { decision: "deny" },
     obligations: { auditDecisions: "none", dailyReport: "yes", isolation: "required" },
     rules: [
@@ -186,7 +189,7 @@ test("a change that loosens a sensitive action, or weakens an obligation, is hig
   const softDefault = { ...b, defaults: { decision: "require_approval" as const } };
   assert.equal(impactOf(b, softDefault).risk, "high");
 
-  // Removing the approval requirement frees an agent's git as much as a person's: high, so somebody else approves it.
+  // Removing the approval requirement frees an agent's git as much as a person's: high, so the owner acknowledges it.
   const pushFree = withRules(b.rules.map((r) => (r.id === "git-push" ? { ...r, effect: "allow" as const } : r)));
   const freed = impactOf(b, pushFree);
   assert.deepEqual([freed.risk, [...new Set(freed.widened.map((c) => c.principalType))]], ["high", ["human", "agent", "service"]]);
@@ -197,4 +200,26 @@ test("a change that loosens a sensitive action, or weakens an obligation, is hig
 
   const elevated = impactOf(withRules(b.rules.filter((r) => r.id !== "workspace-execute")), b);
   assert.deepEqual([elevated.risk, elevated.reasons], ["elevated", ["It loosens an action that is not sensitive."]]);
+});
+
+test("an account starts from the default of its deployment: one container keeps what it always allowed, the governed one is strict", () => {
+  const single = defaultAccountPolicy(ACCOUNT, "single");
+  const governed = defaultAccountPolicy(ACCOUNT, "governed");
+  for (const p of [single, governed]) {
+    assert.equal(checkConstitution(p).ok, true);
+    assert.deepEqual([p.kind, p.metadata.accountId, p.defaults.decision], ["AccountPolicy", ACCOUNT, "deny"]);
+  }
+  const verdict = (p: Constitution, action: string) => evaluate(policy(p), ask({ action, resource: "x" })).verdict;
+  assert.deepEqual([single.obligations.isolation, verdict(single, "tool.web"), verdict(single, "tool.connector")], ["optional", "allow", "allow"]);
+  assert.deepEqual([governed.obligations.isolation, verdict(governed, "tool.web"), verdict(governed, "tool.connector")], ["required", "deny", "deny"]);
+  for (const p of [single, governed]) {
+    assert.equal(verdict(p, "repository.push"), "require_approval");
+    assert.equal(verdict(p, "governance.policy.modify"), "deny");
+    assert.equal(evaluate(policy(p), ask({ principalType: "human", principalId: "owner:acc-1", action: "settings.privileged.write", resource: "githubForClaude" })).verdict, "allow");
+  }
+  // A connector is decided one by one: a rule may name one connector and leave the others to the rest of the policy.
+  const one = withRules([{ id: "docs-only", action: "tool.connector", resource: "claude.ai Claude Docs", effect: "allow" }]);
+  assert.equal(evaluate(policy(one), ask({ action: "tool.connector", resource: "claude.ai Claude Docs" })).verdict, "allow");
+  assert.equal(evaluate(policy(one), ask({ action: "tool.connector", resource: "claude.ai Gmail" })).verdict, "deny");
+  assert.deepEqual(ACTIONS["tool.connector"].fingerprint, ["connector"]);
 });

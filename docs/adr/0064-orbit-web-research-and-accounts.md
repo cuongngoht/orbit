@@ -128,3 +128,13 @@ research như phần chat chỉ là reference dữ liệu thôi" (research like 
   research-shaped run allowed Claude Docs alone made a doc and answered its link.
 - **Said plainly.** In research a checked connector acts as the account with no classifier reviewing the call: the
   guard is the person's checkbox and the model's rule. A run governance holds still reaches no connector.
+
+
+## Amendment, 2026-11-21: PostgreSQL, accounts, and research governed (ADR 0066)
+
+Research's records moved to PostgreSQL (schema `research`): its full-text search is PostgreSQL's (diacritics folded by
+Orbit Web, English stemming, no stop word, `ts_rank_cd`, every query filtered by account, workspace and the run's pinned
+revisions); pgvector is enabled but nothing stores a vector yet. A chat and a research workspace belong to an internal
+ACCOUNT (one per verified Claude identity, keyed by the CLI's organization id, never its name); sharing by email stays.
+The claim of chats from before owners is removed. A research run is bound and decided under its account's policy like a
+chat's (no longer LEGACY_ORBIT), each checked connector a decision of `tool.connector`.

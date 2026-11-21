@@ -166,7 +166,7 @@ describe("responsive mobile-first layout", () => {
       .on("GET", "/api/customizations", () => customizations);
 
     const onSection = vi.fn();
-    const signOut = { signOut: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+    const signOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
     function Harness() {
       const [section, setSection] = useState<SettingsSection>("account");
       return (

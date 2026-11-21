@@ -7,7 +7,6 @@ export * from "./canonical.js";
 export * from "./constitution.js";
 export * from "./evaluate.js";
 export * from "./lifecycle.js";
-export * from "./rbac.js";
 export * from "./report.js";
 export * from "./risk.js";
 export * from "./table.js";

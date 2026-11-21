@@ -24,7 +24,7 @@ export class ChangesService {
   ) {}
 
   async report(sessionId: string): Promise<ChangesReport> {
-    const session = this.ready(sessionId);
+    const session = await this.ready(sessionId);
     const cwd = session.workspacePath;
     const status = parseStatus((await this.git.status(cwd)).stdout);
     const base = session.baseCommit;
@@ -53,7 +53,7 @@ export class ChangesService {
     const report = await this.report(sessionId);
     const file = report.files.find((f) => f.path === path);
     if (!file) throw notFound(`A change to ${path}`);
-    const session = this.ready(sessionId);
+    const session = await this.ready(sessionId);
     return this.diffOf(session, file);
   }
 
@@ -76,8 +76,8 @@ export class ChangesService {
     return counted;
   }
 
-  private ready(sessionId: string): SessionRecord {
-    const session = this.sessions.get(sessionId);
+  private async ready(sessionId: string): Promise<SessionRecord> {
+    const session = await this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
     if (!existsSync(session.workspacePath) || session.baseCommit === null) throw conflict("workspace_not_ready", "This session's workspace is not ready yet.");
     if (!contained(this.config.data.workspaces, session.workspacePath)) throw conflict("workspace_outside", "This session's workspace is not inside the workspaces directory.");

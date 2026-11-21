@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-// THE DOCKER SMOKE TEST: the real image, started the way a person starts it, checked from outside. No credential is
-// used: it proves the image builds and starts, serves the web app and the API, holds the four programs and a loadable
-// Orbit plugin, runs as a non-root user, opens on the Claude sign-in when nobody signed in -- every other route refused
-// -- and keeps its state (Settings, and a research workspace with a source it read and indexed in the container's own
-// worker) across a restart and across re-creating the container from the same volume. That last part
-// needs the API open, so a Claude account sign-in is stood in for there (claude-signed-in.mjs; a real one needs a
-// person), and those checks say so.
+// THE DOCKER SMOKE TEST: the real image, started the way a person starts it -- beside a real PostgreSQL with pgvector
+// (the pinned image of docker/compose.yaml, initialised by docker/postgres/init) -- checked from outside. No credential
+// is used: it proves the image builds and starts, migrates the database (pgvector enabled, Orbit Web's role no
+// superuser), refuses to start at all when the database cannot be reached (no fallback), serves the web app and the API,
+// holds the four programs and a loadable Orbit plugin, runs as a non-root user, opens on the Claude sign-in when nobody
+// signed in -- every other route refused -- and keeps its state (Settings, a browser's session, and a research
+// workspace with a source it read and indexed in the container's own worker) across a restart and across re-creating
+// the container. That last part needs a browser signed in, so the Claude CLI's account is stood in for there
+// (claude-signed-in.mjs; a real one needs a person) -- the browser's sign-in itself is Orbit Web's real one -- and
+// those checks say so.
 //
 //   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep]
 import { spawnSync } from "node:child_process";
@@ -23,6 +26,11 @@ const image = opt("image") ?? "orbit-web:smoke";
 const suffix = randomBytes(4).toString("hex");
 const name = `orbit-web-smoke-${suffix}`;
 const volume = `orbit-web-smoke-${suffix}`;
+const network = `orbit-web-smoke-${suffix}`;
+const database = `orbit-web-smoke-db-${suffix}`;
+const DB_IMAGE = "pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf";
+const DB_PASSWORD = randomBytes(12).toString("hex");
+const DATABASE_URL = `postgres://orbit:${DB_PASSWORD}@${database}:5432/orbit`;
 const results = [];
 
 const docker = (args, o = {}) => spawnSync("docker", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, ...o });
@@ -78,24 +86,83 @@ async function healthy(port, seconds = 90) {
 
 const exec = (...args) => docker(["exec", name, ...args]);
 
-// `signedIn`: the Claude CLI's sign-in is stood in for (mounted read-only and named by ORBIT_WEB_CLAUDE_BIN).
-function start(port, { signedIn = false } = {}) {
+// The database: the image docker/compose.yaml pins, initialised by the same script (Orbit Web's role, its database,
+// pgvector), on a network of its own the API's container joins.
+async function startDatabase() {
+  docker(["network", "create", network]);
+  const run = docker(["run", "-d", "--name", database, "--network", network, "-e", "POSTGRES_USER=postgres", "-e", `POSTGRES_PASSWORD=${randomBytes(12).toString("hex")}`, "-e", "POSTGRES_DB=postgres", "-e", `ORBIT_DB_PASSWORD=${DB_PASSWORD}`, "-v", `${join(WEB, "docker", "postgres", "init")}:/docker-entrypoint-initdb.d:ro`, DB_IMAGE]);
+  if (run.status !== 0) return { ok: false, detail: run.stderr.trim() };
+  for (let i = 0; i < 90; i += 1) {
+    if (docker(["exec", database, "pg_isready", "-h", "127.0.0.1", "-U", "orbit", "-d", "orbit", "-q"]).status === 0) return { ok: true, detail: DB_IMAGE.split("@")[0] };
+    await sleep(1000);
+  }
+  return { ok: false, detail: "not ready in 90 s" };
+}
+
+const sql = (query) => docker(["exec", "-e", `PGPASSWORD=${DB_PASSWORD}`, database, "psql", "-h", "127.0.0.1", "-U", "orbit", "-d", "orbit", "-tAc", query]);
+
+// `signedIn`: the Claude CLI's account is stood in for (mounted read-only and named by ORBIT_WEB_CLAUDE_BIN).
+// `databaseUrl`: where the API's database is (another one: what a broken configuration does).
+function start(port, { signedIn = false, databaseUrl = DATABASE_URL, as = name } = {}) {
   const standIn = signedIn ? ["-v", `${join(WEB, "tests", "docker", "claude-signed-in.mjs")}:/smoke/claude-signed-in.mjs:ro`, "-e", "ORBIT_WEB_CLAUDE_BIN=/smoke/claude-signed-in.mjs"] : [];
-  return docker(["run", "-d", "--name", name, "--hostname", "orbit-web", "-p", `127.0.0.1:${port}:3000`, "-v", `${volume}:/data`, ...standIn, "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
+  return docker(["run", "-d", "--name", as, "--hostname", "orbit-web", "--network", network, "-p", `127.0.0.1:${port}:3000`, "-v", `${volume}:/data`, "-e", `ORBIT_WEB_DATABASE_URL=${databaseUrl}`, ...standIn, "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
+}
+
+// A browser: the cookies the API sets, and what a page sends with a change (the header, and its session's CSRF token).
+const browser = { cookies: {}, csrf: "" };
+const cookieHeader = () => Object.entries(browser.cookies).map(([k, v]) => `${k}=${v}`).join("; ");
+function keepCookies(headers) {
+  for (const c of headers.getSetCookie()) {
+    const [pair] = c.split(";");
+    const at = pair.indexOf("=");
+    browser.cookies[pair.slice(0, at)] = pair.slice(at + 1);
+  }
+}
+async function web(port, path, init = {}) {
+  const change = init.method !== undefined && init.method !== "GET";
+  const headers = { ...(init.headers ?? {}), ...(Object.keys(browser.cookies).length > 0 ? { cookie: cookieHeader() } : {}), ...(change ? { "x-orbit-web": "1", "x-orbit-csrf": browser.csrf, "content-type": "application/json" } : {}) };
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, { ...init, headers });
+  keepCookies(res.headers);
+  const text = await res.text();
+  let body = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // not JSON
+  }
+  return { status: res.status, headers: res.headers, body, text };
+}
+
+// ORBIT WEB'S OWN BROWSER SIGN-IN, as a page goes through it: start the flow, send the code, exchange it for a session.
+async function signIn(port) {
+  const started = await web(port, "/api/claude/login", { method: "POST", body: "{}" });
+  if (started.status !== 202) return { ok: false, detail: `start: HTTP ${started.status}` };
+  let flow = started.body;
+  for (let i = 0; i < 30 && flow.state !== "awaiting_user"; i += 1) {
+    await sleep(500);
+    flow = (await web(port, "/api/claude/status")).body.flow;
+  }
+  await web(port, "/api/claude/login/code", { method: "POST", body: JSON.stringify({ code: "smoke-code#smoke" }) });
+  for (let i = 0; i < 30 && flow.state !== "connected"; i += 1) {
+    await sleep(500);
+    flow = (await web(port, "/api/claude/status")).body.flow;
+  }
+  const claimed = await web(port, "/api/claude/session", { method: "POST", body: "{}" });
+  browser.csrf = claimed.body?.session?.csrfToken ?? "";
+  return { ok: claimed.status === 200 && browser.csrf !== "", detail: `flow ${flow.state}, session HTTP ${claimed.status}` };
 }
 
 const SIGN_IN_REQUIRED = "claude_sign_in_required";
 
-const MUTATE = { "content-type": "application/json", "x-orbit-web": "1" };
 const succeeded = (r) => r.status >= 200 && r.status < 300;
 const RESEARCH_TEXT = "Smoke test notes. Orbit Web keeps research sources on its own data volume; a restart keeps them.";
 
 // A research workspace and one pasted source, waited for until it is read and indexed.
 async function researchSeed(port) {
-  const made = await http(port, "/api/research/workspaces", { method: "POST", headers: MUTATE, body: JSON.stringify({ name: "Smoke research", description: "made by the Docker smoke test" }) });
+  const made = await web(port, "/api/research/workspaces", { method: "POST", body: JSON.stringify({ name: "Smoke research", description: "made by the Docker smoke test" }) });
   if (!succeeded(made)) return { ok: false, detail: `create workspace: HTTP ${made.status} ${made.text.slice(0, 200)}` };
   const workspace = made.body.id;
-  const added = await http(port, `/api/research/workspaces/${workspace}/sources/text`, { method: "POST", headers: MUTATE, body: JSON.stringify({ title: "Smoke notes", text: RESEARCH_TEXT }) });
+  const added = await web(port, `/api/research/workspaces/${workspace}/sources/text`, { method: "POST", body: JSON.stringify({ title: "Smoke notes", text: RESEARCH_TEXT }) });
   // 202: a source is accepted and queued; it is read and indexed after the answer.
   if (!succeeded(added)) return { ok: false, workspace, detail: `add text: HTTP ${added.status} ${added.text.slice(0, 200)}` };
   const ready = await sourceState(port, workspace, added.body.id, 30);
@@ -105,7 +172,7 @@ async function researchSeed(port) {
 async function sourceState(port, workspace, source, seconds) {
   let state = "missing";
   for (let i = 0; i < seconds; i += 1) {
-    const list = await http(port, `/api/research/workspaces/${workspace}/sources`);
+    const list = await web(port, `/api/research/workspaces/${workspace}/sources`);
     state = Array.isArray(list.body) ? (list.body.find((s) => s.id === source)?.state ?? "missing") : `HTTP ${list.status}`;
     if (state === "ready" || state === "failed") return state;
     await sleep(1000);
@@ -115,10 +182,10 @@ async function sourceState(port, workspace, source, seconds) {
 
 async function researchKept(port, seeded) {
   if (!seeded.workspace || !seeded.source) return { ok: false, detail: "nothing was made to keep" };
-  const listed = await http(port, "/api/research/workspaces");
+  const listed = await web(port, "/api/research/workspaces");
   const found = Array.isArray(listed.body) && listed.body.some((w) => w.id === seeded.workspace && w.sourceCount === 1);
   const state = await sourceState(port, seeded.workspace, seeded.source, 1);
-  const content = await http(port, `/api/research/sources/${seeded.source}/content`);
+  const content = await web(port, `/api/research/sources/${seeded.source}/content`);
   const text = JSON.stringify(content.body);
   return { ok: found && state === "ready" && text.includes("own data volume"), detail: `workspace ${found ? "listed" : "missing"}, source ${state}, content HTTP ${content.status}` };
 }
@@ -129,7 +196,23 @@ async function main() {
     check("1. the image builds", spawnSync(process.execPath, args, { cwd: WEB, stdio: "inherit" }).status === 0);
   } else check("1. the image exists", docker(["image", "inspect", image]).status === 0, image);
 
+  const db = await startDatabase();
+  check("   PostgreSQL with pgvector starts beside it (the pinned image, Orbit Web's role made by the init script)", db.ok, db.detail);
+
+  // A database that cannot be reached is an error said out loud, never a quiet switch to another store.
   const port = await freePort();
+  const broken = `${name}-nodb`;
+  start(port, { databaseUrl: `postgres://orbit:${DB_PASSWORD}@${database}-missing:5432/orbit`, as: broken });
+  let stopped = "";
+  for (let i = 0; i < 60 && !stopped.startsWith("exited"); i += 1) {
+    await sleep(1000);
+    stopped = docker(["inspect", "--format", "{{.State.Status}} {{.State.ExitCode}}", broken]).stdout.trim();
+  }
+  const brokenLogs = docker(["logs", broken]);
+  const leftovers = docker(["run", "--rm", "-v", `${volume}:/data`, "--entrypoint", "sh", image, "-c", "find /data -name '*.db' -o -name '*.db-wal' | head -3"]);
+  docker(["rm", "-f", broken]);
+  check("   with no database it does not start -- and keeps nothing anywhere else", stopped.startsWith("exited") && !stopped.endsWith(" 0") && /database/i.test(`${brokenLogs.stdout}${brokenLogs.stderr}`) && leftovers.stdout.trim() === "", `${stopped}; ${(`${brokenLogs.stdout}${brokenLogs.stderr}`.match(/[^\n]*database[^\n]*/i) ?? [""])[0].slice(0, 160)}`);
+
   const run = start(port);
   check("2. the container starts", run.status === 0, run.stderr.trim());
   check("   ...and reports healthy", await healthy(port));
@@ -139,6 +222,10 @@ async function main() {
   check("   ...with a strict content security policy", /script-src 'self'/.test(index.headers.get("content-security-policy") ?? ""));
   const health = await http(port, "/api/health");
   check("4. the API responds (GET /api/health)", health.status === 200 && health.body.status === "ok", JSON.stringify(health.body).slice(0, 300));
+  check("   ...its database migrated, pgvector enabled", health.body.database?.ok === true && /^\d+\.\d+/.test(health.body.database?.pgvector ?? ""), JSON.stringify(health.body.database));
+  check("   ...and the health check names no connection string", !JSON.stringify(health.body).includes(DB_PASSWORD) && !JSON.stringify(health.body).includes("postgres://"));
+  const role = sql("SELECT rolsuper FROM pg_roles WHERE rolname = current_user");
+  check("   Orbit Web's database role is not a superuser", role.stdout.trim() === "f", role.stdout.trim() || role.stderr.trim().slice(0, 120));
 
   const versions = {
     claude: exec("claude", "--version"),
@@ -195,14 +282,20 @@ async function main() {
   const naked = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"theme":"dark"}' });
   check("   a change without the Orbit Web header is refused", naked.status === 403);
 
-  // From here the API must be open: the same volume, a new container whose Claude sign-in is stood in for.
+  // From here a browser must be signed in: the same volume, a new container whose Claude CLI account is stood in for.
   docker(["rm", "-f", name]);
   start(port, { signedIn: true });
   await healthy(port);
-  const setup = await http(port, "/api/setup/status");
-  check("   a Claude account sign-in (STAND-IN: a real one needs a person) opens the API", setup.status === 200 && setup.body.claude?.account?.email === "smoke@example.com", `HTTP ${setup.status}`);
+  const unsigned = await web(port, "/api/setup/status");
+  check("   the CLI signed in does not sign a browser in", unsigned.status === 401 && unsigned.body.error?.code === SIGN_IN_REQUIRED, `HTTP ${unsigned.status}`);
+  const session = await signIn(port);
+  check("   Orbit Web's browser sign-in (its nonce, the code, the exchange; the CLI's account a STAND-IN) gives this browser a session", session.ok, session.detail);
+  const setup = await web(port, "/api/setup/status");
+  check("   ...which opens the API for the account", setup.status === 200 && setup.body.claude?.account?.email === "smoke@example.com", `HTTP ${setup.status}`);
+  const accounts = sql("SELECT count(*) FROM app.accounts");
+  check("   the account was made by that sign-in, nothing registered", accounts.stdout.trim() === "1", accounts.stdout.trim() || accounts.stderr.trim().slice(0, 120));
   check("   ...which reads the build info", /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
-  const change = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
+  const change = await web(port, "/api/settings", { method: "PATCH", body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
   check("9. state is written to the volume", change.status === 200 && change.body.defaultModel === "opus");
   // Research keeps its workspaces in the database and its documents under /data/research: one of each, made now, read
   // back after the restart and after the new container. A pasted text is read and indexed without any model.
@@ -210,27 +303,31 @@ async function main() {
   check("   a research workspace and a pasted source are kept (read and indexed, no model asked)", research.ok, research.detail);
   docker(["restart", name]);
   await healthy(port);
-  const afterRestart = await http(port, "/api/settings");
-  check("10. a restart keeps the state", afterRestart.body.defaultModel === "opus" && afterRestart.body.theme === "dark", JSON.stringify(afterRestart.body));
+  const afterRestart = await web(port, "/api/settings");
+  check("10. a restart keeps the state -- and this browser's session", afterRestart.body.defaultModel === "opus" && afterRestart.body.theme === "dark", JSON.stringify(afterRestart.body));
   const researchAfterRestart = await researchKept(port, research);
   check("   ...and the research workspace with its source, still ready", researchAfterRestart.ok, researchAfterRestart.detail);
   docker(["rm", "-f", name]);
   start(port, { signedIn: true });
   await healthy(port);
-  const afterRecreate = await http(port, "/api/settings");
+  const afterRecreate = await web(port, "/api/settings");
   check("   a new container on the same volume keeps it too", afterRecreate.body.defaultModel === "opus", JSON.stringify(afterRecreate.body));
   const researchAfterRecreate = await researchKept(port, research);
   check("   ...research included", researchAfterRecreate.ok, researchAfterRecreate.detail);
   const objects = exec("sh", "-c", 'find "/data/research/workspaces/$1/objects" -type f | wc -l', "sh", research.workspace ?? "none");
   check("   the source's bytes are in /data/research, kept by their hash", objects.status === 0 && Number(objects.stdout.trim()) >= 1, `${objects.stdout.trim() || objects.stderr.trim().slice(0, 200)} file(s)`);
 
-  if (!flag("keep")) {
-    docker(["rm", "-f", name]);
-    docker(["volume", "rm", volume]);
-  }
+  if (!flag("keep")) cleanUp();
   const failed = results.filter((r) => !r.ok);
   process.stdout.write(`\n${results.length - failed.length}/${results.length} Docker checks passed${flag("keep") ? ` (kept ${name}, volume ${volume})` : ""}\n`);
   process.exit(failed.length === 0 ? 0 : 1);
+}
+
+function cleanUp() {
+  docker(["rm", "-f", name]);
+  docker(["rm", "-f", "-v", database]);
+  docker(["volume", "rm", volume]);
+  docker(["network", "rm", network]);
 }
 
 main().catch((err) => {
@@ -241,7 +338,6 @@ main().catch((err) => {
   process.stdout.write(`  container: ${(state.stdout || state.stderr).trim()}\n`);
   const logs = docker(["logs", "--tail", "40", name]);
   process.stdout.write(`  its last log lines:\n${`${logs.stdout}${logs.stderr}`.trim().split("\n").map((l) => `    ${l}`).join("\n")}\n`);
-  docker(["rm", "-f", name]);
-  docker(["volume", "rm", volume]);
+  cleanUp();
   process.exit(1);
 });

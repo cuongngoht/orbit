@@ -1,15 +1,16 @@
-// Research workspaces and who each is shared with. Nothing else writes these tables.
+// Research workspaces and who each is shared with. Nothing else writes these tables. A workspace belongs to an ACCOUNT
+// (account_id); everything it holds carries that account too, held to it by the database (infra/db/migrations.ts).
 import type { AccessEntry } from "@orbit-web/contracts";
-import type { Database } from "../../../infra/storage/database.js";
-import type { Owner } from "../../../infra/storage/stores.js";
+import { Db } from "../../../infra/db/db.js";
 import { now, num, str, type Row } from "./rows.js";
 
 export interface WorkspaceRecord {
   id: string;
+  // The account that owns it -- what decides who may open it -- and its identity's email when it was made (shown only).
+  accountId: string;
+  ownerEmail: string;
   name: string;
   description: string;
-  ownerEmail: string;
-  ownerOrg: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,89 +22,100 @@ export interface WorkspaceCounts {
   findings: number;
 }
 
+// Who asks: an account, and the email its identity is shared by.
+export interface ResearchViewer {
+  accountId: string;
+  email: string;
+}
+
 const workspaceOf = (r: Row): WorkspaceRecord => ({
   id: str(r.id),
+  accountId: str(r.account_id),
+  ownerEmail: str(r.owner_email),
   name: str(r.name),
   description: str(r.description),
-  ownerEmail: str(r.owner_email),
-  ownerOrg: str(r.owner_org),
   createdAt: str(r.created_at),
   updatedAt: str(r.updated_at),
 });
 
 export class WorkspaceStore {
-  constructor(private readonly database: Database) {}
+  constructor(private readonly db: Db) {}
 
-  create(w: Pick<WorkspaceRecord, "id" | "name" | "description" | "ownerEmail" | "ownerOrg">): WorkspaceRecord {
+  async create(w: Pick<WorkspaceRecord, "id" | "accountId" | "ownerEmail" | "name" | "description">): Promise<WorkspaceRecord> {
     const at = now();
-    this.database.db.prepare("INSERT INTO research_workspaces (id, name, description, owner_email, owner_org, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(w.id, w.name, w.description, w.ownerEmail, w.ownerOrg, at, at);
-    return this.get(w.id) as WorkspaceRecord;
+    const row = await this.db.one("INSERT INTO research_workspaces (id, account_id, owner_email, name, description, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING *", [w.id, w.accountId, w.ownerEmail, w.name, w.description, at]);
+    return workspaceOf(row as Row);
   }
 
-  get(id: string): WorkspaceRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM research_workspaces WHERE id = ?").get(id) as Row | undefined;
-    return row ? workspaceOf(row) : null;
+  async get(id: string): Promise<WorkspaceRecord | null> {
+    const row = await this.db.one("SELECT * FROM research_workspaces WHERE id = $1", [id]);
+    return row === null ? null : workspaceOf(row);
   }
 
-  // The workspaces an account owns, and those shared with its email -- most recently changed first.
-  visibleTo(o: Owner): WorkspaceRecord[] {
+  // The workspaces an account owns, and those shared with its identity's email -- most recently changed first.
+  async visibleTo(v: ResearchViewer): Promise<WorkspaceRecord[]> {
     return (
-      this.database.db
-        .prepare("SELECT * FROM research_workspaces WHERE (owner_email = ? AND owner_org = ?) OR id IN (SELECT workspace_id FROM research_workspace_access WHERE email = ?) ORDER BY updated_at DESC, created_at DESC")
-        .all(o.email, o.org, o.email) as Row[]
+      await this.db.query("SELECT * FROM research_workspaces WHERE account_id = $1 OR id IN (SELECT workspace_id FROM research_workspace_access WHERE email = $2) ORDER BY updated_at DESC, created_at DESC", [v.accountId, v.email])
     ).map(workspaceOf);
   }
 
-  update(id: string, patch: { name?: string; description?: string }): WorkspaceRecord {
-    const w = this.get(id) as WorkspaceRecord;
-    this.database.db.prepare("UPDATE research_workspaces SET name = ?, description = ?, updated_at = ? WHERE id = ?").run(patch.name ?? w.name, patch.description ?? w.description, now(), id);
-    return this.get(id) as WorkspaceRecord;
+  async update(id: string, patch: { name?: string; description?: string }): Promise<WorkspaceRecord> {
+    const row = await this.db.one("UPDATE research_workspaces SET name = COALESCE($2, name), description = COALESCE($3, description), updated_at = $4 WHERE id = $1 RETURNING *", [id, patch.name ?? null, patch.description ?? null, now()]);
+    if (row === null) throw new Error(`no research workspace ${id}`);
+    return workspaceOf(row);
   }
 
   // Something inside changed (a source, a session, a note): it moves up the list.
-  touch(id: string): void {
-    this.database.db.prepare("UPDATE research_workspaces SET updated_at = ? WHERE id = ?").run(now(), id);
+  async touch(id: string): Promise<void> {
+    await this.db.query("UPDATE research_workspaces SET updated_at = $2 WHERE id = $1", [id, now()]);
   }
 
-  counts(id: string): WorkspaceCounts {
-    const one = (sql: string) => num((this.database.db.prepare(sql).get(id) as Row).n);
-    return {
-      sources: one("SELECT count(*) AS n FROM research_sources WHERE workspace_id = ?"),
-      sessions: one("SELECT count(*) AS n FROM research_sessions WHERE workspace_id = ?"),
-      notes: one("SELECT count(*) AS n FROM research_notes WHERE workspace_id = ?"),
-      findings: one("SELECT count(*) AS n FROM research_findings WHERE workspace_id = ?"),
-    };
+  async counts(id: string): Promise<WorkspaceCounts> {
+    const row = (await this.db.one(
+      `SELECT (SELECT count(*) FROM research_sources WHERE workspace_id = $1) AS sources,
+              (SELECT count(*) FROM research_sessions WHERE workspace_id = $1) AS sessions,
+              (SELECT count(*) FROM research_notes WHERE workspace_id = $1) AS notes,
+              (SELECT count(*) FROM research_findings WHERE workspace_id = $1) AS findings`,
+      [id],
+    )) as Row;
+    return { sources: num(row.sources), sessions: num(row.sessions), notes: num(row.notes), findings: num(row.findings) };
   }
 
-  // The next finding number of the workspace (F-001, F-002 …), taken in the same transaction that stores the finding.
-  nextFinding(id: string): number {
-    const row = this.database.db.prepare("UPDATE research_workspaces SET next_finding = next_finding + 1 WHERE id = ? RETURNING next_finding").get(id) as Row;
+  // The next finding number of the workspace (F-001, F-002 …), taken by an UPDATE of the workspace's row in the same
+  // transaction that stores the finding: a number is never handed out twice.
+  async nextFinding(id: string): Promise<number> {
+    const row = await this.db.one("UPDATE research_workspaces SET next_finding = next_finding + 1 WHERE id = $1 RETURNING next_finding", [id]);
+    if (row === null) throw new Error(`no research workspace ${id}`);
     return num(row.next_finding) - 1;
   }
 
-  // Everything the workspace holds goes with it: the chunks first (their index entries are removed with each row),
-  // then the rows that cascade from the workspace.
-  delete(id: string): void {
-    this.database.transaction(() => {
-      this.database.db.prepare("DELETE FROM research_chunks WHERE workspace_id = ?").run(id);
-      this.database.db.prepare("DELETE FROM research_workspaces WHERE id = ?").run(id);
-    });
+  // Everything the workspace holds goes with it: its sources, revisions and chunks, its sessions and their journals, its
+  // citations, notes and findings, who it was shared with -- by the database's cascades.
+  async delete(id: string): Promise<void> {
+    await this.db.query("DELETE FROM research_workspaces WHERE id = $1", [id]);
   }
 
-  hasAccess(id: string, email: string): boolean {
-    return this.database.db.prepare("SELECT 1 FROM research_workspace_access WHERE workspace_id = ? AND email = ?").get(id, email) !== undefined;
+  async hasAccess(id: string, email: string): Promise<boolean> {
+    return (await this.db.one("SELECT 1 AS yes FROM research_workspace_access WHERE workspace_id = $1 AND email = $2", [id, email])) !== null;
   }
 
-  people(id: string): AccessEntry[] {
-    return (this.database.db.prepare("SELECT * FROM research_workspace_access WHERE workspace_id = ? ORDER BY granted_at, email").all(id) as Row[]).map((r) => ({ email: str(r.email), grantedBy: str(r.granted_by), grantedAt: str(r.granted_at) }));
+  async people(id: string): Promise<AccessEntry[]> {
+    return (await this.db.query("SELECT * FROM research_workspace_access WHERE workspace_id = $1 ORDER BY granted_at, email", [id])).map((r) => ({ email: str(r.email), grantedBy: str(r.granted_by), grantedAt: str(r.granted_at) }));
   }
 
-  share(id: string, emails: readonly string[], grantedBy: string): void {
+  // The emails it is shared with: who, beside its owner, is told what changes in it.
+  async emails(id: string): Promise<string[]> {
+    return (await this.db.query("SELECT email FROM research_workspace_access WHERE workspace_id = $1 ORDER BY email", [id])).map((r) => str(r.email));
+  }
+
+  // The whole list, as the owner gave it: who was already on it keeps when they were added.
+  async share(w: Pick<WorkspaceRecord, "id" | "accountId">, emails: readonly string[], grantedBy: string): Promise<void> {
     const at = now();
-    this.database.transaction(() => {
-      const kept = new Set(emails);
-      for (const p of this.people(id)) if (!kept.has(p.email)) this.database.db.prepare("DELETE FROM research_workspace_access WHERE workspace_id = ? AND email = ?").run(id, p.email);
-      for (const email of emails) this.database.db.prepare("INSERT INTO research_workspace_access (workspace_id, email, granted_by, granted_at) VALUES (?, ?, ?, ?) ON CONFLICT(workspace_id, email) DO NOTHING").run(id, email, grantedBy, at);
+    await this.db.tx(async () => {
+      await this.db.query("DELETE FROM research_workspace_access WHERE workspace_id = $1 AND NOT (email = ANY($2::text[]))", [w.id, emails]);
+      for (const email of emails) {
+        await this.db.query("INSERT INTO research_workspace_access (account_id, workspace_id, email, granted_by, granted_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (workspace_id, email) DO NOTHING", [w.accountId, w.id, email, grantedBy, at]);
+      }
     });
   }
 }

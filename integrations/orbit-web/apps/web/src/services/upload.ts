@@ -1,6 +1,7 @@
 // An upload with its progress: the file's own bytes as the request body (application/octet-stream), its name in a
 // header -- never a form -- and the header every change carries. XMLHttpRequest, because it reports progress.
-import { MUTATION_HEADER, UPLOAD_NAME_HEADER, type ApiErrorBody } from "@orbit-web/contracts";
+import { CSRF_HEADER, MUTATION_HEADER, UPLOAD_NAME_HEADER, type ApiErrorBody } from "@orbit-web/contracts";
+import { sessionCsrf } from "./account";
 import { ApiError } from "./api";
 
 const jsonOf = (text: string): unknown => {
@@ -17,6 +18,8 @@ export function uploadFile<T>(path: string, file: File, onProgress: (fraction: n
     xhr.open("POST", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader(MUTATION_HEADER, "1");
+    const csrf = sessionCsrf();
+    if (csrf !== null) xhr.setRequestHeader(CSRF_HEADER, csrf);
     xhr.setRequestHeader("content-type", "application/octet-stream");
     xhr.setRequestHeader(UPLOAD_NAME_HEADER, encodeURIComponent(file.name));
     xhr.setRequestHeader("accept", "application/json");

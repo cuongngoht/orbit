@@ -157,3 +157,16 @@ on the PATH for Claude Code (`AGENT_PYTHON=0` leaves it out); the System card, h
   (retention is indefinite).
 - The real-model run of the governed deployment needs a person's Claude sign-in volume and is recorded as BLOCKED until
   one is given; every deterministic check runs without one.
+
+
+## Amendment, 2026-11-21: governance is the account's, with one owner (ADR 0066)
+
+Operators (their passwords, sessions, roles, lockout and the terminal's recovery), the bootstrap code, the organization,
+the agent registry and "govern a workspace" are removed. The signed-in person is the owner of their own account; the
+policy (the Constitution's document, now an account's policy) is the account's, provisioned at its first sign-in, with
+overrides per chat or research workspace that only narrow; a single owner confirms and publishes (the two-person rule of
+a high-risk change is removed on purpose, and a confirmation is never shown as an approval by another person); every run
+-- research included -- is decided under its account's policy; the audit record is one hash chain per account. What
+stays: governance-core as the one policy engine, the action vocabulary and its ceilings, the decision function, the
+audit chain and the deterministic auditor, the run tokens, the agent gateway, the push broker, the egress proxy and the
+isolation check. ADR 0066 says how.

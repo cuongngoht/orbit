@@ -17,7 +17,7 @@ const base = {
   github: false,
   maxBudgetUsd: null,
   protectedDirs: ["/data/claude", "/data/github"],
-  bound: false,
+  isolated: false,
 };
 
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
@@ -43,12 +43,22 @@ test("headless, structured, partial messages, the Orbit plugin and the model ali
   assert.equal(a.includes("--bare"), false, "Orbit's hooks and skills must load");
 });
 
-test("a run governance holds reaches no MCP server: its Constitution has no action for one", () => {
-  const governed = claudeArgs({ ...base, bound: true, governanceNote: "This chat is GOVERNED by your organization's Constitution." });
-  assert.ok(governed.includes("--strict-mcp-config"));
-  assert.equal(after(governed, "--setting-sources"), "user");
-  // Decided by the run's binding, not by what it is told: a bound run with no note reaches none either.
-  assert.ok(claudeArgs({ ...base, bound: true }).includes("--strict-mcp-config"));
+test("an isolated run (the governed deployment) reaches no MCP server and is told it holds no credential", () => {
+  const isolated = claudeArgs({ ...base, isolated: true, governanceNote: "This chat is governed by your account's policy." });
+  assert.ok(isolated.includes("--strict-mcp-config"));
+  assert.equal(after(isolated, "--setting-sources"), "user");
+  const told = after(isolated, "--append-system-prompt") ?? "";
+  assert.match(told, /there is no credential in this run/);
+  assert.match(told, /governed by your account's policy/);
+  // Decided by the placement, not by what it is told: an isolated run with no note reaches none either.
+  assert.ok(claudeArgs({ ...base, isolated: true }).includes("--strict-mcp-config"));
+});
+
+test("a run that is not isolated keeps its workspace's note, and is told what its governance says beside it", () => {
+  const told = after(claudeArgs({ ...base, governanceNote: "Your account's policy governs this run." }), "--append-system-prompt") ?? "";
+  assert.match(told, /Pushing and the GitHub CLI are not available here/);
+  assert.match(told, /Your account's policy governs this run\./);
+  assert.equal(claudeArgs({ ...base, governanceNote: "x" }).includes("--strict-mcp-config"), false);
 });
 
 test("a message with images goes in as stream-json; one without keeps the prompt's own text", () => {

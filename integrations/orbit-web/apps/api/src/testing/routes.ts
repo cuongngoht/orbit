@@ -3,14 +3,16 @@
 import { RequestMethod } from "@nestjs/common";
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants.js";
 import { ModulesContainer } from "@nestjs/core";
-import { BEFORE_CLAUDE_SIGN_IN } from "../common/before-claude-sign-in.js";
+import { ROUTE_RULE } from "../modules/auth/decorators.js";
 import type { Harness } from "./harness.js";
 
 export interface Route {
   method: string;
   path: string;
-  // Marked reachable before the Claude sign-in.
+  // Marked reachable before the Claude sign-in (@Public).
   open: boolean;
+  // The agent gateway's (@AgentGateway).
+  agent: boolean;
 }
 
 const pathsOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : [String(v ?? "")]);
@@ -22,13 +24,13 @@ export function routesOf(h: Harness): Route[] {
     for (const wrapper of module.controllers.values()) {
       const controller = wrapper.metatype as { prototype: Record<string, unknown> } | null;
       if (!controller) continue;
-      const classOpen = Reflect.getMetadata(BEFORE_CLAUDE_SIGN_IN, controller) === true;
+      const classRule = Reflect.getMetadata(ROUTE_RULE, controller) as string | undefined;
       for (const name of Object.getOwnPropertyNames(controller.prototype)) {
         const handler = controller.prototype[name];
         if (name === "constructor" || typeof handler !== "function" || Reflect.getMetadata(PATH_METADATA, handler) === undefined) continue;
         const method = RequestMethod[Reflect.getMetadata(METHOD_METADATA, handler) as number] as string;
-        const open = classOpen || Reflect.getMetadata(BEFORE_CLAUDE_SIGN_IN, handler) === true;
-        for (const base of pathsOf(Reflect.getMetadata(PATH_METADATA, controller))) for (const own of pathsOf(Reflect.getMetadata(PATH_METADATA, handler))) routes.push({ method, path: joined(base, own), open });
+        const rule = (Reflect.getMetadata(ROUTE_RULE, handler) as string | undefined) ?? classRule;
+        for (const base of pathsOf(Reflect.getMetadata(PATH_METADATA, controller))) for (const own of pathsOf(Reflect.getMetadata(PATH_METADATA, handler))) routes.push({ method, path: joined(base, own), open: rule === "public", agent: rule === "agent" });
       }
     }
   }

@@ -1,5 +1,5 @@
-// Orbit Web: the sign-in page until a Claude account is signed in -- the Claude sign-in IS Orbit Web's sign-in, and the
-// API refuses everything else until then -- then the workspace, as in Claude Code: the sidebar (new session, search,
+// Orbit Web: the sign-in page until THIS browser finished a sign-in with a Claude account -- the Claude sign-in IS Orbit
+// Web's sign-in, a browser's own, and the API refuses everything else until then -- then the account's workspace, as in Claude Code: the sidebar (new session, search,
 // the chats and research sessions, the account) and beside it a new session, an open chat or an open research session,
 // with Settings over any of them. No connector is needed to start: a chat runs with a repository or without one. In token mode
 // the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its one
@@ -22,6 +22,7 @@ import { Sidebar } from "./layout/Sidebar";
 import { AccessPage } from "./pages/AccessPage";
 import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
 import { SignInPage } from "./pages/SignInPage";
+import { rememberSession } from "./services/account";
 import { get } from "./services/api";
 import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
 import { ModelCatalogProvider } from "./services/models/ModelCatalog";
@@ -239,9 +240,12 @@ function Gate({ claude, settings }: { claude: Resource<ClaudeStatus>; settings: 
       </MessageBar>
     );
   }
-  if (claude.data.state !== "connected") return <SignInPage status={claude.data} onChanged={reload} />;
+  rememberSession(claude.data.session);
+  if (claude.data.state !== "connected" || claude.data.session === null) return <SignInPage status={claude.data} onChanged={reload} />;
+  // Keyed by the account: another account signing in here starts everything afresh -- no stream, cache or page state of
+  // the account before survives into the next one's.
   return (
-    <AppEventsProvider>
+    <AppEventsProvider key={claude.data.session.accountId}>
       <ModelCatalogProvider>
         <Workspace claude={claude.data} settings={settings} reloadClaude={reload} onSignedOut={claude.set} />
       </ModelCatalogProvider>

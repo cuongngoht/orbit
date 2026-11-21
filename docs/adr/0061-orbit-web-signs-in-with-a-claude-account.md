@@ -62,3 +62,12 @@ loopback rule and the access token and replaces neither. Chats are the instance'
 - The API's contract changed (`ClaudeStatus`, the login request, the 401 gate), so Orbit Web is 0.8.0.
 - Per-browser sessions, an owner bound to the first account that signs in, and chats kept per account are not done;
   each would be a decision of its own.
+
+
+## Amendment, 2026-11-21: the sign-in is a browser's (ADR 0066)
+
+The CLI being signed in no longer opens Orbit Web. A browser is signed in only when IT finished a sign-in: the flow is
+bound to the browser that started it (an HttpOnly nonce cookie), and the verified sign-in is exchanged once for that
+browser's session (`POST /api/claude/session`), kept as its hash, rotated at every sign-in, with a CSRF token for every
+change. Each verified Claude identity is an internal account; signing in as another account ends every session of the
+one before. "One Claude account for the whole instance, not a session per browser" above is replaced by ADR 0066.

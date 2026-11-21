@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 import type { AppConfig } from "./config/config.js";
 import { CoreModule } from "./core/core.module.js";
 import { AccessModule } from "./modules/access/access.module.js";
+import { AuthModule } from "./modules/auth/auth.module.js";
 import { AzureAuthModule } from "./modules/azure-auth/azure-auth.module.js";
 import { BrokerModule } from "./modules/broker/broker.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
@@ -28,6 +29,8 @@ export class AppModule {
       module: AppModule,
       imports: [
         CoreModule.forRoot(config),
+        // Right after the core: its gate is the first every route passes.
+        AuthModule,
         HealthModule,
         SetupModule,
         ClaudeAuthModule,

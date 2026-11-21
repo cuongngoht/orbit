@@ -5,7 +5,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { ConnectionState, GitHubAccount, GitHubStatus, LoginSnapshot } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
-import { EventBus } from "../../core/events/event-bus.js";
+import { EventBus, everyone } from "../../core/events/event-bus.js";
+import { viewer } from "../../common/request-scope.js";
 import { APP_CONFIG, PROCESS_PORT } from "../../core/tokens.js";
 import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "../../common/login-flow.js";
 import { ghEnv } from "../../infra/process/env.js";
@@ -46,19 +47,21 @@ export class GithubAuthService {
     @Inject(EventBus) private readonly bus: EventBus,
   ) {
     this.flow = new LoginFlow(process);
-    // The sign-in flow is told to every page on the app stream; its end, with what gh says now.
+    // The sign-in flow is told to every signed-in page on the app stream (GitHub CLI's sign-in is the deployment's, not
+    // one account's); its end, with what gh says now.
     this.flow.subscribe((flow) => {
-      this.bus.publishApp("connector.flow", { connector: "github", flow });
-      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c));
+      this.bus.publishApp("connector.flow", { connector: "github", flow }, everyone);
+      if (flow.state === "connected" || flow.state === "failed") void this.connection().then((c) => this.announce(c)).catch(() => undefined);
     });
   }
 
   private announce(c: GitHubConnection): void {
-    this.bus.publishApp("connector.status", { connector: "github", state: c.state, account: c.account?.login ?? null });
+    this.bus.publishApp("connector.status", { connector: "github", state: c.state, account: c.account?.login ?? null }, everyone);
   }
 
+  // As the account of the request sees it: whether ITS chats may use the sign-in is its own switch.
   async status(): Promise<GitHubStatus> {
-    return { ...(await this.connection()), flow: this.flow.current(), availableToClaude: this.prefs.get().githubForClaude };
+    return { ...(await this.connection()), flow: this.flow.current(), availableToClaude: (await this.prefs.get(viewer().accountId)).githubForClaude };
   }
 
   connection(fresh = false): Promise<GitHubConnection> {
@@ -87,7 +90,7 @@ export class GithubAuthService {
       const r = await this.gh.logout(login);
       if (!succeeded(r)) failures.push(`${login}: ${endedHow(r)} ${tail(r.stderr, 2)}`);
     }
-    this.settings.delete(ACCOUNT_KEY);
+    await this.settings.delete(ACCOUNT_KEY);
     this.cached = null;
     this.flow.reset();
     const status = await this.status();
@@ -102,7 +105,7 @@ export class GithubAuthService {
     if (hosts === null) return { state: "unavailable", account: null, detail: `gh auth status gave no answer: ${tail(r.stderr, 2)}` };
     const active = hosts.find((h) => h.active) ?? hosts[0];
     if (active === undefined) return { state: "not_connected", account: null, detail: null };
-    if (active.state !== "success") return { state: "expired", account: this.remembered(), detail: `gh says the sign-in is ${active.state}${active.error ? `: ${active.error}` : ""}. Connect again.` };
+    if (active.state !== "success") return { state: "expired", account: await this.remembered(), detail: `gh says the sign-in is ${active.state}${active.error ? `: ${active.error}` : ""}. Connect again.` };
     return this.verifiedByApi();
   }
 
@@ -112,21 +115,21 @@ export class GithubAuthService {
     const user = succeeded(r) ? parseUser(r.stdout) : null;
     if (user === null) {
       const expired = /\b401\b|Bad credentials|token.*(expired|revoked)/i.test(r.stderr);
-      return { state: expired ? "expired" : "unavailable", account: this.remembered(), detail: `gh api user ${endedHow(r)}: ${tail(r.stderr, 2)}` };
+      return { state: expired ? "expired" : "unavailable", account: await this.remembered(), detail: `gh api user ${endedHow(r)}: ${tail(r.stderr, 2)}` };
     }
     const account = { login: user.login, name: user.name };
-    this.settings.set(ACCOUNT_KEY, { ...account, id: user.id, verifiedAt: new Date().toISOString() });
+    await this.settings.set(ACCOUNT_KEY, { ...account, id: user.id, verifiedAt: new Date().toISOString() });
     return { state: "connected", account, detail: null };
   }
 
-  private remembered(): GitHubAccount | null {
-    const saved = this.settings.get<{ login?: string; name?: string | null }>(ACCOUNT_KEY);
+  private async remembered(): Promise<GitHubAccount | null> {
+    const saved = await this.settings.get<{ login?: string; name?: string | null }>(ACCOUNT_KEY);
     return saved?.login ? { login: saved.login, name: saved.name ?? null } : null;
   }
 
   // The verified account's id, for a noreply commit address.
-  accountId(): number | null {
-    return this.settings.get<{ id?: number | null }>(ACCOUNT_KEY)?.id ?? null;
+  async accountId(): Promise<number | null> {
+    return (await this.settings.get<{ id?: number | null }>(ACCOUNT_KEY))?.id ?? null;
   }
 
   private driver(): LoginDriver {

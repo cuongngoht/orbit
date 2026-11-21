@@ -2,10 +2,39 @@
 
 ## Orbit Web 0.8.0
 
-Orbit Web becomes a Claude Code workspace behind one sign-in: your Claude account (ADR 0061, ADR 0062) -- and gains
-governance: operators verified apart from that sign-in, a Company Constitution that decides, a governed deployment that
-holds, and an audit record that shows (ADR 0063). The plugin it bundles stays 0.6.0 and its archive is unchanged;
-nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
+Orbit Web becomes a Claude Code workspace behind one sign-in -- your Claude account, finished in each browser (ADR
+0061, ADR 0062, ADR 0066) -- keeps every record in PostgreSQL with pgvector enabled, makes each verified Claude identity
+an account that is the boundary of its records, and gains governance of that account by its owner: a policy that
+decides every run, a governed deployment that holds, and an audit record that shows (ADR 0063, ADR 0066). The plugin it
+bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
+
+- **PostgreSQL replaces both SQLite databases** (ADR 0066). One database (schemas `app`, `research`, `governance`)
+  through `pg` 8.23.1 behind a bounded pool; every store, guard, service and worker awaits it; a transaction holds one
+  connection and travels with the request's async context (a nested one is a savepoint); what a change tells the rest
+  of Orbit Web is said only after it commits. Numbered migrations, checked by the SHA-256 of their text, run at start
+  under an advisory lock (`cli/db.js status|migrate|verify` from a terminal). `ORBIT_WEB_DATABASE_URL` (or `_FILE`) is
+  required: a database that cannot be reached stops the start -- nothing falls back to SQLite or memory. Journal
+  numbers, revision numbers and the audit chain no longer rest on a single writer: counters updated in place and a
+  locked chain head per account; a stream replays its journal by subscribing first, so an event written while it
+  catches up is neither lost nor sent twice. Research's full-text search is PostgreSQL's (diacritics folded, English
+  stemming, no stop word, `ts_rank_cd`), every query filtered by account, workspace and the run's pinned revisions.
+  **pgvector is enabled** and checked at every start; nothing stores a vector yet. **Nothing is imported** from an
+  earlier Orbit Web's SQLite files, and nothing deletes them. The compose files run the pinned
+  `pgvector/pgvector:0.8.1-pg17` image on an internal network only Orbit Web joins (never the agent's container), its
+  role made by an init script and not a superuser; the tests and the PR workflow run on the same image.
+- **An account per verified Claude identity, a session per browser** (ADR 0066). The CLI being signed in opens nothing
+  by itself: a sign-in belongs to the browser that started it (an HttpOnly nonce), and once `claude auth status` verifies
+  it, it is exchanged once for that browser's session -- an HttpOnly, SameSite=Strict cookie kept as its hash, rotated
+  at every sign-in, with a lifetime, an idle limit and a CSRF token on every change. The identity (the CLI's account
+  email in the organization it names by id, never by name) maps to an internal account, made at its first sign-in --
+  nothing to register, no password, no bootstrap code; a business name is optional. One global gate replaces three
+  guards; no request names its account. When another account signs in, or the CLI is signed in as somebody else from a
+  terminal, every session of the account before ends and its streams close. *Sign out* ends this browser; *Sign the
+  account out everywhere* ends every browser and signs the CLI out. Settings → Account lists the signed-in browsers.
+- **The account is the boundary of every record** (ADR 0066). Every record carries its account and every child is held
+  to its parent's account by a composite foreign key; app-stream notifications name their audience when they are
+  published; settings, connector choices and the model catalog are the account's. Sharing by email stays, and gives no
+  governance.
 
 - **Research** (ADR 0064). *New session* offers two kinds: **Chat / Coding** (as before) and **Research** -- a workspace
   of sources, sessions that ask questions answered only from passages the server retrieved from the sources a session
@@ -14,22 +43,22 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
   repository, branch or GitHub. Sources: uploads (the file's own bytes -- the one non-JSON body, on one route, under the
   CSRF rules), URLs (fetched by the server as snapshots: public internet on ports 80/443 only, every resolved address
   and redirect checked, the checked address connected to), pasted text; PDF (page numbers; no OCR), Word, HTML,
-  Markdown and text read in a worker thread, chunked, indexed in SQLite FTS5; stored under `/data/research` by
+  Markdown and text read in a worker thread, chunked, indexed in PostgreSQL's full-text search; stored under `/data/research` by
   SHA-256; immutable revisions, a refresh making a new one only when the page changed. A research run has no tool
   (`--tools ""`, `--restricted`, no MCP server, nothing persisted, `dontAsk`); documents reach it as data between tags it
   cannot close; a process that reports or uses a tool is stopped. Three panels side by side from 1440px, a drawer below,
   tabs on a phone. Two runtime dependencies, pure JavaScript and pinned: `unpdf` 2.2.1, `parse5` 8.1.1.
 - **Each Claude account its own chats and models** (ADR 0064). A chat and a research workspace belong to the account that
   made them; another account sees nothing of them through any route, unless their owner shares them by email (only the
-  owner deletes, shares on, or makes a public link); a chat from before owners is claimed once by the first account that
-  signs in. The models and effort levels offered are the signed-in account's own, asked of its Claude CLI at every
+  owner deletes, shares on, or makes a public link). The models and effort levels offered are the signed-in account's own, asked of its Claude CLI at every
   sign-in (a model a program gives an account appears for it alone), and every choice is held to them.
 - **Claude connectors, checked per account** (ADR 0064, the owner's decisions). Settings → Claude connectors lists the
   signed-in account's connectors (claude.ai's -- Claude Docs, Gmail, Drive … -- and installed plugins' servers, read from its
   CLI's `mcp_status`, no model called) with a box for chats and one for research, kept per account, checked for both
   until unchecked. Chats ran with `--strict-mcp-config`, which dropped them all -- so Claude in Orbit Web could make no
-  document; now an unchecked connector is denied by name. A repository's `.mcp.json` still never starts; a run
-  governance holds and the model catalog's probe keep the flag.
+  document; now an unchecked connector is denied by name, and each checked one is a decision of the account's policy
+  (`tool.connector`). A repository's `.mcp.json` still never starts; a run in the governed deployment and the model
+  catalog's probe keep the flag.
 - **Research is a conversation like a chat, its sources references** (ADR 0064). Claude answers freely, cites what it
   takes from the selected sources (verified as before), says what comes from elsewhere, and needs no source to be asked;
   ask it to make a Claude Doc and it does, with the link. A research run still has no built-in tool; it may use only the
@@ -44,48 +73,48 @@ nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changed.
 - **The egress proxy refuses IPv6 that carries IPv4** (IPv4-compatible `::/96`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`):
   the one definition of "not the public internet" that the proxy and research's URL import share.
 - **A stop no longer waits for an open page** (found while verifying research's restart): the HTTP server waited for the
-  stream every open page holds, so no shutdown hook after it ran -- the databases were never closed, their write-ahead
-  logs stayed beside them, and the container was killed at its 20-second grace. A stop now ends those connections (a
-  page reconnects to the next start from the last event it saw) after the runs are stopped, closes the databases and
-  exits in about a second.
-- **Governance: operators, verified by Orbit Web** (ADR 0063). The Claude account opens the workspace; governance is
-  administered by operators -- a local credential (scrypt), a server-side session (HttpOnly, SameSite=Strict, idle and
-  absolute expiry, revocation, a CSRF token), six roles read on every request, never from a request. The first owner
-  is enrolled with a one-time code printed on the control plane's own log, spent once; an offline terminal
-  (`cli/governance.js`) recovers an owner and checks the audit chain. The access token and share links open nothing of
-  governance.
-- **The Constitution as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
+  stream every open page holds, so no shutdown hook after it ran -- the database was never closed, and the container was
+  killed at its 20-second grace. A stop now ends those connections (a page reconnects to the next start from the last
+  event it saw) after the runs are stopped, closes the database pool and exits in about a second.
+- **Governance is the account's, and its owner is the person signed in** (ADR 0063, ADR 0066). No operator, password,
+  role, organization, agent registry or bootstrap code: Governance opens with the sign-in, shows the account's
+  **Workspaces** and **Research** (each with the policy that applies, inherited or narrowed, its runs, approvals and
+  activity) and nothing of another account's. The terminal (`cli/governance.js`) checks the audit chains and ends an
+  account's sessions. The access token and share links open nothing of governance; a run's token never becomes the
+  owner.
+- **The policy as a table.** One row per action with two boxes -- *Allowed* and *A person approves first*; neither
   ticked is denied, and what nobody may ever be granted cannot be ticked -- the hosts the agent may reach as a list, the
   obligations as boxes. A rule the table cannot show is kept as written; there is no JSON view. Git is one row:
-  *Allowed* alone lets an agent push the chat's own branch itself, at once (by default a person approves each push;
-  another branch, or an operator who may not approve pushes, still asks).
-- **The Company Constitution.** A declarative policy (`orbit.governance/v1`) over a closed set of actions, each saying
-  where it is enforced (boundary, control, runtime); default deny; deny > approval > allow; overlays only narrow; an
-  agent can never be granted authority over its own governance. Its revisions go draft → validated → pending approval
-  → approved → published → superseded, each move recorded with the digest read; what a change loosens is worked out
-  from the two policies, and a high-risk change is approved by somebody who wrote none of it. Published revisions never
-  change (the database refuses it); a rollback is a new publication. Simulation records nothing.
-- **Governed workspaces and the governed deployment.** A chat an operator places under a registered agent runs only after
-  a recorded decision (agent active, Constitution published, isolation just checked, `agent.run.start` allowed), bound
-  to a run token, holding no CLI sign-in. `docker/compose.governed.yaml` runs the agent in a container of its own: no
-  database, no governance record, no sign-in, a read-only root, an internal network whose only way out is the control
-  plane's proxy (each connection a decision of the Constitution, never off the public internet), checked by canaries
-  before every strict run. In the single container governance holds at the API, not at the files, and strict runs are
-  refused while isolation is required. The Claude sign-in, which runs in the agent's container and is not a run, holds
+  *Allowed* alone lets an agent push the chat's own branch itself, at once (by default the owner approves each push;
+  another branch still asks).
+- **The account's policy.** A declarative policy over a closed set of actions, each saying where it is enforced
+  (boundary, control, runtime); default deny; deny > approval > allow; an override of one chat or research workspace
+  only narrows; an agent can never be granted authority over its own governance. Each account starts with a published
+  default fitting the deployment. A single owner publishes: draft → validated → the change and its risk read →
+  confirmed (the digest and the base read, a high risk acknowledged) → published → superseded, each move recorded; the
+  two-person rule is removed on purpose and a confirmation is never shown as another person's approval. Published
+  revisions never change (the database refuses it); a rollback is a new publication. Simulation records nothing.
+- **Every run is governed, and the governed deployment.** A chat's run and a research run -- no longer LEGACY_ORBIT --
+  start only after a recorded decision under their account's policy (the resource's override, isolation where required,
+  `agent.run.start`, each checked connector), bound to a run token. `docker/compose.governed.yaml` runs the agent in a
+  container of its own: no database (nor its network), no governance record, no sign-in, a read-only root, an internal
+  network whose only way out is the control plane's proxy (each connection a decision of the run's account policy,
+  never off the public internet), checked by canaries before every strict run. In the single container governance holds
+  at the API, not at the files, and runs are refused where the policy requires isolation. The Claude sign-in, which runs in the agent's container and is not a run, holds
   a channel of its own while it runs: the Claude account's three hosts and nothing else, each connection recorded --
   without it a governed Orbit Web could never be signed in. Declared marketplace plugins are not fetched there.
-- **Privileged switches.** Turning on GitHub's or Azure's sign-in for Claude Code, or project plugins, needs an operator
-  with that permission (and the Constitution's decision); turning one off needs nobody. The agent's own requests are
+- **Privileged switches.** Turning on GitHub's or Azure's sign-in for Claude Code, or project plugins, is the account
+  owner's (and the account policy's decision); turning one off needs nobody. The agent's own requests are
   refused and recorded -- ADR 0062's "a misled agent could turn either switch on itself" no longer holds.
 - **Push a chat's branch to GitHub or Azure DevOps.** *Push* in a chat: Orbit Web carries the branch's commit into its
-  own copy of the repository, shows exactly what would be pushed, and pushes it -- at once where the Constitution
-  simply allows it, otherwise after an operator approves that fingerprint -- with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the default or a
-  protected branch (a chat started from a story branch pushes to it). A governed agent asks for the same push through its gateway, and is held to the same decision. An approval is spent once; a replay
+  own copy of the repository, shows exactly what would be pushed, and pushes it for the chat's owner; with GitHub CLI's helper or the Azure CLI's one-shot helper, never forced, never to the default or a
+  protected branch (a chat started from a story branch pushes to it). An agent asks for the same push through its gateway: at once where the account's policy allows it, otherwise after
+  the owner approves that fingerprint. An approval is spent once; a replay
   is refused and recorded.
-- **The audit record, the auditor, the console.** A hash-chained record in governance's own database (a chat's deletion
-  never reaches it), checked at every start; findings worked out from it by rules, each citing its records; daily
-  reports by hand or schedule. Governance in the sidebar: overview, Constitution, users and roles, agents and
-  workspaces, decisions, approvals, audit timeline, findings, reports.
+- **The audit record, the auditor, the console.** A hash-chained record per account (a chat's deletion never reaches
+  it; concurrent records keep the chain), checked at every start; findings worked out from it by rules, each citing its
+  records; daily reports by hand or schedule; every count, page and export the account's own. Governance in the
+  sidebar: overview, policy, workspaces, research, decisions, approvals, audit timeline, findings, reports.
 - **Python 3.15.2 in the image** (python-build-standalone, SHA-256 per architecture) with pip and venv, for Claude Code;
   the System card reports it.
 - **An image never takes a file's mode from the checkout it was built from.** A VM rebuilt from a checkout updated under

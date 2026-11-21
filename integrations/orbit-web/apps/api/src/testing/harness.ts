@@ -1,5 +1,11 @@
-// An Orbit Web API for a test: a temporary data directory, the real module tree with the process port replaced by a
-// FakeProcessPort (git and Orbit's own CLIs run for real; claude and gh are scripted), listening on a free port.
+// An Orbit Web API for a test: a temporary data directory, a PostgreSQL database of its own (testing/database.ts), the
+// real module tree with the process port replaced by a FakeProcessPort (git and Orbit's own CLIs run for real; claude
+// and gh are scripted), listening on a free port.
+//
+// A test talks to it as a BROWSER does. By default the harness signs one browser in -- through the real Claude sign-in:
+// the flow is started, its code sent, and the verified sign-in exchanged for a session -- and `get`/`send` carry that
+// session's cookie and, for a change, its CSRF token. `anonymous` is a browser with no session; `browser()` signs
+// another one in. There is no route a test may use to make a session that a page could not use too.
 import "reflect-metadata";
 import { Test } from "@nestjs/testing";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -9,15 +15,16 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MUTATION_HEADER, OPERATOR_CSRF_HEADER, type GovernanceState } from "@orbit-web/contracts";
+import { CSRF_HEADER, MUTATION_HEADER, type ClaudeStatus } from "@orbit-web/contracts";
 import { AppModule } from "../app.module.js";
 import { configureApp, NEST_OPTIONS } from "../bootstrap.js";
 import { DEFAULT_LIMITS, loadConfig, type AppConfig } from "../config/config.js";
 import { ensureDataDirs } from "../config/data-dirs.js";
 import { PROCESS_PORT } from "../core/tokens.js";
+import { Db, type Param, type Row } from "../infra/db/db.js";
 import { NodeProcessPort } from "../infra/process/node-process.js";
-import { BOOTSTRAP_ANNOUNCER, type BootstrapAnnouncer } from "../modules/governance/bootstrap-code.js";
-import { OPERATOR_COOKIE } from "../modules/governance/operator.service.js";
+import { LOGIN_COOKIE, SESSION_COOKIE } from "../modules/auth/principals.js";
+import { createTestDatabase, type TestDatabase } from "./database.js";
 import { FakeProcessPort, program, type Call, type FakeChild } from "./fake-process.js";
 
 // The repository's own Orbit plugin: the nearest directory above this file whose manifest names "orbit".
@@ -37,35 +44,35 @@ export interface Reply {
   headers: Headers;
 }
 
-// A person signed in to governance in a test: every request carries the session's cookie and, for a change, its CSRF
-// token -- what the web app sends.
-export interface OperatorClient {
+// A browser: its cookies, and what it sends with a change (the mutation header always, its session's CSRF token when it
+// has a session).
+export interface Browser {
   cookie: string;
   csrf: string;
-  state: GovernanceState;
+  // The status the sign-in ended on (null for a browser with no session).
+  status: ClaudeStatus | null;
+  accountId: string | null;
   get(path: string, headers?: Record<string, string>): Promise<Reply>;
   send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply>;
+  events(path: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }>;
+  stream(path: string): Promise<OpenStream>;
 }
 
-export const OWNER = { username: "owner", password: "correct horse battery staple", displayName: "Olivia Owner", organizationName: "Acme" };
-
-export interface Harness {
+export interface Harness extends Browser {
   url: string;
   app: NestExpressApplication;
   fake: FakeProcessPort;
   config: AppConfig;
   dataDir: string;
-  // What Orbit Web announced as the first owner's code (its log, in production): the last one, or null.
-  bootstrapCode(): string | null;
-  // The first owner, enrolled with that code (once) -- or signed in again when already enrolled.
-  owner(): Promise<OperatorClient>;
-  signIn(username: string, password: string): Promise<OperatorClient>;
-  get(path: string, headers?: Record<string, string>): Promise<Reply>;
-  send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Reply>;
-  events(path: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }>;
-  // Opens a stream and returns once the server holds the subscription (its headers arrived), so what the test does
-  // next is seen on it -- the app stream sends nothing on connect.
-  stream(path: string): Promise<OpenStream>;
+  database: TestDatabase;
+  // A browser with no session (what the access token and the CLI's own sign-in leave a stranger with).
+  anonymous: Browser;
+  // The browser the harness signed in (null when it did not: `signIn: false`, or the CLI is signed out).
+  owner: Browser | null;
+  // Signs another browser in, through the Claude sign-in, as whoever the CLI's status says.
+  browser(): Promise<Browser>;
+  // A statement against the test's own database (a test that reads or plants a row directly).
+  sql(text: string, params?: Param[]): Promise<Row[]>;
   close(keepData?: boolean): Promise<void>;
 }
 
@@ -74,14 +81,16 @@ export interface OpenStream {
   events: Record<string, unknown>[];
   until(cond: (events: Record<string, unknown>[]) => boolean, timeoutMs?: number): Promise<Record<string, unknown>[]>;
   close(): void;
+  // Resolves when the server ends the stream.
+  ended: Promise<void>;
 }
 
-export async function openStream(url: string): Promise<OpenStream> {
+export async function openStream(url: string, headers: Record<string, string> = {}): Promise<OpenStream> {
   const controller = new AbortController();
-  const res = await fetch(url, { headers: { accept: "text/event-stream" }, signal: controller.signal });
+  const res = await fetch(url, { headers: { accept: "text/event-stream", ...headers }, signal: controller.signal });
   const events: Record<string, unknown>[] = [];
   const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
-  void (async () => {
+  const ended = (async () => {
     let buffer = "";
     try {
       for (;;) {
@@ -98,7 +107,7 @@ export async function openStream(url: string): Promise<OpenStream> {
       // aborted by close()
     }
   })();
-  return { events, until: (cond, timeoutMs = 10_000) => eventually(() => [...events], cond, timeoutMs), close: () => controller.abort() };
+  return { events, until: (cond, timeoutMs = 10_000) => eventually(() => [...events], cond, timeoutMs), close: () => controller.abort(), ended };
 }
 
 export interface SseFrame {
@@ -108,25 +117,90 @@ export interface SseFrame {
 
 export interface HarnessOptions {
   dataDir?: string;
+  // A database a previous harness kept (close(true)): a restart of the same Orbit Web.
+  database?: TestDatabase;
   fake?: FakeProcessPort;
   env?: Record<string, string>;
   // Providers replaced for this test (a research URL fetch's address policy, say), as [token, value].
   overrides?: [unknown, unknown][];
+  // Whether the harness signs a browser in (default: when the CLI says it is signed in to a Claude account).
+  signIn?: boolean;
+}
+
+const cookiesOf = (headers: Headers): Record<string, string> =>
+  Object.fromEntries(
+    headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0] ?? "")
+      .map((pair) => [pair.slice(0, pair.indexOf("=")), decodeURIComponent(pair.slice(pair.indexOf("=") + 1))]),
+  );
+
+const cookieHeader = (jar: Record<string, string>): string =>
+  Object.entries(jar)
+    .filter(([, v]) => v !== "")
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join("; ");
+
+// A browser against `url`: it keeps the cookies the API sets, and sends what a page sends.
+export function browserAt(url: string, jar: Record<string, string> = {}, status: ClaudeStatus | null = null): Browser {
+  const csrf = status?.session?.csrfToken ?? "";
+  const reply = async (r: Response): Promise<Reply> => {
+    Object.assign(jar, cookiesOf(r.headers));
+    const text = await r.text();
+    return { status: r.status, body: jsonOr(text), headers: r.headers };
+  };
+  const withCookies = (headers: Record<string, string>): Record<string, string> => {
+    const cookie = cookieHeader(jar);
+    return cookie === "" ? headers : { cookie, ...headers };
+  };
+  return {
+    get cookie() {
+      return cookieHeader(jar);
+    },
+    csrf,
+    status,
+    accountId: status?.session?.accountId ?? null,
+    get: async (path, headers = {}) => reply(await fetch(`${url}${path}`, { headers: withCookies(headers) })),
+    send: async (method, path, body, headers = {}) =>
+      reply(
+        await fetch(`${url}${path}`, {
+          method,
+          headers: withCookies({ [MUTATION_HEADER]: "1", ...(csrf !== "" ? { [CSRF_HEADER]: csrf } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers }),
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        }),
+      ),
+    events: (path, opts) => readSse(`${url}${path}`, opts, withCookies({})),
+    stream: (path) => openStream(`${url}${path}`, withCookies({})),
+  };
+}
+
+// THE CLAUDE SIGN-IN, as a browser goes through it: start the flow, send the code the page shows, wait for the CLI's own
+// status to verify it, and exchange it for a session.
+// `jar`: the cookies of a browser that signs in again (its session rotates).
+export async function signInBrowser(url: string, jar: Record<string, string> = {}): Promise<Browser> {
+  const raw = browserAt(url, jar);
+  const started = await raw.send("POST", "/api/claude/login");
+  if (started.status !== 202) throw new Error(`the sign-in did not start: ${started.status} ${JSON.stringify(started.body)}`);
+  const flow = async () => ((await raw.get("/api/claude/status")).body as ClaudeStatus).flow;
+  await eventually(flow, (f) => (f.state === "awaiting_user" && f.needsCode) || f.state === "connected" || f.state === "failed");
+  if ((await flow()).state === "awaiting_user") await raw.send("POST", "/api/claude/login/code", { code: "test-code#state" });
+  const done = await eventually(flow, (f) => f.state === "connected" || f.state === "failed" || f.state === "timed_out");
+  if (done.state !== "connected") throw new Error(`the sign-in did not finish: ${JSON.stringify(done)}`);
+  const claimed = await raw.send("POST", "/api/claude/session");
+  if (claimed.status !== 200) throw new Error(`the sign-in was not exchanged for a session: ${claimed.status} ${JSON.stringify(claimed.body)}`);
+  delete jar[LOGIN_COOKIE];
+  if (jar[SESSION_COOKIE] === undefined) throw new Error("no session cookie was set");
+  return browserAt(url, jar, claimed.body as ClaudeStatus);
 }
 
 export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   const dataDir = o.dataDir ?? mkdtempSync(join(tmpdir(), "orbit-web-test-"));
-  const config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ...o.env });
+  const database = o.database ?? (await createTestDatabase());
+  const config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ORBIT_WEB_DATABASE_URL: database.url, ...o.env });
   config.limits = { ...DEFAULT_LIMITS, loginTimeoutMs: 3_000, stopGraceMs: 300, orbitRefreshMs: 50, connectorPollMs: 20, connectorDeadlineMs: 2_000 };
   ensureDataDirs(config.data);
   const fake = o.fake ?? signedIn(new FakeProcessPort(new NodeProcessPort()));
-  const codes: string[] = [];
-  const announcer: BootstrapAnnouncer = { announce: (code) => void codes.push(code) };
-  let builder = Test.createTestingModule({ imports: [AppModule.forRoot(config)] })
-    .overrideProvider(PROCESS_PORT)
-    .useValue(fake)
-    .overrideProvider(BOOTSTRAP_ANNOUNCER)
-    .useValue(announcer);
+  let builder = Test.createTestingModule({ imports: [AppModule.forRoot(config)] }).overrideProvider(PROCESS_PORT).useValue(fake);
   for (const [token, value] of o.overrides ?? []) builder = builder.overrideProvider(token).useValue(value);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ ...NEST_OPTIONS, logger: false });
@@ -136,55 +210,37 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   // The agent gateway is told where Orbit Web listens: here, the free port it was given.
   config.port = port;
   const url = `http://127.0.0.1:${port}`;
-  const reply = async (r: Response): Promise<Reply> => {
-    const text = await r.text();
-    return { status: r.status, body: jsonOr(text), headers: r.headers };
-  };
-  const send = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<Reply> =>
-    reply(
-      await fetch(`${url}${path}`, {
-        method,
-        headers: { [MUTATION_HEADER]: "1", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      }),
-    );
-  const clientOf = (r: Reply): OperatorClient => {
-    if (r.status !== 200 && r.status !== 201) throw new Error(`operator sign-in failed: ${r.status} ${JSON.stringify(r.body)}`);
-    const cookie = `${OPERATOR_COOKIE}=${/orbit_web_operator=([^;]+)/.exec(r.headers.get("set-cookie") ?? "")?.[1] ?? ""}`;
-    const state = r.body as GovernanceState;
-    const csrf = state.session?.csrfToken ?? "";
-    return {
-      cookie,
-      csrf,
-      state,
-      get: async (path, headers = {}) => reply(await fetch(`${url}${path}`, { headers: { cookie, ...headers } })),
-      send: (method, path, body, headers = {}) => send(method, path, body, { cookie, [OPERATOR_CSRF_HEADER]: csrf, ...headers }),
-    };
-  };
-  const signIn = async (username: string, password: string): Promise<OperatorClient> => clientOf(await send("POST", "/api/operator/login", { username, password }));
-  let enrolled = false;
-  const owner = async (): Promise<OperatorClient> => {
-    if (enrolled) return signIn(OWNER.username, OWNER.password);
-    const r = await send("POST", "/api/operator/bootstrap", { code: codes.at(-1) ?? "", ...OWNER });
-    enrolled = r.status === 201;
-    return enrolled ? clientOf(r) : signIn(OWNER.username, OWNER.password);
-  };
+  const anonymous = browserAt(url);
+  const runtime = ((await anonymous.get("/api/claude/status")).body as ClaudeStatus | null)?.runtime;
+  const owner = o.signIn === false || (o.signIn === undefined && runtime !== "connected") ? null : await signInBrowser(url);
+  const as = owner ?? anonymous;
+  const db = app.get(Db);
   return {
     url,
     app,
     fake,
     config,
     dataDir,
-    bootstrapCode: () => codes.at(-1) ?? null,
+    database,
+    anonymous,
     owner,
-    signIn,
-    get: async (path, headers = {}) => reply(await fetch(`${url}${path}`, { headers })),
-    send,
-    events: (path, opts) => readSse(`${url}${path}`, opts),
-    stream: (path) => openStream(`${url}${path}`),
+    get cookie() {
+      return as.cookie;
+    },
+    csrf: as.csrf,
+    status: as.status,
+    accountId: as.accountId,
+    get: (path, headers) => as.get(path, headers),
+    send: (method, path, body, headers) => as.send(method, path, body, headers),
+    events: (path, opts) => as.events(path, opts),
+    stream: (path) => as.stream(path),
+    browser: () => signInBrowser(url),
+    sql: (text, params = []) => db.query(text, params),
     close: async (keepData = false) => {
       await app.close();
-      if (!keepData) rmSync(dataDir, { recursive: true, force: true });
+      if (keepData) return;
+      rmSync(dataDir, { recursive: true, force: true });
+      await database.drop();
     },
   };
 }
@@ -199,12 +255,12 @@ function jsonOr(text: string): unknown {
 }
 
 // Reads Server-Sent Events until `until` holds for what has arrived (or the time runs out), then hangs up.
-export async function readSse(url: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }> {
+export async function readSse(url: string, o: { lastEventId?: number; until: (events: Record<string, unknown>[]) => boolean; timeoutMs?: number }, headers: Record<string, string> = {}): Promise<{ frames: SseFrame[]; events: Record<string, unknown>[] }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), o.timeoutMs ?? 10_000);
   const frames: SseFrame[] = [];
   try {
-    const res = await fetch(url, { headers: { accept: "text/event-stream", ...(o.lastEventId !== undefined ? { "last-event-id": String(o.lastEventId) } : {}) }, signal: controller.signal });
+    const res = await fetch(url, { headers: { accept: "text/event-stream", ...headers, ...(o.lastEventId !== undefined ? { "last-event-id": String(o.lastEventId) } : {}) }, signal: controller.signal });
     const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -240,7 +296,18 @@ function parseFrame(raw: string): SseFrame | null {
 export const ACCOUNT = { login: "octo", id: 42, name: "Octo Cat" };
 
 // What `claude auth status --json` prints for a Claude account sign-in (the fields Orbit Web reads, and two it does not).
-export const CLAUDE_SIGNED_IN = { loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "max", storedClaudeAiLogin: true };
+export const CLAUDE_SIGNED_IN = { loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgId: "org-octo", orgName: "Octo Org", subscriptionType: "max", storedClaudeAiLogin: true };
+
+// What `claude auth login --claudeai` does in a test: prints the URL and the prompt, and signs in when given a code.
+export const claudeLogin = (onSignedIn: () => void = () => undefined) => (c: FakeChild): void => {
+  c.stdout("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=s1\nPaste code here if prompted > ");
+  c.onInput(() => {
+    onSignedIn();
+    c.stdout("\nLogin successful.\n");
+    c.exit(0);
+  });
+  c.onSignal(() => c.exit(null, "SIGTERM"));
+};
 export const CLAUDE_SIGNED_OUT = { loggedIn: false, authMethod: "none", apiProvider: "firstParty" };
 export const REPOSITORY = "octo/sum-fixture";
 
@@ -297,6 +364,7 @@ export function signedIn(fake: FakeProcessPort): FakeProcessPort {
     .on(program("az", "account", "show"), { run: { code: 1, stderr: "Please run 'az login' to setup account.\n" } })
     .on(program("python3", "--version"), { run: { stdout: "Python 3.15.2\n" } })
     .on(program("claude", "auth", "status"), { run: { stdout: JSON.stringify(CLAUDE_SIGNED_IN) } })
+    .on(program("claude", "auth", "login"), { spawn: claudeLogin() })
     .on(claudeModelsProbe, { run: { stdout: modelsAnswer() } })
     .on(claudeConnectorsProbe, { spawn: connectorsProbe() })
     .on(program("claude", "auto-mode", "defaults"), { run: { stdout: JSON.stringify(AUTO_MODE_DEFAULTS) } })

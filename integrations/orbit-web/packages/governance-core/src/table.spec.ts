@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkConstitution, defaultConstitution, type Constitution, type Rule } from "./constitution.js";
+import { checkConstitution, defaultAccountPolicy, type Constitution, type Rule } from "./constitution.js";
 import { boxesOf, effectOf, egressHostOf, tableOf, withTable, type ConstitutionTable } from "./table.js";
 import { ACTION_KINDS, CLAUDE_ACCOUNT_HOSTS, type ActionKind, type Effect } from "./vocabulary.js";
-import { ORG } from "./testing.spec-helpers.js";
+import { ACCOUNT } from "./testing.spec-helpers.js";
 
-const base = (): Constitution => defaultConstitution(ORG);
+const base = (): Constitution => defaultAccountPolicy(ACCOUNT, "governed");
 const tick = (t: ConstitutionTable, action: ActionKind, effect: Effect): ConstitutionTable => ({ ...t, rows: t.rows.map((r) => (r.action === action ? { ...r, effect, stated: true } : r)) });
 const ruleOf = (c: Constitution, action: ActionKind): Rule[] => c.rules.filter((r) => r.action === action);
 
@@ -17,7 +17,7 @@ test("a row's two boxes are the three effects: neither ticked is denied", () => 
   }
 });
 
-test("the default Constitution read into the table and written back is the same document", () => {
+test("the default policy read into the table and written back is the same document", () => {
   const t = tableOf(base());
   assert.deepEqual(t.rows.map((r) => r.action), ACTION_KINDS);
   assert.deepEqual(withTable(base(), t), base());
@@ -26,15 +26,15 @@ test("the default Constitution read into the table and written back is the same 
   assert.deepEqual(t.kept.map((r) => r.id), ["privileged-settings", "modify-governance"]);
   const row = (a: ActionKind) => t.rows.find((r) => r.action === a);
   assert.deepEqual(row("tool.web"), { action: "tool.web", effect: "deny", stated: true });
-  assert.deepEqual(row("governance.role.grant"), { action: "governance.role.grant", effect: "deny", stated: false }, "no rule: the default decision");
+  assert.deepEqual(row("governance.approval.decide"), { action: "governance.approval.decide", effect: "deny", stated: false }, "no rule: the default decision");
 });
 
 test("ticking a row changes its own rule in its place, or adds one; nothing else moves", () => {
   const before = base();
-  const after = withTable(before, tick(tick(tableOf(before), "tool.web", "allow"), "governance.role.grant", "require_approval"));
+  const after = withTable(before, tick(tick(tableOf(before), "tool.web", "allow"), "governance.approval.decide", "require_approval"));
   assert.deepEqual(ruleOf(after, "tool.web"), [{ id: "web-tools", action: "tool.web", effect: "allow" }]);
   assert.equal(after.rules.findIndex((r) => r.id === "web-tools"), before.rules.findIndex((r) => r.id === "web-tools"));
-  assert.deepEqual(after.rules.at(-1), { id: "governance-role-grant", action: "governance.role.grant", effect: "require_approval" });
+  assert.deepEqual(after.rules.at(-1), { id: "governance-approval-decide", action: "governance.approval.decide", effect: "require_approval" });
   assert.deepEqual(after.rules.slice(0, before.rules.length).filter((r) => r.id !== "web-tools"), before.rules.filter((r) => r.id !== "web-tools"));
   assert.equal(checkConstitution(after).ok, true);
 });
@@ -44,7 +44,7 @@ test("a row nobody ticked follows the default decision; one a rule states does n
   const after = withTable(base(), t);
   assert.equal(after.defaults.decision, "require_approval");
   const read = tableOf(after);
-  assert.equal(read.rows.find((r) => r.action === "governance.role.grant")?.effect, "require_approval");
+  assert.equal(read.rows.find((r) => r.action === "governance.approval.decide")?.effect, "require_approval");
   assert.equal(read.rows.find((r) => r.action === "tool.web")?.effect, "deny");
 });
 
@@ -66,10 +66,10 @@ test("several rules for one action read as the strictest, and are written back a
 });
 
 test("the obligations are boxes, and a new rule's id never takes one already used", () => {
-  const c: Constitution = { ...base(), rules: [...base().rules, { id: "governance-role-grant", action: "governance.role.grant", principalType: "human", effect: "allow" }] };
+  const c: Constitution = { ...base(), rules: [...base().rules, { id: "governance-approval-decide", action: "governance.approval.decide", principalType: "human", effect: "allow" }] };
   const t = tableOf(c);
-  const after = withTable(c, { ...tick(t, "governance.role.grant", "deny"), obligations: { auditDecisions: "non_allow", dailyReport: false, isolation: "optional" } });
+  const after = withTable(c, { ...tick(t, "governance.approval.decide", "deny"), obligations: { auditDecisions: "non_allow", dailyReport: false, isolation: "optional" } });
   assert.deepEqual(after.obligations, { auditDecisions: "non_allow", dailyReport: false, isolation: "optional" });
-  assert.deepEqual(ruleOf(after, "governance.role.grant").map((r) => r.id), ["governance-role-grant", "governance-role-grant-2"]);
+  assert.deepEqual(ruleOf(after, "governance.approval.decide").map((r) => r.id), ["governance-approval-decide", "governance-approval-decide-2"]);
   assert.equal(checkConstitution(after).ok, true);
 });

@@ -1,171 +1,66 @@
-// Typed access to governance's tables (governance-db.ts). Each store owns its SQL; nothing else writes these tables.
-// Secrets are never stored: a session's or a run's token is kept as its SHA-256, a password as its scrypt hash.
+// Typed access to governance's tables (schema `governance`). Each store owns its SQL; nothing else writes these
+// tables. EVERY read and write names the account it is about: nothing here answers across accounts, so a caller that
+// forgets the account cannot be given another account's record. Secrets are never stored: a run's token is kept as its
+// SHA-256.
 import { createHash } from "node:crypto";
-import {
-  AUDIT_SCHEMA_VERSION,
-  seal,
-  type AuditBody,
-  type AuditEvent,
-  type AuditEventType,
-  type AuditPrincipalType,
-  type AuditValue,
-  type OperatorRole,
-  type RevisionState,
-  type RiskLevel,
-} from "@orbit-web/governance-core";
-import type { AgentRuntime, EnforcementProfile, FindingResolution, IsolationCheck, IsolationState, OperatorStatus, RevisionSource } from "@orbit-web/contracts";
-import type { GovernanceDatabase } from "./governance-db.js";
-
-type Row = Record<string, unknown>;
+import { AUDIT_SCHEMA_VERSION, seal, type AuditBody, type AuditEvent, type AuditEventType, type AuditPrincipalType, type AuditValue, type RevisionState, type RiskLevel } from "@orbit-web/governance-core";
+import type { FindingResolution, IsolationCheck, IsolationState, RevisionSource } from "@orbit-web/contracts";
+import { Db, jsonParam, type Row } from "../db/db.js";
 
 export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 const str = (v: unknown): string => String(v);
 const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
-const json = <T>(v: unknown): T => JSON.parse(str(v)) as T;
 
-// ---- the organization and its operators ------------------------------------------------------------------------------
+// The chain a record is sealed onto: an account's own, or the deployment's (what concerns no account).
+export const DEPLOYMENT_CHAIN = "deployment";
+export const chainOf = (accountId: string | null): string => (accountId === null ? DEPLOYMENT_CHAIN : `account:${accountId}`);
 
-export interface Organization {
+// ---- what an account's governance points at ---------------------------------------------------------------------------
+
+export type ResourceKind = "workspace" | "research_workspace";
+
+export interface ResourceRecord {
+  accountId: string;
+  kind: ResourceKind;
   id: string;
-  name: string;
+  title: string;
   createdAt: string;
+  deletedAt: string | null;
 }
 
-export interface OperatorRecord {
-  id: string;
-  username: string;
-  displayName: string;
-  passwordHash: string;
-  status: OperatorStatus;
-  createdAt: string;
-  createdBy: string;
-  passwordChangedAt: string;
-  roles: OperatorRole[];
-}
+const resourceOf = (r: Row): ResourceRecord => ({ accountId: str(r.account_id), kind: str(r.kind) as ResourceKind, id: str(r.id), title: str(r.title), createdAt: str(r.created_at), deletedAt: strOrNull(r.deleted_at) });
 
-export interface OperatorSessionRecord {
-  id: string;
-  operatorId: string;
-  createdAt: string;
-  lastSeenAt: string;
-  expiresAt: string;
-  revokedAt: string | null;
-}
+export class ResourceStore {
+  constructor(private readonly db: Db) {}
 
-export interface LoginFailures {
-  failures: number;
-  firstAt: string;
-  lockedUntil: string | null;
-}
-
-export class OperatorStore {
-  constructor(private readonly database: GovernanceDatabase) {}
-
-  organization(): Organization | null {
-    const row = this.database.db.prepare("SELECT id, name, created_at FROM organization WHERE singleton = 1").get() as Row | undefined;
-    return row ? { id: str(row.id), name: str(row.name), createdAt: str(row.created_at) } : null;
+  // Registers a chat or a research workspace as its account's (in the transaction that creates it).
+  async register(r: Omit<ResourceRecord, "deletedAt">): Promise<void> {
+    await this.db.query("INSERT INTO account_resources (account_id, kind, id, title, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (account_id, kind, id) DO UPDATE SET title = excluded.title, deleted_at = NULL", [
+      r.accountId,
+      r.kind,
+      r.id,
+      r.title.slice(0, 200),
+      r.createdAt,
+    ]);
   }
 
-  createOrganization(o: Organization): void {
-    this.database.db.prepare("INSERT INTO organization (singleton, id, name, created_at) VALUES (1, ?, ?, ?)").run(o.id, o.name, o.createdAt);
+  async retitle(accountId: string, kind: ResourceKind, id: string, title: string): Promise<void> {
+    await this.db.query("UPDATE account_resources SET title = $4 WHERE account_id = $1 AND kind = $2 AND id = $3", [accountId, kind, id, title.slice(0, 200)]);
   }
 
-  private rolesOf(operatorId: string): OperatorRole[] {
-    const rows = this.database.db.prepare("SELECT role FROM operator_roles WHERE operator_id = ? ORDER BY role").all(operatorId) as Row[];
-    return rows.map((r) => str(r.role) as OperatorRole);
+  // The record it names is gone; what concerned it stays.
+  async deleted(accountId: string, kind: ResourceKind, id: string, at: string): Promise<void> {
+    await this.db.query("UPDATE account_resources SET deleted_at = $4 WHERE account_id = $1 AND kind = $2 AND id = $3 AND deleted_at IS NULL", [accountId, kind, id, at]);
   }
 
-  private operatorOf(row: Row): OperatorRecord {
-    return {
-      id: str(row.id),
-      username: str(row.username),
-      displayName: str(row.display_name),
-      passwordHash: str(row.password_hash),
-      status: str(row.status) as OperatorStatus,
-      createdAt: str(row.created_at),
-      createdBy: str(row.created_by),
-      passwordChangedAt: str(row.password_changed_at),
-      roles: this.rolesOf(str(row.id)),
-    };
+  async get(accountId: string, kind: ResourceKind, id: string): Promise<ResourceRecord | null> {
+    const row = await this.db.one("SELECT * FROM account_resources WHERE account_id = $1 AND kind = $2 AND id = $3", [accountId, kind, id]);
+    return row === null ? null : resourceOf(row);
   }
 
-  byId(id: string): OperatorRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM operators WHERE id = ?").get(id) as Row | undefined;
-    return row ? this.operatorOf(row) : null;
-  }
-
-  byUsername(username: string): OperatorRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM operators WHERE username = ?").get(username) as Row | undefined;
-    return row ? this.operatorOf(row) : null;
-  }
-
-  list(): OperatorRecord[] {
-    return (this.database.db.prepare("SELECT * FROM operators ORDER BY created_at, username").all() as Row[]).map((r) => this.operatorOf(r));
-  }
-
-  create(o: Omit<OperatorRecord, "roles">): void {
-    this.database.db
-      .prepare("INSERT INTO operators (id, username, display_name, password_hash, status, created_at, created_by, password_changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(o.id, o.username, o.displayName, o.passwordHash, o.status, o.createdAt, o.createdBy, o.passwordChangedAt);
-  }
-
-  setStatus(id: string, status: OperatorStatus): void {
-    this.database.db.prepare("UPDATE operators SET status = ? WHERE id = ?").run(status, id);
-  }
-
-  setPassword(id: string, passwordHash: string, at: string): void {
-    this.database.db.prepare("UPDATE operators SET password_hash = ?, password_changed_at = ? WHERE id = ?").run(passwordHash, at, id);
-  }
-
-  grant(operatorId: string, role: OperatorRole, by: string, at: string): boolean {
-    return Number(this.database.db.prepare("INSERT OR IGNORE INTO operator_roles (operator_id, role, granted_by, granted_at) VALUES (?, ?, ?, ?)").run(operatorId, role, by, at).changes) > 0;
-  }
-
-  revoke(operatorId: string, role: OperatorRole): boolean {
-    return Number(this.database.db.prepare("DELETE FROM operator_roles WHERE operator_id = ? AND role = ?").run(operatorId, role).changes) > 0;
-  }
-
-  activeOwners(): string[] {
-    const rows = this.database.db.prepare("SELECT o.id FROM operators o JOIN operator_roles r ON r.operator_id = o.id WHERE r.role = 'organization_owner' AND o.status = 'active'").all() as Row[];
-    return rows.map((r) => str(r.id));
-  }
-
-  createSession(s: { id: string; tokenHash: string; operatorId: string; createdAt: string; expiresAt: string }): void {
-    this.database.db.prepare("INSERT INTO operator_sessions (id, token_hash, operator_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)").run(s.id, s.tokenHash, s.operatorId, s.createdAt, s.createdAt, s.expiresAt);
-  }
-
-  sessionByToken(tokenHash: string): OperatorSessionRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM operator_sessions WHERE token_hash = ?").get(tokenHash) as Row | undefined;
-    return row ? { id: str(row.id), operatorId: str(row.operator_id), createdAt: str(row.created_at), lastSeenAt: str(row.last_seen_at), expiresAt: str(row.expires_at), revokedAt: strOrNull(row.revoked_at) } : null;
-  }
-
-  touchSession(id: string, at: string): void {
-    this.database.db.prepare("UPDATE operator_sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL").run(at, id);
-  }
-
-  revokeSession(id: string, at: string, reason: string): void {
-    this.database.db.prepare("UPDATE operator_sessions SET revoked_at = ?, revoked_reason = ? WHERE id = ? AND revoked_at IS NULL").run(at, reason, id);
-  }
-
-  // Ends every open session of an operator but `except`; how many it ended.
-  revokeSessions(operatorId: string, at: string, reason: string, except: string | null = null): number {
-    return Number(this.database.db.prepare("UPDATE operator_sessions SET revoked_at = ?, revoked_reason = ? WHERE operator_id = ? AND revoked_at IS NULL AND id IS NOT ?").run(at, reason, operatorId, except).changes);
-  }
-
-  failures(username: string): LoginFailures | null {
-    const row = this.database.db.prepare("SELECT * FROM login_failures WHERE username = ?").get(username) as Row | undefined;
-    return row ? { failures: Number(row.failures), firstAt: str(row.first_at), lockedUntil: strOrNull(row.locked_until) } : null;
-  }
-
-  setFailures(username: string, f: LoginFailures): void {
-    this.database.db
-      .prepare("INSERT INTO login_failures (username, failures, first_at, locked_until) VALUES (?, ?, ?, ?) ON CONFLICT(username) DO UPDATE SET failures = excluded.failures, first_at = excluded.first_at, locked_until = excluded.locked_until")
-      .run(username, f.failures, f.firstAt, f.lockedUntil);
-  }
-
-  clearFailures(username: string): void {
-    this.database.db.prepare("DELETE FROM login_failures WHERE username = ?").run(username);
+  async list(accountId: string, kind: ResourceKind): Promise<ResourceRecord[]> {
+    return (await this.db.query("SELECT * FROM account_resources WHERE account_id = $1 AND kind = $2 ORDER BY created_at DESC, id", [accountId, kind])).map(resourceOf);
   }
 }
 
@@ -174,7 +69,7 @@ export class OperatorStore {
 export type AuditDraft = Omit<AuditBody, "schemaVersion" | "recordedAt">;
 
 const AUDIT_COLUMNS =
-  "seq, event_id, schema_version, event_type, occurred_at, recorded_at, organization_id, principal_id, principal_type, agent_id, workspace_id, run_id, correlation_id, causation_id, policy_revision, decision_id, outcome, reason_codes, evidence_refs, data, previous_hash, hash";
+  "seq, event_id, schema_version, event_type, occurred_at, recorded_at, account_id, principal_id, principal_type, agent_id, workspace_id, run_id, correlation_id, causation_id, policy_revision, decision_id, outcome, reason_codes, evidence_refs, data, previous_hash, hash";
 
 function eventOf(row: Row): AuditEvent {
   return {
@@ -184,7 +79,7 @@ function eventOf(row: Row): AuditEvent {
     eventType: str(row.event_type) as AuditEventType,
     occurredAt: str(row.occurred_at),
     recordedAt: str(row.recorded_at),
-    organizationId: str(row.organization_id),
+    accountId: strOrNull(row.account_id),
     principalId: str(row.principal_id),
     principalType: str(row.principal_type) as AuditPrincipalType,
     agentId: strOrNull(row.agent_id),
@@ -195,40 +90,58 @@ function eventOf(row: Row): AuditEvent {
     policyRevision: strOrNull(row.policy_revision),
     decisionId: strOrNull(row.decision_id),
     outcome: str(row.outcome),
-    reasonCodes: json<string[]>(row.reason_codes),
-    evidenceRefs: json<string[]>(row.evidence_refs),
-    data: json<Record<string, AuditValue>>(row.data),
+    reasonCodes: row.reason_codes as string[],
+    evidenceRefs: row.evidence_refs as string[],
+    data: row.data as Record<string, AuditValue>,
     previousHash: strOrNull(row.previous_hash),
     hash: str(row.hash),
   };
 }
 
-export class AuditStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+export interface AuditPageQuery {
+  before?: number;
+  limit: number;
+  types?: readonly string[];
+  workspaceId?: string;
+  outcome?: string;
+}
 
-  head(): { seq: number; hash: string } | null {
-    const row = this.database.db.prepare("SELECT seq, hash FROM audit_events ORDER BY seq DESC LIMIT 1").get() as Row | undefined;
-    return row ? { seq: Number(row.seq), hash: str(row.hash) } : null;
+export class AuditStore {
+  constructor(private readonly db: Db) {}
+
+  // An account's chain is opened with the account (and the deployment's with the schema).
+  async openChain(accountId: string): Promise<void> {
+    await this.db.query("INSERT INTO audit_chains (id, account_id, head_seq, head_hash) VALUES ($1, $2, 0, NULL) ON CONFLICT (id) DO NOTHING", [chainOf(accountId), accountId]);
   }
 
-  // Seals the record onto the chain and stores it, in one transaction. The same eventId twice is the record already
-  // there (idempotent): a retried write adds nothing.
-  append(draft: AuditDraft): AuditEvent {
-    return this.database.transaction(() => {
-      const existing = this.get(draft.eventId);
+  async head(accountId: string | null): Promise<{ seq: number; hash: string } | null> {
+    const row = await this.db.one("SELECT head_seq, head_hash FROM audit_chains WHERE id = $1", [chainOf(accountId)]);
+    return row === null || Number(row.head_seq) === 0 ? null : { seq: Number(row.head_seq), hash: str(row.head_hash) };
+  }
+
+  // Seals the record onto its account's chain and stores it, in one transaction (the caller's, when there is one). The
+  // chain's head row is LOCKED first: records of one chain are numbered and linked one after another, however many
+  // write at once. The same eventId twice is the record already there (a retried write adds nothing).
+  async append(draft: AuditDraft): Promise<AuditEvent> {
+    return this.db.tx(async () => {
+      const chain = chainOf(draft.accountId);
+      const head = await this.db.one("SELECT head_seq, head_hash FROM audit_chains WHERE id = $1 FOR UPDATE", [chain]);
+      if (head === null) throw new Error(`no audit chain ${chain}`);
+      const existing = await this.get(draft.accountId, draft.eventId);
       if (existing !== null) return existing;
-      const head = this.head();
-      const event = seal({ ...draft, schemaVersion: AUDIT_SCHEMA_VERSION, recordedAt: new Date().toISOString() }, (head?.seq ?? 0) + 1, head?.hash ?? null, sha256);
-      this.database.db
-        .prepare(`INSERT INTO audit_events (${AUDIT_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(
+      const seq = Number(head.head_seq) + 1;
+      const event = seal({ ...draft, schemaVersion: AUDIT_SCHEMA_VERSION, recordedAt: new Date().toISOString() }, seq, strOrNull(head.head_hash), sha256);
+      await this.db.query(
+        `INSERT INTO audit_events (chain_id, ${AUDIT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22, $23)`,
+        [
+          chain,
           event.seq,
           event.eventId,
           event.schemaVersion,
           event.eventType,
           event.occurredAt,
           event.recordedAt,
-          event.organizationId,
+          event.accountId,
           event.principalId,
           event.principalType,
           event.agentId,
@@ -239,65 +152,72 @@ export class AuditStore {
           event.policyRevision,
           event.decisionId,
           event.outcome,
-          JSON.stringify(event.reasonCodes),
-          JSON.stringify(event.evidenceRefs),
-          JSON.stringify(event.data),
+          jsonParam(event.reasonCodes),
+          jsonParam(event.evidenceRefs),
+          jsonParam(event.data),
           event.previousHash,
           event.hash,
-        );
+        ],
+      );
+      await this.db.query("UPDATE audit_chains SET head_seq = $2, head_hash = $3 WHERE id = $1", [chain, event.seq, event.hash]);
       return event;
     });
   }
 
-  get(eventId: string): AuditEvent | null {
-    const row = this.database.db.prepare(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE event_id = ?`).get(eventId) as Row | undefined;
-    return row ? eventOf(row) : null;
+  async get(accountId: string | null, eventId: string): Promise<AuditEvent | null> {
+    const row = await this.db.one(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE chain_id = $1 AND event_id = $2`, [chainOf(accountId), eventId]);
+    return row === null ? null : eventOf(row);
   }
 
-  count(): number {
-    return Number((this.database.db.prepare("SELECT COUNT(*) AS n FROM audit_events").get() as Row).n);
+  async count(accountId: string | null): Promise<number> {
+    return Number((await this.db.one("SELECT head_seq FROM audit_chains WHERE id = $1", [chainOf(accountId)]))?.head_seq ?? 0);
   }
 
-  // Newest first, below `before` (a seq), at most `limit`, of the given types when named.
-  page(o: { before?: number; limit: number; types?: readonly string[] }): AuditEvent[] {
-    const types = o.types ?? [];
-    const where = [...(o.before !== undefined ? ["seq < ?"] : []), ...(types.length > 0 ? [`event_type IN (${types.map(() => "?").join(", ")})`] : [])];
-    const sql = `SELECT ${AUDIT_COLUMNS} FROM audit_events ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY seq DESC LIMIT ?`;
-    const args = [...(o.before !== undefined ? [o.before] : []), ...types, o.limit];
-    return (this.database.db.prepare(sql).all(...args) as Row[]).map(eventOf);
+  // Newest first, below `before` (a seq), at most `limit`, of the given types / workspace / outcome when named.
+  async page(accountId: string | null, q: AuditPageQuery): Promise<AuditEvent[]> {
+    const where = ["chain_id = $1"];
+    const args: (string | number | readonly string[])[] = [chainOf(accountId)];
+    const add = (sql: string, v: string | number | readonly string[]) => {
+      args.push(v);
+      where.push(sql.replace("?", `$${args.length}`));
+    };
+    if (q.before !== undefined) add("seq < ?", q.before);
+    if (q.types !== undefined && q.types.length > 0) add("event_type = ANY(?::text[])", q.types);
+    if (q.workspaceId !== undefined) add("workspace_id = ?", q.workspaceId);
+    if (q.outcome !== undefined) add("outcome = ?", q.outcome);
+    args.push(q.limit);
+    return (await this.db.query(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE ${where.join(" AND ")} ORDER BY seq DESC LIMIT $${args.length}`, args)).map(eventOf);
   }
 
-  // Every record, in the order it was recorded: what a check of the chain reads.
-  all(): AuditEvent[] {
-    return (this.database.db.prepare(`SELECT ${AUDIT_COLUMNS} FROM audit_events ORDER BY seq`).all() as Row[]).map(eventOf);
+  // Every record of a chain, in the order it was recorded: what a check of the chain reads.
+  async all(accountId: string | null): Promise<AuditEvent[]> {
+    return (await this.db.query(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE chain_id = $1 ORDER BY seq`, [chainOf(accountId)])).map(eventOf);
   }
 
-  // The records that occurred in [from, to), in order.
-  between(from: string, to: string): AuditEvent[] {
-    return (this.database.db.prepare(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE occurred_at >= ? AND occurred_at < ? ORDER BY seq`).all(from, to) as Row[]).map(eventOf);
+  // The records of a chain that occurred in [from, to), in order.
+  async between(accountId: string | null, from: string, to: string): Promise<AuditEvent[]> {
+    return (await this.db.query(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE chain_id = $1 AND occurred_at >= $2 AND occurred_at < $3 ORDER BY seq`, [chainOf(accountId), from, to])).map(eventOf);
   }
 
-  ofTypes(types: readonly string[], limit: number): AuditEvent[] {
-    return this.page({ limit, types });
+  // Every chain there is: the deployment's (null) and one per account.
+  async chains(): Promise<(string | null)[]> {
+    return (await this.db.query("SELECT account_id FROM audit_chains ORDER BY id")).map((r) => strOrNull(r.account_id));
   }
 
-  byDecision(decisionId: string): AuditEvent | null {
-    const row = this.database.db.prepare(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE decision_id = ? AND event_type = 'policy.decision' ORDER BY seq LIMIT 1`).get(decisionId) as Row | undefined;
-    return row ? eventOf(row) : null;
-  }
-
-  ofWorkspace(workspaceId: string, limit: number): AuditEvent[] {
-    return (this.database.db.prepare(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE workspace_id = ? ORDER BY seq DESC LIMIT ?`).all(workspaceId, limit) as Row[]).map(eventOf);
+  // The accounts whose chain holds a record that occurred in [from, to).
+  async accountsActive(from: string, to: string): Promise<string[]> {
+    return (await this.db.query("SELECT DISTINCT account_id FROM audit_events WHERE account_id IS NOT NULL AND occurred_at >= $1 AND occurred_at < $2", [from, to])).map((r) => str(r.account_id));
   }
 }
 
-// ---- the Constitution's revisions and overlays ---------------------------------------------------------------------
+// ---- the account's policy: revisions and overrides ---------------------------------------------------------------
 
 export interface RevisionRecord {
   id: string;
+  accountId: string;
   revision: number | null;
   state: RevisionState;
-  // The document as it was written (JSON text).
+  // The document as it was written (canonical JSON text: its digest is over exactly this).
   document: string;
   digest: string;
   name: string;
@@ -308,9 +228,12 @@ export interface RevisionRecord {
   createdAt: string;
   createdBy: string;
   updatedAt: string;
-  approvedDigest: string | null;
-  approvedBy: string | null;
-  approvedAt: string | null;
+  // The owner's confirmation of exactly this content, against exactly that base, at that risk.
+  confirmedDigest: string | null;
+  confirmedBase: string | null;
+  confirmedRisk: RiskLevel | null;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
   publishedAt: string | null;
   publishedBy: string | null;
   supersededAt: string | null;
@@ -319,6 +242,7 @@ export interface RevisionRecord {
 function revisionOf(row: Row): RevisionRecord {
   return {
     id: str(row.id),
+    accountId: str(row.account_id),
     revision: row.revision === null || row.revision === undefined ? null : Number(row.revision),
     state: str(row.state) as RevisionState,
     document: str(row.document),
@@ -327,13 +251,15 @@ function revisionOf(row: Row): RevisionRecord {
     risk: strOrNull(row.risk) as RiskLevel | null,
     source: str(row.source) as RevisionSource,
     basedOn: strOrNull(row.based_on),
-    authors: json<string[]>(row.authors),
+    authors: row.authors as string[],
     createdAt: str(row.created_at),
     createdBy: str(row.created_by),
     updatedAt: str(row.updated_at),
-    approvedDigest: strOrNull(row.approved_digest),
-    approvedBy: strOrNull(row.approved_by),
-    approvedAt: strOrNull(row.approved_at),
+    confirmedDigest: strOrNull(row.confirmed_digest),
+    confirmedBase: strOrNull(row.confirmed_base),
+    confirmedRisk: strOrNull(row.confirmed_risk) as RiskLevel | null,
+    confirmedBy: strOrNull(row.confirmed_by),
+    confirmedAt: strOrNull(row.confirmed_at),
     publishedAt: strOrNull(row.published_at),
     publishedBy: strOrNull(row.published_by),
     supersededAt: strOrNull(row.superseded_at),
@@ -341,145 +267,104 @@ function revisionOf(row: Row): RevisionRecord {
 }
 
 export class RevisionStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  get(id: string): RevisionRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM revisions WHERE id = ?").get(id) as Row | undefined;
-    return row ? revisionOf(row) : null;
+  async get(accountId: string, id: string): Promise<RevisionRecord | null> {
+    const row = await this.db.one("SELECT * FROM policy_revisions WHERE account_id = $1 AND id = $2", [accountId, id]);
+    return row === null ? null : revisionOf(row);
   }
 
-  list(): RevisionRecord[] {
-    return (this.database.db.prepare("SELECT * FROM revisions ORDER BY created_at DESC, id").all() as Row[]).map(revisionOf);
+  async list(accountId: string): Promise<RevisionRecord[]> {
+    return (await this.db.query("SELECT * FROM policy_revisions WHERE account_id = $1 ORDER BY created_at DESC, id", [accountId])).map(revisionOf);
   }
 
-  effective(): RevisionRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM revisions WHERE state = 'PUBLISHED' ORDER BY revision DESC LIMIT 1").get() as Row | undefined;
-    return row ? revisionOf(row) : null;
+  async effective(accountId: string): Promise<RevisionRecord | null> {
+    const row = await this.db.one("SELECT * FROM policy_revisions WHERE account_id = $1 AND state = 'PUBLISHED'", [accountId]);
+    return row === null ? null : revisionOf(row);
   }
 
-  nextNumber(): number {
-    return Number((this.database.db.prepare("SELECT COALESCE(MAX(revision), 0) + 1 AS n FROM revisions").get() as Row).n);
+  // The account's policy head, locked until the transaction ends: publications of one account take turns.
+  async lockHead(accountId: string): Promise<number> {
+    await this.db.query("INSERT INTO policy_heads (account_id, last_revision) VALUES ($1, 0) ON CONFLICT (account_id) DO NOTHING", [accountId]);
+    return Number((await this.db.one("SELECT last_revision FROM policy_heads WHERE account_id = $1 FOR UPDATE", [accountId]))?.last_revision ?? 0);
   }
 
-  insert(r: RevisionRecord): void {
-    this.database.db
-      .prepare(
-        "INSERT INTO revisions (id, revision, state, document, digest, name, risk, source, based_on, authors, created_at, created_by, updated_at, approved_digest, approved_by, approved_at, published_at, published_by, superseded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(r.id, r.revision, r.state, r.document, r.digest, r.name, r.risk, r.source, r.basedOn, JSON.stringify(r.authors), r.createdAt, r.createdBy, r.updatedAt, r.approvedDigest, r.approvedBy, r.approvedAt, r.publishedAt, r.publishedBy, r.supersededAt);
+  // The next revision number of the account (call with the head locked).
+  async nextNumber(accountId: string): Promise<number> {
+    const row = await this.db.one("UPDATE policy_heads SET last_revision = last_revision + 1 WHERE account_id = $1 RETURNING last_revision", [accountId]);
+    if (row === null) throw new Error(`no policy head for ${accountId}`);
+    return Number(row.last_revision);
   }
 
-  // Writes every field of `r` back (the triggers refuse what may never change).
-  save(r: RevisionRecord): void {
-    this.database.db
-      .prepare(
-        "UPDATE revisions SET revision = ?, state = ?, document = ?, digest = ?, name = ?, risk = ?, authors = ?, updated_at = ?, approved_digest = ?, approved_by = ?, approved_at = ?, published_at = ?, published_by = ?, superseded_at = ? WHERE id = ?",
-      )
-      .run(r.revision, r.state, r.document, r.digest, r.name, r.risk, JSON.stringify(r.authors), r.updatedAt, r.approvedDigest, r.approvedBy, r.approvedAt, r.publishedAt, r.publishedBy, r.supersededAt, r.id);
+  async insert(r: RevisionRecord): Promise<void> {
+    await this.db.query(
+      "INSERT INTO policy_revisions (id, account_id, revision, state, document, digest, name, risk, source, based_on, authors, created_at, created_by, updated_at, confirmed_digest, confirmed_base, confirmed_risk, confirmed_by, confirmed_at, published_at, published_by, superseded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
+      [r.id, r.accountId, r.revision, r.state, r.document, r.digest, r.name, r.risk, r.source, r.basedOn, jsonParam(r.authors), r.createdAt, r.createdBy, r.updatedAt, r.confirmedDigest, r.confirmedBase, r.confirmedRisk, r.confirmedBy, r.confirmedAt, r.publishedAt, r.publishedBy, r.supersededAt],
+    );
+  }
+
+  // Writes every field of `r` back (the triggers refuse what may never change), only while it is still in `fromState`
+  // with `fromDigest`: two writers racing on one revision cannot both move it. True when this call wrote it.
+  async save(r: RevisionRecord, from: { state: RevisionState; digest: string }): Promise<boolean> {
+    const n = await this.db.run(
+      "UPDATE policy_revisions SET revision = $3, state = $4, document = $5, digest = $6, name = $7, risk = $8, authors = $9::jsonb, updated_at = $10, confirmed_digest = $11, confirmed_base = $12, confirmed_risk = $13, confirmed_by = $14, confirmed_at = $15, published_at = $16, published_by = $17, superseded_at = $18 WHERE account_id = $1 AND id = $2 AND state = $19 AND digest = $20",
+      [r.accountId, r.id, r.revision, r.state, r.document, r.digest, r.name, r.risk, jsonParam(r.authors), r.updatedAt, r.confirmedDigest, r.confirmedBase, r.confirmedRisk, r.confirmedBy, r.confirmedAt, r.publishedAt, r.publishedBy, r.supersededAt, from.state, from.digest],
+    );
+    return n > 0;
   }
 }
 
-export interface OverlayRecord {
-  level: string;
-  target: string;
+export interface OverrideRecord {
+  accountId: string;
+  kind: ResourceKind;
+  resourceId: string;
   document: string;
   digest: string;
   setAt: string;
   setBy: string;
 }
 
-export class OverlayStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+const overrideOf = (r: Row): OverrideRecord => ({ accountId: str(r.account_id), kind: str(r.kind) as ResourceKind, resourceId: str(r.resource_id), document: str(r.document), digest: str(r.digest), setAt: str(r.set_at), setBy: str(r.set_by) });
 
-  list(): OverlayRecord[] {
-    const rows = this.database.db.prepare("SELECT * FROM overlays ORDER BY level, target").all() as Row[];
-    return rows.map((r) => ({ level: str(r.level), target: str(r.target), document: str(r.document), digest: str(r.digest), setAt: str(r.set_at), setBy: str(r.set_by) }));
+export class OverrideStore {
+  constructor(private readonly db: Db) {}
+
+  async list(accountId: string): Promise<OverrideRecord[]> {
+    return (await this.db.query("SELECT * FROM policy_overrides WHERE account_id = $1 ORDER BY kind, resource_id", [accountId])).map(overrideOf);
   }
 
-  set(o: OverlayRecord): void {
-    this.database.db
-      .prepare("INSERT INTO overlays (level, target, document, digest, set_at, set_by) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(level, target) DO UPDATE SET document = excluded.document, digest = excluded.digest, set_at = excluded.set_at, set_by = excluded.set_by")
-      .run(o.level, o.target, o.document, o.digest, o.setAt, o.setBy);
+  async get(accountId: string, kind: ResourceKind, resourceId: string): Promise<OverrideRecord | null> {
+    const row = await this.db.one("SELECT * FROM policy_overrides WHERE account_id = $1 AND kind = $2 AND resource_id = $3", [accountId, kind, resourceId]);
+    return row === null ? null : overrideOf(row);
   }
 
-  remove(level: string, target: string): boolean {
-    return Number(this.database.db.prepare("DELETE FROM overlays WHERE level = ? AND target = ?").run(level, target).changes) > 0;
-  }
-}
-
-// ---- agents, governed workspaces, run bindings -------------------------------------------------------------------------
-
-export interface AgentRecord {
-  id: string;
-  name: string;
-  runtime: AgentRuntime;
-  status: OperatorStatus;
-  createdAt: string;
-  createdBy: string;
-}
-
-const agentOf = (r: Row): AgentRecord => ({ id: str(r.id), name: str(r.name), runtime: str(r.runtime) as AgentRuntime, status: str(r.status) as OperatorStatus, createdAt: str(r.created_at), createdBy: str(r.created_by) });
-
-export class AgentStore {
-  constructor(private readonly database: GovernanceDatabase) {}
-
-  list(): AgentRecord[] {
-    return (this.database.db.prepare("SELECT * FROM agents ORDER BY created_at, id").all() as Row[]).map(agentOf);
+  async set(o: OverrideRecord): Promise<void> {
+    await this.db.query(
+      "INSERT INTO policy_overrides (account_id, kind, resource_id, document, digest, set_at, set_by) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (account_id, kind, resource_id) DO UPDATE SET document = excluded.document, digest = excluded.digest, set_at = excluded.set_at, set_by = excluded.set_by",
+      [o.accountId, o.kind, o.resourceId, o.document, o.digest, o.setAt, o.setBy],
+    );
   }
 
-  get(id: string): AgentRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as Row | undefined;
-    return row ? agentOf(row) : null;
-  }
-
-  insert(a: AgentRecord): void {
-    this.database.db.prepare("INSERT INTO agents (id, name, runtime, status, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)").run(a.id, a.name, a.runtime, a.status, a.createdAt, a.createdBy);
-  }
-
-  setStatus(id: string, status: OperatorStatus): void {
-    this.database.db.prepare("UPDATE agents SET status = ? WHERE id = ?").run(status, id);
+  async remove(accountId: string, kind: ResourceKind, resourceId: string): Promise<boolean> {
+    return (await this.db.run("DELETE FROM policy_overrides WHERE account_id = $1 AND kind = $2 AND resource_id = $3", [accountId, kind, resourceId])) > 0;
   }
 }
 
-export interface GovernedWorkspaceRecord {
-  sessionId: string;
-  agentId: string;
-  profile: EnforcementProfile;
-  governedAt: string;
-  governedBy: string;
-}
-
-const governedOf = (r: Row): GovernedWorkspaceRecord => ({ sessionId: str(r.session_id), agentId: str(r.agent_id), profile: str(r.profile) as EnforcementProfile, governedAt: str(r.governed_at), governedBy: str(r.governed_by) });
-
-export class GovernedWorkspaceStore {
-  constructor(private readonly database: GovernanceDatabase) {}
-
-  get(sessionId: string): GovernedWorkspaceRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM governed_workspaces WHERE session_id = ?").get(sessionId) as Row | undefined;
-    return row ? governedOf(row) : null;
-  }
-
-  list(): GovernedWorkspaceRecord[] {
-    return (this.database.db.prepare("SELECT * FROM governed_workspaces ORDER BY governed_at").all() as Row[]).map(governedOf);
-  }
-
-  set(w: GovernedWorkspaceRecord): void {
-    this.database.db
-      .prepare("INSERT INTO governed_workspaces (session_id, agent_id, profile, governed_at, governed_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET agent_id = excluded.agent_id, profile = excluded.profile, governed_at = excluded.governed_at, governed_by = excluded.governed_by")
-      .run(w.sessionId, w.agentId, w.profile, w.governedAt, w.governedBy);
-  }
-
-  remove(sessionId: string): boolean {
-    return Number(this.database.db.prepare("DELETE FROM governed_workspaces WHERE session_id = ?").run(sessionId).changes) > 0;
-  }
-}
+// ---- run bindings -------------------------------------------------------------------------------------------------------
 
 export interface RunBinding {
   runId: string;
-  sessionId: string;
+  accountId: string;
+  kind: "chat" | "research";
+  // What it works in: a chat (`workspace`), or a research workspace with the research session it answers.
+  resourceKind: ResourceKind;
+  resourceId: string;
+  researchSessionId: string | null;
+  // The agent profile it runs as: `claude-code` for a chat, `claude-research` for research.
   agentId: string;
-  organizationId: string;
   policyRevision: string;
+  // Who started it (an owner's label): what its records name as their cause.
+  startedBy: string;
   workBranch: string | null;
   createdAt: string;
   expiresAt: string;
@@ -488,10 +373,14 @@ export interface RunBinding {
 
 const bindingOf = (r: Row): RunBinding => ({
   runId: str(r.run_id),
-  sessionId: str(r.session_id),
+  accountId: str(r.account_id),
+  kind: str(r.kind) as RunBinding["kind"],
+  resourceKind: str(r.resource_kind) as ResourceKind,
+  resourceId: str(r.resource_id),
+  researchSessionId: strOrNull(r.research_session_id),
   agentId: str(r.agent_id),
-  organizationId: str(r.organization_id),
   policyRevision: str(r.policy_revision),
+  startedBy: str(r.started_by),
   workBranch: strOrNull(r.work_branch),
   createdAt: str(r.created_at),
   expiresAt: str(r.expires_at),
@@ -499,31 +388,37 @@ const bindingOf = (r: Row): RunBinding => ({
 });
 
 export class RunBindingStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  insert(b: RunBinding & { tokenHash: string }): void {
-    this.database.db
-      .prepare("INSERT INTO run_bindings (run_id, token_hash, session_id, agent_id, organization_id, policy_revision, work_branch, created_at, expires_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)")
-      .run(b.runId, b.tokenHash, b.sessionId, b.agentId, b.organizationId, b.policyRevision, b.workBranch, b.createdAt, b.expiresAt);
+  async insert(b: RunBinding & { tokenHash: string }): Promise<void> {
+    await this.db.query(
+      "INSERT INTO run_bindings (run_id, token_hash, account_id, kind, resource_kind, resource_id, research_session_id, agent_id, policy_revision, started_by, work_branch, created_at, expires_at, ended_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)",
+      [b.runId, b.tokenHash, b.accountId, b.kind, b.resourceKind, b.resourceId, b.researchSessionId, b.agentId, b.policyRevision, b.startedBy, b.workBranch, b.createdAt, b.expiresAt],
+    );
   }
 
-  byToken(tokenHash: string): RunBinding | null {
-    const row = this.database.db.prepare("SELECT * FROM run_bindings WHERE token_hash = ?").get(tokenHash) as Row | undefined;
-    return row ? bindingOf(row) : null;
+  // A token's binding, whoever's it is: the token itself is the proof (only its own run holds it).
+  async byToken(tokenHash: string): Promise<RunBinding | null> {
+    const row = await this.db.one("SELECT * FROM run_bindings WHERE token_hash = $1", [tokenHash]);
+    return row === null ? null : bindingOf(row);
   }
 
-  get(runId: string): RunBinding | null {
-    const row = this.database.db.prepare("SELECT * FROM run_bindings WHERE run_id = ?").get(runId) as Row | undefined;
-    return row ? bindingOf(row) : null;
+  async get(accountId: string, runId: string): Promise<RunBinding | null> {
+    const row = await this.db.one("SELECT * FROM run_bindings WHERE account_id = $1 AND run_id = $2", [accountId, runId]);
+    return row === null ? null : bindingOf(row);
   }
 
-  end(runId: string, at: string): void {
-    this.database.db.prepare("UPDATE run_bindings SET ended_at = ? WHERE run_id = ? AND ended_at IS NULL").run(at, runId);
+  async running(accountId: string): Promise<RunBinding[]> {
+    return (await this.db.query("SELECT * FROM run_bindings WHERE account_id = $1 AND ended_at IS NULL AND expires_at > $2 ORDER BY created_at DESC", [accountId, new Date().toISOString()])).map(bindingOf);
+  }
+
+  async end(runId: string, at: string): Promise<void> {
+    await this.db.query("UPDATE run_bindings SET ended_at = $2 WHERE run_id = $1 AND ended_at IS NULL", [runId, at]);
   }
 
   // At a start nothing runs: every binding still open is ended.
-  endAll(at: string): number {
-    return Number(this.database.db.prepare("UPDATE run_bindings SET ended_at = ? WHERE ended_at IS NULL").run(at).changes);
+  async endAll(at: string): Promise<number> {
+    return this.db.run("UPDATE run_bindings SET ended_at = $1 WHERE ended_at IS NULL", [at]);
   }
 }
 
@@ -531,6 +426,7 @@ export class RunBindingStore {
 
 export interface ApprovalRecord {
   id: string;
+  accountId: string;
   action: string;
   environment: string;
   fingerprint: string;
@@ -539,6 +435,7 @@ export interface ApprovalRecord {
   state: "pending" | "granted" | "rejected" | "expired" | "consumed";
   requestedAt: string;
   requestedBy: string;
+  requestedByType: AuditPrincipalType;
   agentId: string | null;
   workspaceId: string | null;
   runId: string | null;
@@ -553,14 +450,16 @@ export interface ApprovalRecord {
 
 const approvalOf = (r: Row): ApprovalRecord => ({
   id: str(r.id),
+  accountId: str(r.account_id),
   action: str(r.action),
   environment: str(r.environment),
   fingerprint: str(r.fingerprint),
-  params: json(r.params),
+  params: r.params as ApprovalRecord["params"],
   summary: str(r.summary),
   state: str(r.state) as ApprovalRecord["state"],
   requestedAt: str(r.requested_at),
   requestedBy: str(r.requested_by),
+  requestedByType: str(r.requested_by_type) as AuditPrincipalType,
   agentId: strOrNull(r.agent_id),
   workspaceId: strOrNull(r.workspace_id),
   runId: strOrNull(r.run_id),
@@ -570,48 +469,62 @@ const approvalOf = (r: Row): ApprovalRecord => ({
   decidedAt: strOrNull(r.decided_at),
   consumedAt: strOrNull(r.consumed_at),
   outcome: strOrNull(r.outcome),
-  change: r.change === null || r.change === undefined ? null : json(r.change),
+  change: (r.change ?? null) as ApprovalRecord["change"],
 });
 
 export class ApprovalStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  get(id: string): ApprovalRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM approvals WHERE id = ?").get(id) as Row | undefined;
-    return row ? approvalOf(row) : null;
+  async get(accountId: string, id: string): Promise<ApprovalRecord | null> {
+    const row = await this.db.one("SELECT * FROM approvals WHERE account_id = $1 AND id = $2", [accountId, id]);
+    return row === null ? null : approvalOf(row);
   }
 
-  list(limit = 200): ApprovalRecord[] {
-    return (this.database.db.prepare("SELECT * FROM approvals ORDER BY requested_at DESC, id LIMIT ?").all(limit) as Row[]).map(approvalOf);
+  async list(accountId: string, o: { limit?: number; workspaceId?: string; action?: string } = {}): Promise<ApprovalRecord[]> {
+    const where = ["account_id = $1"];
+    const args: (string | number)[] = [accountId];
+    if (o.workspaceId !== undefined) {
+      args.push(o.workspaceId);
+      where.push(`workspace_id = $${args.length}`);
+    }
+    if (o.action !== undefined) {
+      args.push(o.action);
+      where.push(`action = $${args.length}`);
+    }
+    args.push(o.limit ?? 200);
+    return (await this.db.query(`SELECT * FROM approvals WHERE ${where.join(" AND ")} ORDER BY requested_at DESC, id LIMIT $${args.length}`, args)).map(approvalOf);
   }
 
-  byFingerprint(fingerprint: string): ApprovalRecord[] {
-    return (this.database.db.prepare("SELECT * FROM approvals WHERE fingerprint = ? ORDER BY requested_at").all(fingerprint) as Row[]).map(approvalOf);
+  // The approvals of one action of an account, oldest first; the rows are locked until the transaction ends, so two
+  // asks of one action cannot both find none.
+  async byFingerprint(accountId: string, fingerprint: string): Promise<ApprovalRecord[]> {
+    await this.db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`approval:${accountId}:${fingerprint}`]);
+    return (await this.db.query("SELECT * FROM approvals WHERE account_id = $1 AND fingerprint = $2 ORDER BY requested_at", [accountId, fingerprint])).map(approvalOf);
   }
 
-  insert(a: ApprovalRecord): void {
-    this.database.db
-      .prepare(
-        "INSERT INTO approvals (id, action, environment, fingerprint, params, summary, state, requested_at, requested_by, agent_id, workspace_id, run_id, decision_id, expires_at, decided_by, decided_at, consumed_at, outcome, change) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(a.id, a.action, a.environment, a.fingerprint, JSON.stringify(a.params), a.summary, a.state, a.requestedAt, a.requestedBy, a.agentId, a.workspaceId, a.runId, a.decisionId, a.expiresAt, a.decidedBy, a.decidedAt, a.consumedAt, a.outcome, a.change === null ? null : JSON.stringify(a.change));
+  async insert(a: ApprovalRecord): Promise<void> {
+    await this.db.query(
+      "INSERT INTO approvals (id, account_id, action, environment, fingerprint, params, summary, state, requested_at, requested_by, requested_by_type, agent_id, workspace_id, run_id, decision_id, expires_at, decided_by, decided_at, consumed_at, outcome, change) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb)",
+      [a.id, a.accountId, a.action, a.environment, a.fingerprint, jsonParam(a.params), a.summary, a.state, a.requestedAt, a.requestedBy, a.requestedByType, a.agentId, a.workspaceId, a.runId, a.decisionId, a.expiresAt, a.decidedBy, a.decidedAt, a.consumedAt, a.outcome, a.change === null ? null : jsonParam(a.change)],
+    );
   }
 
   // Moves an approval from `from` to `to` only if it is still `from`: true when this call moved it. Two callers racing
-  // for one approval cannot both move it.
-  transition(id: string, from: ApprovalRecord["state"], to: ApprovalRecord["state"], fields: { decidedBy?: string; decidedAt?: string; consumedAt?: string }): boolean {
-    const r = this.database.db
-      .prepare("UPDATE approvals SET state = ?, decided_by = COALESCE(?, decided_by), decided_at = COALESCE(?, decided_at), consumed_at = COALESCE(?, consumed_at) WHERE id = ? AND state = ?")
-      .run(to, fields.decidedBy ?? null, fields.decidedAt ?? null, fields.consumedAt ?? null, id, from);
-    return Number(r.changes) > 0;
+  // for one approval cannot both move it. A decision is a person's (`decidedByType` is held to "human" by the database).
+  async transition(accountId: string, id: string, from: ApprovalRecord["state"], to: ApprovalRecord["state"], fields: { decidedBy?: string; decidedByType?: "human"; decidedAt?: string; consumedAt?: string }): Promise<boolean> {
+    const n = await this.db.run(
+      "UPDATE approvals SET state = $3, decided_by = COALESCE($4, decided_by), decided_by_type = COALESCE($5, decided_by_type), decided_at = COALESCE($6, decided_at), consumed_at = COALESCE($7, consumed_at) WHERE account_id = $1 AND id = $2 AND state = $8",
+      [accountId, id, to, fields.decidedBy ?? null, fields.decidedByType ?? null, fields.decidedAt ?? null, fields.consumedAt ?? null, from],
+    );
+    return n > 0;
   }
 
-  setOutcome(id: string, outcome: string): void {
-    this.database.db.prepare("UPDATE approvals SET outcome = ? WHERE id = ?").run(outcome, id);
+  async setOutcome(accountId: string, id: string, outcome: string): Promise<void> {
+    await this.db.query("UPDATE approvals SET outcome = $3 WHERE account_id = $1 AND id = $2", [accountId, id, outcome]);
   }
 
-  pendingCount(now: string): number {
-    return Number((this.database.db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE state = 'pending' AND expires_at > ?").get(now) as Row).n);
+  async pendingCount(accountId: string, now: string): Promise<number> {
+    return Number((await this.db.one("SELECT count(*) AS n FROM approvals WHERE account_id = $1 AND state = 'pending' AND expires_at > $2", [accountId, now]))?.n ?? 0);
   }
 }
 
@@ -626,22 +539,24 @@ export interface FindingResolutionRecord {
 }
 
 export class FindingStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  all(): Map<string, FindingResolutionRecord> {
-    const rows = this.database.db.prepare("SELECT * FROM finding_resolutions").all() as Row[];
+  async all(accountId: string): Promise<Map<string, FindingResolutionRecord>> {
+    const rows = await this.db.query("SELECT * FROM finding_resolutions WHERE account_id = $1", [accountId]);
     return new Map(rows.map((r) => [str(r.finding_id), { findingId: str(r.finding_id), resolution: str(r.resolution) as FindingResolution, note: strOrNull(r.note), resolvedBy: str(r.resolved_by), resolvedAt: str(r.resolved_at) }]));
   }
 
-  set(r: FindingResolutionRecord): void {
-    this.database.db
-      .prepare("INSERT INTO finding_resolutions (finding_id, resolution, note, resolved_by, resolved_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(finding_id) DO UPDATE SET resolution = excluded.resolution, note = excluded.note, resolved_by = excluded.resolved_by, resolved_at = excluded.resolved_at")
-      .run(r.findingId, r.resolution, r.note, r.resolvedBy, r.resolvedAt);
+  async set(accountId: string, r: FindingResolutionRecord): Promise<void> {
+    await this.db.query(
+      "INSERT INTO finding_resolutions (account_id, finding_id, resolution, note, resolved_by, resolved_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (account_id, finding_id) DO UPDATE SET resolution = excluded.resolution, note = excluded.note, resolved_by = excluded.resolved_by, resolved_at = excluded.resolved_at",
+      [accountId, r.findingId, r.resolution, r.note, r.resolvedBy, r.resolvedAt],
+    );
   }
 }
 
 export interface ReportRecord {
   id: string;
+  accountId: string;
   day: string;
   generatedAt: string;
   generatedBy: string;
@@ -650,26 +565,26 @@ export interface ReportRecord {
   markdown: string;
 }
 
-const reportOf = (r: Row): ReportRecord => ({ id: str(r.id), day: str(r.day), generatedAt: str(r.generated_at), generatedBy: str(r.generated_by), head: strOrNull(r.head), content: str(r.content), markdown: str(r.markdown) });
+const reportOf = (r: Row): ReportRecord => ({ id: str(r.id), accountId: str(r.account_id), day: str(r.day), generatedAt: str(r.generated_at), generatedBy: str(r.generated_by), head: strOrNull(r.head), content: str(r.content), markdown: str(r.markdown) });
 
 export class ReportStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  list(limit = 100): ReportRecord[] {
-    return (this.database.db.prepare("SELECT * FROM reports ORDER BY day DESC, generated_at DESC LIMIT ?").all(limit) as Row[]).map(reportOf);
+  async list(accountId: string, limit = 100): Promise<ReportRecord[]> {
+    return (await this.db.query("SELECT * FROM reports WHERE account_id = $1 ORDER BY day DESC, generated_at DESC LIMIT $2", [accountId, limit])).map(reportOf);
   }
 
-  get(id: string): ReportRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM reports WHERE id = ?").get(id) as Row | undefined;
-    return row ? reportOf(row) : null;
+  async get(accountId: string, id: string): Promise<ReportRecord | null> {
+    const row = await this.db.one("SELECT * FROM reports WHERE account_id = $1 AND id = $2", [accountId, id]);
+    return row === null ? null : reportOf(row);
   }
 
-  ofDay(day: string): ReportRecord[] {
-    return (this.database.db.prepare("SELECT * FROM reports WHERE day = ? ORDER BY generated_at DESC").all(day) as Row[]).map(reportOf);
+  async ofDay(accountId: string, day: string): Promise<ReportRecord[]> {
+    return (await this.db.query("SELECT * FROM reports WHERE account_id = $1 AND day = $2 ORDER BY generated_at DESC", [accountId, day])).map(reportOf);
   }
 
-  insert(r: ReportRecord): void {
-    this.database.db.prepare("INSERT INTO reports (id, day, generated_at, generated_by, head, content, markdown) VALUES (?, ?, ?, ?, ?, ?, ?)").run(r.id, r.day, r.generatedAt, r.generatedBy, r.head, r.content, r.markdown);
+  async insert(r: ReportRecord): Promise<void> {
+    await this.db.query("INSERT INTO reports (id, account_id, day, generated_at, generated_by, head, content, markdown) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [r.id, r.accountId, r.day, r.generatedAt, r.generatedBy, r.head, r.content, r.markdown]);
   }
 }
 
@@ -680,15 +595,16 @@ export interface IsolationRecord {
   detail: string;
 }
 
+// Isolation is the DEPLOYMENT's fact (how the agent's container is placed), not any account's.
 export class IsolationStore {
-  constructor(private readonly database: GovernanceDatabase) {}
+  constructor(private readonly db: Db) {}
 
-  latest(): IsolationRecord | null {
-    const row = this.database.db.prepare("SELECT * FROM isolation_checks ORDER BY id DESC LIMIT 1").get() as Row | undefined;
-    return row ? { checkedAt: str(row.checked_at), state: str(row.state) as IsolationState, checks: json(row.checks), detail: str(row.detail) } : null;
+  async latest(): Promise<IsolationRecord | null> {
+    const row = await this.db.one("SELECT * FROM isolation_checks ORDER BY id DESC LIMIT 1");
+    return row === null ? null : { checkedAt: str(row.checked_at), state: str(row.state) as IsolationState, checks: row.checks as IsolationCheck[], detail: str(row.detail) };
   }
 
-  insert(r: IsolationRecord): void {
-    this.database.db.prepare("INSERT INTO isolation_checks (checked_at, state, checks, detail) VALUES (?, ?, ?, ?)").run(r.checkedAt, r.state, JSON.stringify(r.checks), r.detail);
+  async insert(r: IsolationRecord): Promise<void> {
+    await this.db.query("INSERT INTO isolation_checks (checked_at, state, checks, detail) VALUES ($1, $2, $3::jsonb, $4)", [r.checkedAt, r.state, jsonParam(r.checks), r.detail]);
   }
 }

@@ -3,7 +3,8 @@
 // A candidate is compared with the revision it would replace by asking BOTH the same questions: every action, for
 // every kind of principal, in every environment, about every resource either of them names (and one nobody names).
 // Where the candidate answers more loosely, the change WIDENS; where the widened action is a sensitive one, or an
-// obligation moves to its weak word, the change is HIGH RISK and needs an approver who did not write it.
+// obligation moves to its weak word, the change is HIGH RISK: the account's owner acknowledges that risk, by name,
+// when they confirm it.
 //
 // The probes are sound for the only patterns a rule may hold (a name, or a prefix ending in `*`): a resource's
 // matching rules are decided by which prefixes it starts with, and each prefix is asked about with a resource that
@@ -61,8 +62,8 @@ function patternsOf(action: ActionKind, policies: readonly Constitution[]): stri
 }
 
 function verdictOf(policy: Constitution, action: ActionKind, principalType: PrincipalType, environment: Environment, resource: string): Effect {
-  const organizationId = policy.metadata.organizationId;
-  return evaluate({ constitution: policy, overlays: [] }, { principalId: "probe", principalType, organizationId, projectId: null, workspaceId: null, agentId: null, action, resource, environment }).verdict;
+  const accountId = policy.metadata.accountId;
+  return evaluate({ constitution: policy, overlays: [] }, { principalId: "probe", principalType, accountId, workspaceId: null, researchWorkspaceId: null, action, resource, environment }).verdict;
 }
 
 function cellsOf(base: Constitution, candidate: Constitution): ImpactCell[] {
@@ -125,7 +126,7 @@ function riskOf(widened: ImpactCell[], obligations: ObligationChange[]): RiskLev
   return widened.length > 0 ? "elevated" : "low";
 }
 
-// `base` is the revision in effect; for an organization's first revision, the default Constitution.
+// `base` is the revision in effect (every account has one: its default policy is published when it is created).
 export function impactOf(base: Constitution, candidate: Constitution): Impact {
   const cells = cellsOf(base, candidate);
   const widened = cells.filter((c) => rankOf(c.after) < rankOf(c.before));

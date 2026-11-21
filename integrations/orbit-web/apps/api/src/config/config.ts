@@ -1,6 +1,6 @@
 // Orbit Web's configuration, read once from the environment at start. Everything an operator may change is an
 // ORBIT_WEB_* variable (or ORBIT_PLUGIN_DIR); nothing is read from a file the browser could reach.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,8 +14,6 @@ export interface DataDirs {
   sessions: string;
   workspaces: string;
   home: string;
-  // Governance: operators, the Constitution, approvals and the audit record (governance.db). Never in a workspace.
-  governance: string;
   // The control plane's own copies of the repositories it fetches and pushes (governed deployment: read-only to the
   // agent), and its own HOME for the programs it runs with a credential.
   repos: string;
@@ -80,6 +78,22 @@ export interface ResearchConfig {
   fetchTimeoutMs: number;
 }
 
+// THE DATABASE: PostgreSQL with pgvector, the one place Orbit Web keeps its records. Required: Orbit Web does not start
+// without it, and never falls back to anything else.
+export interface DatabaseConfig {
+  url: string;
+  poolMax: number;
+  connectTimeoutMs: number;
+  statementTimeoutMs: number;
+}
+
+// A browser's session, issued when that browser finishes a Claude sign-in: it ends `lifetimeMs` after it began, or after
+// `idleMs` with no request, whichever comes first.
+export interface SessionConfig {
+  lifetimeMs: number;
+  idleMs: number;
+}
+
 export interface AppConfig {
   port: number;
   bind: string;
@@ -105,6 +119,8 @@ export interface AppConfig {
   // deployment, as before; in the governed deployment a directory of the control plane's own, never the agent's.
   controlHome: string;
   research: ResearchConfig;
+  database: DatabaseConfig;
+  session: SessionConfig;
 }
 
 export class ConfigError extends Error {}
@@ -133,7 +149,6 @@ export function dataDirs(root: string): DataDirs {
     sessions: join(root, "sessions"),
     workspaces: join(root, "workspaces"),
     home: join(root, "home"),
-    governance: join(root, "governance"),
     repos: join(root, "repos"),
     control: join(root, "control"),
     research: join(root, "research"),
@@ -220,6 +235,40 @@ function researchConfig(env: Readonly<Record<string, string | undefined>>): Rese
   };
 }
 
+// ORBIT_WEB_DATABASE_URL, or the file ORBIT_WEB_DATABASE_URL_FILE names (a container secret): a postgres:// URL.
+function databaseUrl(env: Readonly<Record<string, string | undefined>>): string {
+  const file = env.ORBIT_WEB_DATABASE_URL_FILE;
+  let url = env.ORBIT_WEB_DATABASE_URL ?? "";
+  if (file !== undefined && file !== "") {
+    if (url !== "") throw new ConfigError("Set ORBIT_WEB_DATABASE_URL or ORBIT_WEB_DATABASE_URL_FILE, not both");
+    const path = absolute(file, "", "ORBIT_WEB_DATABASE_URL_FILE");
+    try {
+      url = readFileSync(path, "utf8").trim();
+    } catch {
+      throw new ConfigError("ORBIT_WEB_DATABASE_URL_FILE names a file that cannot be read");
+    }
+  }
+  if (url === "") throw new ConfigError("ORBIT_WEB_DATABASE_URL is required: Orbit Web keeps its records in PostgreSQL with pgvector (postgres://user:password@host:5432/database)");
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ConfigError("ORBIT_WEB_DATABASE_URL is not a URL (postgres://user:password@host:5432/database)");
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") throw new ConfigError("ORBIT_WEB_DATABASE_URL must be a postgres:// URL");
+  if (parsed.pathname.length <= 1) throw new ConfigError("ORBIT_WEB_DATABASE_URL must name a database (…:5432/orbit)");
+  return url;
+}
+
+export const DEFAULT_SESSION: SessionConfig = { lifetimeMs: 7 * 24 * 3_600_000, idleMs: 24 * 3_600_000 };
+
+function sessionConfig(env: Readonly<Record<string, string | undefined>>): SessionConfig {
+  const lifetime = bounded(env.ORBIT_WEB_SESSION_HOURS, 168, 1, 24 * 90, "ORBIT_WEB_SESSION_HOURS");
+  const idle = bounded(env.ORBIT_WEB_SESSION_IDLE_HOURS, 24, 1, 24 * 90, "ORBIT_WEB_SESSION_IDLE_HOURS");
+  if (idle > lifetime) throw new ConfigError("ORBIT_WEB_SESSION_IDLE_HOURS must not be longer than ORBIT_WEB_SESSION_HOURS");
+  return { lifetimeMs: lifetime * 3_600_000, idleMs: idle * 3_600_000 };
+}
+
 const budget = (raw: string | undefined): number | null => {
   if (raw === undefined || raw === "") return null;
   const n = Number(raw);
@@ -280,5 +329,12 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     controlHome: governance.deployment === "governed" ? join(data.control, "home") : data.home,
     githubUrl: githubUrlOf(env.ORBIT_WEB_GITHUB_URL),
     research: researchConfig(env),
+    database: {
+      url: databaseUrl(env),
+      poolMax: bounded(env.ORBIT_WEB_DATABASE_POOL_MAX, 10, 1, 100, "ORBIT_WEB_DATABASE_POOL_MAX"),
+      connectTimeoutMs: 10_000,
+      statementTimeoutMs: 60_000,
+    },
+    session: sessionConfig(env),
   };
 }

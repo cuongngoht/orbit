@@ -17,6 +17,18 @@ export interface ComponentCheck {
   detail: string | null;
 }
 
+// The DATABASE, as the health check reads it: PostgreSQL answers, its schema is the one this build needs, pgvector is
+// enabled. Never its address, user or password.
+export interface DatabaseCheck extends ComponentCheck {
+  // PostgreSQL's server version, as it says it.
+  server: string | null;
+  // The schema version applied, and the one this build needs.
+  schema: number | null;
+  latestSchema: number;
+  // pgvector's version (null: not enabled).
+  pgvector: string | null;
+}
+
 // GET /api/health -- what is installed and writable here. Never a path, a variable or an account. `az` and `python` are
 // reported but optional (an image may be built without either): they never make the status degraded.
 export interface HealthReport {
@@ -29,6 +41,7 @@ export interface HealthReport {
   python: ComponentCheck;
   orbitPlugin: ComponentCheck;
   storage: ComponentCheck;
+  database: DatabaseCheck;
 }
 
 export interface BuildVersions {
@@ -65,17 +78,59 @@ export interface ClaudeAccount {
   plan: string | null;
 }
 
-// The Claude sign-in IS the sign-in of Orbit Web: every API call but the health check, the access token and the Claude
-// sign-in itself is refused (401 claude_sign_in_required) until `claude auth status` reports a Claude account
-// (`authMethod: "claude.ai"`). An API key or a token variable the container was started with is not an account, and is
-// never given to Claude Code.
+// THIS BROWSER's session, issued when this browser finished a Claude sign-in: the internal account of the verified Claude
+// identity, of which the person is the owner. `csrfToken` goes with every change this browser makes (CSRF_HEADER).
+export interface BrowserSession {
+  accountId: string;
+  // The account's display name (a business name, editable; empty until somebody sets one).
+  displayName: string;
+  email: string;
+  csrfToken: string;
+  expiresAt: string;
+}
+
+// The Claude sign-in IS the sign-in of Orbit Web, and it is a BROWSER's: every API call but the health check, the access
+// token and the Claude sign-in itself is refused (401 claude_sign_in_required) until THIS browser finished a sign-in with a
+// Claude account (`authMethod: "claude.ai"`) -- the runtime's CLI being signed in already is not enough: a browser that
+// did not finish the sign-in itself is asked to. An API key or a token variable the container was started with is not an
+// account, and is never given to Claude Code.
 export interface ClaudeStatus {
+  // `connected` when this browser holds a valid session; otherwise what keeps it out.
   state: ConnectionState;
+  // What the runtime's Claude CLI says about its own sign-in (never which account, to a browser without a session).
+  runtime: ConnectionState;
   // The CLI's own word for how it is signed in (e.g. "claude.ai"), when it says one.
   method: string | null;
+  // The account of this browser's session (null without one).
   account: ClaudeAccount | null;
+  session: BrowserSession | null;
   detail: string | null;
+  // This browser's own sign-in flow (another browser's is never shown).
   flow: LoginSnapshot;
+}
+
+// A browser session of the account, as its owner sees them (Settings → Account).
+export interface BrowserSessionView {
+  id: string;
+  current: boolean;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent: string | null;
+}
+
+export interface AccountView {
+  id: string;
+  displayName: string;
+  email: string;
+  organization: string | null;
+  plan: string | null;
+  createdAt: string;
+  sessions: BrowserSessionView[];
+}
+
+export interface UpdateAccountRequest {
+  displayName: string;
 }
 
 export interface ClaudeLoginCodeRequest {

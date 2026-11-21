@@ -12,8 +12,14 @@
 //      run's passages (citations.ts): what passes is a citation with the server's own record of where it comes from.
 //   5. A restart of Orbit Web leaves no run "running": one it cut short is recorded as interrupted and never run again.
 //
-// In the governed deployment the run is bound like any run there (run-governance.service.ts): its only way out is the
-// egress proxy, and the Constitution decides each connection.
+// GOVERNANCE holds every research run, in every deployment (run-governance.service.ts): before it starts, the account's
+// policy decides it and each connector the account's owner checked for research -- a run the policy refuses never starts,
+// and the connectors it may use are those the policy allowed, every other one denied by name. It is bound to the account,
+// the research workspace and the session, recorded as it starts and as it ends. In the governed deployment its only way
+// out is the egress proxy, and each of its connections is decided as this run.
+//
+// A run works outside the request that asked for it: it acts for the account its session belongs to, never for whoever
+// signs in later.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { effortFor, modelOf, type EventDataMap, type ResearchSessionStatus, type RunAccepted } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
@@ -28,11 +34,12 @@ import { ClaudeConnectorsService } from "../../claude-auth/claude-connectors.ser
 import { ClaudeModelsService } from "../../claude-auth/claude-models.service.js";
 import { decideOutcome } from "../../claude-runner/outcome.js";
 import { StreamMapper, TEXT_LIMIT, type MappedEvent } from "../../claude-runner/stream-mapper.js";
+import type { Principal } from "../../auth/principal.js";
 import { RunGovernanceService, type RunPlan } from "../../governance/run-governance.service.js";
 import { RETRIEVER, type RetrievedPassage, type Retriever } from "../retrieval/retriever.js";
 import { EvidenceStore, type CitationRecord } from "../store/evidence.js";
 import { ResearchRunStore, ResearchSessionStore, type FrozenRevision, type ResearchSessionRecord } from "../store/sessions.js";
-import { SourceStore } from "../store/sources.js";
+import { SourceStore, type RevisionRecord } from "../store/sources.js";
 import { ResearchStream } from "../stream.js";
 import { ResearchViews } from "../views.js";
 import { verifyLabels } from "./citations.js";
@@ -59,15 +66,20 @@ interface ActiveRun {
   segments: Map<string, number>;
   usage: { input: number | null; output: number | null };
   plan: RunPlan;
-  // The connectors this run may use (checked for research; none in a run governance holds), and those it said it used.
+  // The connectors this run may use (checked for research AND allowed by the account's policy), and those it said it used.
   connectors: ResearchConnector[];
   used: Set<string>;
+  // Set as its end is being written: it is written once, whoever notices the end first.
+  finalizing: boolean;
   done: Promise<void>;
 }
 
 type Outcome = { status: Exclude<ResearchSessionStatus, "ready" | "running">; event: "research.run.completed" | "research.run.failed" | "research.run.interrupted"; data: EventDataMap["research.run.completed"] | EventDataMap["research.run.failed"] | EventDataMap["research.run.interrupted"]; error: string | null };
 
-const UNGOVERNED: RunPlan = { scope: "LEGACY_ORBIT", binding: null, env: {}, webTools: false, execute: false, note: null, governed: false, isolation: "not_applicable" };
+// The names of the connectors the account's policy allowed this run.
+const allowedNamesOf = (plan: RunPlan): Set<string> => new Set(plan.connectors.map((c) => c.name));
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -111,11 +123,11 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is interrupted, never run again.
-  onModuleInit(): void {
-    for (const run of this.runs.running()) this.runs.finish(run.id, "interrupted", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: "Orbit Web restarted while this run was answering." });
-    for (const s of this.sessions.withStatus("running")) {
-      this.stream.publish(s.id, "research.run.interrupted", { reason: "server_restart" });
-      this.setStatus(s.id, "interrupted", "Orbit Web restarted while this run was answering.", null);
+  async onModuleInit(): Promise<void> {
+    for (const run of await this.runs.running()) await this.runs.finish(run.id, "interrupted", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: "Orbit Web restarted while this run was answering." });
+    for (const s of await this.sessions.withStatus("running")) {
+      await this.stream.publish(s.id, "research.run.interrupted", { reason: "server_restart" });
+      await this.setStatus(s.id, "interrupted", "Orbit Web restarted while this run was answering.", null);
     }
   }
 
@@ -127,40 +139,49 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     return this.active.size + this.starting.size;
   }
 
-  // The sources and revisions a question would be answered from now: the selected sources that have an indexed revision.
-  freeze(session: ResearchSessionRecord): FrozenRevision[] {
-    return this.sessions.selection(session.id).flatMap((id) => {
-      const s = this.sources.get(id);
-      return s !== null && s.workspaceId === session.workspaceId && s.currentRevisionId !== null ? [{ sourceId: s.id, revisionId: s.currentRevisionId, title: s.title }] : [];
-    });
+  // The sources and revisions a question would be answered from now: the selected sources of the session's own workspace
+  // that have an indexed revision.
+  async freeze(session: ResearchSessionRecord): Promise<FrozenRevision[]> {
+    const frozen: FrozenRevision[] = [];
+    for (const id of await this.sessions.selection(session.id)) {
+      const s = await this.sources.get(id);
+      if (s !== null && s.workspaceId === session.workspaceId && s.accountId === session.accountId && s.currentRevisionId !== null) frozen.push({ sourceId: s.id, revisionId: s.currentRevisionId, title: s.title });
+    }
+    return frozen;
   }
 
-  ask(session: ResearchSessionRecord, question: string): RunAccepted {
+  // A question, asked by `startedBy` (the owner of the browser session that asked): kept, its evidence frozen and
+  // retrieved, then the run is decided by the account's policy and started -- in the background, so the answer streams.
+  async ask(session: ResearchSessionRecord, question: string, startedBy: Principal): Promise<RunAccepted> {
     if (this.isRunning(session.id) || session.status === "running") throw conflict("run_active", "This research session is still answering. Stop it or wait for it to finish.");
-    // The selected sources are references: a question may be asked with none ready (it is answered without them).
-    const frozen = this.freeze(session);
-    const runId = randomUUID();
-    const questionId = randomUUID();
-    const history: PromptTurn[] = this.sessions.messages(session.id).map((m) => ({ role: m.role, text: m.text }));
-    this.sessions.addMessage({ id: questionId, sessionId: session.id, runId, role: "user", text: question, partial: false });
-    this.stream.publish(session.id, "research.message.completed", { messageId: questionId, role: "user", text: question, partial: false, truncated: false }, runId);
-    const passages = this.retriever.retrieve({ revisionIds: frozen.map((f) => f.revisionId), question, budgetChars: this.config.research.contextChars });
-    this.runs.start(
-      { id: runId, sessionId: session.id, workspaceId: session.workspaceId, model: session.model, effort: session.effort, questionId },
-      frozen,
-      passages.map((p) => ({ label: p.label, chunkId: p.chunk.id, sourceId: p.chunk.sourceId, revisionId: p.chunk.revisionId, rank: p.rank, score: p.score, match: p.match })),
-    );
-    if (session.draftQuestion !== null) this.sessions.update(session.id, { draftQuestion: null });
-    this.setStatus(session.id, "running", null, runId);
-    const effort = this.effortOf(session);
-    this.stream.publish(session.id, "research.run.started", { model: session.model, effort, sources: frozen, passages: passages.length, matched: passages.filter((p) => p.match === "fts").length }, runId);
-    const prompt = researchPrompt({ question, history, passages: passages.map((p) => this.promptPassage(p, frozen)), nonce: newNonce() });
-    if (this.config.governance.deployment !== "governed") this.start(session, prompt, runId, UNGOVERNED, effort);
-    else {
-      this.starting.add(session.id);
-      void this.governed(session, prompt, runId, effort);
+    // Held from here: a second question at the same moment finds this one under way.
+    this.starting.add(session.id);
+    try {
+      // The selected sources are references: a question may be asked with none ready (it is answered without them).
+      const frozen = await this.freeze(session);
+      const runId = randomUUID();
+      const questionId = randomUUID();
+      const history: PromptTurn[] = (await this.sessions.messages(session.id)).map((m) => ({ role: m.role, text: m.text }));
+      await this.sessions.addMessage({ id: questionId, sessionId: session.id, runId, role: "user", text: question, partial: false });
+      await this.stream.publish(session.id, "research.message.completed", { messageId: questionId, role: "user", text: question, partial: false, truncated: false }, runId);
+      const passages = await this.retriever.retrieve({ accountId: session.accountId, workspaceId: session.workspaceId, revisionIds: frozen.map((f) => f.revisionId), question, budgetChars: this.config.research.contextChars });
+      await this.runs.start(
+        { id: runId, sessionId: session.id, model: session.model, effort: session.effort, questionId },
+        frozen,
+        passages.map((p) => ({ label: p.label, chunkId: p.chunk.id, sourceId: p.chunk.sourceId, revisionId: p.chunk.revisionId, rank: p.rank, score: p.score, match: p.match })),
+      );
+      if (session.draftQuestion !== null) await this.sessions.update(session.id, { draftQuestion: null });
+      await this.setStatus(session.id, "running", null, runId);
+      const effort = this.effortOf(session);
+      await this.stream.publish(session.id, "research.run.started", { model: session.model, effort, sources: frozen, passages: passages.length, matched: passages.filter((p) => p.match === "fts").length }, runId);
+      const revisions = await this.sources.revisionsByIds([...new Set(passages.map((p) => p.chunk.revisionId))]);
+      const prompt = researchPrompt({ question, history, passages: passages.map((p) => this.promptPassage(p, frozen, revisions)), nonce: newNonce() });
+      void this.governed(session, prompt, runId, effort, startedBy);
+      return { sessionId: session.id, runId };
+    } catch (err) {
+      this.starting.delete(session.id);
+      throw err;
     }
-    return { sessionId: session.id, runId };
   }
 
   stop(sessionId: string, by: "user_stop" | "server_restart" = "user_stop"): void {
@@ -181,20 +202,20 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     const runs = [...this.active.values()];
     for (const run of runs) this.stop(run.session.id, "server_restart");
     await Promise.race([Promise.all(runs.map((r) => r.done)), new Promise((r) => setTimeout(r, this.config.limits.stopGraceMs).unref())]);
-    for (const run of runs.filter((r) => this.active.has(r.session.id))) this.finalize(run, { code: null, signal: "SIGKILL", spawnError: null });
+    await Promise.all(runs.filter((r) => this.active.has(r.session.id)).map((r) => this.finalize(r, { code: null, signal: "SIGKILL", spawnError: null })));
   }
 
   // The effort the account's catalog says this model takes (none, for a model that takes no level).
   private effortOf(session: ResearchSessionRecord): string | null {
-    const catalog = this.models.cached();
+    const catalog = this.models.cached(session.accountId);
     return effortFor(catalog === null ? null : modelOf(catalog, session.model), session.effort);
   }
 
-  private promptPassage(p: RetrievedPassage, frozen: readonly FrozenRevision[]) {
+  private promptPassage(p: RetrievedPassage, frozen: readonly FrozenRevision[], revisions: ReadonlyMap<string, RevisionRecord>) {
     return {
       label: p.label,
       title: frozen.find((f) => f.revisionId === p.chunk.revisionId)?.title ?? "Untitled",
-      revisionNumber: this.sources.revision(p.chunk.revisionId)?.number ?? null,
+      revisionNumber: revisions.get(p.chunk.revisionId)?.number ?? null,
       page: p.chunk.page,
       section: p.chunk.section,
       match: p.match,
@@ -202,24 +223,32 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     };
   }
 
-  private async governed(session: ResearchSessionRecord, prompt: string, runId: string, effort: string | null): Promise<void> {
+  // The account's policy decides the run, and each connector its owner checked for research; a run it refuses -- or one
+  // governance could not decide -- never starts.
+  private async governed(session: ResearchSessionRecord, prompt: string, runId: string, effort: string | null, startedBy: Principal): Promise<void> {
     try {
-      this.start(session, prompt, runId, await this.governance.prepareResearch(session.id, runId), effort);
+      const choices = await this.connectorChoices.forRun(session.accountId);
+      const prepared = await this.governance.prepareResearch({ accountId: session.accountId, researchWorkspaceId: session.workspaceId, researchSessionId: session.id }, runId, { startedBy, connectors: choices.research });
+      if (!prepared.ok) return await this.notStarted(session, runId, prepared.message);
+      const allowed = allowedNamesOf(prepared.plan);
+      const connectors = choices.research.filter((c) => allowed.has(c.name));
+      const denied = choices.known.filter((c) => !allowed.has(c.name)).map((c) => c.prefix);
+      this.start(session, prompt, runId, prepared.plan, effort, connectors, denied);
     } catch (err) {
-      const message = `Governance could not decide this run, so it did not start: ${err instanceof Error ? err.message : String(err)}`;
-      this.runs.finish(runId, "failed", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: message });
-      this.stream.publish(session.id, "research.run.failed", { reason: "governance", message, costUsd: null, turns: null, durationMs: null }, runId);
-      this.setStatus(session.id, "failed", message.slice(0, 300), runId);
+      await this.notStarted(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`).catch((e: unknown) => this.logger.error(`research run ${runId} could not be refused cleanly: ${message(e)}`));
     } finally {
       this.starting.delete(session.id);
     }
   }
 
-  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null): void {
-    // The connectors checked for research -- none in a run governance holds (its Constitution has no such action).
-    const chosen = plan.binding === null ? this.connectorChoices.forRun() : null;
-    const connectors = chosen?.researchAllowed ?? [];
-    const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd, connectors, deniedConnectors: chosen?.researchDenied ?? [] });
+  private async notStarted(session: ResearchSessionRecord, runId: string, why: string): Promise<void> {
+    await this.runs.finish(runId, "failed", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: why });
+    await this.stream.publish(session.id, "research.run.failed", { reason: "governance", message: why, costUsd: null, turns: null, durationMs: null }, runId);
+    await this.setStatus(session.id, "failed", why.slice(0, 300), runId);
+  }
+
+  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], deniedConnectors: string[]): void {
+    const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd, connectors, deniedConnectors });
     // The agent's HOME: a directory that exists wherever Claude Code runs. With no tool, nothing in it is read.
     const cwd = this.config.data.home;
     const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config), ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
@@ -242,15 +271,13 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       plan,
       connectors,
       used: new Set<string>(),
+      finalizing: false,
       done: new Promise<void>((r) => (resolveDone = r)),
     };
     this.active.set(session.id, run);
     handle.onStdout((chunk) => run.splitter.push(chunk));
     handle.onStderr((chunk) => (run.stderr = (run.stderr + chunk).slice(-STDERR_LIMIT)));
-    handle.onExit((exit) => {
-      this.finalize(run, exit);
-      resolveDone();
-    });
+    handle.onExit((exit) => void this.finalize(run, exit).finally(() => resolveDone()));
     handle.write(prompt);
     handle.closeInput();
   }
@@ -275,7 +302,8 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     for (const e of run.mapper.push(parsed)) this.onMapped(run, e);
   }
 
-  // The coding runner's events, read as research's: one answer, made of the text segments Claude Code writes.
+  // The coding runner's events, read as research's: one answer, made of the text segments Claude Code writes. What is
+  // said of them is published in order (the stream's own turn per session), nobody waiting for it here.
   private onMapped(run: ActiveRun, e: MappedEvent): void {
     if (run.refused !== null) return;
     if (e.type === "tool.started") return this.toolStarted(run, e.data.name);
@@ -285,23 +313,23 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     if (e.type === "message.started" && e.data.role === "assistant" && e.data.parentToolUseId === null) return this.segment(run, e.data.messageId);
     if (e.type === "message.delta") return this.delta(run, e.data.messageId, e.data.offset, e.data.text);
     if (e.type === "message.completed" && e.data.role === "assistant" && e.data.parentToolUseId === null) return this.completed(run, e.data.messageId, e.data.text);
-    if (e.type === "run.notice") this.stream.publish(run.session.id, "research.run.notice", { kind: e.data.kind === "rate_limit" ? "rate_limit" : "info", message: e.data.message }, run.runId);
+    if (e.type === "run.notice") this.stream.emit(run.session.id, "research.run.notice", { kind: e.data.kind === "rate_limit" ? "rate_limit" : "info", message: e.data.message }, run.runId);
   }
 
-  // A connector checked for research: said once, and it goes on. Anything else -- a built-in tool, a connector not
-  // checked -- stops the run.
+  // A connector checked for research and allowed by the policy: said once, and it goes on. Anything else -- a built-in
+  // tool, a connector not checked or not allowed -- stops the run.
   private toolStarted(run: ActiveRun, tool: string): void {
     const connector = connectorOfTool(run.connectors, tool);
     if (connector === null) return this.refuse(run, `The Claude CLI tried to use a tool research may not use (${tool.slice(0, 120)}; Settings → Claude connectors), so the run was stopped.`);
     if (run.used.has(connector.prefix)) return;
     run.used.add(connector.prefix);
-    this.stream.publish(run.session.id, "research.run.notice", { kind: "info", message: `Using ${connector.label}…` }, run.runId);
+    this.stream.emit(run.session.id, "research.run.notice", { kind: "info", message: `Using ${connector.label}…` }, run.runId);
   }
 
   private segment(run: ActiveRun, segmentId: string): void {
     if (!run.answering) {
       run.answering = true;
-      this.stream.publish(run.session.id, "research.message.started", { messageId: run.answerId, role: "assistant" }, run.runId);
+      this.stream.emit(run.session.id, "research.message.started", { messageId: run.answerId, role: "assistant" }, run.runId);
     } else if (run.answer.length > 0) this.appendAnswer(run, "\n\n");
     run.segments.set(segmentId, run.answer.length);
   }
@@ -316,7 +344,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     if (run.answer.length + text.length > TEXT_LIMIT) return;
     const offset = run.answer.length;
     run.answer += text;
-    this.stream.publish(run.session.id, "research.message.delta", { messageId: run.answerId, offset, text }, run.runId);
+    this.stream.emit(run.session.id, "research.message.delta", { messageId: run.answerId, offset, text }, run.runId);
   }
 
   // A segment's whole text, as the CLI completed it: it replaces what its deltas said.
@@ -342,71 +370,82 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     return { status: "failed", event: "research.run.failed", data: { reason, message: o.data.message, costUsd: o.data.costUsd, turns: o.data.turns, durationMs: o.data.durationMs }, error: o.data.message.slice(0, 2_000) };
   }
 
-  private finalize(run: ActiveRun, exit: ExitInfo): void {
-    if (this.active.get(run.session.id) !== run) return;
+  // The run ended (however it did): its answer kept with the citations its passages verify, its outcome recorded and
+  // said, its end told to governance. Written once; a failure here is logged, never left unhandled.
+  private async finalize(run: ActiveRun, exit: ExitInfo): Promise<void> {
+    if (this.active.get(run.session.id) !== run || run.finalizing) return;
+    run.finalizing = true;
     for (const t of run.timers) clearTimeout(t);
     run.splitter.end();
     for (const e of run.mapper.finish()) this.onMapped(run, e);
     const outcome = this.outcomeOf(run, exit);
-    const answered = run.answer.trim().length > 0 ? this.keepAnswer(run, outcome.status !== "completed") : null;
-    this.runs.finish(run.runId, outcome.status, { answerId: answered, exitCode: exit.code, signal: exit.signal, costUsd: (outcome.data as { costUsd?: number | null }).costUsd ?? null, inputTokens: run.usage.input, outputTokens: run.usage.output, error: outcome.error });
-    this.stream.publish(run.session.id, outcome.event, outcome.data as never, run.runId);
-    const reason = outcome.event === "research.run.failed" ? (outcome.data as { message: string }).message.slice(0, 300) : outcome.event === "research.run.interrupted" ? (outcome.data as { reason: string }).reason : null;
-    this.setStatus(run.session.id, outcome.status, reason, run.runId);
-    this.active.delete(run.session.id);
     try {
-      this.governance.finished(run.plan, run.runId, outcome.status, exit.code);
+      const answered = run.answer.trim().length > 0 ? await this.keepAnswer(run, outcome.status !== "completed") : null;
+      await this.runs.finish(run.runId, outcome.status, { answerId: answered, exitCode: exit.code, signal: exit.signal, costUsd: (outcome.data as { costUsd?: number | null }).costUsd ?? null, inputTokens: run.usage.input, outputTokens: run.usage.output, error: outcome.error });
+      await this.stream.publish(run.session.id, outcome.event, outcome.data as never, run.runId);
+      const reason = outcome.event === "research.run.failed" ? (outcome.data as { message: string }).message.slice(0, 300) : outcome.event === "research.run.interrupted" ? (outcome.data as { reason: string }).reason : null;
+      await this.setStatus(run.session.id, outcome.status, reason, run.runId);
     } catch (err) {
-      this.logger.error(`the end of research run ${run.runId} could not be recorded: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`the end of research run ${run.runId} could not be written: ${message(err)}`);
+    } finally {
+      this.active.delete(run.session.id);
+    }
+    try {
+      await this.governance.finished(run.plan, run.runId, outcome.status, exit.code);
+    } catch (err) {
+      this.logger.error(`the end of research run ${run.runId} could not be recorded: ${message(err)}`);
     }
   }
 
   // The answer, kept with only the citations its run's passages verify.
-  private keepAnswer(run: ActiveRun, partial: boolean): string {
-    const passages = this.runs.passages(run.runId);
+  private async keepAnswer(run: ActiveRun, partial: boolean): Promise<string> {
+    const passages = await this.runs.passages(run.runId);
     const verified = verifyLabels(run.answer, new Set(passages.map((p) => p.label)));
     const text = bounded(verified.text, TEXT_LIMIT);
-    this.sessions.addMessage({ id: run.answerId, sessionId: run.session.id, runId: run.runId, role: "assistant", text: text.text, partial });
-    if (!run.answering) this.stream.publish(run.session.id, "research.message.started", { messageId: run.answerId, role: "assistant" }, run.runId);
-    this.stream.publish(run.session.id, "research.message.completed", { messageId: run.answerId, role: "assistant", text: text.text, partial, truncated: text.truncated }, run.runId);
-    const frozen = this.runs.frozen(run.runId);
-    const citations: Omit<CitationRecord, "createdAt">[] = verified.used.flatMap((label) => {
+    await this.sessions.addMessage({ id: run.answerId, sessionId: run.session.id, runId: run.runId, role: "assistant", text: text.text, partial });
+    if (!run.answering) await this.stream.publish(run.session.id, "research.message.started", { messageId: run.answerId, role: "assistant" }, run.runId);
+    await this.stream.publish(run.session.id, "research.message.completed", { messageId: run.answerId, role: "assistant", text: text.text, partial, truncated: text.truncated }, run.runId);
+    const frozen = await this.runs.frozen(run.runId);
+    const cited = verified.used.flatMap((label) => {
       const passage = passages.find((p) => p.label === label);
-      const chunk = passage === undefined ? null : this.sources.chunk(passage.chunkId);
-      if (passage === undefined || chunk === null) return [];
-      return [
-        {
-          id: randomUUID(),
-          workspaceId: run.session.workspaceId,
-          sessionId: run.session.id,
-          runId: run.runId,
-          messageId: run.answerId,
-          label,
-          sourceId: passage.sourceId,
-          revisionId: passage.revisionId,
-          revisionNumber: this.sources.revision(passage.revisionId)?.number ?? null,
-          chunkOrdinal: chunk.ordinal,
-          page: chunk.page,
-          section: chunk.section,
-          charStart: chunk.charStart,
-          charEnd: chunk.charEnd,
-          sourceTitle: frozen.find((f) => f.revisionId === passage.revisionId)?.title ?? "Untitled",
-          // A citation's copy of its passage is masked by token shape, as everything else Orbit Web shows is.
-          quote: redactSecrets(chunk.text).slice(0, QUOTE_LIMIT),
-          match: passage.match,
-          rank: passage.rank,
-          score: passage.score,
-        },
-      ];
+      return passage === undefined ? [] : [{ label, passage }];
     });
-    this.evidence.addCitations(citations);
-    this.stream.publish(run.session.id, "research.citation.recorded", { messageId: run.answerId, citationIds: citations.map((c) => c.id), labels: citations.map((c) => c.label), rejected: verified.rejected }, run.runId);
+    const revisions = await this.sources.revisionsByIds([...new Set(cited.map((c) => c.passage.revisionId))]);
+    const citations: Omit<CitationRecord, "createdAt">[] = [];
+    for (const { label, passage } of cited) {
+      const chunk = await this.sources.chunk(passage.chunkId);
+      if (chunk === null) continue;
+      citations.push({
+        id: randomUUID(),
+        workspaceId: run.session.workspaceId,
+        sessionId: run.session.id,
+        runId: run.runId,
+        messageId: run.answerId,
+        label,
+        sourceId: passage.sourceId,
+        revisionId: passage.revisionId,
+        revisionNumber: revisions.get(passage.revisionId)?.number ?? null,
+        chunkOrdinal: chunk.ordinal,
+        page: chunk.page,
+        section: chunk.section,
+        charStart: chunk.charStart,
+        charEnd: chunk.charEnd,
+        sourceTitle: frozen.find((f) => f.revisionId === passage.revisionId)?.title ?? "Untitled",
+        // A citation's copy of its passage is masked by token shape, as everything else Orbit Web shows is.
+        quote: redactSecrets(chunk.text).slice(0, QUOTE_LIMIT),
+        match: passage.match,
+        rank: passage.rank,
+        score: passage.score,
+      });
+    }
+    await this.evidence.addCitations(citations);
+    await this.stream.publish(run.session.id, "research.citation.recorded", { messageId: run.answerId, citationIds: citations.map((c) => c.id), labels: citations.map((c) => c.label), rejected: verified.rejected }, run.runId);
     return run.answerId;
   }
 
-  private setStatus(sessionId: string, status: ResearchSessionStatus, reason: string | null, runId: string | null): void {
-    this.sessions.update(sessionId, { status, statusReason: reason });
-    this.stream.publish(sessionId, "research.status", { status, reason }, runId);
-    this.views.notifySession(sessionId);
+  private async setStatus(sessionId: string, status: ResearchSessionStatus, reason: string | null, runId: string | null): Promise<void> {
+    await this.sessions.update(sessionId, { status, statusReason: reason });
+    await this.stream.publish(sessionId, "research.status", { status, reason }, runId);
+    await this.views.notifySession(sessionId);
   }
 }

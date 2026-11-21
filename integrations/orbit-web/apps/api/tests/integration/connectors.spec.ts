@@ -3,14 +3,11 @@
 // what is unchecked for chats; research (a conversation like a chat, its sources references) may use what is checked for
 // research, by name, and is stopped the moment it reaches for anything else; a question needs no source to be asked.
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { after, before, describe, test } from "node:test";
 import type { ConnectorList, ResearchSessionDetail, ResearchWorkspaceSummary, SessionDetail, SessionSummary } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { ClaudeAuthService } from "../../src/modules/claude-auth/claude-auth.service.js";
 import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, claudeConnectorsProbe, claudeRun, connectorsProbe, eventually, researchRun, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
+import { CLAUDE_SIGNED_IN, claudeConnectorsProbe, claudeRun, connectorsProbe, eventually, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { answered, newWorkspace } from "../../src/testing/research-client.js";
 
 const ALICE = { ...CLAUDE_SIGNED_IN, email: "alice@example.com", orgId: "org-a", orgName: "Alice Org" };
@@ -58,12 +55,15 @@ function researchUsing(tool: string, answer: string) {
 describe("the Claude connectors a run may use", () => {
   let h: Harness;
   let fake: FakeProcessPort;
+  // The browser signed in now: Alice's at first. The Claude CLI holds one identity at a time: becoming Bob signs a
+  // browser in as Bob (Alice's sessions end), becoming Alice again signs one in as her.
+  let me: Browser;
   const state = { who: ALICE as Record<string, unknown> };
   const as = async (account: Record<string, unknown>) => {
     state.who = account;
-    await h.app.get(ClaudeAuthService).account(true);
+    me = await h.browser();
   };
-  const connectors = async (): Promise<ConnectorList> => (await h.get("/api/claude/connectors")).body as ConnectorList;
+  const connectors = async (): Promise<ConnectorList> => (await me.get("/api/claude/connectors")).body as ConnectorList;
 
   before(async () => {
     fake = signedIn(new FakeProcessPort(new NodeProcessPort()))
@@ -71,12 +71,12 @@ describe("the Claude connectors a run may use", () => {
       .on(claudeConnectorsProbe, { spawn: connectorsProbe(() => SERVERS) })
       .on(claudeRun, { spawn: quickChat });
     h = await startHarness({ fake });
-    await as(ALICE);
+    me = h.owner as Browser;
   });
   after(() => h.close());
 
   test("the account's own connectors are listed -- asked of its CLI, no model called -- each for chats and research until a person unchecks it", async () => {
-    const list = (await h.send("POST", "/api/claude/connectors/refresh")).body as ConnectorList;
+    const list = (await me.send("POST", "/api/claude/connectors/refresh")).body as ConnectorList;
     assert.equal(list.source, "account");
     assert.deepEqual(
       list.connectors.map((c) => [c.label, c.kind, c.status, c.tools, c.chat, c.research]),
@@ -93,11 +93,11 @@ describe("the Claude connectors a run may use", () => {
   });
 
   test("a person's choices are kept for their own account alone", async () => {
-    const r = await h.send("PUT", "/api/claude/connectors", { connectors: { "claude.ai Gmail": { chat: false, research: false } } });
+    const r = await me.send("PUT", "/api/claude/connectors", { connectors: { "claude.ai Gmail": { chat: false, research: false } } });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const gmail = (r.body as ConnectorList).connectors.find((c) => c.label === "Gmail");
     assert.deepEqual([gmail?.chat, gmail?.research], [false, false]);
-    assert.equal((await h.send("PUT", "/api/claude/connectors", { connectors: { "claude.ai Gmail": { write: true } } })).status, 400);
+    assert.equal((await me.send("PUT", "/api/claude/connectors", { connectors: { "claude.ai Gmail": { write: true } } })).status, 400);
     await as(BOB);
     try {
       const bobs = await connectors();
@@ -110,9 +110,9 @@ describe("the Claude connectors a run may use", () => {
 
   test("a chat is denied, by name, the connectors unchecked for chats", async () => {
     const before = fake.children.filter((c) => claudeRun(c.call.file, c.call.args)).length;
-    const made = (await h.send("POST", "/api/sessions", { model: "sonnet", mode: "plan", prompt: "Say hello." })).body as SessionSummary;
+    const made = (await me.send("POST", "/api/sessions", { model: "sonnet", mode: "plan", prompt: "Say hello." })).body as SessionSummary;
     await eventually(() => fake.children.filter((c) => claudeRun(c.call.file, c.call.args)).length, (n) => n > before);
-    await eventually(async () => ((await h.get(`/api/sessions/${made.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    await eventually(async () => ((await me.get(`/api/sessions/${made.id}`)).body as SessionDetail).status, (s) => s === "completed");
     const run = fake.children.filter((c) => claudeRun(c.call.file, c.call.args)).at(-1)?.call as Call;
     const denied = valuesOf(run.args, "--disallowedTools");
     assert.ok(denied.includes("mcp__claude_ai_Gmail"));
@@ -120,12 +120,12 @@ describe("the Claude connectors a run may use", () => {
   });
 
   test("research may use the connectors checked for research -- a doc made, its link in the answer -- with no source selected at all", async () => {
-    const workspace: ResearchWorkspaceSummary = await newWorkspace(h, "No sources yet");
-    const session = (await h.send("POST", `/api/research/workspaces/${workspace.id}/sessions`, { model: "sonnet" })).body as ResearchSessionDetail;
+    const workspace: ResearchWorkspaceSummary = await newWorkspace(me, "No sources yet");
+    const session = (await me.send("POST", `/api/research/workspaces/${workspace.id}/sessions`, { model: "sonnet" })).body as ResearchSessionDetail;
     fake.on(researchRun, { spawn: researchUsing("mcp__claude_ai_Claude_Docs__batch", "I made the doc: https://claude.ai/artifact/AbC123") });
-    const asked = await h.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "Make a Claude Doc of what AI governance is." });
+    const asked = await me.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "Make a Claude Doc of what AI governance is." });
     assert.equal(asked.status, 202, "a question needs no source: the sources are references");
-    const done = await answered(h, session.id);
+    const done = await answered(me, session.id);
     assert.equal(done.status, "completed", done.statusReason ?? "");
     assert.match(done.messages.at(-1)?.text ?? "", /https:\/\/claude\.ai\/artifact\/AbC123/);
     const run = fake.children.filter((c) => researchRun(c.call.file, c.call.args)).at(-1)?.call as Call;
@@ -134,17 +134,12 @@ describe("the Claude connectors a run may use", () => {
     assert.deepEqual(valuesOf(run.args, "--disallowedTools"), ["mcp__claude_ai_Gmail"]);
     assert.equal(run.args.includes("--restricted"), false);
     assert.equal(run.env.ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
-    const db = new DatabaseSync(join(h.config.data.app, "orbit-web.db"), { readOnly: true });
-    try {
-      const notices = (db.prepare("SELECT data FROM research_events WHERE session_id = ? AND type = 'research.run.notice'").all(session.id) as { data: string }[]).map((r) => r.data);
-      assert.ok(notices.some((n) => n.includes("Using Claude Docs")), notices.join("\n"));
-    } finally {
-      db.close();
-    }
+    const notices = (await h.sql("SELECT data::text AS data FROM research_events WHERE session_id = $1 AND type = 'research.run.notice'", [session.id])).map((r) => String(r.data));
+    assert.ok(notices.some((n) => n.includes("Using Claude Docs")), notices.join("\n"));
 
     fake.on(researchRun, { spawn: researchUsing("mcp__claude_ai_Gmail__send", "Sent.") });
-    await h.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "Now email it to everyone." });
-    const refused = await answered(h, session.id);
+    await me.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "Now email it to everyone." });
+    const refused = await answered(me, session.id);
     assert.equal(refused.status, "failed");
     assert.match(refused.statusReason ?? "", /tried to use a tool research may not use \(mcp__claude_ai_Gmail__send/);
   });

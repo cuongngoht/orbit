@@ -37,9 +37,9 @@ services:
     image: pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: orbit-postgres-local
+      POSTGRES_PASSWORD: ${ORBIT_WEB_POSTGRES_PASSWORD:-orbit-postgres-local}
       POSTGRES_DB: postgres
-      ORBIT_DB_PASSWORD: orbit-local
+      ORBIT_DB_PASSWORD: ${ORBIT_WEB_DB_PASSWORD:-orbit-local}
     volumes:
       - orbit-web-postgres:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
@@ -76,7 +76,7 @@ services:
       - orbit-web-data:/data
     environment:
       ORBIT_WEB_DEPLOYMENT: governed
-      ORBIT_WEB_DATABASE_URL: postgres://orbit:orbit-local@postgres:5432/orbit
+      ORBIT_WEB_DATABASE_URL: postgres://orbit:${ORBIT_WEB_DB_PASSWORD:-orbit-local}@postgres:5432/orbit
       ORBIT_WEB_RUNNER: orbit-agent:7070
       ORBIT_WEB_AGENT_NETWORKS: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
       ORBIT_WEB_AGENT_CONTROL_HOST: orbit-web

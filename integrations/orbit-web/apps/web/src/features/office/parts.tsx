@@ -48,6 +48,8 @@ export const useOfficeStyles = makeStyles({
   dt: { color: tokens.colorNeutralForeground3 },
   dd: { margin: 0, overflowWrap: "anywhere", minWidth: 0 },
   disclosure: { display: "flex", flexDirection: "column", gap: "4px" },
+  // Tabs that do not fit a narrow screen scroll sideways inside their own strip, never the page.
+  tabStrip: { overflowX: "auto", minWidth: 0, maxWidth: "100%" },
 });
 
 type Tone = "brand" | "danger" | "important" | "informative" | "severe" | "subtle" | "success" | "warning";

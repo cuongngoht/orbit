@@ -311,7 +311,7 @@ function OrbitPlugin({ c, onChanged }: { c: RuntimeConnection; onChanged: () => 
 function Confirm({ title, text, action, onConfirm, onClose }: { title: string; text: string; action: string; onConfirm: () => void; onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface>
+      <DialogSurface className="orbit-touch">
         <DialogBody>
           <DialogTitle>{title}</DialogTitle>
           <DialogContent>{text}</DialogContent>
@@ -637,7 +637,7 @@ export function AiConnectionsSection() {
   const view = useConnections();
   const reload = () => void view.reload();
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <Helper />
       {view.data === null ? (
         view.error ? (

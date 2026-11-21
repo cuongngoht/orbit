@@ -201,7 +201,7 @@ export function ComputeStorageSection() {
   const b = r.budget;
   const overBudget = r.reserved.cpuMillis > b.cpuMillis || r.reserved.memoryMiB > b.memoryMiB;
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <section className={s.block} aria-label="Infrastructure capacity">
         <div className={s.row}>
           <Text weight="semibold">Infrastructure capacity</Text>

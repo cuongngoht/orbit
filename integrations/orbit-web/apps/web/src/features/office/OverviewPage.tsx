@@ -2,7 +2,7 @@
 // holds and how much waits behind it, why it is not ready, a warning about its connection -- filtered by department
 // (or Unassigned), a search and a work label. From here a person assigns work, hires (once an AI CLI is connected) and
 // shapes the departments. An account with no office yet is offered one, with example departments it may skip.
-import { Button, Checkbox, Field, Input, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Button, Checkbox, Field, Input, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, useRestoreFocusTarget } from "@fluentui/react-components";
 import { Add16Regular, Filter20Regular, MoreHorizontal16Regular, PersonAdd20Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
 import { WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
@@ -22,6 +22,9 @@ type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 const useStyles = makeStyles({
   toolbar: { display: "flex", alignItems: "flex-end", gap: "8px", flexWrap: "wrap", minWidth: 0 },
   search: { flexGrow: 1, minWidth: "min(100%, 200px)", maxWidth: "360px" },
+  // On a phone: the search takes the row, the Filters button keeps its own width.
+  toolbarMobile: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" },
+  searchMobile: { width: "100%", minWidth: 0, maxWidth: "100%" },
   select: { minWidth: "min(100%, 180px)" },
   name: { paddingLeft: 0, paddingRight: 0, minWidth: 0, justifyContent: "flex-start", fontWeight: 600, textAlign: "left", overflowWrap: "anywhere", height: "auto" },
   group: { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 },
@@ -328,8 +331,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           {connections.data !== null && <Link href={settingsHref("ai-connections")}>Open Settings → AI Connections</Link>}
         </Text>
       )}
-      <div className={s.toolbar}>
-        <SearchBox className={s.search} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+      <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile)}>
+        <SearchBox className={mergeClasses(s.search, isMobile && s.searchMobile)} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
         {isMobile ? (
           <Button className={o.touch} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
             Filters{department !== "all" || status !== "all" ? " (on)" : ""}
@@ -340,7 +343,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       </div>
       {isMobile && (
         <ResponsiveSheet open={filters} onOpenChange={setFilters} title="Filters">
-          {pickers}
+          <div className="orbit-touch">{pickers}</div>
         </ResponsiveSheet>
       )}
       <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} />

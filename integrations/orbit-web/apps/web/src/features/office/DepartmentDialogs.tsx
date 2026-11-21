@@ -36,7 +36,7 @@ export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit:
   };
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface>
+      <DialogSurface className="orbit-touch">
         <form
           onSubmit={(e) => {
             e.preventDefault();

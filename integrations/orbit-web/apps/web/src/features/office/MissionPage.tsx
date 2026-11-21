@@ -172,7 +172,7 @@ function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose
   const [note, setNote] = useState("");
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface>
+      <DialogSurface className="orbit-touch">
         <DialogBody>
           <DialogTitle>
             Accept revision {h.revision}?
@@ -237,7 +237,7 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
         <ul className={o.list} aria-label={`Artifacts of revision ${h.revision}`}>
           {h.artifacts.map((x) => (
             <li key={x.id} className={o.row}>
-              <Link href={office.artifactHref(x.id)} download={x.name} target="_blank" rel="noopener noreferrer">
+              <Link className="orbit-target" href={office.artifactHref(x.id)} download={x.name} target="_blank" rel="noopener noreferrer">
                 <ArrowDownload16Regular aria-hidden /> {x.name}
               </Link>
               <Text size={200} className={o.muted}>
@@ -353,14 +353,16 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
         </div>
         <AsOf at={mission.loadedAt} />
       </div>
-      <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label="Mission">
-        {MISSION_TABS.map((t) => (
-          <Tab key={t} value={t}>
-            {TAB_TEXT[t]}
-            {t === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
-          </Tab>
-        ))}
-      </TabList>
+      <div className={`${o.tabStrip} orbit-hscroll`}>
+        <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label="Mission">
+          {MISSION_TABS.map((t) => (
+            <Tab key={t} value={t}>
+              {TAB_TEXT[t]}
+              {t === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
+            </Tab>
+          ))}
+        </TabList>
+      </div>
 
       {current === "overview" && (
         <>

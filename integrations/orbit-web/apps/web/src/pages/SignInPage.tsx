@@ -181,7 +181,7 @@ export function SignInPage({ status, onStatus, onReload }: { status: AuthStatus;
   const s = useSignInStyles();
   const setup = status.state === "setup_required";
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <TrialBar trial={status.trial} />
       <main className={s.page}>
         <div className={s.panel}>

@@ -9,7 +9,7 @@ export const trialText = (trial: TrialMode): string => `Trial login ${trial.user
 export function TrialBar({ trial, onChangePassword }: { trial: TrialMode; onChangePassword?: () => void }) {
   if (!trial.enabled) return null;
   return (
-    <MessageBar intent="error" layout="multiline" aria-label="Trial installation" style={{ borderRadius: 0, flexShrink: 0 }}>
+    <MessageBar className="orbit-touch" intent="error" layout="multiline" aria-label="Trial installation" style={{ borderRadius: 0, flexShrink: 0 }}>
       <MessageBarBody>
         <MessageBarTitle>Trial installation</MessageBarTitle>
         {trialText(trial)}

@@ -17,7 +17,7 @@ function Row({ m, go }: { m: MissionSummary; go: Go }) {
     <li className={o.item}>
       <div className={o.row}>
         <StateBadge text={a.state === "QUEUED" ? "Queued" : ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
-        <Link as="button" onClick={() => go("mission", m.id)}>
+        <Link className="orbit-target" as="button" onClick={() => go("mission", m.id)}>
           {m.title}
         </Link>
       </div>

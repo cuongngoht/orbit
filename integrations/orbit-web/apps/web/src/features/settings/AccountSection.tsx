@@ -260,7 +260,7 @@ export function AccountSection({ auth, onAuth, signOut }: { auth: AuthStatus & {
   const user = auth.user;
   const account = auth.account;
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <div className={s.who}>
         <Avatar name={user.fullName || user.username} size={40} />
         <div className={s.identity}>

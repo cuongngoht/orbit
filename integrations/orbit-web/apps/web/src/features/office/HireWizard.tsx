@@ -241,7 +241,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
 
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={isMobile ? s.surfaceMobile : s.surface} aria-label="Hire an employee">
+      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label="Hire an employee">
         <DialogBody>
           <DialogTitle>Hire an employee</DialogTitle>
           <DialogContent className={s.body}>

@@ -2,7 +2,7 @@
 // a busy employee refuses it and NOTHING is created -- the dialog keeps everything typed, says what the employee holds,
 // and offers to queue it behind that work (a new request, with a new key) or to choose somebody else. What came back is
 // said as the API said it: started, or queued.
-import { Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Text, Textarea, makeStyles } from "@fluentui/react-components";
+import { Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Text, Textarea, makeStyles, mergeClasses } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular } from "@fluentui/react-icons";
 import { ASSIGNMENT_STATE_TEXT, WORK_LABEL_TEXT, checkCreateMission, type CreateMissionRequest, type Deliverable, type EmployeeBusyDetails, type EmployeeCard, type MissionAccepted, type WhenBusy } from "@orbit-web/contracts";
 import { useRef, useState } from "react";
@@ -93,7 +93,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
     const queued = r.state === "QUEUED";
     return (
       <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-        <DialogSurface className={isMobile ? s.surfaceMobile : s.surface}>
+        <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)}>
           <DialogBody>
             <DialogTitle>{queued ? "Queued" : "Started"}</DialogTitle>
             <DialogContent className={o.form}>
@@ -118,7 +118,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const holding = outcome?.kind === "busy" ? outcome.details?.holding : null;
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={isMobile ? s.surfaceMobile : s.surface}>
+      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)}>
         <form
           onSubmit={(e) => {
             e.preventDefault();

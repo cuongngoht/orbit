@@ -45,7 +45,7 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
         <li key={a.id} className={o.item}>
           <div className={o.row}>
             <StateBadge text={ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
-            <Link as="button" onClick={() => go("mission", a.missionId)}>
+            <Link className="orbit-target" as="button" onClick={() => go("mission", a.missionId)}>
               {a.title}
             </Link>
           </div>
@@ -171,7 +171,7 @@ function WorkTab({ e, go }: { e: EmployeeDetail; go: Go }) {
           <div className={o.stack}>
             <div className={o.row}>
               <StateBadge text={ASSIGNMENT_STATE_TEXT[e.holding.state]} state={e.holding.state} />
-              <Link as="button" onClick={() => go("mission", e.holding?.missionId ?? null)}>
+              <Link className="orbit-target" as="button" onClick={() => go("mission", e.holding?.missionId ?? null)}>
                 {e.holding.title}
               </Link>
             </div>
@@ -463,13 +463,15 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
           Assign work
         </Button>
       </div>
-      <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label="Employee">
-        {EMPLOYEE_TABS.map((t) => (
-          <Tab key={t} value={t}>
-            {TAB_TEXT[t]}
-          </Tab>
-        ))}
-      </TabList>
+      <div className={`${o.tabStrip} orbit-hscroll`}>
+        <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label="Employee">
+          {EMPLOYEE_TABS.map((t) => (
+            <Tab key={t} value={t}>
+              {TAB_TEXT[t]}
+            </Tab>
+          ))}
+        </TabList>
+      </div>
       {current === "profile" && <ProfileTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {current === "work" && <WorkTab e={e} go={go} />}
       {current === "resources" && <ResourcesTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}

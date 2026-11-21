@@ -108,7 +108,7 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
             Cancel the work
           </Button>
         )}
-        <Link as="button" onClick={() => go("mission", item.missionId)}>
+        <Link className="orbit-target" as="button" onClick={() => go("mission", item.missionId)}>
           Open the work
         </Link>
       </div>

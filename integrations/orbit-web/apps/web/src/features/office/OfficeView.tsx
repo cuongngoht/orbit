@@ -91,7 +91,7 @@ export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: 
   // A detail screen goes back to the list it belongs to.
   const back: OfficePage = page === "mission" ? "work" : "overview";
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <header className={s.top}>
         <div className={s.topInner}>
           {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}

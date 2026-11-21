@@ -11,7 +11,7 @@ export function ChangePasswordPage({ status, onChanged, signOut }: { status: Aut
   const s = useSignInStyles();
   const name = status.user?.fullName || status.user?.username || "you";
   return (
-    <div className={s.root}>
+    <div className={`${s.root} orbit-touch`}>
       <TrialBar trial={status.trial} />
       <main className={s.page}>
         <div className={s.panel}>

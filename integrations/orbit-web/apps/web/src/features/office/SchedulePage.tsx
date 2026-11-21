@@ -80,7 +80,7 @@ function Occurrences({ schedule, go }: { schedule: ScheduleView; go: Go }) {
             {x.assignmentState ? ` · the work: ${ASSIGNMENT_STATE_TEXT[x.assignmentState]}` : ""}
           </Text>
           {x.missionId && (
-            <Link as="button" onClick={() => go("mission", x.missionId)}>
+            <Link className="orbit-target" as="button" onClick={() => go("mission", x.missionId)}>
               Open the work
             </Link>
           )}

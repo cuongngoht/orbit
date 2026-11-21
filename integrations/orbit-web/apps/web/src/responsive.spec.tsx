@@ -401,5 +401,10 @@ describe("responsive mobile-first layout", () => {
     // On a phone a detail screen gives the office's tabs' room to the record.
     expect(screen.queryByRole("navigation", { name: "Office" })).toBeNull();
     expect(screen.getByRole("tablist", { name: "Employee" })).toBeInTheDocument();
+    // The rules a phone needs and jsdom cannot lay out: 44 px targets on a coarse pointer, fields that shrink to the screen.
+    const css = readFileSync([resolve(process.cwd(), "src/themes/global.css"), resolve(process.cwd(), "apps/web/src/themes/global.css"), resolve(process.cwd(), "integrations/orbit-web/apps/web/src/themes/global.css")].find((p) => existsSync(p)) as string, "utf8");
+    expect(css).toMatch(/@media \(pointer: coarse\) \{\s*\.orbit-touch \.fui-Button,/);
+    expect(css).toContain(".fui-Field > .fui-Select,");
+    expect(css).toContain(".orbit-touch .orbit-target");
   });
 });

@@ -33,6 +33,8 @@ async function open() {
   await waitFor(() => expect(hire).toBeEnabled());
   await userEvent.click(hire);
   const dialog = await screen.findByRole("dialog", { name: "Hire an employee" });
+  // The dialog is in the touch scope (44 px targets on a coarse pointer): a plain class kept through mergeClasses.
+  expect(dialog.className.split(" ")).toContain("orbit-touch");
   return { go, dialog };
 }
 

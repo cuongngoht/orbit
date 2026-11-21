@@ -9,6 +9,10 @@ export * from "./project.js";
 export * from "./research.js";
 export * from "./status.js";
 export * from "./validate.js";
+export * from "./ai-connections.js";
+export * from "./identity.js";
+export * from "./resources.js";
+export * from "./workforce.js";
 
 export const ORBIT_WEB_VERSION = "0.8.0";
 

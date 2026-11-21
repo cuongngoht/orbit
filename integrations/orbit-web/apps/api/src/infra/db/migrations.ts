@@ -18,6 +18,9 @@
 // deleting a chat or a research workspace leaves its governance records where they are.
 //
 // pgvector is enabled (the `vector` type, cosine distance) and checked at every start; nothing stores a vector yet.
+//
+//   workforce   the virtual office: departments, employees and their Personal Sandboxes, missions, assignments and
+//               reservations, runs, resources, handoffs and artifacts, decisions, the outbox, schedules, deliveries
 
 export interface Migration {
   version: number;
@@ -29,6 +32,7 @@ const INITIAL = String.raw`
 CREATE SCHEMA app;
 CREATE SCHEMA research;
 CREATE SCHEMA governance;
+CREATE SCHEMA workforce;
 
 -- A row's owner never changes: a record moves to another account by nobody's write.
 CREATE FUNCTION app.account_never_moves() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -45,57 +49,89 @@ END $$;
 
 CREATE TABLE app.accounts (
   id uuid PRIMARY KEY,
+  -- 'system': the reserved account of what is the deployment's own (its settings, capacity, isolation checks, audit
+  -- chain); it never signs in. 'customer': an Orbit account (a tenant).
+  kind text NOT NULL DEFAULT 'customer' CHECK (kind IN ('customer', 'system')),
   display_name text NOT NULL DEFAULT '',
-  created_at timestamptz NOT NULL
-);
-
--- The Claude identity an account is: the CLI's own account email (lower case) in the organization the CLI names by id.
--- Never a display name: a renamed organization is the same identity, and two organizations of one email are two.
-CREATE TABLE app.account_identities (
-  id uuid PRIMARY KEY,
-  account_id uuid NOT NULL UNIQUE REFERENCES app.accounts (id),
-  provider text NOT NULL CHECK (provider = 'claude.ai'),
-  email_norm text NOT NULL CHECK (email_norm = lower(email_norm) AND email_norm <> ''),
-  org_key text NOT NULL,
-  email text NOT NULL,
-  org_name text,
-  plan text,
+  company_name text NOT NULL DEFAULT '',
+  contact_email text,
+  timezone text NOT NULL DEFAULT 'UTC',
+  locale text NOT NULL DEFAULT 'en',
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended')),
   created_at timestamptz NOT NULL,
-  verified_at timestamptz NOT NULL,
-  UNIQUE (provider, email_norm, org_key)
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX one_system_account ON app.accounts (kind) WHERE kind = 'system';
+INSERT INTO app.accounts (id, kind, display_name, created_at, updated_at) VALUES ('00000000-0000-4000-8000-000000000001', 'system', 'Orbit Web (deployment)', now(), now());
+
+-- A person who signs in to Orbit: a username and a password Orbit keeps as a slow hash (scrypt), in ONE account. Only
+-- a verified email takes part in sharing; a user without one is shared with by username.
+CREATE TABLE app.users (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  username text NOT NULL UNIQUE CHECK (username = lower(username) AND username ~ '^[a-z][a-z0-9._-]{1,31}$'),
+  full_name text NOT NULL,
+  email text CHECK (email IS NULL OR email = lower(email)),
+  email_verified_at timestamptz,
+  role text NOT NULL CHECK (role IN ('owner')),
+  password_hash text NOT NULL,
+  password_changed_at timestamptz NOT NULL,
+  must_change_password boolean NOT NULL DEFAULT false,
+  -- The trial seed's password skips the password rules; changing it ends that.
+  trial_waiver boolean NOT NULL DEFAULT false,
+  last_login_at timestamptz,
+  failed_attempts integer NOT NULL DEFAULT 0,
+  locked_until timestamptz,
+  disabled_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id)
+);
+CREATE TRIGGER users_account_fixed BEFORE UPDATE ON app.users FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- One-time codes an operator prints in a terminal of the server: the first administrator, a new account, or a password
+-- reset. Kept as a hash; consumed by one conditional update, so of two browsers only one succeeds. A code that makes
+-- an account belongs to the system account until it is used.
+CREATE TABLE app.setup_codes (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  purpose text NOT NULL CHECK (purpose IN ('first_admin', 'new_account', 'reset_password')),
+  user_id uuid,
+  code_hash text NOT NULL UNIQUE,
+  created_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  consumed_by uuid,
+  CHECK ((purpose = 'reset_password') = (user_id IS NOT NULL))
 );
 
--- The ONE identity this runtime's Claude CLI serves now (an account, or nobody). Every sign-in, sign-out and switch locks
--- this row; a browser session is valid only for the account it names.
-CREATE TABLE app.runtime_identity (
-  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-  account_id uuid REFERENCES app.accounts (id),
-  epoch bigint NOT NULL DEFAULT 0,
-  changed_at timestamptz NOT NULL
+-- Failed sign-ins counted per key (a username, or a hashed client address) in a window: what slows a guesser down.
+CREATE TABLE app.login_throttle (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  key text NOT NULL,
+  failures integer NOT NULL,
+  window_start timestamptz NOT NULL,
+  blocked_until timestamptz,
+  PRIMARY KEY (account_id, key)
 );
-INSERT INTO app.runtime_identity (singleton, account_id, epoch, changed_at) VALUES (true, NULL, 0, now());
 
--- A browser's session, issued once that browser finished a Claude sign-in. Only the SHA-256 of its token is kept.
+-- A browser's session, issued when a USER signed in. Only the SHA-256 of its token is kept.
 CREATE TABLE app.account_sessions (
   id uuid PRIMARY KEY,
   token_hash text NOT NULL UNIQUE,
   account_id uuid NOT NULL REFERENCES app.accounts (id),
-  epoch bigint NOT NULL,
+  user_id uuid NOT NULL,
   created_at timestamptz NOT NULL,
   last_seen_at timestamptz NOT NULL,
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz,
   revoked_reason text,
-  user_agent text
+  user_agent text,
+  FOREIGN KEY (account_id, user_id) REFERENCES app.users (account_id, id)
 );
 CREATE INDEX account_sessions_open ON app.account_sessions (account_id) WHERE revoked_at IS NULL;
-
--- What is the deployment's (not any account's): one value per key.
-CREATE TABLE app.settings (
-  key text PRIMARY KEY,
-  value jsonb NOT NULL,
-  updated_at timestamptz NOT NULL
-);
 
 -- What an account set for itself: its preferences, its privileged switches, its connector choices.
 CREATE TABLE app.account_settings (
@@ -531,7 +567,7 @@ CREATE TABLE research.research_events (
 -- (deleted_at): the policy, the approvals and the audit that concerned it keep a target.
 CREATE TABLE governance.account_resources (
   account_id uuid NOT NULL REFERENCES app.accounts (id),
-  kind text NOT NULL CHECK (kind IN ('workspace', 'research_workspace')),
+  kind text NOT NULL CHECK (kind IN ('workspace', 'research_workspace', 'employee')),
   id text NOT NULL,
   title text NOT NULL,
   created_at timestamptz NOT NULL,
@@ -611,7 +647,7 @@ CREATE TABLE governance.run_bindings (
   run_id text PRIMARY KEY,
   token_hash text NOT NULL UNIQUE,
   account_id uuid NOT NULL REFERENCES app.accounts (id),
-  kind text NOT NULL CHECK (kind IN ('chat', 'research')),
+  kind text NOT NULL CHECK (kind IN ('chat', 'research', 'assignment')),
   resource_kind text NOT NULL,
   resource_id text NOT NULL,
   research_session_id text,
@@ -624,6 +660,7 @@ CREATE TABLE governance.run_bindings (
   ended_at timestamptz,
   UNIQUE (account_id, run_id),
   CHECK ((kind = 'chat') = (resource_kind = 'workspace')),
+  CHECK ((kind = 'assignment') = (resource_kind = 'employee')),
   CHECK ((kind = 'research') = (research_session_id IS NOT NULL)),
   FOREIGN KEY (account_id, resource_kind, resource_id) REFERENCES governance.account_resources (account_id, kind, id),
   FOREIGN KEY (account_id, policy_revision) REFERENCES governance.policy_revisions (account_id, id)
@@ -696,24 +733,25 @@ CREATE INDEX reports_by_day ON governance.reports (account_id, day);
 
 CREATE TABLE governance.isolation_checks (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  -- The deployment's checks are the system account's.
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
   checked_at timestamptz NOT NULL,
   state text NOT NULL,
   checks jsonb NOT NULL,
   detail text NOT NULL
 );
 
--- THE AUDIT RECORD: one hash chain per account, and one for what concerns no account (the deployment's). A chain's
+-- THE AUDIT RECORD: one hash chain per account -- the deployment's own records are the SYSTEM account's chain. A chain's
 -- head row is locked to append, so records of one chain are numbered and linked one after another whatever writes
 -- them concurrently; chains of two accounts never wait for each other.
 CREATE TABLE governance.audit_chains (
   id text PRIMARY KEY,
-  account_id uuid UNIQUE REFERENCES app.accounts (id),
+  account_id uuid NOT NULL UNIQUE REFERENCES app.accounts (id),
   head_seq bigint NOT NULL DEFAULT 0,
   head_hash text,
-  CHECK ((id = 'deployment') = (account_id IS NULL)),
-  CHECK (id = 'deployment' OR id = 'account:' || account_id::text)
+  CHECK (id = 'account:' || account_id::text)
 );
-INSERT INTO governance.audit_chains (id, account_id, head_seq, head_hash) VALUES ('deployment', NULL, 0, NULL);
+INSERT INTO governance.audit_chains (id, account_id, head_seq, head_hash) VALUES ('account:00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001', 0, NULL);
 
 CREATE TABLE governance.audit_events (
   chain_id text NOT NULL REFERENCES governance.audit_chains (id),
@@ -723,7 +761,7 @@ CREATE TABLE governance.audit_events (
   event_type text NOT NULL,
   occurred_at timestamptz NOT NULL,
   recorded_at timestamptz NOT NULL,
-  account_id uuid,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
   principal_id text NOT NULL,
   principal_type text NOT NULL,
   agent_id text,
@@ -755,4 +793,659 @@ CREATE TRIGGER audit_never_updated BEFORE UPDATE OR DELETE ON governance.audit_e
 CREATE TRIGGER audit_never_truncated BEFORE TRUNCATE ON governance.audit_events FOR EACH STATEMENT EXECUTE FUNCTION governance.audit_never_changes();
 `;
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "initial", sql: INITIAL }];
+
+const WORKFORCE = String.raw`
+-- ===================================================================================================================
+-- AI CONNECTIONS: what an account connected of Claude Code, Codex and Antigravity. Each connection has a config home of
+-- its own (the CLI's login lives there); nothing here is a credential -- an API key is kept by the server's credential
+-- store and named here by reference.
+-- ===================================================================================================================
+
+-- What is installed is the deployment's (the system account's).
+CREATE TABLE app.runtime_installations (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  runtime text NOT NULL CHECK (runtime IN ('claude', 'codex', 'agy')),
+  state text NOT NULL CHECK (state IN ('installed', 'not_installed', 'error')),
+  version text,
+  detail text,
+  checked_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, runtime)
+);
+
+CREATE TABLE app.ai_connections (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  runtime text NOT NULL CHECK (runtime IN ('claude', 'codex', 'agy')),
+  label text NOT NULL,
+  is_default boolean NOT NULL DEFAULT false,
+  method text NOT NULL CHECK (method IN ('subscription', 'api_key', 'cloud')),
+  -- The config home, relative to the connections room: <account>/<connection>.
+  home text NOT NULL UNIQUE,
+  credential_ref text,
+  cloud jsonb,
+  auth_state text NOT NULL CHECK (auth_state IN ('connected', 'disconnected', 'auth_required', 'error')),
+  reason text,
+  identity text,
+  -- What tells two provider identities apart (lower-cased, never shown): one identity, one account.
+  identity_key text,
+  catalog jsonb NOT NULL,
+  capabilities jsonb NOT NULL,
+  checked_at timestamptz,
+  plugin_revision integer NOT NULL DEFAULT 0,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  removed_at timestamptz,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id)
+);
+CREATE UNIQUE INDEX one_account_per_identity ON app.ai_connections (runtime, identity_key) WHERE identity_key IS NOT NULL AND removed_at IS NULL;
+CREATE UNIQUE INDEX one_default_connection ON app.ai_connections (account_id, runtime) WHERE is_default AND removed_at IS NULL;
+CREATE TRIGGER ai_connections_account_fixed BEFORE UPDATE ON app.ai_connections FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- The account owner's consent to load the Orbit plugin, per connection, use case and plugin digest.
+CREATE TABLE app.plugin_grants (
+  account_id uuid NOT NULL,
+  connection_id uuid NOT NULL,
+  use_case text NOT NULL CHECK (use_case IN ('chat', 'employee')),
+  digest text NOT NULL,
+  approved boolean NOT NULL,
+  decided_by text NOT NULL,
+  decided_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, connection_id, use_case),
+  FOREIGN KEY (account_id, connection_id) REFERENCES app.ai_connections (account_id, id) ON DELETE CASCADE
+);
+
+-- ===================================================================================================================
+-- THE VIRTUAL OFFICE (workforce): offices, departments, employees and their Personal Sandboxes; missions, assignments,
+-- the reservation that makes "one employee, one held assignment" a fact of the database; runs (attempts) with their
+-- lease and fence; handoffs and artifacts; resources (capacity, budgets, compute reservations); the outbox journal and
+-- consumers' inbox; idempotency keys; decisions (Needs me); schedules, occurrences and deliveries.
+-- Every row carries its account, and every child is held to its parent's account by a composite foreign key.
+-- ===================================================================================================================
+
+-- The account's office version: moved by every command that changes what the office shows (the pages' resourceVersion).
+CREATE TABLE workforce.office_versions (
+  account_id uuid PRIMARY KEY REFERENCES app.accounts (id),
+  version bigint NOT NULL DEFAULT 0
+);
+
+CREATE TABLE workforce.offices (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL UNIQUE REFERENCES app.accounts (id),
+  name text NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1
+);
+
+CREATE TABLE workforce.departments (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  name text NOT NULL,
+  position integer NOT NULL DEFAULT 0,
+  archived_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id)
+);
+CREATE UNIQUE INDEX department_names ON workforce.departments (account_id, lower(name)) WHERE archived_at IS NULL;
+
+CREATE TABLE workforce.employees (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  name text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('permanent', 'assistant')),
+  department_id uuid,
+  manager_id uuid,
+  employment text NOT NULL CHECK (employment IN ('candidate', 'probation', 'active', 'suspended', 'archived')),
+  employment_reason text,
+  profile_revision integer NOT NULL,
+  resource_revision integer NOT NULL,
+  connection_id uuid,
+  -- A temporary assistant: when its engagement ends, and the mission it serves.
+  expires_at timestamptz,
+  mission_scope uuid,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id),
+  FOREIGN KEY (account_id, manager_id) REFERENCES workforce.employees (account_id, id),
+  FOREIGN KEY (account_id, connection_id) REFERENCES app.ai_connections (account_id, id),
+  CHECK (manager_id IS NULL OR manager_id <> id),
+  CHECK ((kind = 'assistant') = (expires_at IS NOT NULL))
+);
+CREATE INDEX employees_by_department ON workforce.employees (account_id, department_id) WHERE employment <> 'archived';
+CREATE TRIGGER employees_account_fixed BEFORE UPDATE ON workforce.employees FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- An employee's profile, one immutable revision at a time (an assignment pins the one it was claimed under).
+CREATE TABLE workforce.employee_profiles (
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  revision integer NOT NULL CHECK (revision >= 1),
+  profile jsonb NOT NULL,
+  note text NOT NULL DEFAULT '',
+  based_on integer,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, employee_id, revision),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+
+-- An employee's resource profile (CPU, memory, storage), one immutable revision at a time (an attempt pins the one it
+-- was admitted under).
+CREATE TABLE workforce.employee_resources (
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  revision integer NOT NULL CHECK (revision >= 1),
+  profile jsonb NOT NULL,
+  note text NOT NULL DEFAULT '',
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, employee_id, revision),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+
+-- The Personal Sandbox: an employee's persistent desk, toolbox and cache (volumes with quotas), never a running
+-- container. READY only once every area exists, was written to, and its enforcement level is recorded with evidence.
+CREATE TABLE workforce.sandboxes (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  state text NOT NULL CHECK (state IN ('PROVISIONING', 'READY', 'FAILED', 'ARCHIVED')),
+  reason text,
+  provider text NOT NULL CHECK (provider IN ('container', 'process')),
+  areas jsonb NOT NULL,
+  desk_version integer NOT NULL DEFAULT 0,
+  provision_attempts integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, employee_id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+
+-- What an employee keeps in its toolbox (skills and scripts it wrote), by path and hash.
+CREATE TABLE workforce.toolbox_items (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('skill', 'script')),
+  path text NOT NULL,
+  sha256 text NOT NULL,
+  size bigint NOT NULL,
+  author_run_id uuid,
+  state text NOT NULL CHECK (state IN ('active', 'disabled', 'removed')),
+  shared_from uuid,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  UNIQUE (account_id, employee_id, path),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+
+CREATE TABLE workforce.missions (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  title text NOT NULL,
+  goal text NOT NULL,
+  state text NOT NULL CHECK (state IN ('open', 'completed', 'cancelled', 'failed')),
+  created_by text NOT NULL,
+  acceptance_mode text NOT NULL CHECK (acceptance_mode IN ('owner_review', 'manager_review')),
+  acceptance_criteria jsonb NOT NULL,
+  deliverables jsonb NOT NULL,
+  research_workspace_id text,
+  source_revision_ids jsonb NOT NULL,
+  deadline timestamptz,
+  priority integer NOT NULL DEFAULT 5,
+  plan_revision integer NOT NULL DEFAULT 1,
+  schedule_id uuid,
+  occurrence_id uuid,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id)
+);
+CREATE INDEX missions_by_account ON workforce.missions (account_id, updated_at DESC, id);
+CREATE TRIGGER missions_account_fixed BEFORE UPDATE ON workforce.missions FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+CREATE TABLE workforce.assignments (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  mission_id uuid NOT NULL,
+  parent_id uuid,
+  unit_key text,
+  employee_id uuid NOT NULL,
+  state text NOT NULL CHECK (state IN ('QUEUED', 'ASSIGNED', 'RUNNING', 'DELEGATING', 'WAITING_FOR_SUBORDINATES', 'BLOCKED', 'PAUSED', 'RECOVERING', 'REVIEWING', 'AWAITING_ACCEPTANCE', 'CANCELLING', 'COMPLETED', 'CANCELLED', 'FAILED_FINAL')),
+  reason text,
+  waiting_on text,
+  brief jsonb NOT NULL,
+  execution jsonb,
+  handoff_revision integer NOT NULL DEFAULT 0,
+  rework_count integer NOT NULL DEFAULT 0,
+  pinned jsonb,
+  priority integer NOT NULL DEFAULT 5,
+  eligible_at timestamptz NOT NULL,
+  deadline timestamptz,
+  -- Moves at every claim and attempt: a worker's write carries the fence it was given, and an older one is refused.
+  fence bigint NOT NULL DEFAULT 0,
+  claimed_at timestamptz,
+  finished_at timestamptz,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, mission_id, unit_key),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  FOREIGN KEY (account_id, parent_id) REFERENCES workforce.assignments (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+CREATE INDEX assignments_queue ON workforce.assignments (account_id, employee_id, priority DESC, eligible_at, id) WHERE state = 'QUEUED';
+CREATE INDEX assignments_by_mission ON workforce.assignments (account_id, mission_id);
+CREATE INDEX assignments_by_employee ON workforce.assignments (account_id, employee_id, updated_at DESC);
+CREATE TRIGGER assignments_account_fixed BEFORE UPDATE ON workforce.assignments FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- THE RESERVATION: an employee holds at most ONE assignment (the primary key), an assignment is held by at most one
+-- reservation, and -- checked at commit -- an assignment in a holding state has exactly the reservation of its employee,
+-- and one in QUEUED or a terminal state has none. Two requests can never both take a free employee.
+CREATE TABLE workforce.reservations (
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  assignment_id uuid NOT NULL,
+  reserved_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, employee_id),
+  UNIQUE (account_id, assignment_id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  FOREIGN KEY (account_id, assignment_id) REFERENCES workforce.assignments (account_id, id)
+);
+
+CREATE FUNCTION workforce.holds_employee(state text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+  SELECT state NOT IN ('QUEUED', 'COMPLETED', 'CANCELLED', 'FAILED_FINAL')
+$$;
+
+CREATE FUNCTION workforce.reservation_matches() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  aid uuid;
+  acc uuid;
+  a_state text;
+  a_employee uuid;
+  r_employee uuid;
+  has_reservation boolean;
+BEGIN
+  IF TG_TABLE_NAME = 'assignments' THEN
+    aid := NEW.id; acc := NEW.account_id;
+  ELSIF TG_OP = 'DELETE' THEN
+    aid := OLD.assignment_id; acc := OLD.account_id;
+  ELSE
+    aid := NEW.assignment_id; acc := NEW.account_id;
+  END IF;
+  SELECT state, employee_id INTO a_state, a_employee FROM workforce.assignments WHERE account_id = acc AND id = aid;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  SELECT employee_id INTO r_employee FROM workforce.reservations WHERE account_id = acc AND assignment_id = aid;
+  has_reservation := FOUND;
+  IF workforce.holds_employee(a_state) AND (NOT has_reservation OR r_employee <> a_employee) THEN
+    RAISE EXCEPTION 'assignment % is % without the reservation of its employee', aid, a_state USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT workforce.holds_employee(a_state) AND has_reservation THEN
+    RAISE EXCEPTION 'assignment % is % and still holds a reservation', aid, a_state USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER assignment_reservation AFTER INSERT OR UPDATE OF state, employee_id ON workforce.assignments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
+CREATE CONSTRAINT TRIGGER reservation_assignment AFTER INSERT OR UPDATE OR DELETE ON workforce.reservations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
+
+-- A RUN: one attempt of an assignment, from the durable intent (requested) to its end. Its lease says which worker
+-- drives it and until when; its fence is the assignment's at the attempt, and a result under an older fence is refused.
+CREATE TABLE workforce.runs (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  assignment_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  attempt_no integer NOT NULL CHECK (attempt_no >= 1),
+  state text NOT NULL CHECK (state IN ('requested', 'waiting_for_resources', 'unschedulable', 'starting', 'running', 'succeeded', 'failed', 'interrupted', 'cancelled', 'unknown')),
+  dispatch_key text NOT NULL UNIQUE,
+  fence bigint NOT NULL,
+  lease_owner text,
+  lease_until timestamptz,
+  heartbeat_at timestamptz,
+  requested jsonb NOT NULL,
+  resolved jsonb,
+  observed jsonb,
+  resource_revision integer,
+  resources jsonb,
+  usage jsonb,
+  model_usage jsonb,
+  sandbox jsonb,
+  sandbox_handle jsonb,
+  waiting_reason text,
+  waiting_since timestamptz,
+  priority integer NOT NULL DEFAULT 5,
+  stop_requested text,
+  started_at timestamptz,
+  ended_at timestamptz,
+  detail text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, assignment_id, attempt_no),
+  FOREIGN KEY (account_id, assignment_id) REFERENCES workforce.assignments (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+CREATE UNIQUE INDEX one_live_run ON workforce.runs (account_id, assignment_id) WHERE state IN ('requested', 'waiting_for_resources', 'unschedulable', 'starting', 'running', 'unknown');
+CREATE INDEX runs_pending ON workforce.runs (waiting_since, id) WHERE state IN ('requested', 'waiting_for_resources', 'unschedulable');
+CREATE INDEX runs_active ON workforce.runs (lease_until) WHERE state IN ('starting', 'running', 'unknown');
+CREATE TRIGGER runs_account_fixed BEFORE UPDATE ON workforce.runs FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- What one run held of the account's and the host's compute (and scratch), from admission until its containers are
+-- verified gone.
+CREATE TABLE workforce.compute_reservations (
+  account_id uuid NOT NULL,
+  run_id uuid NOT NULL,
+  cpu_millis integer NOT NULL CHECK (cpu_millis > 0),
+  memory_mib integer NOT NULL CHECK (memory_mib > 0),
+  scratch_mib integer NOT NULL CHECK (scratch_mib >= 0),
+  model_plane jsonb NOT NULL,
+  reserved_at timestamptz NOT NULL,
+  released_at timestamptz,
+  release_reason text,
+  PRIMARY KEY (account_id, run_id),
+  FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
+);
+CREATE INDEX compute_held ON workforce.compute_reservations (account_id) WHERE released_at IS NULL;
+
+-- What the host can give employee containers: the SYSTEM account's one row. The admission pass locks it.
+CREATE TABLE workforce.capacity (
+  account_id uuid PRIMARY KEY REFERENCES app.accounts (id),
+  source text NOT NULL CHECK (source IN ('detected', 'configured', 'unknown')),
+  total jsonb NOT NULL,
+  headroom jsonb NOT NULL,
+  usable jsonb NOT NULL,
+  storage jsonb NOT NULL,
+  checked_at timestamptz,
+  version integer NOT NULL DEFAULT 1
+);
+
+-- An account's budget and the counters of what its attempts hold now (moved only under this row's lock).
+CREATE TABLE workforce.budgets (
+  account_id uuid PRIMARY KEY REFERENCES app.accounts (id),
+  cpu_millis bigint NOT NULL CHECK (cpu_millis >= 0),
+  memory_mib bigint NOT NULL CHECK (memory_mib >= 0),
+  storage_mib bigint NOT NULL CHECK (storage_mib >= 0),
+  max_concurrent integer NOT NULL CHECK (max_concurrent >= 0),
+  per_employee jsonb NOT NULL,
+  authorized jsonb NOT NULL,
+  reserved_cpu_millis bigint NOT NULL DEFAULT 0 CHECK (reserved_cpu_millis >= 0),
+  reserved_memory_mib bigint NOT NULL DEFAULT 0 CHECK (reserved_memory_mib >= 0),
+  reserved_scratch_mib bigint NOT NULL DEFAULT 0 CHECK (reserved_scratch_mib >= 0),
+  running integer NOT NULL DEFAULT 0 CHECK (running >= 0),
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1
+);
+
+-- Storage per category and owner: what is committed (a quota) and what is used (measured), with how it is enforced.
+CREATE TABLE workforce.storage_usage (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  category text NOT NULL CHECK (category IN ('desk', 'cache', 'team', 'scratch', 'artifacts', 'research', 'logs')),
+  owner_ref text NOT NULL,
+  committed_mib bigint NOT NULL DEFAULT 0 CHECK (committed_mib >= 0),
+  used_mib bigint,
+  level text CHECK (level IN ('HARD_ENFORCED', 'SOFT_MONITORED', 'UNSUPPORTED')),
+  evidence text,
+  measured_at timestamptz,
+  PRIMARY KEY (account_id, category, owner_ref)
+);
+
+-- Every connection an employee run opened through the egress proxy, and how much went each way.
+CREATE TABLE workforce.run_connections (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id uuid NOT NULL,
+  run_id uuid NOT NULL,
+  host text NOT NULL,
+  port integer NOT NULL,
+  verdict text NOT NULL CHECK (verdict IN ('allowed', 'refused', 'limited')),
+  reason text,
+  bytes_in bigint NOT NULL DEFAULT 0,
+  bytes_out bigint NOT NULL DEFAULT 0,
+  opened_at timestamptz NOT NULL,
+  closed_at timestamptz,
+  FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
+);
+CREATE INDEX run_connections_by_run ON workforce.run_connections (account_id, run_id, id);
+
+-- HANDOFFS: what an employee hands in, one immutable revision at a time; at most one is accepted per assignment.
+CREATE TABLE workforce.handoffs (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  assignment_id uuid NOT NULL,
+  run_id uuid,
+  revision integer NOT NULL CHECK (revision >= 1),
+  digest text NOT NULL,
+  summary text NOT NULL,
+  status text NOT NULL CHECK (status IN ('submitted', 'revision_requested', 'accepted', 'superseded')),
+  claims jsonb NOT NULL,
+  missing jsonb NOT NULL,
+  submission_key text NOT NULL,
+  submitted_by text NOT NULL,
+  submitted_at timestamptz NOT NULL,
+  review jsonb,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, assignment_id, revision),
+  UNIQUE (account_id, submission_key),
+  FOREIGN KEY (account_id, assignment_id) REFERENCES workforce.assignments (account_id, id)
+);
+CREATE UNIQUE INDEX one_acceptance ON workforce.handoffs (account_id, assignment_id) WHERE status = 'accepted';
+
+-- The bytes of artifacts, by content: counted once per account (never deduplicated across accounts).
+CREATE TABLE workforce.blobs (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  sha256 text NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+  size bigint NOT NULL CHECK (size >= 0),
+  refcount integer NOT NULL DEFAULT 0 CHECK (refcount >= 0),
+  stored_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, sha256)
+);
+
+CREATE TABLE workforce.artifacts (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  handoff_id uuid NOT NULL,
+  name text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('deliverable', 'attachment')),
+  media_type text NOT NULL,
+  size bigint NOT NULL,
+  sha256 text NOT NULL,
+  created_at timestamptz NOT NULL,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, handoff_id, name),
+  FOREIGN KEY (account_id, handoff_id) REFERENCES workforce.handoffs (account_id, id),
+  FOREIGN KEY (account_id, sha256) REFERENCES workforce.blobs (account_id, sha256)
+);
+
+-- NEEDS ME: what waits for a person's decision, pinned to the version it was raised against.
+CREATE TABLE workforce.decisions (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('acceptance', 'information', 'external_action', 'reconciliation', 'delivery_channel', 'unschedulable', 'blocked')),
+  state text NOT NULL CHECK (state IN ('open', 'resolved', 'expired', 'withdrawn')),
+  mission_id uuid NOT NULL,
+  assignment_id uuid,
+  run_id uuid,
+  delivery_id uuid,
+  title text NOT NULL,
+  reason text NOT NULL,
+  waiting text,
+  deadline timestamptz,
+  pin jsonb NOT NULL,
+  dedup_key text NOT NULL,
+  created_at timestamptz NOT NULL,
+  resolved_at timestamptz,
+  resolution text,
+  resolved_by text,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id)
+);
+CREATE UNIQUE INDEX one_open_decision ON workforce.decisions (account_id, dedup_key) WHERE state = 'open';
+CREATE INDEX decisions_open ON workforce.decisions (account_id, created_at DESC) WHERE state = 'open';
+
+-- THE OUTBOX JOURNAL: integration events written in the transaction of the change they report. A consumer records each
+-- event it handled in its inbox, in the transaction of its own effect: delivered at least once, applied once.
+CREATE TABLE workforce.events (
+  seq bigint GENERATED ALWAYS AS IDENTITY,
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  type text NOT NULL,
+  schema_version integer NOT NULL,
+  aggregate_type text NOT NULL,
+  aggregate_id uuid NOT NULL,
+  aggregate_version integer NOT NULL,
+  ordinal integer NOT NULL,
+  actor text NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  correlation_id text NOT NULL,
+  causation_id text,
+  mission_id uuid,
+  payload jsonb NOT NULL,
+  UNIQUE (aggregate_id, aggregate_version, ordinal)
+);
+CREATE INDEX events_by_seq ON workforce.events (seq);
+CREATE INDEX events_by_mission ON workforce.events (account_id, mission_id, seq) WHERE mission_id IS NOT NULL;
+
+CREATE TABLE workforce.consumer_inbox (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  consumer_id text NOT NULL,
+  event_id uuid NOT NULL REFERENCES workforce.events (id),
+  processed_at timestamptz NOT NULL,
+  PRIMARY KEY (consumer_id, event_id)
+);
+
+-- A command with a side effect answers the same result to the same key and request, and a conflict to the same key and
+-- another request.
+CREATE TABLE workforce.idempotency_keys (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  actor text NOT NULL,
+  operation text NOT NULL,
+  key text NOT NULL,
+  request_digest text NOT NULL,
+  status_code integer NOT NULL,
+  response jsonb NOT NULL,
+  created_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, actor, operation, key)
+);
+
+-- A mission's team room: the shared workbench of the assignments of one mission (never evidence).
+CREATE TABLE workforce.team_rooms (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  mission_id uuid NOT NULL,
+  quota_mib integer NOT NULL CHECK (quota_mib > 0),
+  state text NOT NULL CHECK (state IN ('open', 'frozen')),
+  created_at timestamptz NOT NULL,
+  frozen_at timestamptz,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, mission_id),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id)
+);
+
+-- What an employee (or a mission) may do with an external connection, typed, scoped, revocable.
+CREATE TABLE workforce.connection_grants (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  grantee_kind text NOT NULL CHECK (grantee_kind IN ('employee', 'mission')),
+  grantee_id uuid NOT NULL,
+  operation text NOT NULL,
+  scope jsonb NOT NULL,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id)
+);
+
+-- SCHEDULES: the rule that makes recurring work, its revisions, the periods it made (one per period), and deliveries.
+CREATE TABLE workforce.schedules (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  name text NOT NULL,
+  rule jsonb NOT NULL,
+  employee_id uuid NOT NULL,
+  template jsonb NOT NULL,
+  recipients jsonb NOT NULL,
+  missed_policy text NOT NULL CHECK (missed_policy IN ('catch_up_latest', 'catch_up_each', 'skip')),
+  catch_up_limit integer NOT NULL CHECK (catch_up_limit BETWEEN 1 AND 8),
+  state text NOT NULL CHECK (state IN ('active', 'paused')),
+  revision integer NOT NULL DEFAULT 1,
+  next_due_at timestamptz,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+CREATE INDEX schedules_due ON workforce.schedules (next_due_at) WHERE state = 'active';
+
+CREATE TABLE workforce.schedule_revisions (
+  account_id uuid NOT NULL,
+  schedule_id uuid NOT NULL,
+  revision integer NOT NULL,
+  document jsonb NOT NULL,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, schedule_id, revision),
+  FOREIGN KEY (account_id, schedule_id) REFERENCES workforce.schedules (account_id, id)
+);
+
+CREATE TABLE workforce.occurrences (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  schedule_id uuid NOT NULL,
+  period_key text NOT NULL,
+  due_at timestamptz NOT NULL,
+  schedule_revision integer NOT NULL,
+  state text NOT NULL CHECK (state IN ('created', 'skipped')),
+  mission_id uuid,
+  reason text,
+  created_at timestamptz NOT NULL,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, schedule_id, period_key),
+  FOREIGN KEY (account_id, schedule_id) REFERENCES workforce.schedules (account_id, id),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id)
+);
+
+CREATE TABLE workforce.deliveries (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  mission_id uuid NOT NULL,
+  handoff_id uuid NOT NULL,
+  digest text NOT NULL,
+  recipient jsonb NOT NULL,
+  state text NOT NULL CHECK (state IN ('PENDING_CHANNEL', 'PENDING', 'SENDING', 'SENT', 'NEEDS_RECONCILIATION', 'FAILED')),
+  attempts integer NOT NULL DEFAULT 0,
+  receipt text,
+  detail text,
+  idempotency_key text NOT NULL,
+  next_attempt_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, idempotency_key),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  FOREIGN KEY (account_id, handoff_id) REFERENCES workforce.handoffs (account_id, id)
+);
+`;
+
+// 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier
+// build is upgraded; `cli/db.js reset` empties one). Later releases add migrations after it.
+export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "initial", sql: `${INITIAL}
+${WORKFORCE}` }];

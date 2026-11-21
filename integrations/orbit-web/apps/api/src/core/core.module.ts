@@ -25,7 +25,8 @@ import { StreamGateway } from "./events/stream-gateway.js";
 import { APP_CONFIG, PROCESS_PORT } from "./tokens.js";
 
 // The schemas unqualified names resolve in, in order (`public` last: pgvector's types live there).
-export const SEARCH_PATH = ["app", "research", "governance", "public"] as const;
+// `workforce` after the older schemas: its `events` and `runs` are always written schema-qualified.
+export const SEARCH_PATH = ["app", "research", "governance", "workforce", "public"] as const;
 
 @Injectable()
 class DatabaseCloser implements OnApplicationShutdown {

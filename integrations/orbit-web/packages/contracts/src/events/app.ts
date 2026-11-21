@@ -6,6 +6,7 @@ import type { LoginSnapshot, SessionSummary } from "../dto.js";
 import type { ModelCatalog } from "../models.js";
 import type { ResearchSessionSummary, ResearchSourceSummary, ResearchWorkspaceSummary } from "../research.js";
 import type { ConnectionState } from "../status.js";
+import type { OfficeChangedData } from "../workforce.js";
 
 export interface SessionSummaryData {
   // The chat as it is now (created, renamed, its status or its model, effort or mode changed).
@@ -107,4 +108,5 @@ export interface AppEventDataMap {
   "research.source.changed": ResearchSourceChangedData;
   "research.source.removed": ResearchSourceRemovedData;
   "research.evidence.changed": ResearchEvidenceChangedData;
+  "office.changed": OfficeChangedData;
 }

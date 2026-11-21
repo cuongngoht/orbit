@@ -70,6 +70,7 @@ export const EVENT_CATALOG = {
   "research.source.changed": { stream: "app", durable: false, summary: "A research source was added, or its state moved (queued, processing, ready, failed, stale)." },
   "research.source.removed": { stream: "app", durable: false, summary: "A research source was deleted." },
   "research.evidence.changed": { stream: "app", durable: false, summary: "A research note or finding was created, changed or deleted." },
+  "office.changed": { stream: "app", durable: false, summary: "Something in the account's virtual office changed (roster, missions, inbox, schedules, connections): read it again." },
 } as const satisfies Record<string, EventSpec>;
 
 export type EventType = keyof typeof EVENT_CATALOG;

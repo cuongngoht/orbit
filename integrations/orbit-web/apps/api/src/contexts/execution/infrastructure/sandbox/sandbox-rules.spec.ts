@@ -11,7 +11,7 @@ import { loadSandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
 import { checkAttemptSpec, checkExecRequest, NonceCache, readSecret, signedHeaders, toolPath, verifySigned } from "./allocator-protocol.js";
 import { infrastructureCapacity } from "./capacity.js";
-import { attemptLabels, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, scratchArea, teamArea } from "./ids.js";
+import { attemptLabels, attemptNetworks, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, scratchArea, subnetBlocks, teamArea } from "./ids.js";
 import { chooseMechanism, hostProtectionOf, storageAdmits, tmpSizeMiB } from "./storage-policy.js";
 
 const O = "0f1e2d3c-0000-4000-8000-000000000001";
@@ -53,6 +53,15 @@ test("ids: one dispatch key always names the same two containers, and one runner
   assert.equal(runnerToken("s".repeat(32), "run-1:1"), runnerToken("s".repeat(32), "run-1:1"));
   assert.notEqual(runnerToken("s".repeat(32), "run-1:1"), runnerToken("s".repeat(32), "run-1:2"));
   assert.notEqual(runnerToken("s".repeat(32), "run-1:1"), runnerToken("t".repeat(32), "run-1:1"));
+  // Each plane's own network: named from the same key, apart from the containers and from another attempt's.
+  const nets = attemptNetworks("orbit-web", "run-1:1");
+  assert.deepEqual(nets, attemptNetworks("orbit-web", "run-1:1"));
+  assert.notEqual(nets.tool, nets.model);
+  assert.notEqual(nets.tool, attemptNetworks("orbit-web", "run-1:2").tool);
+  assert.match(nets.model, /^orbit-web-mn-[0-9a-f]{24}$/);
+  assert.deepEqual([...subnetBlocks(["10.231.0.0/27", "172.16.5.16/28"])], ["10.231.0.0/28", "10.231.0.16/28", "172.16.5.16/28"]);
+  assert.equal([...subnetBlocks(["10.0.0.0/16"])].length, 4096);
+  assert.equal([...subnetBlocks(["10.0.0.0/16"])].at(-1), "10.0.255.240/28");
   const labels = attemptLabels("orbit-web", { ...ids, dispatchKey: "run-1:1", runId: "run-1", assignmentId: "asg-1", fence: 3 }, "tool-plane");
   assert.equal(labels["orbit-web.account"], O);
   assert.equal(labels["orbit-web.fence"], "3");

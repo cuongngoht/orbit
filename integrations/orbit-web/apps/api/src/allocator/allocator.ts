@@ -31,13 +31,13 @@ import {
   type AttestRequest,
   type PublishResult,
 } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
-import { assignmentDir, attemptLabels, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
+import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
 import { MODEL_PLANE, TOOL_PLANE } from "../contexts/execution/infrastructure/sandbox/layout.js";
 import { storageAdmits, tmpSizeMiB, type AreaLevel } from "../contexts/execution/infrastructure/sandbox/storage-policy.js";
 import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountInfo, type Check } from "./attest-checks.js";
 import { cgroupUsage, limitsMatch, observedLimits, parseReading, type CgroupReading } from "./cgroup.js";
 import { execIn, failure, text, type ExecOutcome } from "./containers.js";
-import { DockerEngine, DockerError, type ContainerInspect } from "./docker/engine.js";
+import { DockerEngine, DockerError, type ContainerInspect, type NetworkInspect as NetworkInfo } from "./docker/engine.js";
 import { attestProbeScript, cgroupScript, modelPlaneScript, nodeScript, syncScript, toolFileScript, writeTestScript, type AttestProbeConfig } from "./scripts/node-scripts.js";
 import { limitsProbeBody, MiB, MODEL_PLANE_PIDS, MODEL_PLANE_TMPFS, modelPlaneBody, modelPlaneMounts, PROBE_LIMITS, toolPlaneBody, toolPlaneMounts, type VolumeMount } from "./specs.js";
 import { WorkforceStorage, type StorageState } from "./storage.js";
@@ -399,8 +399,71 @@ export class Allocator implements AllocatorApi {
     return { tool, model };
   }
 
+  // The attempt's own two networks, as the runtime knows them (each labelled with its dispatch key).
+  private async networksOf(dispatchKey: string): Promise<{ tool: NetworkInfo | null; model: NetworkInfo | null }> {
+    const names = attemptNetworks(this.prefix, dispatchKey);
+    const [tool, model] = await Promise.all([this.engine.networkInspect(names.tool), this.engine.networkInspect(names.model)]);
+    for (const n of [tool, model]) if (n !== null && n.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${n.Name} does not belong to this dispatch key`);
+    return { tool, model };
+  }
+
+  // One plane's own internal network: made once (from ORBIT_WEB_ATTEMPT_SUBNETS when the operator gave ranges), labelled
+  // as its attempt, and joined by Orbit Web's container (the proxies, the tool endpoint) under the name attempts use.
+  private async attemptNetwork(name: string, labels: Record<string, string>, dispatchKey: string): Promise<void> {
+    let net = await this.engine.networkInspect(name);
+    if (net === null) {
+      await this.createNetwork(name, labels);
+      net = await this.engine.networkInspect(name);
+    }
+    if (net === null) throw new Error(`the network ${name} vanished while it was being made`);
+    if (net.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${name} does not belong to this dispatch key`);
+    if (!net.Internal) throw new AllocatorError("conflict", `${name} is not internal: an attempt there could reach the internet directly`);
+    if (this.config.control.container !== null) await this.engine.networkConnect(name, this.config.control.container, [this.config.control.alias]);
+  }
+
+  private async createNetwork(name: string, labels: Record<string, string>): Promise<void> {
+    const exhausted = (err: unknown) => (err instanceof DockerError && /address pools|fully subnetted|no available/i.test(err.reason) ? new AllocatorError("unavailable", `the container runtime has no address space left for another attempt's network (${err.reason}): set ORBIT_WEB_ATTEMPT_SUBNETS, or Docker's default-address-pools`) : err);
+    if (this.config.attemptSubnets.length === 0) {
+      await this.engine.networkCreate({ Name: name, Internal: true, Labels: labels }).catch((err: unknown) => Promise.reject(exhausted(err)));
+      return;
+    }
+    const used = new Set((await this.engine.networkList({ [LABELS.prefix]: this.prefix })).flatMap((n) => (n.IPAM.Config ?? []).map((c) => c.Subnet)));
+    for (const subnet of subnetBlocks(this.config.attemptSubnets)) {
+      if (used.has(subnet)) continue;
+      try {
+        await this.engine.networkCreate({ Name: name, Internal: true, Labels: labels, IPAM: { Config: [{ Subnet: subnet }] } });
+        return;
+      } catch (err) {
+        if (err instanceof DockerError && /overlap/i.test(err.reason)) continue;
+        throw err;
+      }
+    }
+    throw new AllocatorError("unavailable", `no /28 is free in ORBIT_WEB_ATTEMPT_SUBNETS (${this.config.attemptSubnets.join(", ")}) for another attempt's network`);
+  }
+
+  // Each network holds its plane and Orbit Web's container, and nothing else.
+  private async networkProblems(dispatchKey: string, toolId: string, modelId: string): Promise<string[]> {
+    const names = attemptNetworks(this.prefix, dispatchKey);
+    const control = this.config.control.container === null ? null : await this.engine.containerInspect(this.config.control.container);
+    const problems: string[] = [];
+    for (const [name, own] of [[names.tool, toolId], [names.model, modelId]] as const) {
+      const net = await this.engine.networkInspect(name);
+      if (net === null) {
+        problems.push(`${name} does not exist`);
+        continue;
+      }
+      if (!net.Internal) problems.push(`${name} is not internal`);
+      const members = Object.keys(net.Containers ?? {});
+      const allowed = new Set([own, ...(control !== null ? [control.Id] : [])]);
+      const strangers = members.filter((m) => !allowed.has(m));
+      if (strangers.length > 0) problems.push(`${name} has other members: ${strangers.map((id) => net.Containers?.[id]?.Name ?? id).join(", ")}`);
+      if (!members.includes(own)) problems.push(`${name} does not hold its plane`);
+    }
+    return problems;
+  }
+
   private record(dispatchKey: string, runId: string, tool: ContainerInspect | null, model: ContainerInspect | null): AttemptRecord {
-    const ip = model?.NetworkSettings.Networks?.[this.config.names.modelNetwork]?.IPAddress || null;
+    const ip = model?.NetworkSettings.Networks?.[attemptNetworks(this.prefix, dispatchKey).model]?.IPAddress || null;
     return {
       dispatchKey,
       runId,
@@ -413,14 +476,12 @@ export class Allocator implements AllocatorApi {
     };
   }
 
-  // Where an attempt's containers go must be what the operator meant: both networks there and INTERNAL (no route out
-  // but Orbit Web's proxy), and Orbit Web's data volume there (the runtime would otherwise make an empty one silently).
+  // What an attempt's containers rely on must be what the operator meant: Orbit Web's container (it joins the attempt's
+  // networks: the proxies, the tool endpoint), and Orbit Web's data volume (the runtime would otherwise make an empty one
+  // silently).
   private async placesHold(): Promise<void> {
-    for (const name of [this.config.names.sandboxNetwork, this.config.names.modelNetwork]) {
-      const net = await this.engine.networkInspect(name);
-      if (net === null) throw new AllocatorError("conflict", `the network ${name} does not exist (it is Orbit Web's: start the compose project)`);
-      if (!net.Internal) throw new AllocatorError("conflict", `the network ${name} is not internal: an attempt there could reach the internet directly`);
-    }
+    const control = this.config.control.container;
+    if (control !== null && (await this.engine.containerInspect(control)) === null) throw new AllocatorError("conflict", `Orbit Web's container ${control} does not exist (ORBIT_WEB_CONTROL_CONTAINER)`);
     if ((await this.engine.volumeInspect(this.config.names.dataVolume)) === null) throw new AllocatorError("conflict", `Orbit Web's data volume ${this.config.names.dataVolume} does not exist (ORBIT_WEB_DATA_VOLUME)`);
   }
 
@@ -437,6 +498,10 @@ export class Allocator implements AllocatorApi {
       let { tool, model } = await this.planes(s.dispatchKey);
       for (const c of [tool, model]) if (c !== null && !this.sameAttempt(c, s)) throw new AllocatorError("conflict", `the dispatch key ${s.dispatchKey} belongs to another run`);
       if (tool === null || model === null) await this.placesHold();
+      // Each plane's own network first, Orbit Web's container connected to both (made once; a retry finds them).
+      const nets = attemptNetworks(this.prefix, s.dispatchKey);
+      await this.attemptNetwork(nets.tool, attemptLabels(this.prefix, s, "tool-network"), s.dispatchKey);
+      await this.attemptNetwork(nets.model, attemptLabels(this.prefix, s, "model-network"), s.dispatchKey);
       if (tool === null) {
         const record = await this.readySandbox(s);
         if ((await this.storage.get(workspaceMeta(s, s.assignmentId))) === null) throw new AllocatorError("conflict", "the assignment's workspace was not prepared");
@@ -445,12 +510,12 @@ export class Allocator implements AllocatorApi {
         if (team !== null && s.teamRoom !== null) await this.storage.ensureArea(team, s.teamRoom.quotaMiB * MiB, "employee", "0700");
         const inputs = await this.storage.worker([{ volume: st.volume, subpath: `${scratch}/input`, target: "/dst", readOnly: false }], ["node", "-e", nodeScript(syncScript), "inputs", "/dst"], Buffer.from(JSON.stringify(s.inputs)));
         if (inputs.code !== 0) throw new Error(failure("materializing the inputs", inputs));
-        const body = toolPlaneBody({ image: this.config.images.workstation, network: this.config.names.sandboxNetwork, workforceVolume: st.volume, labels: attemptLabels(this.prefix, s, "tool-plane"), areas: { scratch, cache: record.cacheMiB > 0 ? cacheArea(s) : null, team }, resources: s.resources, egress: s.egress });
+        const body = toolPlaneBody({ image: this.config.images.workstation, network: nets.tool, workforceVolume: st.volume, labels: attemptLabels(this.prefix, s, "tool-plane"), areas: { scratch, cache: record.cacheMiB > 0 ? cacheArea(s) : null, team }, resources: s.resources, egress: s.egress });
         await this.engine.containerCreate(names.tool, body);
         tool = await this.engine.containerInspect(names.tool);
       }
       if (model === null) {
-        const body = modelPlaneBody({ image: this.config.images.modelPlane, network: this.config.names.modelNetwork, dataVolume: this.config.names.dataVolume, connectionSubpath: connectionSubpath(s.orbitId, s.modelPlane.connectionHome), labels: attemptLabels(this.prefix, s, "model-plane"), cpuMillis: s.modelPlane.cpuMillis, memoryMiB: s.modelPlane.memoryMiB, runnerToken: runnerToken(this.secret, s.dispatchKey), env: s.modelPlane.env });
+        const body = modelPlaneBody({ image: this.config.images.modelPlane, network: nets.model, dataVolume: this.config.names.dataVolume, connectionSubpath: connectionSubpath(s.orbitId, s.modelPlane.connectionHome), labels: attemptLabels(this.prefix, s, "model-plane"), cpuMillis: s.modelPlane.cpuMillis, memoryMiB: s.modelPlane.memoryMiB, runnerToken: runnerToken(this.secret, s.dispatchKey), env: s.modelPlane.env });
         await this.engine.containerCreate(names.model, body);
         model = await this.engine.containerInspect(names.model);
       }
@@ -484,8 +549,11 @@ export class Allocator implements AllocatorApi {
   async findAttempt(dispatchKeyIn: string): Promise<AttemptStatusRecord | null> {
     const dispatchKey = checkDispatchKey(dispatchKeyIn);
     const { tool, model } = await this.planes(dispatchKey);
-    if (tool === null && model === null) return null;
-    const runId = (tool ?? model)?.Config.Labels?.[LABELS.run] ?? "";
+    // Networks left without their containers (a crash between the two) are still an attempt: found, so that its
+    // removal takes them away.
+    const nets = await this.networksOf(dispatchKey);
+    if (tool === null && model === null && nets.tool === null && nets.model === null) return null;
+    const runId = (tool ?? model)?.Config.Labels?.[LABELS.run] ?? nets.tool?.Labels?.[LABELS.run] ?? nets.model?.Labels?.[LABELS.run] ?? "";
     return { ...this.record(dispatchKey, runId, tool, model), toolPlaneRunning: tool?.State.Running === true, modelPlaneRunning: model?.State.Running === true, oomKilled: { toolPlane: tool?.State.OOMKilled === true, modelPlane: model?.State.OOMKilled === true } };
   }
 
@@ -523,8 +591,10 @@ export class Allocator implements AllocatorApi {
     // Hardening and mounts, from outside.
     const toolUser = `${TOOL_PLANE.uid}:${TOOL_PLANE.gid}`;
     const modelUser = `${MODEL_PLANE.uid}:${MODEL_PLANE.gid}`;
-    add(check("tool_plane_hardening", hardeningProblems(tool, toolUser, this.config.names.sandboxNetwork), "no privilege or capability, read-only root, the employee's user, only the sandbox network, nothing published"));
-    add(check("model_plane_hardening", hardeningProblems(model, modelUser, this.config.names.modelNetwork), "no privilege or capability, read-only root, its own user, only the model network, nothing published"));
+    const nets = attemptNetworks(this.prefix, dispatchKey);
+    add(check("tool_plane_hardening", hardeningProblems(tool, toolUser, nets.tool), "no privilege or capability, read-only root, the employee's user, only its own network, nothing published"));
+    add(check("model_plane_hardening", hardeningProblems(model, modelUser, nets.model), "no privilege or capability, read-only root, its own user, only its own network, nothing published"));
+    add(check("attempt_networks", await this.networkProblems(dispatchKey, tool.Id, model.Id), `each plane alone on an internal network of its own${this.config.control.container !== null ? ` with Orbit Web's container (${this.config.control.container})` : ""}: no other attempt can reach either`));
     const record = await this.sandboxRecord(s);
     const toolMounts = toolPlaneMounts(st.volume, { scratch: scratchArea(s, s.assignmentId), cache: record !== null && record.cacheMiB > 0 ? cacheArea(s) : null, team: s.teamRoom === null ? null : teamArea(s.orbitId, s.teamRoom.id) });
     const modelMounts = modelPlaneMounts({ dataVolume: this.config.names.dataVolume, connectionSubpath: connectionSubpath(s.orbitId, s.modelPlane.connectionHome) });
@@ -547,7 +617,7 @@ export class Allocator implements AllocatorApi {
     const credential = await this.plantInModelPlane(model.Id);
     const sibling = await this.plantInSiblingDesk(s);
     try {
-      const modelIp = model.NetworkSettings.Networks?.[this.config.names.modelNetwork]?.IPAddress || null;
+      const modelIp = model.NetworkSettings.Networks?.[nets.model]?.IPAddress || null;
       const cfg: AttestProbeConfig = {
         absent: [
           { name: "no_docker_socket", path: "/var/run/docker.sock" },
@@ -749,10 +819,21 @@ export class Allocator implements AllocatorApi {
     return this.locks.run(`attempt:${dispatchKey}`, async () => {
       const { tool, model } = await this.planes(dispatchKey);
       await Promise.all([tool, model].flatMap((c) => (c === null ? [] : [this.engine.containerRemove(c.Id, true)])));
+      // Then the attempt's own networks: whatever is still connected (Orbit Web's container) is disconnected first.
+      const nets = await this.networksOf(dispatchKey);
+      for (const net of [nets.tool, nets.model]) {
+        if (net === null) continue;
+        for (const member of Object.keys(net.Containers ?? {})) await this.engine.networkDisconnect(net.Name, member);
+        await this.engine.networkRemove(net.Name);
+      }
       const names = planeNames(this.prefix, dispatchKey);
-      const left = (await Promise.all([this.engine.containerInspect(names.tool), this.engine.containerInspect(names.model)])).filter((c) => c !== null);
+      const netNames = attemptNetworks(this.prefix, dispatchKey);
+      const left = [
+        ...(await Promise.all([this.engine.containerInspect(names.tool), this.engine.containerInspect(names.model)])).filter((c) => c !== null).map((c) => c.Name),
+        ...(await Promise.all([this.engine.networkInspect(netNames.tool), this.engine.networkInspect(netNames.model)])).filter((n) => n !== null).map((n) => n.Name),
+      ];
       for (const c of [tool, model]) if (c !== null) this.pidsPeaks.delete(c.Id);
-      return left.length === 0 ? { gone: true, detail: "both planes are gone (the runtime no longer knows them)" } : { gone: false, detail: `${left.map((c) => c.Name).join(", ")} still exist` };
+      return left.length === 0 ? { gone: true, detail: "both planes and their networks are gone (the runtime no longer knows them)" } : { gone: false, detail: `${left.join(", ")} still exist` };
     });
   }
 }

@@ -1,8 +1,8 @@
 // THE SANDBOX LAB: a real container runtime, and everything an attempt needs around it, made for one test run and
-// removed after it -- networks (the tool planes' and the model planes' internal ones, a database's), Orbit Web's data
-// volume with two connections' homes, a tiny egress proxy of the lab's own on the sandbox network (the run's token as
-// its credential, one stand-in origin behind it), and a database stand-in on a network no attempt joins. Every name
-// carries the run's prefix, so nothing a person runs is touched.
+// removed after it -- Orbit Web's data volume with two connections' homes, a tiny egress proxy of the lab's own standing
+// in for Orbit Web's container (the allocator connects it to each attempt's own networks; the run's token is its
+// credential, one stand-in origin behind it), and a database stand-in on a network no attempt joins. Every name carries
+// the run's prefix, so nothing a person runs is touched.
 //
 // Images: the `workstation` and `storage-helper` targets of docker/Dockerfile are built (cached by the runtime), and
 // the model plane is a light image with the runner as this tree compiled it -- unless ORBIT_WEB_SANDBOX_TEST_MODEL_PLANE
@@ -132,8 +132,11 @@ export async function createLab(): Promise<Lab> {
     ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: IMAGES.workstation,
     ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: IMAGES.modelPlane,
     ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: IMAGES.storageHelper,
-    ORBIT_WEB_SANDBOX_NETWORK: net("sandbox"),
-    ORBIT_WEB_MODEL_NETWORK: net("model"),
+    // The lab's proxy plays Orbit Web's container: connected to each attempt's two networks, under the name attempts use.
+    ORBIT_WEB_CONTROL_CONTAINER: net("proxy"),
+    ORBIT_WEB_SANDBOX_HOST: "egress",
+    // Unset: the runtime's own address pools; set (e.g. 10.231.0.0/24): /28 networks cut from it.
+    ORBIT_WEB_ATTEMPT_SUBNETS: process.env.ORBIT_WEB_SANDBOX_TEST_SUBNETS ?? "",
     ORBIT_WEB_DATA_VOLUME: net("data"),
     ORBIT_WEB_WORKFORCE_POOL_SIZE: process.env.ORBIT_WEB_SANDBOX_TEST_POOL ?? "2g",
     ORBIT_WEB_ALLOCATOR_STATE_DIR: state,
@@ -143,21 +146,25 @@ export async function createLab(): Promise<Lab> {
     const all = [...(await engine.containerList({ "orbit-web.prefix": prefix })), ...(await engine.containerList({ [TEST_LABEL]: prefix }))];
     await Promise.all(all.map((c) => engine.containerRemove(c.Id, true).catch(() => undefined)));
     await new Allocator({ config, secret, engine }).storage.destroy().catch(() => undefined);
-    for (const n of ["sandbox", "model", "db"]) await engine.networkRemove(net(n)).catch(() => undefined);
+    // An attempt's networks a failed test left: whatever is still connected, disconnected; then removed.
+    for (const n of await engine.networkList({ "orbit-web.prefix": prefix }).catch(() => [])) {
+      for (const member of Object.keys((await engine.networkInspect(n.Name))?.Containers ?? {})) await engine.networkDisconnect(n.Name, member).catch(() => undefined);
+      await engine.networkRemove(n.Name).catch(() => undefined);
+    }
+    for (const n of ["lab", "db"]) await engine.networkRemove(net(n)).catch(() => undefined);
     await engine.volumeRemove(net("data")).catch(() => undefined);
     for (const v of ["probe-xfs-project", "probe-xfs-loop-pool", "probe-btrfs-qgroup", "probe-loop-per-volume"]) await engine.volumeRemove(`${prefix}-${v}`).catch(() => undefined);
     rmSync(state, { recursive: true, force: true });
   };
   try {
-    await engine.networkCreate({ Name: net("sandbox"), Internal: true, Labels: labels });
-    await engine.networkCreate({ Name: net("model"), Internal: true, Labels: labels });
+    await engine.networkCreate({ Name: net("lab"), Internal: true, Labels: labels });
     await engine.networkCreate({ Name: net("db"), Internal: true, Labels: labels });
     await engine.volumeCreate({ Name: net("data"), Labels: labels });
     // Two accounts' connection homes, Orbit Web's (10001), each with its login file.
     const seed = await runOnce(engine, prefix, { Image: IMAGES.workstation, User: "0:0", Cmd: ["sleep", "120"], Labels: labels, HostConfig: { NetworkMode: "none", Mounts: [{ Type: "volume", Source: net("data"), Target: "/data" }] } }, ["sh", "-c", 'for o in "$1" "$2"; do mkdir -p "/data/connections/$o/conn-1/claude"; printf %s "$3" > "/data/connections/$o/conn-1/claude/.credentials.json"; done; chown -R 10001:10001 /data/connections; chmod -R go-rwx /data/connections', "seed", orbitA, orbitB, credential], { timeoutMs: 60_000, maxOutputBytes: 65536 });
     if (seed.code !== 0) throw new Error(`seeding the connections room failed: ${text(seed.stderr)}`);
-    // The egress proxy, on the sandbox network as `egress`; the database stand-in on a network of its own.
-    const proxy = await engine.containerCreate(net("proxy"), { Image: IMAGES.workstation, User: "20001:20001", Cmd: ["node", "-e", PROXY], Env: [`TOKEN=${runToken}`], Labels: labels, HostConfig: { NetworkMode: net("sandbox"), Init: true }, NetworkingConfig: { EndpointsConfig: { [net("sandbox")]: { Aliases: ["egress"] } } } });
+    // The egress proxy (joined to each attempt's networks by the allocator, as `egress`); the database stand-in alone.
+    const proxy = await engine.containerCreate(net("proxy"), { Image: IMAGES.workstation, User: "20001:20001", Cmd: ["node", "-e", PROXY], Env: [`TOKEN=${runToken}`], Labels: labels, HostConfig: { NetworkMode: net("lab"), Init: true } });
     const db = await engine.containerCreate(net("db"), { Image: IMAGES.workstation, User: "20001:20001", Cmd: ["node", "-e", "require('net').createServer(s=>s.end('db')).listen(5432)"], Labels: labels, HostConfig: { NetworkMode: net("db"), Init: true } });
     if (proxy === null || db === null) throw new Error("the lab's proxy or database container already exists");
     await engine.containerStart(proxy.id);

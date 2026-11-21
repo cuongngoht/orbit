@@ -41,8 +41,9 @@ name: orbit-web
 
 x-employees: &employees
   ORBIT_WEB_SANDBOX_PREFIX: orbit-web
-  ORBIT_WEB_SANDBOX_NETWORK: orbit-web-sandbox
-  ORBIT_WEB_MODEL_NETWORK: orbit-web-model
+  # The name an attempt reaches Orbit Web by, on the attempt's own networks (the allocator connects this container to
+  # each of them, under this name: its egress proxies and the tool endpoint).
+  ORBIT_WEB_SANDBOX_HOST: orbit-web
   ORBIT_WEB_ALLOCATOR_SECRET_FILE: /run/secrets/orbit-allocator
 
 services:
@@ -129,7 +130,6 @@ services:
       - default
       - db
       - control
-      - sandbox
       - model
     cap_drop:
       - ALL
@@ -155,7 +155,11 @@ services:
       ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
       ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
       # Orbit Web's data volume (its connections room holds each connection's home): this project's own.
-      ORBIT_WEB_DATA_VOLUME: orbit-web_orbit-web-data
+      ORBIT_WEB_DATA_VOLUME: ${COMPOSE_PROJECT_NAME}_orbit-web-data
+      # Orbit Web's container: connected to every attempt's two internal networks, their only other member.
+      ORBIT_WEB_CONTROL_CONTAINER: orbit-web
+      # Ranges the attempts' networks are cut from (/28 each); unset, Docker's own pools (a few dozen networks).
+      ORBIT_WEB_ATTEMPT_SUBNETS: ${ORBIT_WEB_ATTEMPT_SUBNETS:-}
       ORBIT_WEB_WORKFORCE_VOLUME: orbit-web-workforce
       ORBIT_WEB_WORKFORCE_STORE_VOLUME: orbit-web-workforce-store
       # A loop-backed pool for the employees' areas (when this host's kernel enforces its quotas), preallocated.
@@ -220,13 +224,10 @@ networks:
   # Orbit Web and the allocator, alone.
   control:
     internal: true
-  # The employees' tool planes (their only way out: Orbit Web's egress proxy) and model planes. Named, because the
-  # allocator attaches each attempt's containers by name; internal, because nothing else may route out of them.
-  sandbox:
-    name: orbit-web-sandbox
-    internal: true
+  # A connection's sign-in (orbit-connect) and Orbit Web's model-plane egress, alone. An attempt never joins it: each
+  # attempt's tool plane and model plane get an internal network of their own from the allocator, shared with Orbit
+  # Web's container only -- so no attempt can reach another's ports, or another model plane's runner.
   model:
-    name: orbit-web-model
     internal: true
 
 secrets:

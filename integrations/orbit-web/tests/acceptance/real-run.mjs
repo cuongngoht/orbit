@@ -66,6 +66,17 @@ const freePort = () =>
     });
   });
 
+// A keep-alive socket the server closed while this process sat in a synchronous docker command (the event loop could
+// not see it close) fails the next request with "other side closed" before the server read it: asked again, on a new one.
+async function fetchFresh(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err?.cause?.code !== "UND_ERR_SOCKET") throw err;
+    return fetch(url, init);
+  }
+}
+
 let PORT = 0;
 // The browser this run is: the cookies Orbit Web sets (the sign-in's nonce, then the session) and, with a change, the
 // header and the session's CSRF token.
@@ -81,7 +92,7 @@ function keepCookies(headers) {
 }
 const api = async (path, init = {}) => {
   const change = init.method !== undefined && init.method !== "GET";
-  const res = await fetch(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(change ? { "x-orbit-web": "1", "x-orbit-csrf": browser.csrf } : {}), ...(Object.keys(browser.cookies).length > 0 ? { cookie: cookieHeader() } : {}), ...(init.headers ?? {}) } });
+  const res = await fetchFresh(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(change ? { "x-orbit-web": "1", "x-orbit-csrf": browser.csrf } : {}), ...(Object.keys(browser.cookies).length > 0 ? { cookie: cookieHeader() } : {}), ...(init.headers ?? {}) } });
   keepCookies(res.headers);
   const text = await res.text();
   let body = text;
@@ -108,7 +119,7 @@ async function follow(sessionId, afterSeq, endTypes, timeoutMs) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const frames = [];
   try {
-    const res = await fetch(`http://127.0.0.1:${PORT}/api/sessions/${sessionId}/events`, { headers: { accept: "text/event-stream", "last-event-id": String(afterSeq), cookie: cookieHeader() }, signal: controller.signal });
+    const res = await fetchFresh(`http://127.0.0.1:${PORT}/api/sessions/${sessionId}/events`, { headers: { accept: "text/event-stream", "last-event-id": String(afterSeq), cookie: cookieHeader() }, signal: controller.signal });
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -263,7 +274,7 @@ async function run(fixture) {
   const up = started.status === 0 && (await healthy());
   step(1, "Start Orbit Web Docker", up ? "PASS" : "FAIL", up ? `${IMAGE} healthy on 127.0.0.1:${PORT}, beside ${database.detail}` : started.stderr.trim());
   if (!up) return;
-  const index = await fetch(`http://127.0.0.1:${PORT}/`);
+  const index = await fetchFresh(`http://127.0.0.1:${PORT}/`);
   step(2, "Open the application", index.status === 200 ? "PASS" : "FAIL", `GET / -> ${index.status}`);
 
   const signedIn = await signIn();

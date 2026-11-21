@@ -51,8 +51,19 @@ const freePort = () =>
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// A keep-alive socket the server closed while this process sat in a synchronous docker command (the event loop could
+// not see it close) fails the next request with "other side closed" before the server read it: asked again, on a new one.
+async function fetchFresh(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err?.cause?.code !== "UND_ERR_SOCKET") throw err;
+    return fetch(url, init);
+  }
+}
+
 async function http(port, path, init = {}) {
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, init);
+  const res = await fetchFresh(`http://127.0.0.1:${port}${path}`, init);
   const text = await res.text();
   let body = text;
   try {
@@ -121,7 +132,7 @@ function keepCookies(headers) {
 async function web(port, path, init = {}) {
   const change = init.method !== undefined && init.method !== "GET";
   const headers = { ...(init.headers ?? {}), ...(Object.keys(browser.cookies).length > 0 ? { cookie: cookieHeader() } : {}), ...(change ? { "x-orbit-web": "1", "x-orbit-csrf": browser.csrf, "content-type": "application/json" } : {}) };
-  const res = await fetch(`http://127.0.0.1:${port}${path}`, { ...init, headers });
+  const res = await fetchFresh(`http://127.0.0.1:${port}${path}`, { ...init, headers });
   keepCookies(res.headers);
   const text = await res.text();
   let body = text;

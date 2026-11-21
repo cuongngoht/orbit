@@ -78,6 +78,17 @@ const freePort = () =>
     });
   });
 
+// A keep-alive socket the server closed while this process sat in a synchronous docker command (the event loop could
+// not see it close) fails the next request with "other side closed" before the server read it: asked again, on a new one.
+async function fetchFresh(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err?.cause?.code !== "UND_ERR_SOCKET") throw err;
+    return fetch(url, init);
+  }
+}
+
 // A browser: the cookies Orbit Web sets (the sign-in's nonce, then the session), and what a page sends with a change --
 // the header, and its session's CSRF token. `setCookies` keeps every Set-Cookie it was given, for the lab to read.
 function client(port) {
@@ -87,7 +98,7 @@ function client(port) {
   const call = async (method, path, body, extra = {}) => {
     const cookie = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join("; ");
     const headers = { "x-orbit-web": "1", ...(body !== undefined ? { "content-type": "application/json" } : {}), ...(cookie ? { cookie } : {}), ...(csrf && method !== "GET" ? { "x-orbit-csrf": csrf } : {}), ...extra };
-    const res = await fetch(`http://127.0.0.1:${port}${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
+    const res = await fetchFresh(`http://127.0.0.1:${port}${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
     for (const c of res.headers.getSetCookie()) {
       setCookies.push(c);
       const [pair] = c.split(";");
@@ -316,7 +327,7 @@ async function governed() {
   const policyKept = before.policy.revisions.length === after.policy.revisions.length && before.policy.effective?.id === after.policy.effective?.id;
   scenario(2, "agent changes the account's policy", [r.policyDraft, r.policyPublish, r.policySpoofed].every(refused) && policyKept ? "PREVENTED" : "VULNERABLE", "refused; no revision added, the one in effect unchanged", `draft ${said(r.policyDraft)}, publish ${said(r.policyPublish)}, Host spoofed ${said(r.policySpoofed)}; revisions ${before.policy.revisions.length} -> ${after.policy.revisions.length}, in effect ${before.policy.effective?.revision} -> ${after.policy.effective?.revision}`);
   const ownerAttempts = [r.loginStart, r.loginStartSpoofed, r.sessionClaim, r.sessionClaimToken, r.sessionClaimSpoofed];
-  scenario(3, "agent makes itself the account's owner (a browser session without a person's sign-in)", ownerAttempts.every(refused) && before.sessions === after.sessions ? "PREVENTED" : "VULNERABLE", "a sign-in started or claimed from the agent's network is refused (403, recorded), with or without its token or a spoofed Host; the account's browser sessions unchanged", `start ${said(r.loginStart)}, start Host spoofed ${said(r.loginStartSpoofed)}, claim ${said(r.sessionClaim)}, claim with token ${said(r.sessionClaimToken)}, claim Host spoofed ${said(r.sessionClaimSpoofed)}; sessions ${before.sessions} -> ${after.sessions}`);
+  scenario(3, "agent makes itself the account's owner (a browser session without a person's sign-in)", ownerAttempts.every(refused) && before.sessions === after.sessions ? "PREVENTED" : "VULNERABLE", "a sign-in started or claimed from the agent's network is refused -- by the host check, and with a loopback Host by the agent network gate (403, recorded) -- with or without its token; the account's browser sessions unchanged", `start ${said(r.loginStart)}, start Host spoofed ${said(r.loginStartSpoofed)}, claim ${said(r.sessionClaim)}, claim with token ${said(r.sessionClaimToken)}, claim Host spoofed ${said(r.sessionClaimSpoofed)}; sessions ${before.sessions} -> ${after.sessions}`);
   scenario(4, "agent accesses another chat", refused(r.otherApproval) && r.otherWorkspaceFile?.ok !== true ? "PREVENTED" : "VULNERABLE", "the gateway refuses another chat's approval (403 cross_workspace); on disk every chat shares the agent container -- a stated limit", `gateway ${said(r.otherApproval)}; another chat's file read from disk: ${r.otherWorkspaceFile?.ok === true ? "YES (shared agent container)" : r.otherWorkspaceFile?.code}`);
   const apiHealth = (await owner.get("/api/health")).body;
   const databaseOut = failedConnect(r.databaseTcp) && r.databaseName?.ok === false && gone(r.databaseFiles) && failedConnect(r.proxyDatabase) && (r.environment?.databaseNames ?? ["?"]).length === 0 && r.databaseInProcesses?.ok === false;

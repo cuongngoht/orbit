@@ -116,6 +116,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         const mission = Mission.create({ id: randomUUID(), orbitId, title: req.title, goal: req.goal, createdBy: actor.command.actor, acceptanceMode: req.acceptanceMode, acceptanceCriteria: req.acceptanceCriteria, deliverables: req.deliverables, researchWorkspaceId: req.workspaceId, sourceRevisionIds: req.sourceRevisionIds, deadline: req.deadline, priority: req.priority, scheduleId: origin?.scheduleId ?? null, occurrenceId: origin?.occurrenceId ?? null, createdAt: at });
         const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId: req.targetEmployeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at });
         await this.missions.insert(mission);
+        if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id);
         const claimNow = held === null && el.eligible;
         if (claimNow) a.claim(this.pinOf(el, execution), at);
         await this.assignments.save(a);
@@ -377,17 +378,18 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       if (a.state === "CANCELLING") {
         a.cancelled(at);
         await this.endedAssignment(actor, a);
-        return;
+        return [];
       }
       if (a.state === "REVIEWING" && e.stoppedFor !== "recover" && e.stoppedFor !== "pause" && e.stoppedFor !== "cancel") {
-        const stuck = await this.team.reviewEnded(a, at);
-        if (stuck === null) return;
-        a.block(stuck, "owner", at);
-        await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: stuck, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
-        return;
+        const next = await this.team.reviewEnded(a, at, e.startedAt ?? null);
+        if (next.kind === "waiting") return [];
+        if (next.kind === "again") return [await this.team.wakeAgain(a, at)];
+        a.block(next.why, "owner", at);
+        await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: next.why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
+        return [];
       }
-      if (a.state !== "RUNNING" && a.state !== "ASSIGNED" && a.state !== "RECOVERING") return;
-      if (e.stoppedFor === "recover") return;
+      if (a.state !== "RUNNING" && a.state !== "ASSIGNED" && a.state !== "RECOVERING") return [];
+      if (e.stoppedFor === "recover") return [];
       const why =
         e.state === "succeeded"
           ? "The employee ended its run without handing in a result."
@@ -396,6 +398,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
             : `The attempt ${e.state}${e.detail ? `: ${e.detail}` : "."}`;
       a.block(why, "owner", at);
       await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
+      return [];
     }, true);
   }
 

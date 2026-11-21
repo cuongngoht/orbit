@@ -27,6 +27,8 @@ export interface RunEnd {
   detail: string | null;
   // The run ended because Orbit stopped it for this reason (a pause, a cancel, a lost lease, a dispatch refusal).
   stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | null;
+  // When the attempt started running (null: it never did): what it could have been shown.
+  startedAt?: string | null;
 }
 
 // A research source revision the mission was given (pinned: immutable), with the label the employee cites it by.

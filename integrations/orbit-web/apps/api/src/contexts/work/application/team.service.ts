@@ -43,7 +43,7 @@ export interface UnitView {
   employeeName: string;
   state: AssignmentState;
   dependsOn: string[];
-  handoff: { revision: number; summary: string; artifacts: { name: string; sha256: string }[] } | null;
+  handoff: { revision: number; summary: string; submittedAt: string; artifacts: { name: string; sha256: string }[] } | null;
 }
 
 const KEY = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -149,7 +149,7 @@ export class TeamService implements OnModuleInit {
         employeeName: String(r.name),
         state: String(r.state) as AssignmentState,
         dependsOn: ((r.brief as { dependsOn?: string[] }).dependsOn ?? []) as string[],
-        handoff: h === null ? null : { revision: h.revision, summary: h.summary, artifacts: files.map((f) => ({ name: String(f.name), sha256: String(f.sha256) })) },
+        handoff: h === null ? null : { revision: h.revision, summary: h.summary, submittedAt: h.submittedAt, artifacts: files.map((f) => ({ name: String(f.name), sha256: String(f.sha256) })) },
       });
     }
     return out;
@@ -212,6 +212,12 @@ export class TeamService implements OnModuleInit {
       [orbitId, a.id],
     );
     return Number(r?.n ?? 0);
+  }
+
+  // A mission given to an employee who may delegate gets its room at once: its first attempt can prepare what its team
+  // will need before it gives the parts.
+  async ensureRoom(orbitId: string, missionId: string): Promise<void> {
+    await this.openRoom(orbitId, missionId, new Date().toISOString());
   }
 
   private async openRoom(orbitId: string, missionId: string, at: string): Promise<void> {
@@ -282,17 +288,24 @@ export class TeamService implements OnModuleInit {
     return events;
   }
 
-  // A review attempt that ended without handing in: back to waiting while parts are still being worked on; blocked
-  // (with why) when it left parts undecided or had nothing left to wait for.
-  async reviewEnded(manager: Assignment, at: string): Promise<string | null> {
+  // A review attempt that ended without handing in. A part's result that arrived while it ran (it was never shown it):
+  // the manager reviews again. Parts still being worked on: back to waiting. A result it was shown and left undecided, or
+  // nothing left to wait for and no hand-in: blocked, with why.
+  async reviewEnded(manager: Assignment, at: string, attemptStartedAt: string | null): Promise<{ kind: "blocked"; why: string } | { kind: "waiting" } | { kind: "again" }> {
     const units = await this.units(manager.orbitId, manager.id);
-    const undecided = units.filter((u) => u.state === "AWAITING_ACCEPTANCE").map((u) => u.key);
-    if (undecided.length > 0) return `The manager ended its review without deciding on ${undecided.join(", ")}.`;
-    if (units.some((u) => !DONE.includes(u.state))) {
-      manager.waitForTeam(at);
-      return null;
-    }
-    return "The manager ended without handing in the integrated result.";
+    const awaiting = units.filter((u) => u.state === "AWAITING_ACCEPTANCE");
+    const seen = (u: UnitView) => attemptStartedAt === null || (u.handoff !== null && Date.parse(u.handoff.submittedAt) <= Date.parse(attemptStartedAt));
+    const undecided = awaiting.filter(seen).map((u) => u.key);
+    if (undecided.length > 0) return { kind: "blocked", why: `The manager ended its review without deciding on ${undecided.join(", ")}.` };
+    manager.waitForTeam(at);
+    if (awaiting.length > 0) return { kind: "again" };
+    if (units.some((u) => !DONE.includes(u.state))) return { kind: "waiting" };
+    return { kind: "blocked", why: "The manager ended without handing in the integrated result." };
+  }
+
+  // The manager woken again at once (a result arrived while it reviewed).
+  async wakeAgain(manager: Assignment, at: string): Promise<RaisedEvent> {
+    return this.requestRun(manager, manager.reviewing(at));
   }
 
   private requestRun(a: Assignment, fence: number): Promise<RaisedEvent> {

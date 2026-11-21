@@ -508,7 +508,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   private async report(actor: Actor, run: RunRecord, end: RunEnd): Promise<void> {
-    await this.outcomes.ended(actor, run.assignmentId, run.fence, end).catch((e: unknown) => this.ignoreStale(e));
+    const startedAt = end.startedAt !== undefined ? end.startedAt : ((await this.runs.get(run.orbitId, run.id))?.startedAt ?? null);
+    await this.outcomes.ended(actor, run.assignmentId, run.fence, { ...end, startedAt }).catch((e: unknown) => this.ignoreStale(e));
   }
 
   // ---- heartbeat, stop requests, recovery ----------------------------------------------------------------------------

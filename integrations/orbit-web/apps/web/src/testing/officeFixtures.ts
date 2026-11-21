@@ -107,6 +107,7 @@ export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnec
     runtime: "claude",
     label: "Claude subscription",
     isDefault: true,
+    reasonCode: null,
     method: "subscription",
     auth: "connected",
     reason: null,

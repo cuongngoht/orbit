@@ -8,7 +8,6 @@ import {
   type AuthStatus,
   type AuthUser,
   type AzureStatus,
-  type ClaudeStatus,
   type ConnectionState,
   type GitHubStatus,
   type GovernanceOverview,
@@ -111,7 +110,7 @@ export const CSRF = "c".repeat(64);
 export const authSession = (over: Partial<AuthSession> = {}): AuthSession => ({ orbitId: ACCOUNT_ID, userId: USER_ID, csrfToken: CSRF, expiresAt: "2026-12-01T00:00:00.000Z", ...over });
 
 // The user signed in: the first administrator, Ann Owner.
-export const authUser = (over: Partial<AuthUser> = {}): AuthUser => ({ id: USER_ID, username: "admin", fullName: "Ann Owner", email: "ann@example.com", emailVerified: false, role: "owner", mustChangePassword: false, lastLoginAt: "2026-11-20T08:00:00.000Z", ...over });
+export const authUser = (over: Partial<AuthUser> = {}): AuthUser => ({ id: USER_ID, username: "admin", fullName: "Ann Owner", email: "ann@example.com", emailVerified: false, role: "owner", mustChangePassword: false, trialPassword: false, lastLoginAt: "2026-11-20T08:00:00.000Z", shareAddress: "admin@users.orbit.local", version: 1, ...over });
 
 // The Orbit account, as GET /api/account says it.
 export const authAccount = (over: Partial<AuthAccount> = {}): AuthAccount => ({ orbitId: ACCOUNT_ID, displayName: "Octo", companyName: "Octo & Co", contactEmail: null, timezone: "Asia/Ho_Chi_Minh", locale: "en", createdAt: "2026-11-19T00:00:00.000Z", version: 3, ...over });
@@ -136,16 +135,18 @@ export const sessionViews = (): SessionView[] => [
   { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" },
 ];
 
-// The Claude CLI's status as Settings → System reads it (part of GET /api/setup/status).
-const claudeCli = (): ClaudeStatus => ({ state: "connected", runtime: "connected", method: "claude.ai", account: null, session: null, detail: null, flow: idleFlow() });
-
-// GET /api/setup/status: the system's checks (the Claude CLI among them), and the GitHub and Azure connectors.
-export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
+// GET /api/setup/status: the system's checks, the AI CLIs installed here, and the GitHub and Azure connectors. (The
+// first argument is kept for the callers that name it; the AI CLIs' sign-ins are per connection now.)
+export function setupStatus(_runtimes: Record<string, never> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
   const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...github };
   const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
     versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", python: "3.15.2", node: "24.11.0" },
-    claude: { ...claudeCli(), ...claude },
+    runtimes: [
+      { runtime: "claude", state: "installed", version: "2.1.330", detail: null, checkedAt: "2026-11-21T00:00:00.000Z" },
+      { runtime: "codex", state: "not_installed", version: null, detail: null, checkedAt: "2026-11-21T00:00:00.000Z" },
+      { runtime: "agy", state: "not_installed", version: null, detail: null, checkedAt: "2026-11-21T00:00:00.000Z" },
+    ],
     github: g,
     azure: a,
     health: {

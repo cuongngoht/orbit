@@ -19,6 +19,8 @@ const overview = (draft: RevisionView) => ({ effective: revisionView(), revision
 describe("Governance → Policy → Employee network access", () => {
   test("a policy that does not say is Autonomous; a draft switches to Restricted, lists hosts and a limit, and saves them in its document", async () => {
     const draft = draftView();
+    // A policy written before the setting existed (a new account's default policy states it: Autonomous).
+    delete (draft.document as Record<string, unknown>).employeeNetwork;
     const api = fakeApi()
       .on("GET", "/api/governance/policy", () => overview(draft))
       .on("GET", "/api/governance/revisions/rev-2", () => draft)

@@ -178,7 +178,9 @@ describe("each account sees its own records, and those shared with its email -- 
   test("an account id a request names is never what decides: it is the session's", async () => {
     const bob = await accounts.as(h, BOB);
     const forged = { "x-orbit-account": alice.accountId ?? "", "x-account-id": alice.accountId ?? "" };
-    assert.deepEqual((await bob.get(`/api/sessions?accountId=${alice.accountId ?? ""}`, forged)).body, [], "a query or a header naming another account changes nothing");
+    const listed = (await bob.get(`/api/sessions?accountId=${alice.accountId ?? ""}`, forged)).body as SessionSummary[];
+    assert.ok(listed.length > 0 && listed.every((s) => s.owner === "bob@example.com"), "a query or a header naming another account changes nothing: Bob sees his own chats and only those");
+    assert.equal(JSON.stringify(listed).includes(alices.id), false);
     assert.equal((await bob.get(`/api/sessions/${alices.id}?accountId=${alice.accountId ?? ""}`, forged)).status, 404);
     const created = await bob.send("POST", "/api/sessions", { model: "sonnet", mode: "plan", accountId: alice.accountId });
     assert.equal(created.status, 400, "a body naming an account is refused: no request chooses its account");
@@ -186,13 +188,15 @@ describe("each account sees its own records, and those shared with its email -- 
   });
 
   test("its owner shares it by email; that account opens it and carries on -- but only the owner deletes it, shares it on or publishes it", async () => {
+    alice = await accounts.as(h, ALICE);
     const shared = await alice.send("PUT", `/api/sessions/${alices.id}/access`, { people: [" BOB@example.com ", "alice@example.com"] });
     assert.equal(shared.status, 200);
     assert.deepEqual((shared.body as AccessList).people.map((p) => [p.email, p.grantedBy]), [["bob@example.com", "alice@example.com"]], "lower case, and never its own owner");
 
     const bob = await accounts.as(h, BOB);
     const list = (await bob.get("/api/sessions")).body as SessionSummary[];
-    assert.deepEqual(list.map((s) => [s.id, s.access, s.owner]), [[alices.id, "shared", "alice@example.com"]]);
+    assert.deepEqual(list.filter((s) => s.id === alices.id).map((s) => [s.id, s.access, s.owner]), [[alices.id, "shared", "alice@example.com"]]);
+    assert.ok(list.every((s) => s.id === alices.id || (s.access === "owner" && s.owner === "bob@example.com")), "and besides it, only Bob's own chats");
     assert.equal((await bob.send("POST", `/api/sessions/${alices.id}/messages`, { text: "Carry on." })).status, 202);
     await settled(bob, alices.id);
     for (const [method, rest] of [["DELETE", ""], ["PUT", "/access"], ["POST", "/share"], ["DELETE", "/share"]] as const) {

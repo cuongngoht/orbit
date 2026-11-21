@@ -1,33 +1,68 @@
-// A GOVERNED WORKSPACE, ITS AGENT, AND ITS PUSH -- through the real API, with Claude Code stood in for by a script that
-// behaves as a misled agent would: it calls Orbit Web's own API from its shell. The run is decided before it starts
-// (refused where isolation is required and not proven), bound to its agent, and handed no sign-in; the agent cannot
-// turn a credential switch on, reach governance, or read a credential; its push waits for a person, who approves the
-// exact commit; Orbit Web pushes it to the repository (a local bare repository here) and refuses it a second time. Once
-// the Constitution simply allows git, the agent's push is made at once, with nobody asked.
-// Azure DevOps pushes the same way, with the Azure CLI's one-shot helper.
+// A CHAT'S RUN UNDER ITS ACCOUNT'S POLICY, ITS AGENT, AND ITS PUSH -- through the real API, with Claude Code stood in for
+// by a script that behaves as a misled agent would: it calls Orbit Web's own API from its shell. The run is decided
+// before it starts (refused where the policy requires isolation and one container cannot prove it), bound to its
+// account and chat, and handed no sign-in and no database credential. The agent reaches nothing but its gateway -- not a
+// setting, not governance, not a session, not an approval; a credential it asks for is denied. Its push waits for the
+// account's owner, who approves the exact commit; Orbit Web pushes it (to a local bare repository here) and refuses it a
+// second time. An agent never decides an approval: not through any route, not through the service, not in the database.
+// Once the owner's policy simply allows git, the agent's push is made at once, with nobody asked. A research run is held
+// to the same account's policy, as research. Azure DevOps pushes the same way, with the Azure CLI's one-shot helper.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import type { AgentPushResult, AgentWhoAmI, ApprovalList, ApprovalView, AuditPage, FindingList, RevisionView, SessionDetail, SessionSummary } from "@orbit-web/contracts";
-import type { Constitution } from "@orbit-web/governance-core";
+import {
+  CLAUDE_SIGN_IN_REQUIRED,
+  MUTATION_HEADER,
+  RUN_TOKEN_HEADER,
+  type AgentPushResult,
+  type AgentWhoAmI,
+  type ApprovalList,
+  type ApprovalView,
+  type AuditPage,
+  type DecisionList,
+  type FindingList,
+  type PolicyOverview,
+  type ResearchSessionDetail,
+  type ResearchWorkspaceSummary,
+  type ResourceGovernanceList,
+  type ResourceGovernanceView,
+  type RevisionView,
+  type RunAccepted,
+  type SessionDetail,
+  type SessionSummary,
+} from "@orbit-web/contracts";
+import type { Constitution, RiskLevel } from "@orbit-web/governance-core";
+import { RunBindingStore } from "../../src/infra/governance/stores.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { AZURE, AZURE_REPOSITORY, azureSignedIn, claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness, type OperatorClient, type Reply } from "../../src/testing/harness.js";
+import { contextOf } from "../../src/modules/auth/principal.js";
+import { ApprovalService } from "../../src/modules/governance/approvals.service.js";
+import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
+import { AZURE, AZURE_REPOSITORY, azureSignedIn, claudeRun, eventually, REPOSITORY, researchRun, signedIn, startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
+import { answered, newWorkspace } from "../../src/testing/research-client.js";
+import { researchAnswer } from "../../src/testing/research-fixtures.js";
 
 const code = (r: Reply): string | undefined => (r.body as { error?: { code?: string } } | null)?.error?.code;
 const after1 = (args: string[], flag: string): string | null => (args.includes(flag) ? (args[args.indexOf(flag) + 1] ?? null) : null);
 const git = (cwd: string, ...args: string[]) => spawnSync("git", ["-c", "user.name=Agent", "-c", "user.email=agent@example.com", ...args], { cwd, encoding: "utf8" });
+const remoteRef = (remote: string, ref: string): string => spawnSync("git", ["--git-dir", remote, "rev-parse", "--verify", "--quiet", ref], { encoding: "utf8" }).stdout.trim();
+
+function ok<T>(r: Reply): T {
+  assert.ok(r.status === 200 || r.status === 201, `${r.status} ${JSON.stringify(r.body).slice(0, 400)}`);
+  return r.body as T;
+}
 
 interface Probe {
   status: number;
   body: unknown;
 }
 
+const errorOf = (p: Probe | undefined): string | undefined => (p?.body as { error?: { code?: string } } | null)?.error?.code;
+
 // What the agent's shell would do: call Orbit Web, as the run's own environment lets it.
-async function call(_env: Record<string, string>, method: string, url: string, body?: unknown, extra: Record<string, string> = {}): Promise<Probe> {
+async function call(method: string, url: string, body?: unknown, extra: Record<string, string> = {}): Promise<Probe> {
   const res = await fetch(url, { method, headers: { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...extra }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   const text = await res.text();
   let parsed: unknown = text;
@@ -38,6 +73,9 @@ async function call(_env: Record<string, string>, method: string, url: string, b
   }
   return { status: res.status, body: parsed };
 }
+
+const token = (c: Call): Record<string, string> => ({ [RUN_TOKEN_HEADER]: c.env.ORBIT_AGENT_TOKEN as string });
+const apiOf = (c: Call): string => (c.env.ORBIT_AGENT_GATEWAY as string).replace(/\/api\/agent$/, "/api");
 
 type Behaviour = (call: Call) => Promise<void>;
 
@@ -56,33 +94,54 @@ function scripted(queue: Behaviour[]) {
   };
 }
 
-async function publish(author: OperatorClient, approver: OperatorClient, edit?: (c: Constitution) => Constitution): Promise<RevisionView> {
-  const draft = (await author.send("POST", "/api/governance/revisions", {})).body as RevisionView;
-  const saved = edit === undefined ? draft : ((await author.send("PUT", `/api/governance/revisions/${draft.id}`, { document: edit(draft.document as Constitution), expectedDigest: draft.digest })).body as RevisionView);
-  assert.equal((await author.send("POST", `/api/governance/revisions/${saved.id}/validate`)).status, 200);
-  const pending = (await author.send("POST", `/api/governance/revisions/${saved.id}/request-approval`)).body as RevisionView;
-  assert.equal((await approver.send("POST", `/api/governance/revisions/${saved.id}/approve`, { digest: pending.digest })).status, 200);
-  const published = (await author.send("POST", `/api/governance/revisions/${saved.id}/publish`, { digest: pending.digest })).body as RevisionView;
+// A revision drafted from the policy in effect, edited, validated -- and published with the owner's confirmation at the
+// risk the server worked out, which the test names, so that a change of what the edit does is noticed.
+async function publish(b: Browser, risk: RiskLevel, edit: (c: Constitution) => Constitution): Promise<RevisionView> {
+  const draft = ok<RevisionView>(await b.send("POST", "/api/governance/revisions", {}));
+  ok<RevisionView>(await b.send("PUT", `/api/governance/revisions/${draft.id}`, { document: edit(draft.document as Constitution), expectedDigest: draft.digest }));
+  const read = ok<RevisionView>(await b.send("POST", `/api/governance/revisions/${draft.id}/validate`));
+  assert.equal(read.impact?.risk, risk, JSON.stringify(read.impact?.reasons));
+  const published = ok<RevisionView>(await b.send("POST", `/api/governance/revisions/${draft.id}/publish`, { digest: read.digest, base: read.base, acknowledgedRisk: risk }));
   assert.equal(published.state, "PUBLISHED");
   return published;
 }
 
 const waitStatus = (h: Harness, id: string, statuses: string[]) => eventually(async () => ((await h.get(`/api/sessions/${id}`)).body as SessionDetail).status, (s) => statuses.includes(s));
+const auditOf = async (h: Harness, query: string): Promise<AuditPage["events"]> => ok<AuditPage>(await h.get(`/api/governance/audit?${query}`)).events;
 
-describe("a governed workspace, its agent, and its push (GitHub)", () => {
+// A message, and its run seen to its end: the chat's own status event for THAT run (never the one before it). A message
+// is taken once the run before it is wholly over -- until then it is refused as busy, and sent again.
+async function turn(h: Harness, sessionId: string, text: string, end: readonly string[] = ["completed"]): Promise<{ runId: string; status: string }> {
+  const sent = await eventually(() => h.send("POST", `/api/sessions/${sessionId}/messages`, { text }), (r) => code(r) !== "run_active");
+  assert.equal(sent.status, 202, JSON.stringify(sent.body));
+  const runId = (sent.body as RunAccepted).runId;
+  const statusOf = (es: Record<string, unknown>[]): string[] => es.filter((e) => e.type === "session.status" && e.runId === runId).map((e) => String((e.data as { status?: unknown }).status));
+  const { events } = await h.events(`/api/sessions/${sessionId}/events`, { until: (es) => statusOf(es).some((s) => end.includes(s)), timeoutMs: 20_000 });
+  return { runId, status: statusOf(events).at(-1) ?? "none" };
+}
+
+// The run's end recorded (its token ends there too).
+const finished = (h: Harness, runId: string) => eventually(async () => (await auditOf(h, "type=run.finished&limit=50")).find((e) => e.runId === runId), (e) => e !== undefined);
+
+// Nothing that would reach the database is in a run's environment: no URL, no part of one, no libpq variable.
+function noDatabaseIn(h: Harness, env: Record<string, string | undefined>): void {
+  assert.deepEqual(Object.keys(env).filter((k) => /^(ORBIT_WEB_DATABASE|PG|DATABASE_URL)/.test(k)), []);
+  for (const [k, v] of Object.entries(env)) assert.equal(String(v).includes(h.database.name), false, `${k} names the database`);
+}
+
+describe("a chat's run under its account's policy, its agent, and its push (GitHub)", () => {
   let h: Harness;
   let fake: FakeProcessPort;
-  let owner: OperatorClient;
-  let approver: OperatorClient;
   let session: SessionSummary;
   let other: SessionSummary;
   let remotes: string;
   let remote: string;
-  let agentId: string;
+  let optional: RevisionView;
   const queue: Behaviour[] = [];
   const seen: Record<string, Probe> = {};
   let runEnv: Record<string, string> = {};
   let pushed: AgentPushResult;
+  const runs = () => fake.children.filter((c) => claudeRun(c.call.file, c.call.args));
 
   before(async () => {
     remotes = mkdtempSync(join(tmpdir(), "orbit-web-remotes-"));
@@ -91,126 +150,126 @@ describe("a governed workspace, its agent, and its push (GitHub)", () => {
     spawnSync("git", ["init", "--bare", "-q", "-b", "main", remote]);
     fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(claudeRun, { spawn: scripted(queue) });
     h = await startHarness({ fake, env: { ORBIT_WEB_GITHUB_URL: `file://${remotes}` } });
-    owner = await h.owner();
-    await owner.send("POST", "/api/governance/operators", { username: "april", password: "april has a long password", roles: ["policy_approver"] });
-    approver = await h.signIn("april", "april has a long password");
-    await publish(owner, owner);
-    session = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" })).body as SessionSummary;
-    other = (await h.send("POST", "/api/sessions", { repository: null, model: "haiku" })).body as SessionSummary;
+    session = ok<SessionSummary>(await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" }));
+    other = ok<SessionSummary>(await h.send("POST", "/api/sessions", { repository: null, model: "haiku" }));
     await waitStatus(h, session.id, ["ready"]);
     await waitStatus(h, other.id, ["ready"]);
     // Read again once prepared: its working branch is set then.
-    session = (await h.get(`/api/sessions/${session.id}`)).body as SessionSummary;
-    agentId = ((await owner.send("POST", "/api/governance/agents", { name: "Claude Code" })).body as { id: string }).id;
-    for (const s of [session, other]) assert.equal((await owner.send("PUT", `/api/governance/workspaces/${s.id}`, { agentId, profile: "strict" })).status, 200);
+    session = ok<SessionSummary>(await h.get(`/api/sessions/${session.id}`));
   });
   after(async () => {
     await h.close();
     rmSync(remotes, { recursive: true, force: true });
   });
 
-  test("where the Constitution requires isolation and it is not proven (one container), the run is refused, said and recorded", async () => {
-    const before = fake.children.length;
-    assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Fix it." })).status, 202);
-    const failed = await waitStatus(h, session.id, ["failed"]);
-    assert.equal(failed, "failed");
-    assert.equal(fake.children.slice(before).filter((c) => claudeRun(c.call.file, c.call.args)).length, 0, "Claude Code never started");
-    const detail = (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail;
-    assert.match(detail.statusReason ?? "", /isolation is not proven/);
-    const refused = ((await owner.get("/api/governance/audit?type=run.refused")).body as AuditPage).events;
-    assert.deepEqual(refused.map((e) => [e.workspaceId, e.reasonCodes]), [[session.id, ["ISOLATION_NOT_PROVEN"]]]);
+  test("where the account's policy requires isolation and one container cannot prove it, the run is refused, said and recorded", async () => {
+    const required = await publish(h, "low", (c) => ({ ...c, obligations: { ...c.obligations, isolation: "required" } }));
+    assert.equal(required.revision, 2);
+    const before = runs().length;
+    assert.equal((await turn(h, session.id, "Fix it.", ["failed"])).status, "failed");
+    assert.equal(runs().length, before, "Claude Code never started");
+    assert.match(ok<SessionDetail>(await h.get(`/api/sessions/${session.id}`)).statusReason ?? "", /isolation is not proven/);
+    const refused = await auditOf(h, "type=run.refused");
+    assert.deepEqual(refused.map((e) => [e.workspaceId, e.reasonCodes, e.data.scope]), [[session.id, ["ISOLATION_NOT_PROVEN"], "ACCOUNT_WORKSPACE"]]);
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM governance.run_bindings"))[0]?.n, 0, "nothing was bound");
   });
 
-  test("once the Constitution makes isolation optional -- a high-risk change another person approved -- the run starts bound to its agent and holding no sign-in", async () => {
-    const revision = await publish(owner, approver, (c) => ({ ...c, obligations: { ...c.obligations, isolation: "optional" } }));
-    assert.equal(revision.risk, "high");
+  test("once the policy makes isolation optional again -- a high-risk change the owner acknowledged -- the run starts bound to its account and chat, holding no sign-in", async () => {
+    optional = await publish(h, "high", (c) => ({ ...c, obligations: { ...c.obligations, isolation: "optional" } }));
+    assert.equal(optional.revision, 3);
     queue.push(async (c) => {
       runEnv = c.env;
       const gw = c.env.ORBIT_AGENT_GATEWAY as string;
-      const token = { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string };
-      const api = gw.replace(/\/api\/agent$/, "/api");
-      seen.whoami = await call(c.env, "GET", `${gw}/whoami`, undefined, token);
-      // The misled agent reaches for authority: with its token, and without.
-      seen.switchWithToken = await call(c.env, "PATCH", `${api}/settings`, { githubForClaude: true }, { ...token, "x-orbit-web": "1" });
-      seen.switchWithout = await call(c.env, "PATCH", `${api}/settings`, { githubForClaude: true, azureForClaude: true }, { "x-orbit-web": "1" });
-      seen.operators = await call(c.env, "GET", `${api}/governance/operators`, undefined, token);
-      seen.publish = await call(c.env, "POST", `${api}/governance/revisions`, {}, { ...token, "x-orbit-web": "1" });
-      seen.selfOwner = await call(c.env, "POST", `${api}/governance/operators`, { username: "agent", password: "agent's own password", roles: ["organization_owner"] }, { "x-orbit-web": "1" });
-      seen.credential = await call(c.env, "POST", `${gw}/decisions`, { action: "credential.read_raw", resource: "github" }, token);
+      const api = apiOf(c);
+      const change = { ...token(c), [MUTATION_HEADER]: "1" };
+      seen.whoami = await call("GET", `${gw}/whoami`, undefined, token(c));
+      // The misled agent reaches for authority: with its run's token, and with nothing at all.
+      seen.switchWithToken = await call("PATCH", `${api}/settings`, { githubForClaude: true }, change);
+      seen.switchWithout = await call("PATCH", `${api}/settings`, { githubForClaude: true, azureForClaude: true }, { [MUTATION_HEADER]: "1" });
+      seen.policy = await call("GET", `${api}/governance/policy`, undefined, token(c));
+      seen.draft = await call("POST", `${api}/governance/revisions`, {}, change);
+      seen.approve = await call("POST", `${api}/governance/approvals/apr-any/grant`, { fingerprint: "0".repeat(64) }, change);
+      seen.session = await call("POST", `${api}/claude/session`, undefined, change);
+      seen.credential = await call("POST", `${gw}/decisions`, { action: "credential.read_raw", resource: "github" }, token(c));
       // The work, committed, and its push asked for.
       writeFileSync(join(c.cwd, "sum.mjs"), "export const sum = (a, b) => a + b;\n");
       git(c.cwd, "commit", "-qam", "Fix the addition");
-      seen.push = await call(c.env, "POST", `${gw}/push`, {}, token);
+      seen.push = await call("POST", `${gw}/push`, {}, token(c));
     });
-    assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Fix it, commit it, and ask for it to be pushed." })).status, 202);
-    await waitStatus(h, session.id, ["completed"]);
-    const run = fake.children.filter((c) => claudeRun(c.call.file, c.call.args)).at(-1)?.call as Call;
+    assert.equal((await turn(h, session.id, "Fix it, commit it, and ask for it to be pushed.")).status, "completed");
+    const run = runs().at(-1)?.call as Call;
     assert.match(runEnv.ORBIT_AGENT_TOKEN ?? "", /^[A-Za-z0-9_-]{43}$/);
-    for (const name of ["GH_CONFIG_DIR", "AZURE_CONFIG_DIR", "GIT_CONFIG_COUNT", "GH_TOKEN"]) assert.equal(name in runEnv, false, `${name} never reaches a governed run`);
-    assert.ok(run.args.includes("WebFetch"), "the default Constitution denies the web tools: they are refused to the runtime");
-    assert.ok(run.args.includes("Bash(git push:*)"));
-    assert.ok(run.args.includes("--strict-mcp-config"), "a governed run reaches no MCP server, a claude.ai connector included: its Constitution has no action for one");
-    assert.match(after1(run.args, "--append-system-prompt") ?? "", /GOVERNED by your organization's Constitution \(revision 2\)/);
+    for (const name of ["GH_CONFIG_DIR", "AZURE_CONFIG_DIR", "GH_TOKEN"]) assert.equal(name in runEnv, false, `${name}: no sign-in was handed to the run`);
+    noDatabaseIn(h, runEnv);
+    assert.ok(run.args.includes("Bash(git push:*)"), "with no sign-in handed over, git push is refused to the runtime");
+    assert.equal(run.args.includes("WebFetch"), false, "the default policy of one container allows the web tools");
+    assert.equal(run.args.includes("--strict-mcp-config"), false);
+    assert.match(after1(run.args, "--append-system-prompt") ?? "", /runs under its account's policy \(revision 3\)/);
+
     const who = seen.whoami?.body as AgentWhoAmI;
-    assert.deepEqual([who.agentId, who.workspaceId, who.scope, who.policyRevision], [agentId, session.id, "GOVERNED_WORKSPACE", revision.id]);
-    assert.deepEqual([seen.switchWithToken?.status, code({ status: 0, body: seen.switchWithToken?.body, headers: new Headers() })], [403, "agent_outside_gateway"]);
-    assert.deepEqual([seen.switchWithout?.status, code({ status: 0, body: seen.switchWithout?.body, headers: new Headers() })], [403, "operator_required"]);
-    assert.equal(seen.operators?.status, 403);
-    assert.equal(seen.publish?.status, 403);
-    assert.equal(seen.selfOwner?.status, 401);
+    assert.deepEqual(who, { runId: who.runId, accountId: h.accountId, kind: "chat", workspaceId: session.id, agentId: "claude-code", policyRevision: optional.id, scope: "ACCOUNT_WORKSPACE" });
+    for (const probe of ["switchWithToken", "policy", "draft", "approve", "session"]) assert.deepEqual([seen[probe]?.status, errorOf(seen[probe])], [403, "agent_outside_gateway"], probe);
+    assert.deepEqual([seen.switchWithout?.status, errorOf(seen.switchWithout)], [401, CLAUDE_SIGN_IN_REQUIRED], "the CLI being signed in makes no request an owner's");
     assert.equal((seen.credential?.body as { verdict: string }).verdict, "deny");
     pushed = seen.push?.body as AgentPushResult;
     assert.equal(seen.push?.status, 200, JSON.stringify(seen.push?.body));
-    assert.deepEqual([pushed.state, pushed.decision.verdict], ["pending", "require_approval"]);
+    assert.deepEqual([pushed.state, pushed.decision.verdict, pushed.decision.policyRevision], ["pending", "require_approval", optional.id]);
     assert.match(pushed.fingerprint ?? "", /^[0-9a-f]{64}$/);
+
     // Nothing the agent tried changed anything.
-    const settings = (await h.get("/api/settings")).body as { githubForClaude: boolean; azureForClaude: boolean };
+    const settings = ok<{ githubForClaude: boolean; azureForClaude: boolean }>(await h.get("/api/settings"));
     assert.deepEqual([settings.githubForClaude, settings.azureForClaude], [false, false]);
     assert.equal(spawnSync("git", ["--git-dir", remote, "for-each-ref"], { encoding: "utf8" }).stdout, "", "nothing was pushed by asking");
+    assert.equal(ok<PolicyOverview>(await h.get("/api/governance/policy")).revisions.length, 3, "no draft was written");
+
     // The run's token ended with the run.
-    const late = await call(runEnv, "GET", `${runEnv.ORBIT_AGENT_GATEWAY}/whoami`, undefined, { "x-orbit-run-token": runEnv.ORBIT_AGENT_TOKEN as string });
+    await finished(h, who.runId);
+    const late = await call("GET", `${runEnv.ORBIT_AGENT_GATEWAY}/whoami`, undefined, { [RUN_TOKEN_HEADER]: runEnv.ORBIT_AGENT_TOKEN as string });
     assert.equal(late.status, 401);
-    const types = ((await owner.get("/api/governance/audit?limit=200")).body as AuditPage).events.map((e) => e.eventType);
-    for (const t of ["run.started", "run.finished", "boundary.violation", "settings.privileged.refused", "approval.requested"]) assert.ok(types.includes(t as never), t);
+
+    const started = (await auditOf(h, "type=run.started"))[0];
+    assert.deepEqual([started?.principalType, started?.agentId, started?.workspaceId, started?.runId, started?.policyRevision, started?.data.scope, started?.data.startedBy], ["agent", "claude-code", session.id, who.runId, optional.id, "ACCOUNT_WORKSPACE", `owner:${h.accountId}`]);
+    const decisions = ok<DecisionList>(await h.get(`/api/governance/decisions?workspace=${session.id}&limit=50`)).decisions.filter((d) => d.runId === who.runId);
+    assert.deepEqual(Object.fromEntries(decisions.map((d) => [d.action, d.verdict])), { "agent.run.start": "allow", "tool.web": "allow", "workspace.execute": "allow", "credential.read_raw": "deny", "repository.push": "require_approval" });
+    assert.ok(decisions.every((d) => d.scope === "ACCOUNT_WORKSPACE" && d.policyRevision === optional.id && d.principalType === "agent"));
+    const violations = (await auditOf(h, "type=boundary.violation")).filter((e) => e.runId === who.runId);
+    assert.equal(violations.length, 5, "every reach outside the gateway is recorded, as this run's agent");
+    assert.ok(violations.every((e) => e.principalType === "agent" && e.data.kind === "agent_outside_gateway"));
   });
 
-  test("a person approves the exact push; Orbit Web pushes it -- and refuses it a second time", async () => {
-    const approvals = ((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals;
-    const a = approvals.find((x) => x.id === pushed.approvalId) as ApprovalView;
+  test("the account's owner approves the exact push; Orbit Web pushes it -- and refuses it a second time", async () => {
+    const a = ok<ApprovalList>(await h.get("/api/governance/approvals")).approvals.find((x) => x.id === pushed.approvalId) as ApprovalView;
     const head = git(join(h.dataDir, "workspaces", session.id, "repository"), "rev-parse", "HEAD").stdout.trim();
-    assert.deepEqual([a.state, a.action, a.params.commit, a.params.ref, a.params.force, a.params.expectedRemoteOid], ["pending", "repository.push", head, `refs/heads/${session.workBranch}`, false, null]);
+    assert.deepEqual([a.state, a.action, a.params.commit, a.params.ref, a.params.force, a.params.expectedRemoteOid, a.requestedBy, a.requestedByType], ["pending", "repository.push", head, `refs/heads/${session.workBranch}`, false, null, "agent:claude-code", "agent"]);
     assert.ok((a.change?.commits ?? 0) >= 1);
-    const wrong = await owner.send("POST", `/api/governance/approvals/${a.id}/grant`, { fingerprint: "0".repeat(64) });
+    const wrong = await h.send("POST", `/api/governance/approvals/${a.id}/grant`, { fingerprint: "0".repeat(64) });
     assert.deepEqual([wrong.status, code(wrong)], [409, "fingerprint_mismatch"]);
-    const granted = await owner.send("POST", `/api/governance/approvals/${a.id}/grant`, { fingerprint: a.fingerprint });
-    assert.equal(granted.status, 200, JSON.stringify(granted.body));
-    const done = granted.body as ApprovalView;
-    assert.deepEqual([done.state, done.outcome?.startsWith("pushed")], ["consumed", true]);
-    const remoteHead = spawnSync("git", ["--git-dir", remote, "rev-parse", `refs/heads/${session.workBranch}`], { encoding: "utf8" }).stdout.trim();
-    assert.equal(remoteHead, head, "the approved commit is at the remote's branch");
-    const replay = await owner.send("POST", `/api/governance/approvals/${a.id}/execute`);
+    const done = ok<ApprovalView>(await h.send("POST", `/api/governance/approvals/${a.id}/grant`, { fingerprint: a.fingerprint }));
+    assert.deepEqual([done.state, done.outcome?.startsWith("pushed"), done.decidedBy], ["consumed", true, `owner:${h.accountId}`]);
+    assert.equal(remoteRef(remote, `refs/heads/${session.workBranch}`), head, "the approved commit is at the remote's branch");
+    const replay = await h.send("POST", `/api/governance/approvals/${a.id}/execute`);
     assert.deepEqual([replay.status, code(replay)], [409, "approval_consumed"]);
-    const kinds = ((await owner.get("/api/governance/findings")).body as FindingList).findings.map((f) => `${f.kind}/${f.status}`);
+    const granted = (await auditOf(h, "type=approval.granted"))[0];
+    assert.deepEqual([granted?.principalType, granted?.principalId, granted?.data.approvalId], ["human", `owner:${h.accountId}`, a.id]);
+    const kinds = ok<FindingList>(await h.get("/api/governance/findings")).findings.map((f) => `${f.kind}/${f.status}`);
     for (const k of ["APPROVAL_REPLAY/CONFIRMED", "AGENT_PRIVILEGE_ESCALATION/CONFIRMED", "CREDENTIAL_ACCESS_ATTEMPT/CONFIRMED"]) assert.ok(kinds.includes(k), `${k} in ${kinds.join(",")}`);
   });
 
-  test("an agent replaying an approval, or reaching for another workspace's, is refused and recorded", async () => {
+  test("an agent replaying an approval, or reaching for another chat's, is refused and recorded", async () => {
     queue.push(async (c) => {
-      seen.replay = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}/execute`, undefined, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      seen.replay = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}/execute`, undefined, token(c));
     });
-    await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Push it again." });
-    await waitStatus(h, session.id, ["completed"]);
-    assert.deepEqual([seen.replay?.status, (seen.replay?.body as { error: { code: string } }).error.code], [409, "approval_consumed"]);
+    assert.equal((await turn(h, session.id, "Push it again.")).status, "completed");
+    assert.deepEqual([seen.replay?.status, errorOf(seen.replay)], [409, "approval_consumed"]);
     queue.push(async (c) => {
-      seen.across = await call(c.env, "GET", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}`, undefined, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
-      seen.acrossExecute = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}/execute`, undefined, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
-      seen.noRepo = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      seen.across = await call("GET", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}`, undefined, token(c));
+      seen.acrossExecute = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/approvals/${pushed.approvalId}/execute`, undefined, token(c));
+      seen.noRepo = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, token(c));
     });
-    await h.send("POST", `/api/sessions/${other.id}/messages`, { text: "Look around." });
-    await waitStatus(h, other.id, ["completed"]);
+    assert.equal((await turn(h, other.id, "Look around.")).status, "completed");
     assert.deepEqual([seen.across?.status, seen.acrossExecute?.status], [403, 403]);
-    assert.equal((seen.noRepo?.body as { error: { code: string } }).error.code, "no_repository");
-    const kinds = ((await owner.get("/api/governance/findings")).body as FindingList).findings.map((f) => f.kind);
+    assert.equal(errorOf(seen.noRepo), "no_repository");
+    const kinds = ok<FindingList>(await h.get("/api/governance/findings")).findings.map((f) => f.kind);
     assert.ok(kinds.includes("CROSS_WORKSPACE_ACCESS"));
   });
 
@@ -219,89 +278,164 @@ describe("a governed workspace, its agent, and its push (GitHub)", () => {
       writeFileSync(join(c.cwd, "NOTES.md"), "more\n");
       git(c.cwd, "add", "NOTES.md");
       git(c.cwd, "commit", "-qm", "More");
-      seen.second = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      seen.second = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, token(c));
     });
-    await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "One more change." });
-    await waitStatus(h, session.id, ["completed"]);
+    assert.equal((await turn(h, session.id, "One more change.")).status, "completed");
     const second = seen.second?.body as AgentPushResult;
-    assert.equal(second.state, "pending");
+    assert.equal(second.state, "pending", JSON.stringify(second));
     // Somebody else pushes to that branch meanwhile.
     const elsewhere = mkdtempSync(join(tmpdir(), "elsewhere-"));
-    git(elsewhere, "clone", "-q", remote, "w");
-    git(join(elsewhere, "w"), "checkout", "-q", session.workBranch as string);
-    git(join(elsewhere, "w"), "commit", "-q", "--allow-empty", "-m", "Someone else");
-    git(join(elsewhere, "w"), "push", "-q", "origin", session.workBranch as string);
-    const theirs = spawnSync("git", ["--git-dir", remote, "rev-parse", `refs/heads/${session.workBranch}`], { encoding: "utf8" }).stdout.trim();
-    const r = await owner.send("POST", `/api/governance/approvals/${second.approvalId}/grant`, { fingerprint: second.fingerprint });
+    try {
+      git(elsewhere, "clone", "-q", remote, "w");
+      git(join(elsewhere, "w"), "checkout", "-q", session.workBranch as string);
+      git(join(elsewhere, "w"), "commit", "-q", "--allow-empty", "-m", "Someone else");
+      git(join(elsewhere, "w"), "push", "-q", "origin", session.workBranch as string);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+    const theirs = remoteRef(remote, `refs/heads/${session.workBranch}`);
+    const r = await h.send("POST", `/api/governance/approvals/${second.approvalId}/grant`, { fingerprint: second.fingerprint });
     assert.deepEqual([r.status, code(r)], [409, "fingerprint_mismatch"]);
-    assert.equal(spawnSync("git", ["--git-dir", remote, "rev-parse", `refs/heads/${session.workBranch}`], { encoding: "utf8" }).stdout.trim(), theirs, "their work stays");
-    rmSync(elsewhere, { recursive: true, force: true });
+    assert.equal(remoteRef(remote, `refs/heads/${session.workBranch}`), theirs, "their work stays");
   });
 
-  test("a person's push from the chat needs an operator; an agent cannot ask for it there", async () => {
-    assert.equal(code(await h.send("POST", `/api/sessions/${session.id}/push`, {})), "operator_required");
-    const asked = await owner.send("POST", `/api/sessions/${session.id}/push`, {});
+  test("the owner's push from the chat waits for the owner's own approval where the policy asks for one", async () => {
+    assert.equal(code(await h.anonymous.send("POST", `/api/sessions/${session.id}/push`, {})), CLAUDE_SIGN_IN_REQUIRED);
+    const asked = await h.send("POST", `/api/sessions/${session.id}/push`, {});
     assert.equal(asked.status, 200, JSON.stringify(asked.body));
     const view = (asked.body as { approval: ApprovalView }).approval;
-    assert.equal(view.state, "pending");
-    assert.equal(view.requestedBy, owner.state.session?.operator.id);
-    const pushes = ((await owner.get(`/api/sessions/${session.id}/pushes`)).body as ApprovalList).approvals;
+    assert.deepEqual([view.state, view.requestedBy, view.requestedByType, view.runId], ["pending", `owner:${h.accountId}`, "human", null]);
+    const pushes = ok<ApprovalList>(await h.get(`/api/sessions/${session.id}/pushes`)).approvals;
     assert.ok(pushes.some((p) => p.id === view.id));
     // Not a fast-forward of what somebody else pushed: git refuses it, and nothing is overwritten.
-    const granted = (await owner.send("POST", `/api/governance/approvals/${view.id}/grant`, { fingerprint: view.fingerprint })).body as ApprovalView;
+    const granted = ok<ApprovalView>(await h.send("POST", `/api/governance/approvals/${view.id}/grant`, { fingerprint: view.fingerprint }));
     assert.equal(granted.state, "consumed");
     assert.match(granted.outcome ?? "", /git push/);
-    const failed = ((await owner.get("/api/governance/audit?type=protected.failed")).body as AuditPage).events;
+    const failed = await auditOf(h, "type=protected.failed");
     assert.ok(failed.some((e) => e.data.approvalId === view.id));
   });
 
-  test("once the Constitution simply allows git -- Allowed ticked alone, a high-risk change another person approved -- the agent's push is made at once, and nobody is asked", async () => {
-    const revision = await publish(owner, approver, (c) => ({ ...c, rules: c.rules.map((r) => (r.action === "repository.push" ? { ...r, effect: "allow" as const } : r)) }));
-    assert.equal(revision.risk, "high");
-    let fresh = (await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" })).body as SessionSummary;
+  test("an agent never decides an approval: not through any route, not through the service, not in the database", async () => {
+    queue.push(async (c) => {
+      seen.third = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, token(c));
+      const asked = seen.third.body as AgentPushResult;
+      seen.selfGrant = await call("POST", `${apiOf(c)}/governance/approvals/${asked.approvalId}/grant`, { fingerprint: asked.fingerprint }, { ...token(c), [MUTATION_HEADER]: "1" });
+    });
+    assert.equal((await turn(h, session.id, "Ask for the push again.")).status, "completed");
+    const asked = seen.third?.body as AgentPushResult;
+    assert.equal(asked.state, "pending", JSON.stringify(asked));
+    assert.deepEqual([seen.selfGrant?.status, errorOf(seen.selfGrant)], [403, "agent_outside_gateway"]);
+    const view = ok<ApprovalView>(await h.get(`/api/governance/approvals/${asked.approvalId}`));
+    assert.deepEqual([view.requestedByType, view.state], ["agent", "pending"]);
+    const binding = await h.app.get(RunBindingStore).get(h.accountId as string, view.runId as string);
+    assert.ok(binding !== null, "the run that asked");
+    await assert.rejects(h.app.get(ApprovalService).grant(contextOf({ kind: "agent", binding }), view.id, { fingerprint: view.fingerprint }), { code: "decider_not_a_person" });
+    await assert.rejects(h.sql("UPDATE governance.approvals SET state = 'granted', decided_by = 'agent:claude-code', decided_by_type = 'agent', decided_at = now() WHERE id = $1", [view.id]), /violates check constraint/);
+    assert.equal(ok<ApprovalView>(await h.get(`/api/governance/approvals/${view.id}`)).state, "pending");
+    const refused = (await auditOf(h, "type=authz.denied")).filter((e) => e.data.action === "governance.approval.decide");
+    assert.deepEqual(refused.map((e) => [e.principalType, e.data.cause, e.workspaceId]), [["agent", "not_a_person", session.id]]);
+    // The owner rejects it: a settled approval stays settled, and what it is about never changes.
+    assert.equal(ok<ApprovalView>(await h.send("POST", `/api/governance/approvals/${view.id}/reject`, { fingerprint: view.fingerprint })).state, "rejected");
+    await assert.rejects(h.sql("UPDATE governance.approvals SET state = 'pending' WHERE id = $1", [view.id]), /a settled approval stays settled/);
+    await assert.rejects(h.sql("UPDATE governance.approvals SET params = '{}'::jsonb WHERE id = $1", [view.id]), /an approval's action is fixed/);
+  });
+
+  test("once the account's policy simply allows git -- a high-risk change the owner acknowledged -- the agent's push is made at once, and nobody is asked", async () => {
+    const allowing = await publish(h, "high", (c) => ({ ...c, rules: c.rules.map((r) => (r.action === "repository.push" ? { ...r, effect: "allow" as const } : r)) }));
+    let fresh = ok<SessionSummary>(await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "haiku" }));
     await waitStatus(h, fresh.id, ["ready"]);
-    fresh = (await h.get(`/api/sessions/${fresh.id}`)).body as SessionSummary;
-    assert.equal((await owner.send("PUT", `/api/governance/workspaces/${fresh.id}`, { agentId, profile: "strict" })).status, 200);
-    const asked = ((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals.length;
+    fresh = ok<SessionSummary>(await h.get(`/api/sessions/${fresh.id}`));
+    const asked = ok<ApprovalList>(await h.get("/api/governance/approvals")).approvals.length;
     queue.push(async (c) => {
       writeFileSync(join(c.cwd, "sum.mjs"), "export const sum = (a, b) => a + b;\n");
       git(c.cwd, "commit", "-qam", "Fix the addition");
-      seen.free = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      seen.free = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, {}, token(c));
     });
-    assert.equal((await h.send("POST", `/api/sessions/${fresh.id}/messages`, { text: "Fix it, commit it and push it." })).status, 202);
-    await waitStatus(h, fresh.id, ["completed"]);
+    assert.equal((await turn(h, fresh.id, "Fix it, commit it and push it.")).status, "completed");
     assert.equal(seen.free?.status, 200, JSON.stringify(seen.free?.body));
     const free = seen.free?.body as AgentPushResult;
-    assert.deepEqual([free.state, free.approvalId, free.decision.verdict], ["pushed", null, "allow"]);
+    assert.deepEqual([free.state, free.approvalId, free.decision.verdict, free.decision.policyRevision], ["pushed", null, "allow", allowing.id]);
     const head = git(join(h.dataDir, "workspaces", fresh.id, "repository"), "rev-parse", "HEAD").stdout.trim();
-    assert.equal(spawnSync("git", ["--git-dir", remote, "rev-parse", `refs/heads/${fresh.workBranch}`], { encoding: "utf8" }).stdout.trim(), head, "the commit is at the remote's branch");
-    assert.equal(((await owner.get("/api/governance/approvals")).body as ApprovalList).approvals.length, asked, "no approval was asked for");
-    const done = ((await owner.get("/api/governance/audit?type=protected.completed")).body as AuditPage).events;
+    assert.equal(remoteRef(remote, `refs/heads/${fresh.workBranch}`), head, "the commit is at the remote's branch");
+    assert.equal(ok<ApprovalList>(await h.get("/api/governance/approvals")).approvals.length, asked, "no approval was asked for");
+    const done = await auditOf(h, "type=protected.completed");
     assert.ok(done.some((e) => e.decisionId === free.decision.decisionId && e.workspaceId === fresh.id && e.principalType === "agent"), "recorded under the decision that allowed it");
 
-    // What Allowed covers is the chat's own branch: another branch of the workspace still waits for a person.
+    // What Allowed covers is the chat's own working branch: another branch of the workspace still waits for the owner.
     queue.push(async (c) => {
       git(c.cwd, "checkout", "-qb", "side");
       writeFileSync(join(c.cwd, "SIDE.md"), "side\n");
       git(c.cwd, "add", "SIDE.md");
       git(c.cwd, "commit", "-qm", "Side work");
-      seen.side = await call(c.env, "POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, { branch: "side" }, { "x-orbit-run-token": c.env.ORBIT_AGENT_TOKEN as string });
+      seen.side = await call("POST", `${c.env.ORBIT_AGENT_GATEWAY}/push`, { branch: "side" }, token(c));
       git(c.cwd, "checkout", "-q", fresh.workBranch as string);
     });
-    await h.send("POST", `/api/sessions/${fresh.id}/messages`, { text: "Push the side branch too." });
-    await waitStatus(h, fresh.id, ["completed"]);
+    assert.equal((await turn(h, fresh.id, "Push the side branch too.")).status, "completed");
     const side = seen.side?.body as AgentPushResult;
     assert.deepEqual([side.state, side.decision.verdict], ["pending", "allow"], JSON.stringify(side));
-    assert.equal(spawnSync("git", ["--git-dir", remote, "rev-parse", "--verify", "--quiet", "refs/heads/side"], { encoding: "utf8" }).stdout, "", "the side branch was not pushed");
+    assert.equal(remoteRef(remote, "refs/heads/side"), "", "the side branch was not pushed");
 
-    // A person pushes at once only when they may approve pushes; an operator who may not only asks, as before.
-    await owner.send("POST", "/api/governance/operators", { username: "audrey", password: "audrey has a long password", roles: ["auditor"] });
-    const auditor = await h.signIn("audrey", "audrey has a long password");
-    const asks = await auditor.send("POST", `/api/sessions/${fresh.id}/push`, {});
-    assert.equal(asks.status, 200, JSON.stringify(asks.body));
-    assert.deepEqual([(asks.body as AgentPushResult).state, (asks.body as { approval: ApprovalView | null }).approval?.state], ["pending", "pending"]);
-    const pushes = await owner.send("POST", `/api/sessions/${fresh.id}/push`, {});
-    assert.deepEqual([(pushes.body as AgentPushResult).state, (pushes.body as { approval: ApprovalView | null }).approval], ["pushed", null], JSON.stringify(pushes.body));
+    // The owner's own push from the chat is made at once too: the policy allows it, and the chat is the owner's.
+    const pushes = ok<AgentPushResult & { approval: ApprovalView | null }>(await h.send("POST", `/api/sessions/${fresh.id}/push`, {}));
+    assert.deepEqual([pushes.state, pushes.approval], ["pushed", null], JSON.stringify(pushes));
+  });
+
+  test("what the policy denies is the runtime's configuration too: web tools it denies are refused to Claude Code", async () => {
+    const narrower = await publish(h, "low", (c) => ({ ...c, rules: c.rules.map((r) => (r.id === "web-tools" ? { ...r, effect: "deny" as const } : r)) }));
+    const { runId } = await turn(h, other.id, "Look it up.");
+    const run = runs().at(-1)?.call as Call;
+    for (const tool of ["WebFetch", "WebSearch"]) assert.ok(run.args.includes(tool), tool);
+    assert.match(after1(run.args, "--append-system-prompt") ?? "", new RegExp(`\\(revision ${String(narrower.revision)}\\)`));
+    const web = ok<DecisionList>(await h.get(`/api/governance/decisions?workspace=${other.id}&verdict=deny`)).decisions.find((d) => d.action === "tool.web" && d.runId === runId);
+    assert.deepEqual([web?.policyRevision, web?.matchedRules], [narrower.id, ["account:web-tools"]]);
+  });
+});
+
+describe("a research run is held to its account's policy too, as research", () => {
+  let h: Harness;
+  let fake: FakeProcessPort;
+  let workspace: ResearchWorkspaceSummary;
+  let session: ResearchSessionDetail;
+  const researchRuns = () => fake.children.filter((c) => researchRun(c.call.file, c.call.args));
+
+  before(async () => {
+    fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(() => "Nothing in the references answers that.") });
+    h = await startHarness({ fake });
+    workspace = await newWorkspace(h);
+    session = ok<ResearchSessionDetail>(await h.send("POST", `/api/research/workspaces/${workspace.id}/sessions`, { model: "sonnet" }));
+  });
+  after(() => h.close());
+
+  test("it is decided and bound under the account's revision in effect -- in the research scope, with no gateway", async () => {
+    const policy = ok<PolicyOverview>(await h.get("/api/governance/policy")).effective as RevisionView;
+    assert.equal((await h.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "What do the sources say about isolation?" })).status, 202);
+    assert.equal((await answered(h, session.id)).status, "completed");
+    const started = (await auditOf(h, "type=run.started"))[0];
+    assert.deepEqual([started?.principalType, started?.agentId, started?.workspaceId, started?.policyRevision, started?.data.scope, started?.data.startedBy, started?.data.mode], ["agent", "claude-research", workspace.id, policy.id, "ACCOUNT_RESEARCH", `owner:${h.accountId}`, "research"]);
+    const decisions = ok<DecisionList>(await h.get(`/api/governance/decisions?workspace=${workspace.id}`)).decisions;
+    assert.deepEqual(decisions.map((d) => [d.action, d.verdict, d.scope, d.policyRevision, d.principalType]), [["agent.run.start", "allow", "ACCOUNT_RESEARCH", policy.id, "agent"]]);
+    const run = researchRuns().at(-1)?.call as Call;
+    for (const name of ["ORBIT_AGENT_GATEWAY", "ORBIT_AGENT_TOKEN"]) assert.equal(name in run.env, false, `${name}: a research run has no gateway`);
+    noDatabaseIn(h, run.env);
+    const resources = ok<ResourceGovernanceList>(await h.get("/api/governance/research")).resources;
+    assert.deepEqual(resources.map((r) => [r.kind, r.id, r.title]), [["research_workspace", workspace.id, workspace.name]]);
+    const end = await finished(h, started?.runId as string);
+    assert.equal(end?.data.status, "completed");
+  });
+
+  test("an override that narrows its research workspace refuses the next run before it starts", async () => {
+    const set = ok<ResourceGovernanceView>(await h.send("PUT", `/api/governance/research/${workspace.id}/override`, { rules: [{ id: "no-research", action: "agent.run.start", effect: "deny" }] }));
+    assert.deepEqual([set.kind, set.overridden, set.override?.override.metadata.level, set.override?.override.metadata.target], ["research_workspace", true, "research_workspace", workspace.id]);
+    const before = researchRuns().length;
+    assert.equal((await h.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "And about egress?" })).status, 202);
+    const failed = await eventually(async () => ok<ResearchSessionDetail>(await h.get(`/api/research/sessions/${session.id}`)), (s) => s.status === "failed");
+    assert.match(failed.statusReason ?? "", /does not let this agent start a run here/);
+    assert.equal(researchRuns().length, before, "Claude Code never started");
+    const refused = (await auditOf(h, "type=run.refused"))[0];
+    assert.deepEqual([refused?.workspaceId, refused?.reasonCodes, refused?.data.scope], [workspace.id, ["RULE_MATCHED", "OVERLAY_NARROWED"], "ACCOUNT_RESEARCH"]);
+    assert.equal((await h.send("DELETE", `/api/governance/research/${workspace.id}/override`)).status, 204);
+    assert.equal((await h.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "And now?" })).status, 202);
+    assert.equal((await answered(h, session.id)).status, "completed");
   });
 });
 
@@ -321,20 +455,19 @@ describe("a push to Azure DevOps", () => {
   });
   after(() => h.close());
 
-  test("is decided, approved, and made with the Azure CLI's one-shot helper to the repository's own URL", async () => {
-    const owner = await h.owner();
-    await publish(owner, owner);
-    const created = (await h.send("POST", "/api/sessions", { repository: { source: "azure", id: AZURE_REPOSITORY }, branch: "main", model: "haiku" })).body as SessionSummary;
+  test("is decided under the account's policy, approved by its owner, and made with the Azure CLI's one-shot helper to the repository's own URL", async () => {
+    const created = ok<SessionSummary>(await h.send("POST", "/api/sessions", { repository: { source: "azure", id: AZURE_REPOSITORY }, branch: "main", model: "haiku" }));
     await waitStatus(h, created.id, ["ready"]);
-    const session = (await h.get(`/api/sessions/${created.id}`)).body as SessionSummary;
+    const session = ok<SessionSummary>(await h.get(`/api/sessions/${created.id}`));
     const workspace = join(h.dataDir, "workspaces", session.id, "repository");
     git(workspace, "commit", "-q", "--allow-empty", "-m", "Work");
-    const asked = await owner.send("POST", `/api/sessions/${session.id}/push`, {});
+    const asked = await h.send("POST", `/api/sessions/${session.id}/push`, {});
     assert.equal(asked.status, 200, JSON.stringify(asked.body));
     const view = (asked.body as { approval: ApprovalView }).approval;
     assert.match(String(view.params.repository), new RegExp(`^azure:${AZURE.organization}/`));
     assert.match(view.summary, /Azure DevOps/);
-    const done = (await owner.send("POST", `/api/governance/approvals/${view.id}/grant`, { fingerprint: view.fingerprint })).body as ApprovalView;
+    assert.deepEqual([view.requestedBy, view.requestedByType], [`owner:${h.accountId}`, "human"]);
+    const done = ok<ApprovalView>(await h.send("POST", `/api/governance/approvals/${view.id}/grant`, { fingerprint: view.fingerprint }));
     assert.equal(done.state, "consumed", JSON.stringify(done));
     const push = fake.callsOf(pushes).at(-1) as Call;
     assert.ok(push.args.includes(`credential.helper=${h.config.binaries.azureGitHelper}`), "the one-shot helper answers");
@@ -345,5 +478,3 @@ describe("a push to Azure DevOps", () => {
     assert.equal(push.cwd, join(h.dataDir, "repos", `${session.id}.git`), "from Orbit Web's own copy, never the workspace");
   });
 });
-
-void program;

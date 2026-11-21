@@ -55,6 +55,7 @@ describe("an upload is what its bytes say, within its bound, under a name the se
 
   test("the one non-JSON body is that route's alone, and still needs the header, this origin, and this browser's session", async () => {
     const headers = { "content-type": "application/octet-stream", "x-orbit-filename": "a.txt" };
+    const kept = await sourcesOf(h, workspace.id);
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers, body: "x" })).status, 403, "no X-Orbit-Web header");
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { ...headers, [MUTATION_HEADER]: "1", origin: "https://attacker.example" }, body: "x" })).status, 403);
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/text`, { method: "POST", headers: { ...headers, [MUTATION_HEADER]: "1" }, body: "x" })).status, 415, "anywhere else, a body is JSON");
@@ -64,7 +65,7 @@ describe("an upload is what its bytes say, within its bound, under a name the se
     const signed = { ...headers, [MUTATION_HEADER]: "1", cookie: h.cookie };
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-orbit-filename": "a.txt", [MUTATION_HEADER]: "1" }, body: "x" })).status, 401, "no session: the CLI being signed in is not this browser being signed in");
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: signed, body: "x" })).status, 403, "a session's cookie without its CSRF token changes nothing");
-    assert.deepEqual(await sourcesOf(h, workspace.id), [], "and nothing was stored");
+    assert.deepEqual(await sourcesOf(h, workspace.id), kept, "and nothing was stored");
   });
 
   test("a document that cannot be read fails with why: a broken PDF, a scanned one, a broken or exploding Word file", async () => {

@@ -181,11 +181,14 @@ describe("research, end to end -- with no repository and no GitHub", () => {
 
   test("research made no policy -- a reviewed finding is never one -- and every run of it was decided under the account's policy", async () => {
     assert.deepEqual(await policyCounts(h), policyBefore, "no policy revision, override or approval came from research");
+    // The runs of the session deleted above went with it; the record of each run's start did not.
     const runs = (await h.sql("SELECT id, account_id FROM research.research_runs WHERE workspace_id = $1", [workspace.id])).map((r) => ({ id: String(r.id), account: String(r.account_id) }));
-    assert.ok(runs.length >= 4, `the runs of this workspace (${runs.length})`);
+    assert.ok(runs.length >= 1, `the runs of this workspace's remaining session (${runs.length})`);
     assert.ok(runs.every((r) => r.account === h.accountId), "each run is the workspace's account's");
-    const started = await h.sql("SELECT DISTINCT run_id FROM governance.audit_events WHERE event_type = 'run.started' AND run_id = ANY($1::text[])", [runs.map((r) => r.id)]);
-    assert.equal(started.length, runs.length, "every research run's start is on the account's audit record");
+    const started = (await h.sql("SELECT DISTINCT run_id, account_id FROM governance.audit_events WHERE event_type = 'run.started' AND workspace_id = $1", [workspace.id])).map((r) => ({ id: String(r.run_id), account: String(r.account_id) }));
+    assert.ok(started.length >= 4, `every research run's start is on the account's audit record, the deleted session's too (${started.length})`);
+    assert.ok(started.every((r) => r.account === h.accountId), "on the workspace's account's record");
+    assert.ok(runs.every((r) => started.some((s) => s.id === r.id)), "each run kept is one whose start was recorded");
   });
 
   test("after a restart, the workspace, its sources, sessions, conversation, notes and findings are all there", async () => {

@@ -5,8 +5,8 @@
 // container, which the agent can do anyway.
 //
 // It also answers the control plane's isolation check (`attest`): which of the files the control plane just wrote it
-// can see, whether it can write where it must not, and whether it can reach the internet or resolve a public name
-// directly. Its answers are this container's word -- a check of the deployment's wiring, not proof against a runner the
+// can see, whether it can write where it must not, whether it can reach the control plane's database, and whether it
+// can reach the internet or resolve a public name directly. Its answers are this container's word -- a check of the deployment's wiring, not proof against a runner the
 // agent has taken over.
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -84,16 +84,17 @@ function readOnlyCheck(r: AttestFrame["readOnly"][number]): IsolationCheck {
   }
 }
 
-function egressCheck(host: string, port: number): Promise<IsolationCheck> {
+// A connection that must fail from here: open is the finding, refused or timed out is the check holding.
+function closedCheck(name: string, host: string, port: number, what: string): Promise<IsolationCheck> {
   return new Promise((resolve) => {
     const s = connect({ host, port, timeout: 3_000 });
     const done = (c: IsolationCheck) => {
       s.destroy();
       resolve(c);
     };
-    s.on("connect", () => done({ name: "direct_egress", ok: false, detail: `a direct connection to ${host}:${port} SUCCEEDED` }));
-    s.on("timeout", () => done({ name: "direct_egress", ok: true, detail: `no direct connection out (${host}:${port} timed out)` }));
-    s.on("error", (err) => done({ name: "direct_egress", ok: true, detail: `no direct connection out (${errorCode(err)})` }));
+    s.on("connect", () => done({ name, ok: false, detail: `a connection to ${what} at ${host}:${port} SUCCEEDED from the agent's container` }));
+    s.on("timeout", () => done({ name, ok: true, detail: `${what} cannot be reached from here (${host}:${port} timed out)` }));
+    s.on("error", (err) => done({ name, ok: true, detail: `${what} cannot be reached from here (${errorCode(err)})` }));
   });
 }
 
@@ -107,7 +108,8 @@ async function dnsCheck(name: string): Promise<IsolationCheck> {
 }
 
 async function attest(socket: Socket, f: AttestFrame): Promise<void> {
-  const checks = [...f.present.map(presentCheck), ...f.absent.map(absentCheck), ...f.readOnly.map(readOnlyCheck), await egressCheck(f.egress.host, f.egress.port), await dnsCheck(f.dnsName)];
+  const closed = await Promise.all(f.closed.map((c) => closedCheck(c.name, c.host, c.port, "the control plane's server")));
+  const checks = [...f.present.map(presentCheck), ...f.absent.map(absentCheck), ...f.readOnly.map(readOnlyCheck), ...closed, await closedCheck("direct_egress", f.egress.host, f.egress.port, "the internet"), await dnsCheck(f.dnsName)];
   send(socket, { t: "attested", checks, hostname: hostname(), uid: process.getuid?.() ?? null });
   socket.end();
 }

@@ -141,13 +141,16 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const input = this.inputOf(text, images);
     const runId = randomUUID();
     const messageId = randomUUID();
-    // From here the session counts as running: a second message waits for this one.
+    // From here the session counts as running: a second message waits for this one. The message and the status are kept
+    // together, before the answer, so whoever reads the session after it was accepted sees it running -- until the run
+    // ends, or governance refuses it (failed). A restart in between finds it running with no run: interrupted.
     this.starting.add(sessionId);
     try {
       await this.db.tx(async () => {
         if (images.length > 0) await this.images.attach(images.map((i) => i.id), sessionId, messageId);
         const event = await this.bus.publishSession(sessionId, "message.completed", { messageId, role: "user", text, parentToolUseId: null, partial: false, truncated: false, ...(images.length > 0 ? { images: [...images] } : {}) }, runId);
         await this.transcript.keep(event);
+        await this.setStatus(sessionId, "running", null, runId);
       });
     } catch (err) {
       this.starting.delete(sessionId);
@@ -273,8 +276,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       // shares this container's user with them (README, "The limit, said plainly").
       protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, this.config.data.control, ...(azure ? [] : [this.config.data.azure])],
     });
+    // The session reads as running since its message was accepted (send).
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
-    await this.setStatus(session.id, "running", null, runId);
     const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, { azure, github }), ...plan.env } });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;

@@ -1,7 +1,7 @@
 // THE RUNNER: a program started through it behaves as one started here -- what it prints, what it is given, how it
 // ends, the limits `run` holds it to, bytes kept as bytes -- and nothing it starts outlives the connection. Its
-// isolation check tells a room it can see from one it cannot, a writable directory from a read-only one, and a way out
-// from none.
+// isolation check tells a room it can see from one it cannot, a writable directory from a read-only one, a database it
+// can reach from one it cannot, and a way out from none.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { RunnerProcessPort } from "../infra/process/runner-port.js";
-import { RunnerAttestor } from "../modules/governance/runner-attestor.js";
+import { databaseAddress, RunnerAttestor } from "../modules/governance/runner-attestor.js";
 import { dataDirs } from "../config/config.js";
 import { startRunner } from "./server.js";
 
@@ -121,27 +121,47 @@ describe("the isolation check", () => {
     server = await startRunner(p, "127.0.0.1");
     port = new RunnerProcessPort("127.0.0.1", p);
     root = mkdtempSync(join(tmpdir(), "attest-"));
-    for (const d of ["app", "governance", "github", "azure", "control", "research", "sessions", "repos"]) mkdirSync(join(root, d));
+    for (const d of ["app", "github", "azure", "control", "research", "sessions", "repos"]) mkdirSync(join(root, d));
   });
   after(async () => {
     rmSync(root, { recursive: true, force: true });
     await new Promise<void>((r) => server.close(() => r()));
   });
 
-  test("on one machine (no isolation) it fails, naming every room it can see and the way out it has", async () => {
+  test("on one machine (no isolation) it fails, naming every room it can see, the database it can reach and the way out it has", async () => {
     const closed = await freePort();
-    const attestor = new RunnerAttestor({ data: dataDirs(root) } as never, port, { egress: { host: "127.0.0.1", port: closed }, dnsName: "localhost" });
-    const { checks } = await attestor.attest();
-    const byName = Object.fromEntries(checks.map((c) => [c.name, c.ok]));
-    assert.deepEqual(byName, { sees_sessions: true, sees_repos: true, no_app: false, no_governance: false, no_github: false, no_azure: false, no_control: false, no_research: false, repos_read_only: false, direct_egress: true, public_dns: false });
-    assert.match(checks.find((c) => c.name === "no_governance")?.detail ?? "", /VISIBLE/);
+    const database = createServer((s) => s.end());
+    await new Promise<void>((r) => database.listen(0, "127.0.0.1", () => r()));
+    const url = `postgres://orbit@127.0.0.1:${(database.address() as AddressInfo).port}/orbit`;
+    try {
+      const attestor = new RunnerAttestor({ data: dataDirs(root), database: { url } } as never, port, { egress: { host: "127.0.0.1", port: closed }, dnsName: "localhost" });
+      const { checks } = await attestor.attest();
+      const byName = Object.fromEntries(checks.map((c) => [c.name, c.ok]));
+      assert.deepEqual(byName, { sees_sessions: true, sees_repos: true, no_app: false, no_github: false, no_azure: false, no_control: false, no_research: false, repos_read_only: false, no_database: false, direct_egress: true, public_dns: false });
+      assert.match(checks.find((c) => c.name === "no_app")?.detail ?? "", /VISIBLE/);
+      assert.match(checks.find((c) => c.name === "no_database")?.detail ?? "", /SUCCEEDED/);
+    } finally {
+      database.close();
+    }
   });
 
-  test("it removes every canary it wrote", async () => {
-    const attestor = new RunnerAttestor({ data: dataDirs(root) } as never, port, { egress: { host: "127.0.0.1", port: await freePort() }, dnsName: "no-such-host.invalid" });
-    await attestor.attest();
+  test("the database is tried where the control plane reaches it; a local socket is a failed check, never a skipped one", async () => {
+    assert.deepEqual(databaseAddress("postgres://orbit:secret@postgres:5432/orbit"), { name: "no_database", host: "postgres", port: 5432 });
+    assert.deepEqual(databaseAddress("postgres://orbit@[::1]/orbit"), { name: "no_database", host: "::1", port: 5432 });
+    const socket = databaseAddress("postgres:///orbit?host=/var/run/postgresql");
+    assert.equal("ok" in socket && socket.ok, false);
+    const attestor = new RunnerAttestor({ data: dataDirs(root), database: { url: "postgres:///orbit?host=/var/run/postgresql" } } as never, port, { egress: { host: "127.0.0.1", port: await freePort() }, dnsName: "no-such-host.invalid" });
+    const { checks } = await attestor.attest();
+    assert.equal(checks.find((c) => c.name === "no_database")?.ok, false);
+    assert.equal(JSON.stringify(checks).includes("secret"), false);
+  });
+
+  test("it removes every canary it wrote, and a database nothing answers for is a check that holds", async () => {
+    const attestor = new RunnerAttestor({ data: dataDirs(root), database: { url: `postgres://orbit@127.0.0.1:${await freePort()}/orbit` } } as never, port, { egress: { host: "127.0.0.1", port: await freePort() }, dnsName: "no-such-host.invalid" });
+    const { checks } = await attestor.attest();
+    assert.equal(checks.find((c) => c.name === "no_database")?.ok, true);
     const { readdirSync } = await import("node:fs");
-    for (const d of ["app", "governance", "sessions", "repos"]) assert.deepEqual(readdirSync(join(root, d)), [], d);
+    for (const d of ["app", "research", "sessions", "repos"]) assert.deepEqual(readdirSync(join(root, d)), [], d);
   });
 
   test("a direct way out is seen", async () => {
@@ -149,7 +169,7 @@ describe("the isolation check", () => {
     await new Promise<void>((r) => listener.listen(0, "127.0.0.1", () => r()));
     const open = (listener.address() as AddressInfo).port;
     try {
-      const attestor = new RunnerAttestor({ data: dataDirs(root) } as never, port, { egress: { host: "127.0.0.1", port: open }, dnsName: "no-such-host.invalid" });
+      const attestor = new RunnerAttestor({ data: dataDirs(root), database: { url: `postgres://orbit@127.0.0.1:${await freePort()}/orbit` } } as never, port, { egress: { host: "127.0.0.1", port: open }, dnsName: "no-such-host.invalid" });
       const { checks } = await attestor.attest();
       assert.deepEqual(checks.filter((c) => c.name === "direct_egress" || c.name === "public_dns").map((c) => [c.name, c.ok]), [["direct_egress", false], ["public_dns", true]]);
     } finally {
@@ -159,11 +179,11 @@ describe("the isolation check", () => {
 
   test("a canary somebody planted a link at is never written through", async () => {
     // The attestor's canaries get fresh names, created exclusively: a link left anywhere is never followed.
-    const target = join(root, "governance", "precious");
+    const target = join(root, "app", "precious");
     writeFileSync(target, "keep me");
     const { symlinkSync, readFileSync } = await import("node:fs");
     symlinkSync(target, join(root, "sessions", ".orbit-attest-planted"));
-    const attestor = new RunnerAttestor({ data: dataDirs(root) } as never, port, { egress: { host: "127.0.0.1", port: await freePort() }, dnsName: "no-such-host.invalid" });
+    const attestor = new RunnerAttestor({ data: dataDirs(root), database: { url: `postgres://orbit@127.0.0.1:${await freePort()}/orbit` } } as never, port, { egress: { host: "127.0.0.1", port: await freePort() }, dnsName: "no-such-host.invalid" });
     await attestor.attest();
     assert.equal(readFileSync(target, "utf8"), "keep me");
   });

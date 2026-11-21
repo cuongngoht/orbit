@@ -33,6 +33,8 @@ export interface AttestFrame {
   absent: { name: string; path: string }[];
   // Directories the agent's container must not be able to write.
   readOnly: { name: string; path: string }[];
+  // Servers of the control plane a connection to must fail from the agent's container (its database).
+  closed: { name: string; host: string; port: number }[];
   // An address on the internet a direct connection to must fail, and a name that must not resolve.
   egress: { host: string; port: number };
   dnsName: string;
@@ -52,6 +54,7 @@ export type RunnerFrame =
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 const isEnv = (v: unknown): v is Record<string, string> => typeof v === "object" && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === "string");
 const isNamedPaths = (v: unknown): boolean => Array.isArray(v) && v.every((x) => typeof x === "object" && x !== null && typeof (x as { name?: unknown }).name === "string" && typeof (x as { path?: unknown }).path === "string");
+const isNamedAddresses = (v: unknown): boolean => Array.isArray(v) && v.every((x) => typeof x === "object" && x !== null && typeof (x as { name?: unknown }).name === "string" && typeof (x as { host?: unknown }).host === "string" && typeof (x as { port?: unknown }).port === "number");
 
 // A frame from the control plane, checked before anything is done with it; null for anything else.
 export function clientFrame(line: string): ClientFrame | null {
@@ -67,10 +70,10 @@ export function clientFrame(line: string): ClientFrame | null {
   if (f.op === "in") return typeof f.d === "string" ? { op: "in", d: f.d } : null;
   if (f.op === "eof") return { op: "eof" };
   if (f.op === "kill") return (RUNNER_SIGNALS as readonly unknown[]).includes(f.signal) ? { op: "kill", signal: f.signal as RunnerSignal } : null;
-  if (f.op === "attest" && isNamedPaths(f.present) && isNamedPaths(f.absent) && isNamedPaths(f.readOnly) && typeof f.dnsName === "string") {
+  if (f.op === "attest" && isNamedPaths(f.present) && isNamedPaths(f.absent) && isNamedPaths(f.readOnly) && isNamedAddresses(f.closed) && typeof f.dnsName === "string") {
     const egress = f.egress as { host?: unknown; port?: unknown } | undefined;
     if (typeof egress?.host !== "string" || typeof egress.port !== "number") return null;
-    return { op: "attest", present: f.present as AttestFrame["present"], absent: f.absent as AttestFrame["absent"], readOnly: f.readOnly as AttestFrame["readOnly"], egress: { host: egress.host, port: egress.port }, dnsName: f.dnsName };
+    return { op: "attest", present: f.present as AttestFrame["present"], absent: f.absent as AttestFrame["absent"], readOnly: f.readOnly as AttestFrame["readOnly"], closed: f.closed as AttestFrame["closed"], egress: { host: egress.host, port: egress.port }, dnsName: f.dnsName };
   }
   return null;
 }

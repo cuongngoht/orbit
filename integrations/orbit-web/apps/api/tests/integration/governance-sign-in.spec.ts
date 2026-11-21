@@ -1,8 +1,9 @@
 // THE CLAUDE SIGN-IN IN THE GOVERNED DEPLOYMENT. `claude auth login` runs in the agent's container, whose only way out
 // is the control plane's egress proxy -- and it is not a run, so it has no run's token. Without a way of its own it
-// could reach nothing, and the sign-in that opens Orbit Web (before any Constitution can exist) could never finish.
-// While one sign-in runs it holds its own channel: a token handed to that process alone, which the proxy grants the
-// Claude account's hosts and nothing else, each connection recorded -- and which ends with the sign-in.
+// could reach nothing, and the sign-in that makes the account (before any account, and so any policy, exists) could
+// never finish. While one sign-in runs it holds its own channel: a token handed to that process alone, which the proxy
+// grants the Claude account's hosts and nothing else, each connection recorded on the deployment's own chain -- and which
+// ends with the sign-in. The account the sign-in makes is governed at once, by the governed deployment's strict default.
 //
 // Claude Code is stood in for by a script, started for real through a real runner (the agent's side).
 import assert from "node:assert/strict";
@@ -11,8 +12,9 @@ import { createServer, type AddressInfo, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { LOGIN_ACTIVE, type AuditPage, type ClaudeStatus } from "@orbit-web/contracts";
-import { CLAUDE_ACCOUNT_HOSTS } from "@orbit-web/governance-core";
+import { LOGIN_ACTIVE, type ClaudeStatus, type GovernanceOverview, type PolicyOverview } from "@orbit-web/contracts";
+import { CLAUDE_ACCOUNT_HOSTS, type Constitution } from "@orbit-web/governance-core";
+import { AuditStore } from "../../src/infra/governance/stores.js";
 import { EgressService } from "../../src/modules/governance/egress.service.js";
 import { startRunner } from "../../src/runner/server.js";
 import { eventually, startHarness, type Harness } from "../../src/testing/harness.js";
@@ -32,9 +34,9 @@ import { writeFileSync } from "node:fs";
 const args = process.argv.slice(2);
 const say = (s) => process.stdout.write(s);
 if (args[0] === "--version") say("2.1.328 (Claude Code)\\n");
-else if (args[0] === "auth" && args[1] === "status") say(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgName: "Octo Org", subscriptionType: "max" }));
+else if (args[0] === "auth" && args[1] === "status") say(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: "octo@example.com", orgId: "org-octo", orgName: "Octo Org", subscriptionType: "max" }));
 else if (args[0] === "auth" && args[1] === "login") {
-  const names = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "NO_PROXY", "no_proxy", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"];
+  const names = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "NO_PROXY", "no_proxy", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "ORBIT_WEB_DATABASE_URL", "PGPASSWORD", "DATABASE_URL"];
   writeFileSync(${JSON.stringify(out)}, JSON.stringify(Object.fromEntries(names.map((n) => [n, process.env[n] ?? null]))));
   say("Opening browser to sign in...\\nhttps://claude.ai/oauth/authorize?code=true&client_id=stand-in\\nPaste code here if prompted > ");
   process.stdin.on("data", () => { say("\\nLogin successful.\\n"); process.exit(0); });
@@ -56,6 +58,7 @@ describe("the Claude sign-in in the governed deployment", () => {
     runner = await startRunner(runnerPort, "127.0.0.1");
     proxyPort = await freePort();
     h = await startHarness({
+      signIn: false,
       env: {
         ORBIT_WEB_DEPLOYMENT: "governed",
         ORBIT_WEB_RUNNER: `127.0.0.1:${runnerPort}`,
@@ -73,13 +76,14 @@ describe("the Claude sign-in in the governed deployment", () => {
   });
 
   test("the sign-in's own process goes out through the proxy, to the Claude account's hosts only, and only while it runs", async () => {
-    assert.equal((await h.send("POST", "/api/claude/login", {})).status, 202);
+    assert.equal((await h.anonymous.send("POST", "/api/claude/login", {})).status, 202);
     await eventually(() => existsSync(envFile()), (ok) => ok);
     const env = JSON.parse(readFileSync(envFile(), "utf8")) as Record<string, string | null>;
     const proxy = new URL(env.HTTPS_PROXY ?? "http://nothing-given");
     assert.deepEqual([proxy.protocol, proxy.username, proxy.hostname, proxy.port], ["http:", "signin", "orbit-web", String(proxyPort)]);
     for (const name of ["HTTP_PROXY", "https_proxy", "http_proxy"]) assert.equal(env[name], env.HTTPS_PROXY, name);
     assert.deepEqual([env.NO_PROXY, env.no_proxy, env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC], ["orbit-web", "orbit-web", "1"]);
+    assert.deepEqual([env.ORBIT_WEB_DATABASE_URL, env.PGPASSWORD, env.DATABASE_URL], [null, null, null], "the agent's side is never handed the database");
     const token = decodeURIComponent(proxy.password);
     assert.ok(token.length >= 32);
 
@@ -91,13 +95,13 @@ describe("the Claude sign-in in the governed deployment", () => {
     assert.equal(await reaches("platform.claude.com", 443, "not-its-token"), false, "not without its token");
 
     // The channel ends with the sign-in, however it ended.
-    assert.equal((await h.send("POST", "/api/claude/login/cancel")).status, 200);
-    await eventually(async () => ((await h.get("/api/claude/status")).body as ClaudeStatus).flow.state, (s) => !LOGIN_ACTIVE.includes(s));
+    assert.equal((await h.anonymous.send("POST", "/api/claude/login/cancel")).status, 200);
+    await eventually(async () => ((await h.anonymous.get("/api/claude/status")).body as ClaudeStatus).flow.state, (s) => !LOGIN_ACTIVE.includes(s));
     assert.equal(await reaches("platform.claude.com", 443), false, "a sign-in that ended has no way out");
 
-    // Recorded as Orbit Web's own sign-in -- never as an agent, never as the Constitution's decision.
-    const owner = await h.owner();
-    const events = ((await owner.get("/api/governance/audit?type=egress.sign_in&limit=50")).body as AuditPage).events;
+    // Recorded on the deployment's own chain, as Orbit Web's own sign-in -- never as an agent, never as a policy's decision,
+    // and never on an account's chain: no account exists yet.
+    const events = (await h.app.get(AuditStore).all(null)).filter((e) => e.eventType === "egress.sign_in");
     const seen = events.map((e) => `${e.outcome} ${String(e.data.resource)} ${e.principalType}:${e.principalId}`).sort();
     assert.deepEqual(seen, [
       "allow api.anthropic.com:443 system:claude-sign-in",
@@ -106,6 +110,18 @@ describe("the Claude sign-in in the governed deployment", () => {
       "deny example.com:443 system:claude-sign-in",
       "deny platform.claude.com:80 system:claude-sign-in",
     ]);
+    assert.ok(events.every((e) => e.accountId === null));
     assert.equal(JSON.stringify(events).includes(token), false, "the channel's token is never recorded");
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM app.accounts"))[0]?.n, 0, "a sign-in that did not finish made no account");
+  });
+
+  test("the sign-in, finished, makes the account -- governed at once by the governed deployment's strict default", async () => {
+    const owner = await h.browser();
+    const overview = (await owner.get("/api/governance/overview")).body as GovernanceOverview;
+    assert.deepEqual([overview.account.id, overview.deployment, overview.effective?.revision, overview.effective?.source], [owner.accountId, "governed", 1, "default"]);
+    const policy = ((await owner.get("/api/governance/policy")).body as PolicyOverview).effective?.document as Constitution;
+    assert.equal(policy.obligations.isolation, "required");
+    const effect = (id: string) => policy.rules.find((r) => r.id === id)?.effect;
+    assert.deepEqual([effect("web-tools"), effect("connectors"), effect("git-push")], ["deny", "deny", "require_approval"]);
   });
 });

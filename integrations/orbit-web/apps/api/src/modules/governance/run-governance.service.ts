@@ -39,9 +39,11 @@ const RUN_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 // The agent profiles a run is bound as.
 export const CHAT_AGENT = "claude-code";
 export const RESEARCH_AGENT = "claude-research";
+export const EMPLOYEE_AGENT = "orbit-employee";
 
 // What a run's decisions are about: a chat's, or a research workspace's.
-export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => (b.kind === "chat" ? "ACCOUNT_WORKSPACE" : "ACCOUNT_RESEARCH");
+// An employee's assignment runs are decided like a chat's: about the workspace (the employee) they work in.
+export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => (b.kind === "research" ? "ACCOUNT_RESEARCH" : "ACCOUNT_WORKSPACE");
 
 export interface RunPlan {
   scope: EnforcementScope;
@@ -62,7 +64,24 @@ export interface RunPlan {
   revision: number | null;
 }
 
-export type Prepared = { ok: true; plan: RunPlan } | { ok: false; message: string; reasonCodes: string[] };
+export type Refusal = { ok: false; message: string; reasonCodes: string[] };
+export type Prepared = { ok: true; plan: RunPlan } | Refusal;
+// An employee's attempt: its plan, the run's token (the tool bridge's and the egress proxy's credential) and whether the
+// account's policy obliges isolation.
+export type PreparedAssignment = { ok: true; plan: RunPlan; token: string; isolationRequired: boolean; network: EmployeeNetwork } | Refusal;
+
+// How an employee's sandbox reaches the internet, as the account's policy in effect says (a policy published before the
+// setting existed says nothing: AUTONOMOUS). Enforced by the egress proxy, each connection decided as the run.
+export interface EmployeeNetwork {
+  mode: "AUTONOMOUS" | "RESTRICTED";
+  allow: string[];
+}
+
+const networkOf = (constitution: unknown): EmployeeNetwork => {
+  const n = (constitution as { employeeNetwork?: { mode?: unknown; allow?: unknown } }).employeeNetwork;
+  const allow = Array.isArray(n?.allow) ? n.allow.filter((x): x is string => typeof x === "string") : [];
+  return { mode: n?.mode === "RESTRICTED" ? "RESTRICTED" : "AUTONOMOUS", allow };
+};
 
 interface Bound {
   kind: RunBinding["kind"];
@@ -174,11 +193,56 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     });
   }
 
+  // An EMPLOYEE's attempt (the virtual office), held the same way: decided under its account's policy, bound to the
+  // employee it works for (resource kind `employee`). Its token is the tool bridge's credential and the egress proxy's
+  // (each connection decided as this run); it opens neither the agent gateway nor any owner route. Whether the account's
+  // policy obliges isolation is returned: the worker holds the attempt to it once the sandbox's attestation is known.
+  async prepareAssignment(subject: { accountId: string; employeeId: string; title: string; assignmentId: string }, runId: string, o: { startedBy: Principal; webSearch: boolean }): Promise<PreparedAssignment> {
+    const { accountId, employeeId } = subject;
+    const ctx = contextOf({ kind: "system", id: "run-start", accountId });
+    const scope: EnforcementScope = "ACCOUNT_WORKSPACE";
+    const effective = await this.policy.effective(accountId);
+    if (effective === null) return this.refused(ctx, scope, employeeId, runId, "This account has no policy in effect, so nothing may run: publish one under Governance → Policy.", ["NO_PUBLISHED_POLICY"]);
+    await this.resources.ensure("employee", { accountId, id: employeeId, title: subject.title });
+    return this.db.tx(async () => {
+      const { binding, token } = await this.mint({ kind: "assignment", accountId, resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: EMPLOYEE_AGENT, policyRevision: effective.record.id, startedBy: labelOf(o.startedBy), workBranch: null }, runId);
+      const agent: Principal = { kind: "agent", binding };
+      const actx: GovernanceContext = { ...ctx, principal: agent, accountId };
+      const decide = (action: string, params: Record<string, unknown>): Promise<Decision> => this.policy.decide(actx, { action, resource: employeeId, scope, workspaceId: employeeId, params }, agent);
+      const start = await decide("agent.run.start", { workspace: employeeId, agent: binding.agentId });
+      if (start.verdict !== "allow") return this.refusedStart(ctx, scope, binding, start);
+      const plan: RunPlan = {
+        scope,
+        binding,
+        env: {},
+        webTools: o.webSearch ? (await decide("tool.web", { workspace: employeeId })).verdict === "allow" : false,
+        execute: (await decide("workspace.execute", { workspace: employeeId })).verdict === "allow",
+        connectors: [],
+        isolated: true,
+        note: null,
+        isolation: "not_applicable",
+        revision: effective.record.revision,
+      };
+      await this.audit.record(actx, { type: "run.started", outcome: "started", workspaceId: employeeId, data: { scope, runtime: "claude-code", runtimeVersion: this.runtimeVersion, mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy } });
+      return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: networkOf(effective.constitution) };
+    });
+  }
+
   // The run ended (however it did): recorded, and its token ends.
   async finished(plan: RunPlan, runId: string, status: string, exitCode: number | null): Promise<void> {
+    await this.endBinding(plan.binding, runId, status, exitCode);
+  }
+
+  // A run whose worker is gone, ended by the worker that recovered it: its token ends (if it had not), recorded the same way.
+  async abandoned(accountId: string, runId: string, status: string): Promise<void> {
+    const binding = await this.bindings.get(accountId, runId);
+    if (binding !== null && binding.endedAt === null) await this.endBinding(binding, runId, status, null);
+  }
+
+  private async endBinding(binding: RunBinding, runId: string, status: string, exitCode: number | null): Promise<void> {
     await this.db.tx(async () => {
       await this.bindings.end(runId, new Date().toISOString());
-      await this.audit.record(contextOf({ kind: "agent", binding: plan.binding }), { type: "run.finished", outcome: status, data: { status, exitCode } });
+      await this.audit.record(contextOf({ kind: "agent", binding }), { type: "run.finished", outcome: status, data: { status, exitCode } });
     });
   }
 
@@ -193,13 +257,13 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     return { ok: true, revisionId: effective.record.id, revision: effective.record.revision, isolation: isolation.state };
   }
 
-  private async refused(ctx: GovernanceContext, scope: EnforcementScope, resourceId: string, runId: string, message: string, reasonCodes: string[]): Promise<{ ok: false; message: string; reasonCodes: string[] }> {
+  private async refused(ctx: GovernanceContext, scope: EnforcementScope, resourceId: string, runId: string, message: string, reasonCodes: string[]): Promise<Refusal> {
     await this.audit.record(ctx, { type: "run.refused", outcome: "refused", workspaceId: resourceId, runId, reasonCodes, data: { scope, cause: reasonCodes.join(",") } });
     return { ok: false, message, reasonCodes };
   }
 
   // The policy does not let this agent start a run here: the binding ends at once, and the refusal is recorded.
-  private async refusedStart(ctx: GovernanceContext, scope: EnforcementScope, binding: RunBinding, start: Decision): Promise<Prepared> {
+  private async refusedStart(ctx: GovernanceContext, scope: EnforcementScope, binding: RunBinding, start: Decision): Promise<Refusal> {
     await this.bindings.end(binding.runId, new Date().toISOString());
     return this.refused(ctx, scope, binding.resourceId, binding.runId, `The account's policy in effect does not let this agent start a run here (${start.reasonCodes.join(", ")}).`, start.reasonCodes);
   }

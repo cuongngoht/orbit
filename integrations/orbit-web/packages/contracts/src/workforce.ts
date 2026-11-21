@@ -826,6 +826,8 @@ export const INTEGRATION_EVENTS = {
   SandboxProvisionRequested: 1,
   SandboxReady: 1,
   SandboxFailed: 1,
+  // An accepted assignment's workspace was published to its employee's desk (and its toolbox), or could not be.
+  DeskPublished: 1,
   EmployeeResourcesRevised: 1,
   ResourcesReserved: 1,
   RunWaitingForResources: 1,

@@ -239,6 +239,17 @@ export function defaultAccountPolicy(accountId: string, deployment: PolicyDeploy
       { id: "production-data", action: "data.production.destroy", effect: "deny" },
       { id: "propose-policy", action: "governance.policy.propose", effect: "allow" },
       { id: "modify-governance", action: "governance.policy.modify", principalType: "agent", effect: "deny" },
+      { id: "office-departments", action: "office.department.manage", effect: "allow" },
+      { id: "office-roster", action: "office.roster.manage", effect: "allow" },
+      { id: "office-hire", action: "employee.hire", effect: "allow" },
+      { id: "office-assistants", action: "employee.hire_assistant", effect: "allow" },
+      { id: "office-resources", action: "employee.resources.change", effect: "allow" },
+      { id: "office-assign", action: "work.assign", effect: "allow" },
+      { id: "office-delegate", action: "work.delegate", effect: "allow" },
+      { id: "office-artifacts", action: "artifact.publish", effect: "allow" },
+      { id: "office-deliveries", action: "notification.send", effect: "allow" },
+      { id: "office-budget", action: "budget.change", effect: "allow" },
+      { id: "office-connections", action: "connection.manage", effect: "allow" },
     ],
   };
 }

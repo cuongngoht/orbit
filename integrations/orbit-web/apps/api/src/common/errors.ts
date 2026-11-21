@@ -2,7 +2,18 @@
 import { ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
 import type { ApiErrorBody, Checked } from "@orbit-web/contracts";
 import type { Response } from "express";
+import { DomainError, type RefusalKind } from "../contexts/shared/domain.js";
 import { redactSecrets } from "../infra/security/redact.js";
+
+const DOMAIN_STATUS: Record<RefusalKind, number> = {
+  invalid: 400,
+  forbidden: 403,
+  not_found: 404,
+  conflict: 409,
+  stale: 412,
+  unprocessable: 422,
+  unavailable: 503,
+};
 
 export class ApiError extends HttpException {
   constructor(status: number, readonly code: string, message: string, readonly details?: unknown) {
@@ -55,6 +66,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
     if (exception instanceof HttpException) {
       res.status(exception.getStatus()).json(bodyOf(exception));
+      return;
+    }
+    // A command the domain refused, in its own words: the kind says the status.
+    if (exception instanceof DomainError) {
+      res.status(DOMAIN_STATUS[exception.kind]).json({ error: { code: exception.code, message: exception.message, ...(exception.details !== undefined ? { details: exception.details } : {}) } } satisfies ApiErrorBody);
       return;
     }
     const status = (exception as { status?: number; type?: string }).status;

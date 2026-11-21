@@ -15,7 +15,7 @@ import type { ResourceGovernanceList, ResourceGovernanceSummary, ResourceGoverna
 import type { Request } from "express";
 import { notFound } from "../../common/errors.js";
 import { viewer } from "../../common/request-scope.js";
-import { AuditStore, ResourceStore, RevisionStore, RunBindingStore, type ResourceKind, type ResourceRecord } from "../../infra/governance/stores.js";
+import { AuditStore, ResourceStore, RevisionStore, RunBindingStore, type OverridableKind, type ResourceRecord } from "../../infra/governance/stores.js";
 import { PrincipalResolver } from "../auth/principals.js";
 import { ApprovalService } from "./approvals.service.js";
 import { OverridesService } from "./overrides.service.js";
@@ -78,7 +78,7 @@ export class ResourcesController {
     await this.overrides.remove(this.principals.context(req), "research_workspace", id);
   }
 
-  private async list(kind: ResourceKind): Promise<ResourceGovernanceList> {
+  private async list(kind: OverridableKind): Promise<ResourceGovernanceList> {
     const accountId = viewer().accountId;
     const running = await this.runs.running(accountId);
     const pending = (await this.approvals.list(accountId)).filter((a) => a.state === "pending");
@@ -96,7 +96,7 @@ export class ResourcesController {
     return { resources: (await this.resources.list(accountId, kind)).map(summary) };
   }
 
-  private async view(kind: ResourceKind, id: string): Promise<ResourceGovernanceView> {
+  private async view(kind: OverridableKind, id: string): Promise<ResourceGovernanceView> {
     const accountId = viewer().accountId;
     const r = await this.resources.get(accountId, kind, id);
     if (r === null) throw notFound(kind === "workspace" ? "The chat" : "The research workspace");

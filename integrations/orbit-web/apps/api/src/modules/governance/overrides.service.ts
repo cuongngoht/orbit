@@ -11,7 +11,7 @@ import { checkSetOverride, type OverrideView } from "@orbit-web/contracts";
 import { accountAudience, EventBus } from "../../core/events/event-bus.js";
 import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
 import { Db } from "../../infra/db/db.js";
-import { OverrideStore, ResourceStore, sha256, type OverrideRecord, type ResourceKind } from "../../infra/governance/stores.js";
+import { OverrideStore, ResourceStore, sha256, type OverridableKind, type OverrideRecord } from "../../infra/governance/stores.js";
 import { labelOf, type GovernanceContext } from "../auth/principal.js";
 import { AuditService } from "./audit.service.js";
 
@@ -30,7 +30,7 @@ export class OverridesService {
     @Inject(EventBus) private readonly bus: EventBus,
   ) {}
 
-  async get(accountId: string, kind: ResourceKind, resourceId: string): Promise<OverrideView | null> {
+  async get(accountId: string, kind: OverridableKind, resourceId: string): Promise<OverrideView | null> {
     const o = await this.store.get(accountId, kind, resourceId);
     return o === null ? null : overrideViewOf(o);
   }
@@ -39,7 +39,7 @@ export class OverridesService {
     return (await this.store.list(accountId)).map(overrideViewOf);
   }
 
-  async set(ctx: GovernanceContext, kind: ResourceKind, resourceId: string, body: unknown): Promise<OverrideView> {
+  async set(ctx: GovernanceContext, kind: OverridableKind, resourceId: string, body: unknown): Promise<OverrideView> {
     const accountId = this.owner(ctx);
     const req = accepted(checkSetOverride(body));
     const resource = await this.resources.get(accountId, kind, resourceId);
@@ -58,7 +58,7 @@ export class OverridesService {
     return overrideViewOf(record);
   }
 
-  async remove(ctx: GovernanceContext, kind: ResourceKind, resourceId: string): Promise<void> {
+  async remove(ctx: GovernanceContext, kind: OverridableKind, resourceId: string): Promise<void> {
     const accountId = this.owner(ctx);
     await this.db.tx(async () => {
       if (!(await this.store.remove(accountId, kind, resourceId))) throw notFound("The override");

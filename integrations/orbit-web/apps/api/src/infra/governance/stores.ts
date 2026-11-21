@@ -18,7 +18,11 @@ export const chainOf = (accountId: string | null): string => (accountId === null
 
 // ---- what an account's governance points at ---------------------------------------------------------------------------
 
-export type ResourceKind = "workspace" | "research_workspace";
+// `employee`: an AI employee of the office (its desk is what its runs work on; its runs are bound to it).
+export type ResourceKind = "workspace" | "research_workspace" | "employee";
+
+// What an override (a narrowing of the account's policy) can be about: a chat or a research workspace.
+export type OverridableKind = "workspace" | "research_workspace";
 
 export interface ResourceRecord {
   accountId: string;
@@ -316,7 +320,7 @@ export class RevisionStore {
 
 export interface OverrideRecord {
   accountId: string;
-  kind: ResourceKind;
+  kind: OverridableKind;
   resourceId: string;
   document: string;
   digest: string;
@@ -324,7 +328,7 @@ export interface OverrideRecord {
   setBy: string;
 }
 
-const overrideOf = (r: Row): OverrideRecord => ({ accountId: str(r.account_id), kind: str(r.kind) as ResourceKind, resourceId: str(r.resource_id), document: str(r.document), digest: str(r.digest), setAt: str(r.set_at), setBy: str(r.set_by) });
+const overrideOf = (r: Row): OverrideRecord => ({ accountId: str(r.account_id), kind: str(r.kind) as OverridableKind, resourceId: str(r.resource_id), document: str(r.document), digest: str(r.digest), setAt: str(r.set_at), setBy: str(r.set_by) });
 
 export class OverrideStore {
   constructor(private readonly db: Db) {}
@@ -333,7 +337,7 @@ export class OverrideStore {
     return (await this.db.query("SELECT * FROM policy_overrides WHERE account_id = $1 ORDER BY kind, resource_id", [accountId])).map(overrideOf);
   }
 
-  async get(accountId: string, kind: ResourceKind, resourceId: string): Promise<OverrideRecord | null> {
+  async get(accountId: string, kind: OverridableKind, resourceId: string): Promise<OverrideRecord | null> {
     const row = await this.db.one("SELECT * FROM policy_overrides WHERE account_id = $1 AND kind = $2 AND resource_id = $3", [accountId, kind, resourceId]);
     return row === null ? null : overrideOf(row);
   }
@@ -345,7 +349,7 @@ export class OverrideStore {
     );
   }
 
-  async remove(accountId: string, kind: ResourceKind, resourceId: string): Promise<boolean> {
+  async remove(accountId: string, kind: OverridableKind, resourceId: string): Promise<boolean> {
     return (await this.db.run("DELETE FROM policy_overrides WHERE account_id = $1 AND kind = $2 AND resource_id = $3", [accountId, kind, resourceId])) > 0;
   }
 }
@@ -355,7 +359,7 @@ export class OverrideStore {
 export interface RunBinding {
   runId: string;
   accountId: string;
-  kind: "chat" | "research";
+  kind: "chat" | "research" | "assignment";
   // What it works in: a chat (`workspace`), or a research workspace with the research session it answers.
   resourceKind: ResourceKind;
   resourceId: string;

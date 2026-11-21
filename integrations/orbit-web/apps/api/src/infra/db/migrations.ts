@@ -1099,6 +1099,23 @@ END $$;
 CREATE CONSTRAINT TRIGGER assignment_reservation AFTER INSERT OR UPDATE OF state, employee_id ON workforce.assignments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
 CREATE CONSTRAINT TRIGGER reservation_assignment AFTER INSERT OR UPDATE OR DELETE ON workforce.reservations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
 
+-- An ACCEPTED assignment's workspace, published to its employee's desk once (this row is that "once"). The next attempt
+-- of the employee is prepared only after every accepted workspace of its reached the desk, so its next work starts from
+-- what was accepted (its toolbox included).
+CREATE TABLE workforce.desk_publications (
+  account_id uuid NOT NULL,
+  assignment_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  published boolean NOT NULL,
+  desk_version integer NOT NULL,
+  changed jsonb NOT NULL,
+  reason text,
+  at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, assignment_id),
+  FOREIGN KEY (account_id, assignment_id) REFERENCES workforce.assignments (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
+);
+
 -- A RUN: one attempt of an assignment, from the durable intent (requested) to its end. Its lease says which worker
 -- drives it and until when; its fence is the assignment's at the attempt, and a result under an older fence is refused.
 CREATE TABLE workforce.runs (
@@ -1322,6 +1339,10 @@ CREATE TABLE workforce.consumer_inbox (
   consumer_id text NOT NULL,
   event_id uuid NOT NULL REFERENCES workforce.events (id),
   processed_at timestamptz NOT NULL,
+  -- 'done', or 'dead': it failed every retry (its reason kept) and is set aside for a person.
+  outcome text NOT NULL DEFAULT 'done' CHECK (outcome IN ('done', 'dead')),
+  error text,
+  attempts integer NOT NULL DEFAULT 1,
   PRIMARY KEY (consumer_id, event_id)
 );
 

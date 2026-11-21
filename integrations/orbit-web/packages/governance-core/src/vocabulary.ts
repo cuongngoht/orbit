@@ -83,6 +83,18 @@ export const ACTIONS = {
   "governance.policy.modify": { summary: "Change, confirm or publish the account's policy.", subject: "governance", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["account"] },
   "governance.approval.decide": { summary: "Approve or reject a protected action.", subject: "governance", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["approval"] },
   "governance.audit.modify": { summary: "Change or remove an audit record.", subject: "governance", enforcement: "control", sensitive: true, ceiling: NOBODY, fingerprint: ["event"] },
+  // THE VIRTUAL OFFICE (0.8.0): what an account's owner -- or, within its grant, a manager employee -- does with it.
+  "office.department.manage": { summary: "Create, rename, reorder or archive the office's departments.", subject: "governance", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["account"] },
+  "office.roster.manage": { summary: "Move an employee between departments, or change who manages whom.", subject: "governance", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
+  "employee.hire": { summary: "Hire a permanent AI employee, or change one's employment.", subject: "execution", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
+  "employee.hire_assistant": { summary: "Engage a temporary assistant for one mission, within a manager's grant.", subject: "execution", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["mission", "employee"] },
+  "employee.resources.change": { summary: "Change the CPU, memory or storage an employee's attempts may use.", subject: "resources", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
+  "work.assign": { summary: "Give a mission to an employee, or decide on its result.", subject: "execution", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["employee"] },
+  "work.delegate": { summary: "Give a part of an assignment to another employee.", subject: "execution", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["employee"] },
+  "artifact.publish": { summary: "Publish a handoff's files as immutable artifacts of the account.", subject: "resources", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["assignment"] },
+  "notification.send": { summary: "Deliver an accepted result to a recipient.", subject: "resources", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["recipient", "digest"] },
+  "budget.change": { summary: "Change the account's resource budget (never above the operator's authorization).", subject: "resources", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["account"] },
+  "connection.manage": { summary: "Add, change, sign out or remove an AI connection of the account.", subject: "credentials", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["connection"] },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionKind = keyof typeof ACTIONS;

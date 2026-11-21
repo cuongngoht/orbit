@@ -1,5 +1,6 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 import type { AppConfig } from "./config/config.js";
+import { OfficeModule } from "./contexts/office.module.js";
 import { CoreModule } from "./core/core.module.js";
 import { AccessModule } from "./modules/access/access.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
@@ -50,6 +51,8 @@ export class AppModule {
         BrokerModule,
         ImagesModule,
         ResearchModule,
+        // The virtual office (ADR 0067). Its sandbox provider is bound by the composition (sandbox/compose).
+        OfficeModule.forRoot(),
       ],
     };
   }

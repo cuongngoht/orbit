@@ -52,7 +52,7 @@ export class AgentGatewayController {
   @Get("whoami")
   whoami(@Req() req: Request): AgentWhoAmI {
     const { binding } = this.bound(req);
-    return { runId: binding.runId, accountId: binding.accountId, kind: binding.kind, workspaceId: binding.resourceId, agentId: binding.agentId, policyRevision: binding.policyRevision, scope: scopeOf(binding) };
+    return { runId: binding.runId, accountId: binding.accountId, kind: binding.kind as "chat" | "research", workspaceId: binding.resourceId, agentId: binding.agentId, policyRevision: binding.policyRevision, scope: scopeOf(binding) };
   }
 
   @Post("decisions")

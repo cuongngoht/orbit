@@ -105,9 +105,13 @@ describe("a chat with no repository", () => {
     const planCall = fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.equal(after1(planCall.args, "--permission-mode"), "plan");
     fake.on(claudeRun, { spawn: writingRun });
-    await h.send("PATCH", `/api/sessions/${session.id}`, { mode: "autonomous" });
+    // The runner tells the outcome (the event, then the status) a moment before it lets go of the session, so a message
+    // sent at once can still be refused as run_active: send it once the session takes one.
+    await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    assert.equal((await h.send("PATCH", `/api/sessions/${session.id}`, { mode: "autonomous" })).status, 200);
     const next = fake.children.length;
-    await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Carry out the plan above." });
+    const sent = await eventually(() => h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Carry out the plan above." }), (r) => (r.body as { error?: { code?: string } } | null)?.error?.code !== "run_active", 3_000);
+    assert.equal(sent.status, 202, JSON.stringify(sent.body));
     await eventually(async () => fake.children.slice(next).find((c) => claudeRun(c.call.file, c.call.args)), (c) => c !== undefined);
     const runCall = fake.children.slice(next).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.equal(after1(runCall.args, "--permission-mode"), "auto");

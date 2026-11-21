@@ -189,7 +189,8 @@ describe("a chat's run under its account's policy, its agent, and its push (GitH
       seen.policy = await call("GET", `${api}/governance/policy`, undefined, token(c));
       seen.draft = await call("POST", `${api}/governance/revisions`, {}, change);
       seen.approve = await call("POST", `${api}/governance/approvals/apr-any/grant`, { fingerprint: "0".repeat(64) }, change);
-      seen.session = await call("POST", `${api}/claude/session`, undefined, change);
+      // ... and for a session of a person: Orbit's own sign-in, with a password the agent would have to guess.
+      seen.session = await call("POST", `${api}/auth/login`, { username: "octo", password: "guessed-by-the-agent" }, change);
       seen.credential = await call("POST", `${gw}/decisions`, { action: "credential.read_raw", resource: "github" }, token(c));
       // The work, committed, and its push asked for.
       writeFileSync(join(c.cwd, "sum.mjs"), "export const sum = (a, b) => a + b;\n");
@@ -209,7 +210,7 @@ describe("a chat's run under its account's policy, its agent, and its push (GitH
     const who = seen.whoami?.body as AgentWhoAmI;
     assert.deepEqual(who, { runId: who.runId, accountId: h.accountId, kind: "chat", workspaceId: session.id, agentId: "claude-code", policyRevision: optional.id, scope: "ACCOUNT_WORKSPACE" });
     for (const probe of ["switchWithToken", "policy", "draft", "approve", "session"]) assert.deepEqual([seen[probe]?.status, errorOf(seen[probe])], [403, "agent_outside_gateway"], probe);
-    assert.deepEqual([seen.switchWithout?.status, errorOf(seen.switchWithout)], [401, SIGN_IN_REQUIRED], "the CLI being signed in makes no request an owner's");
+    assert.deepEqual([seen.switchWithout?.status, errorOf(seen.switchWithout)], [401, SIGN_IN_REQUIRED], "no request of the agent's is an owner's");
     assert.equal((seen.credential?.body as { verdict: string }).verdict, "deny");
     pushed = seen.push?.body as AgentPushResult;
     assert.equal(seen.push?.status, 200, JSON.stringify(seen.push?.body));

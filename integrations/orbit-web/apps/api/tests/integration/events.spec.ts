@@ -24,7 +24,7 @@ before(async () => {
   db = new Db({ url: t.url, poolMax: 10, connectTimeoutMs: 5_000, statementTimeoutMs: 30_000, searchPath: SEARCH_PATH });
   await migrate(db);
   accountId = randomUUID();
-  await db.query("INSERT INTO accounts (id, display_name, created_at) VALUES ($1, '', now())", [accountId]);
+  await db.query("INSERT INTO accounts (id, display_name, created_at, updated_at) VALUES ($1, '', now(), now())", [accountId]);
 });
 
 after(async () => {

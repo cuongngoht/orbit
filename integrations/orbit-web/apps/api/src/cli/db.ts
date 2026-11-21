@@ -7,7 +7,7 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js verify    # exit 1 unless it is ready
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> [--with-data]
 //
-// RESET drops every schema of Orbit Web's (app, research, governance, workforce and the migrator's own, orbit) -- every
+// RESET drops every schema of Orbit Web's (each one its migrations create, and the migrator's own, orbit) -- every
 // account, user, chat, research record, AI connection and audit record -- and migrates again: an empty database at this
 // build's schema. It refuses unless --confirm names the database's own name. --with-data also empties Orbit Web's own
 // rooms on disk (images and run logs, sessions, workspaces, repositories' copies, research objects, the AI connections'
@@ -19,13 +19,14 @@ import { join } from "node:path";
 import { SEARCH_PATH } from "../core/core.module.js";
 import { ConfigError, loadConfig, type DataDirs } from "../config/config.js";
 import { Db } from "../infra/db/db.js";
-import { migrate, schemaState, verifySchema } from "../infra/db/migrate.js";
+import { migrate, ownedSchemas, schemaState, verifySchema } from "../infra/db/migrate.js";
 
-// What a reset drops: Orbit Web's schemas (pgvector's `public` stays: the extension is the database's).
-export const RESET_SCHEMAS = ["app", "research", "governance", "workforce", "orbit"] as const;
+// What a reset drops: every schema Orbit Web owns, as its migrations create them (pgvector's `public` stays: the
+// extension is the database's).
+const RESET_SCHEMAS = ownedSchemas();
 
 // The rooms on disk that hold what Orbit Web made (never the CLIs' own sign-ins of GitHub and Azure, nor Orbit's store).
-export const RESET_ROOMS: readonly (keyof DataDirs)[] = ["app", "sessions", "workspaces", "repos", "research", "connections"];
+const RESET_ROOMS: readonly (keyof DataDirs)[] = ["app", "sessions", "workspaces", "repos", "research", "connections"];
 
 function say(line: string): void {
   process.stdout.write(`${line}\n`);

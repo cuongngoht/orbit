@@ -28,7 +28,7 @@ describe("research's records in PostgreSQL", () => {
   const alice = randomUUID();
   const bob = randomUUID();
 
-  const account = async (id: string) => db.query("INSERT INTO app.accounts (id, display_name, created_at) VALUES ($1, '', $2)", [id, new Date().toISOString()]);
+  const account = async (id: string) => db.query("INSERT INTO app.accounts (id, display_name, created_at, updated_at) VALUES ($1, '', $2, $2)", [id, new Date().toISOString()]);
   const workspace = (accountId: string, name: string) => workspaces.create({ id: randomUUID(), accountId, ownerEmail: `${name}@example.com`, name, description: "" });
   const indexed = async (w: WorkspaceRecord, title: string, chunks: { text: string; section?: string }[]): Promise<{ source: SourceRecord; revision: RevisionRecord }> => {
     const source = await sources.create({ id: randomUUID(), workspaceId: w.id, kind: "text", title, origin: null, state: "queued", createdBy: "x@example.com" });

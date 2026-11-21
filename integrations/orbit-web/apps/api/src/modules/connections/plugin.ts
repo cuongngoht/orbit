@@ -35,15 +35,19 @@ async function filesOf(root: string, rel: string, out: string[]): Promise<void> 
   }
 }
 
-async function readInfo(dir: string): Promise<PluginInfo> {
-  let version: string | null = null;
+// The plugin's manifest when it is Orbit's (null: no manifest, an unreadable one, or another plugin's).
+async function orbitManifest(dir: string): Promise<{ version: string | null } | null> {
   try {
     const manifest = JSON.parse(await readFile(join(dir, ".claude-plugin", "plugin.json"), "utf8")) as { name?: unknown; version?: unknown };
-    if (manifest.name !== "orbit") return { installed: false, version: null, digest: null };
-    version = typeof manifest.version === "string" ? manifest.version : null;
+    return manifest.name === "orbit" ? { version: typeof manifest.version === "string" ? manifest.version : null } : null;
   } catch {
-    return { installed: false, version: null, digest: null };
+    return null;
   }
+}
+
+async function readInfo(dir: string): Promise<PluginInfo> {
+  const manifest = await orbitManifest(dir);
+  if (manifest === null) return { installed: false, version: null, digest: null };
   const files: string[] = [];
   const top = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const part of PARTS) {
@@ -58,7 +62,7 @@ async function readInfo(dir: string): Promise<PluginInfo> {
     if (bytes === null) continue;
     all.update(`${path}\0${createHash("sha256").update(bytes).digest("hex")}\n`);
   }
-  return { installed: true, version, digest: all.digest("hex") };
+  return { installed: true, version: manifest.version, digest: all.digest("hex") };
 }
 
 const known = new Map<string, Promise<PluginInfo>>();

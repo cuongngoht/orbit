@@ -14,6 +14,17 @@ const LOCK_KEY = 0x0b17;
 
 const checksum = (m: Migration): string => createHash("sha256").update(m.sql).digest("hex");
 
+// The migrator's own schema (its record of what was applied).
+export const MIGRATOR_SCHEMA = "orbit";
+
+// The schemas Orbit Web owns: every one a migration of this build creates, and the migrator's own -- read from the
+// migrations themselves, so a schema a later migration adds is one too, with no second list to keep. (pgvector's
+// `public` is the database's, never Orbit Web's.)
+export function ownedSchemas(migrations: readonly Migration[] = MIGRATIONS): string[] {
+  const created = migrations.flatMap((m) => [...m.sql.matchAll(/^\s*CREATE SCHEMA (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)\s*;/gim)].map((x) => (x[1] as string).toLowerCase()));
+  return [...new Set([...created, MIGRATOR_SCHEMA])];
+}
+
 export interface SchemaState {
   // The highest migration applied, and the highest this build knows.
   version: number;
@@ -44,7 +55,7 @@ export async function ensureVector(db: Db): Promise<string> {
 }
 
 async function applied(db: Db): Promise<Map<number, string>> {
-  await db.exec("CREATE SCHEMA IF NOT EXISTS orbit; CREATE TABLE IF NOT EXISTS orbit.schema_migrations (version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz NOT NULL)");
+  await db.exec(`CREATE SCHEMA IF NOT EXISTS ${MIGRATOR_SCHEMA}; CREATE TABLE IF NOT EXISTS ${MIGRATOR_SCHEMA}.schema_migrations (version integer PRIMARY KEY, name text NOT NULL, checksum text NOT NULL, applied_at timestamptz NOT NULL)`);
   const rows = await db.query("SELECT version, checksum FROM orbit.schema_migrations ORDER BY version");
   return new Map(rows.map((r) => [Number(r.version), String(r.checksum)]));
 }

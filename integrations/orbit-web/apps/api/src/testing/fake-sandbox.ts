@@ -210,6 +210,9 @@ export interface ToolCaller {
   call(name: string, args: Record<string, unknown>): Promise<{ text: string; isError: boolean }>;
   prompt: string;
   args: string[];
+  // The bridge's connection as the model plane was given it (a test may knock on other doors with the run's token).
+  bridge: { url: string; token: string };
+  child: FakeChild;
 }
 
 // What the scripted CLI does once started: the tool calls of one attempt (through Orbit Web's real tool endpoint).
@@ -228,6 +231,8 @@ function bridgeOf(args: string[]): { url: string; token: string } {
 export function scriptedEmployee(script: EmployeeScript, o: { init?: (tools: string[]) => Record<string, unknown>; exitCode?: number } = {}): SpawnScript {
   return (child: FakeChild, call: Call) => {
     let prompt = "";
+    // Like a real CLI: a signal ends it (what it had not done yet is never done).
+    child.onSignal((signal) => child.exit(null, signal));
     child.onInput((t) => (prompt += t));
     child.onInputClosed(() => {
       void (async () => {
@@ -239,6 +244,8 @@ export function scriptedEmployee(script: EmployeeScript, o: { init?: (tools: str
         const caller: ToolCaller = {
           prompt,
           args: call.args,
+          bridge,
+          child,
           call: async (name, args) => {
             n += 1;
             child.line({ type: "assistant", message: { content: [{ type: "tool_use", id: `t${n}`, name: `mcp__orbit_tools__${name}`, input: args }] } });

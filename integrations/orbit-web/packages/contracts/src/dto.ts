@@ -3,6 +3,7 @@ import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
 import type { AnySessionEvent } from "./events/envelope.js";
 import type { ImageRef } from "./images.js";
+import type { RuntimeInstallation } from "./ai-connections.js";
 
 export interface ApiErrorBody {
   error: {
@@ -70,73 +71,6 @@ export interface LoginSnapshot {
   updatedAt: string;
 }
 
-// The Claude account Orbit Web is signed in with: the identity of this Orbit Web, as `claude auth status` says it.
-export interface ClaudeAccount {
-  email: string | null;
-  organization: string | null;
-  // The CLI's own word for the subscription (e.g. "pro", "max", "team"), when it says one.
-  plan: string | null;
-}
-
-// THIS BROWSER's session, issued when this browser finished a Claude sign-in: the internal account of the verified Claude
-// identity, of which the person is the owner. `csrfToken` goes with every change this browser makes (CSRF_HEADER).
-export interface BrowserSession {
-  accountId: string;
-  // The account's display name (a business name, editable; empty until somebody sets one).
-  displayName: string;
-  email: string;
-  csrfToken: string;
-  expiresAt: string;
-}
-
-// The Claude sign-in IS the sign-in of Orbit Web, and it is a BROWSER's: every API call but the health check, the access
-// token and the Claude sign-in itself is refused (401 claude_sign_in_required) until THIS browser finished a sign-in with a
-// Claude account (`authMethod: "claude.ai"`) -- the runtime's CLI being signed in already is not enough: a browser that
-// did not finish the sign-in itself is asked to. An API key or a token variable the container was started with is not an
-// account, and is never given to Claude Code.
-export interface ClaudeStatus {
-  // `connected` when this browser holds a valid session; otherwise what keeps it out.
-  state: ConnectionState;
-  // What the runtime's Claude CLI says about its own sign-in (never which account, to a browser without a session).
-  runtime: ConnectionState;
-  // The CLI's own word for how it is signed in (e.g. "claude.ai"), when it says one.
-  method: string | null;
-  // The account of this browser's session (null without one).
-  account: ClaudeAccount | null;
-  session: BrowserSession | null;
-  detail: string | null;
-  // This browser's own sign-in flow (another browser's is never shown).
-  flow: LoginSnapshot;
-}
-
-// A browser session of the account, as its owner sees them (Settings → Account).
-export interface BrowserSessionView {
-  id: string;
-  current: boolean;
-  createdAt: string;
-  lastSeenAt: string;
-  expiresAt: string;
-  userAgent: string | null;
-}
-
-export interface AccountView {
-  id: string;
-  displayName: string;
-  email: string;
-  organization: string | null;
-  plan: string | null;
-  createdAt: string;
-  sessions: BrowserSessionView[];
-}
-
-export interface UpdateAccountRequest {
-  displayName: string;
-}
-
-export interface ClaudeLoginCodeRequest {
-  code: string;
-}
-
 export interface GitHubAccount {
   login: string;
   name: string | null;
@@ -176,11 +110,12 @@ export interface AzureLoginRequest {
   tenant?: string;
 }
 
-// GET /api/setup/status: everything Settings → System shows. The chat never waits on it: once signed in to Claude, the
-// chat is open; GitHub and Azure are connectors a repository picker uses.
+// GET /api/setup/status: everything Settings → System shows. The chat never waits on it; GitHub and Azure are connectors
+// a repository picker uses, and the AI CLIs installed here are listed as running each says (the account's own
+// connections of them are GET /api/connections).
 export interface SetupStatus {
   versions: BuildVersions;
-  claude: ClaudeStatus;
+  runtimes: RuntimeInstallation[];
   github: GitHubStatus;
   azure: AzureStatus;
   health: HealthReport;
@@ -465,9 +400,10 @@ export interface AccessRequest {
   token: string;
 }
 
-// SHARING BETWEEN CLAUDE ACCOUNTS. A chat, or a research workspace, is its owner's alone until the owner names the
-// emails of other Claude accounts that may open it too: they read it and carry on with it as themselves; only the owner
-// deletes it, shares it on, or makes a public link of it.
+// SHARING BETWEEN ACCOUNTS. A chat, or a research workspace, is its owner's alone until the owner names other users of
+// this deployment who may open it too -- by username, or by a VERIFIED email (identity.ts, checkAccessPeople): they read
+// it and carry on with it as themselves; only the owner deletes it, shares it on, or makes a public link of it. An
+// entry names the user by their share address (identity.ts, shareAddressOf).
 export interface AccessEntry {
   email: string;
   grantedBy: string;
@@ -481,7 +417,8 @@ export interface AccessList {
   people: AccessEntry[];
 }
 
-// PUT …/access: the whole list of emails it is shared with (an empty list: shared with nobody).
+// PUT …/access: the whole list of people it is shared with -- usernames, or verified emails -- (an empty list: shared
+// with nobody).
 export interface UpdateAccessRequest {
   people: string[];
 }

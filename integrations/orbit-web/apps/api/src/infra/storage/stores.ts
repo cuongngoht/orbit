@@ -17,6 +17,7 @@ import type {
   SessionStatus,
   SharedChat,
 } from "@orbit-web/contracts";
+import { SYSTEM_ACCOUNT_ID } from "../accounts/stores.js";
 import { Db, jsonParam, type Row } from "../db/db.js";
 
 const str = (v: unknown): string => String(v);
@@ -25,21 +26,27 @@ const num = (v: unknown): number => Number(v);
 const textOrNull = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
 const intOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
-// What the deployment itself keeps (not any account's): one value per key.
+// What is the DEPLOYMENT's (not any customer account's): one value per key, kept as a setting of the reserved SYSTEM
+// account (there is no table of settings beside the accounts').
 export class SettingsStore {
   constructor(private readonly db: Db) {}
 
   async get<T>(key: string): Promise<T | undefined> {
-    const row = await this.db.one("SELECT value FROM settings WHERE key = $1", [key]);
+    const row = await this.db.one("SELECT value FROM account_settings WHERE account_id = $1 AND key = $2", [SYSTEM_ACCOUNT_ID, key]);
     return row === null ? undefined : (row.value as T);
   }
 
   async set(key: string, value: unknown): Promise<void> {
-    await this.db.query("INSERT INTO settings (key, value, updated_at) VALUES ($1, $2::jsonb, $3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [key, jsonParam(value), new Date().toISOString()]);
+    await this.db.query("INSERT INTO account_settings (account_id, key, value, updated_at) VALUES ($1, $2, $3::jsonb, $4) ON CONFLICT (account_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", [
+      SYSTEM_ACCOUNT_ID,
+      key,
+      jsonParam(value),
+      new Date().toISOString(),
+    ]);
   }
 
   async delete(key: string): Promise<void> {
-    await this.db.query("DELETE FROM settings WHERE key = $1", [key]);
+    await this.db.query("DELETE FROM account_settings WHERE account_id = $1 AND key = $2", [SYSTEM_ACCOUNT_ID, key]);
   }
 }
 

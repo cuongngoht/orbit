@@ -5,10 +5,10 @@
 // and stopping sharing ends the link at once.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { CLAUDE_SIGN_IN_REQUIRED, SHARE_TOKEN, type SessionDetail, type SessionSummary, type SharedChat, type ShareInfo, type ShareState } from "@orbit-web/contracts";
+import { SIGN_IN_REQUIRED, SHARE_TOKEN, type SessionDetail, type SessionSummary, type SharedChat, type ShareInfo, type ShareState } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { browserAt, claudeRun, eventually, signedIn, signInBrowser, startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
+import { browserAt, claudeRun, eventually, signedIn, signInBrowser, startHarness, TEST_PASSWORD, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
 
 const ACCESS = "a-long-and-random-access-token";
 const SECRET = `ghp_${"A".repeat(36)}`;
@@ -19,7 +19,7 @@ const errorCode = (r: Reply): string | undefined => (r.body as { error?: { code?
 async function tokenBrowser(h: Harness, token: string): Promise<Browser> {
   const jar: Record<string, string> = {};
   assert.equal((await browserAt(h.url, jar).send("POST", "/api/access", { token })).status, 204);
-  return signInBrowser(h.url, jar);
+  return signInBrowser(h.url, "octo", TEST_PASSWORD, jar);
 }
 
 // Claude says something, runs a command whose output holds a token, and ends.
@@ -58,7 +58,7 @@ describe("sharing a chat", () => {
     assert.equal((await h.anonymous.get(`/api/sessions/${session.id}/share`)).status, 401, "managing it needs the access token");
     const tokenOnly = await h.anonymous.get(`/api/sessions/${session.id}/share`, auth);
     assert.equal(tokenOnly.status, 401, "and a browser's own Claude sign-in: the access token alone is nobody");
-    assert.equal(errorCode(tokenOnly), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(errorCode(tokenOnly), SIGN_IN_REQUIRED);
   });
 
   test("the link reads a snapshot of the conversation without the access token, the tools by their title only, every secret masked", async () => {

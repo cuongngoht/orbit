@@ -1,4 +1,4 @@
-// THE MODEL CATALOG of the signed-in Claude account, as the account's own Claude CLI says it -- pure: the probe's
+// THE MODEL CATALOG of a Claude Code connection, as its own CLI says it (run against that connection's config home) -- pure: the probe's
 // command line, and its answer read into Orbit Web's catalog. The CLI is asked through its control protocol (the one the
 // Agent SDK speaks): one `initialize` request on stdin, and its `control_response` lists the models this account may use,
 // each with the effort levels it takes and whether auto mode is available with it. Nothing else is sent, so no model is

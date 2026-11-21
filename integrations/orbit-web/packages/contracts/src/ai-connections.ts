@@ -124,6 +124,8 @@ export interface RuntimeConnection {
   auth: AuthState;
   // Why it is not connected, in words a person can act on.
   reason: string | null;
+  // The same as a code a page can act on (CONNECTION_REASONS, e.g. `identity_already_connected`), when there is one.
+  reasonCode: string | null;
   // The identity the CLI says it is signed in as (an email, an organization), when it says.
   identity: string | null;
   checkedAt: string | null;
@@ -178,7 +180,33 @@ export const CONNECTION_ERRORS = {
   connectionInUse: "connection_in_use",
   connectionUnavailable: "connection_unavailable",
   connectionRequired: "connection_required",
+  // The Orbit plugin's digest is not the one the page showed (it was upgraded in between): read it again.
+  pluginChanged: "plugin_changed",
+  // The Orbit plugin is offered on Claude Code connections only.
+  pluginNotOffered: "plugin_not_offered",
 } as const;
+
+// Why a connection is not connected, as a code (RuntimeConnection.reasonCode).
+//   identity_already_connected  the identity its CLI names is connected to another Orbit account (or another connection
+//                               of this one): one provider identity, one account
+//   identity_changed            its CLI names another identity than the one this connection was linked to
+//   login_ended                 the login it had is gone (expired, revoked, signed out elsewhere)
+//   not_installed               the runtime's CLI is not on this server
+//   not_verified                a method nothing here has verified (a cloud connection)
+export const CONNECTION_REASONS = ["identity_already_connected", "identity_changed", "login_ended", "not_installed", "not_verified"] as const;
+export type ConnectionReason = (typeof CONNECTION_REASONS)[number];
+
+// What moved on the account's AI connections (the app stream's `connections.changed`): a page that shows them reads
+// GET /api/connections again. Ids only.
+export const CONNECTION_CHANGES = ["created", "updated", "checked", "disconnected", "removed", "plugins"] as const;
+export type ConnectionChange = (typeof CONNECTION_CHANGES)[number];
+
+export interface ConnectionsChangedData {
+  connectionId: string;
+  runtime: RuntimeKind;
+  change: ConnectionChange;
+  auth: AuthState;
+}
 
 const API_KEY = /^[A-Za-z0-9._\-:/+=]{16,512}$/;
 const DIGEST = /^[0-9a-f]{64}$/;

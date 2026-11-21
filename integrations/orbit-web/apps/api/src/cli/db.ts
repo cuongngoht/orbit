@@ -1,29 +1,31 @@
-// THE DATABASE FROM A TERMINAL: what the control plane's database is, and bringing it to this build's schema without
-// starting Orbit Web (Orbit Web also migrates by itself at every start). It reads the same ORBIT_WEB_DATABASE_URL (or
-// ORBIT_WEB_DATABASE_URL_FILE) as Orbit Web and never prints it.
+// THE DATABASE FROM A TERMINAL: what the control plane's database is, bringing it to this build's schema without
+// starting Orbit Web (Orbit Web also migrates by itself at every start), and starting it over. It reads the same
+// ORBIT_WEB_DATABASE_URL (or ORBIT_WEB_DATABASE_URL_FILE) as Orbit Web and never prints it.
 //
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js status    # schema version, pgvector
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js migrate   # apply what is missing
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js verify    # exit 1 unless it is ready
-//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database> [--with-data]
-//       a FRESH START: drops every Orbit Web schema of that database and makes the schema again; --with-data also
-//       empties Orbit Web's own rooms on disk (chats, workspaces, research objects, connections, desks, artifacts).
-//       0.8.0 is the initial schema: a database a development build made is refused at start and reset this way (or
-//       with `docker compose down -v`).
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> [--with-data]
+//
+// RESET drops every schema of Orbit Web's (app, research, governance, workforce and the migrator's own, orbit) -- every
+// account, user, chat, research record, AI connection and audit record -- and migrates again: an empty database at this
+// build's schema. It refuses unless --confirm names the database's own name. --with-data also empties Orbit Web's own
+// rooms on disk (images and run logs, sessions, workspaces, repositories' copies, research objects, the AI connections'
+// homes and keys, the office's desks, workspaces and artifacts). Stop Orbit Web first. With Docker, `docker compose down -v` is the same, and more.
 //
 // Exit codes: 0 done / ready, 1 not ready or refused (said why), 2 a usage or configuration error.
 import { readFileSync } from "node:fs";
 import { SEARCH_PATH } from "../core/core.module.js";
-import { ConfigError } from "../config/config.js";
+import { ConfigError, loadConfig } from "../config/config.js";
 import { Db } from "../infra/db/db.js";
-import { loadConfig } from "../config/config.js";
-import { ensureDataDirs } from "../config/data-dirs.js";
-import { migrate, schemaState, verifySchema } from "../infra/db/migrate.js";
+import { migrate, schemaState, SchemaError, verifySchema } from "../infra/db/migrate.js";
 import { emptyRooms, resetSchemas } from "../infra/db/reset.js";
 
 function say(line: string): void {
   process.stdout.write(`${line}\n`);
 }
+
+const opt = (name: string): string | null => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 
 // The URL Orbit Web reads: ORBIT_WEB_DATABASE_URL, or the file ORBIT_WEB_DATABASE_URL_FILE names.
 function url(): string {
@@ -33,27 +35,33 @@ function url(): string {
   return direct;
 }
 
+async function reset(db: Db): Promise<number> {
+  let name: string;
+  try {
+    name = (await resetSchemas(db, opt("confirm"))).database;
+  } catch (err) {
+    if (!(err instanceof SchemaError)) throw err;
+    say(`reset refused: it drops every account, user, chat, research record, AI connection, office record and audit record. ${err.message} (Orbit Web stopped first).`);
+    return 1;
+  }
+  const s = await migrate(db);
+  say(`reset: the database "${name}" was emptied and migrated again: schema version ${s.version}, pgvector ${s.vector ?? "missing"}.`);
+  if (process.argv.includes("--with-data")) {
+    const emptied = emptyRooms(loadConfig(process.env).data);
+    say(`reset: Orbit Web's rooms on disk were emptied (${emptied.join(", ")}).`);
+  }
+  return 0;
+}
+
 async function main(): Promise<number> {
   const command = process.argv[2] ?? "status";
   if (!["status", "migrate", "verify", "reset"].includes(command)) {
-    say("usage: db.js status | migrate | verify | reset --confirm=<database> [--with-data]");
+    say("usage: db.js status | migrate | verify | reset --confirm=<database name> [--with-data]");
     return 2;
   }
   const db = new Db({ url: url(), poolMax: 2, connectTimeoutMs: 10_000, statementTimeoutMs: 300_000, searchPath: SEARCH_PATH, applicationName: "orbit-web-cli" });
   try {
-    if (command === "reset") {
-      const confirm = process.argv.find((a) => a.startsWith("--confirm="))?.slice("--confirm=".length) ?? null;
-      const { database } = await resetSchemas(db, confirm);
-      say(`reset: every Orbit Web schema of "${database}" was dropped`);
-      if (process.argv.includes("--with-data")) {
-        const config = loadConfig(process.env);
-        say(`emptied: ${emptyRooms(config.data).join(", ")}`);
-        ensureDataDirs(config.data);
-      }
-      const s = await migrate(db);
-      say(`migrated: schema version ${s.version} of ${s.latest}`);
-      return 0;
-    }
+    if (command === "reset") return await reset(db);
     if (command === "migrate") {
       const s = await migrate(db);
       say(`migrated: schema version ${s.version} of ${s.latest}, pgvector ${s.vector ?? "missing"}, PostgreSQL ${s.server}`);

@@ -1,7 +1,8 @@
-// WHOSE A CHAT IS. A chat belongs to the internal ACCOUNT that started it -- the account of the Claude identity whose
-// browser session made the request -- and that account alone owns it. Its owner may share it with other accounts by
-// the email of their Claude identity: they open it and carry on with it as themselves (`shared`), and nothing else of
-// the owner's -- governance above all -- opens to them. Anybody else is told the chat does not exist (404).
+// WHOSE A CHAT IS. A chat belongs to the ACCOUNT that started it -- the account of the user whose browser session made
+// the request -- and that account alone owns it. Its owner may share it with other users of this deployment, kept by
+// their share address (a verified email, or `<username>@users.orbit.local`): they open it and carry on with it as
+// themselves (`shared`), and nothing else of the owner's -- governance above all -- opens to them. Anybody else is told
+// the chat does not exist (404).
 //
 // Who is asking is the request's own browser session (common/request-scope.ts), never anything the request says.
 //
@@ -15,14 +16,6 @@ import { accountAudience, type Audience } from "../../core/events/event-bus.js";
 import { SessionAccessStore, SessionStore, type SessionRecord, type Viewer } from "../../infra/storage/stores.js";
 
 export type Need = "open" | "owner";
-
-export const NO_EMAIL = "This Claude account's CLI names no email, so nothing here can be its own: sign in with a Claude account that has one.";
-
-// A request only a signed-in owner (with an identity's email) can make.
-export function requireIdentity<T>(identity: T | null): T {
-  if (identity === null) throw forbidden("account_without_email", NO_EMAIL);
-  return identity;
-}
 
 // No account's holder has this id: an audience of the people a chat is shared with, and of nobody's account.
 const NO_ACCOUNT = "";
@@ -62,7 +55,7 @@ export class OwnershipService {
     return { access: (await this.levelOf(s, viewer)) ?? "shared", owner: s.ownerEmail, people: await this.access.list(s.id) };
   }
 
-  // The owner names everyone it is shared with (its own email is never on the list: it owns it).
+  // The owner names everyone it is shared with, by share address (its own is never on the list: it owns it).
   async share(s: SessionRecord, people: readonly string[], viewer: Viewer & { email: string }): Promise<AccessList> {
     await this.access.set(
       s,

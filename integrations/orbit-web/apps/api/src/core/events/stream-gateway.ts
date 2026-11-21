@@ -9,8 +9,8 @@
 //                    is the deployment's), and to no other: each event names its audience when it is published, so
 //                    nothing is looked up while it is delivered.
 //
-// When a browser session ends -- signed out, revoked, or its account no longer the runtime's -- every stream it opened
-// is closed at once (closeSession, closeAccount): a page of account A never goes on hearing anything after the switch.
+// When a browser session ends -- signed out, signed out everywhere, revoked, its password reset -- every stream it opened
+// is closed at once (closeSession, closeAccount): a page never goes on hearing anything after its session ended.
 import { Inject, Injectable } from "@nestjs/common";
 import type { AnyAppStreamEvent, AnySessionEvent } from "@orbit-web/contracts";
 import type { Request, Response } from "express";

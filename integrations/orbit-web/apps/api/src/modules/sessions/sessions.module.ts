@@ -4,7 +4,7 @@ import type { Request } from "express";
 import { AccessModule } from "../access/access.module.js";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
-import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
+import { ConnectionsModule } from "../connections/connections.module.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
 import { GovernanceModule } from "../governance/governance.module.js";
@@ -68,7 +68,7 @@ export class SessionsController {
 }
 
 @Module({
-  imports: [AccessModule, ClaudeAuthModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule, ImagesModule],
+  imports: [AccessModule, ConnectionsModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule, ImagesModule],
   providers: [SessionsService, WorkspaceService, BranchService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],

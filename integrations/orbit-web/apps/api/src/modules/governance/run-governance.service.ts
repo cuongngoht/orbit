@@ -26,7 +26,7 @@ import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance
 import { egressProxyEnv } from "../../infra/process/env.js";
 import type { SessionRecord } from "../../infra/storage/stores.js";
 import { contextOf, labelOf, type GovernanceContext, type Principal } from "../auth/principal.js";
-import type { RunConnector } from "../claude-auth/claude-connectors.service.js";
+import type { RunConnector } from "../connections/claude-connectors.service.js";
 import { ToolchainService } from "../health/toolchain.service.js";
 import { AuditService } from "./audit.service.js";
 import { IsolationService } from "./isolation.service.js";

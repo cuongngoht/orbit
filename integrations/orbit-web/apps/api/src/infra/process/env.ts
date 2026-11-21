@@ -5,9 +5,12 @@
 //   - Claude Code is given no GH_* / GITHUB_* name, so the coding agent cannot find GitHub's credential -- unless a
 //     person lets it use GitHub CLI's sign-in (Settings), and then only where gh keeps it (never a token variable);
 //   - the CLI's own credential names (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN) are NEVER
-//     passed: Claude Code would use one before the Claude account signed in here, and that account is the sign-in of
-//     Orbit Web itself (the Claude sign-in gate). A container started with one is told it is ignored;
+//     passed from the server's environment: each Claude Code run belongs to one AI connection of one account, and finds
+//     that connection's login in that connection's own config home (CLAUDE_CONFIG_DIR) -- an API-key connection is
+//     handed its own key, from the credential store, by whoever starts it (modules/connections). A container started
+//     with one of those variables gives it to nobody;
 //   - Claude Code's telemetry (OTEL_*) reaches Claude Code alone, and only once the container names a collector.
+import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 
 const PASS_THROUGH = [
@@ -147,8 +150,21 @@ export function telemetryEnv(config: AppConfig): Record<string, string> {
   return Object.keys(set).some((name) => COLLECTOR.test(name)) ? { ...TELEMETRY_DEFAULTS, ...set } : {};
 }
 
-// The Claude credential variables the container was started with, by name: ignored, and said so.
+// The Claude credential variables the container was started with, by name: given to nobody, and said so.
 export const ignoredClaudeCredentials = (config: AppConfig): string[] => Object.keys(pick(config.sourceEnv, CLAUDE_CREDENTIAL_NAMES));
+
+// A config directory of Claude Code that belongs to NO connection and holds no login: what a question of the binary
+// itself is asked with (its version, its flags, auto mode's defaults), so no account's home is read for it.
+export const neutralClaudeDir = (config: AppConfig): string => join(config.data.home, ".claude");
+
+// Codex and Antigravity, for one connection's home (Codex: CODEX_HOME; Antigravity keeps its settings under HOME).
+export function codexEnv(config: AppConfig, codexHome: string): Record<string, string> {
+  return { ...baseEnv(config), CODEX_HOME: codexHome, BROWSER: "true" };
+}
+
+export function agyEnv(config: AppConfig, home: string): Record<string, string> {
+  return { ...baseEnv(config, home, true), BROWSER: "true" };
+}
 
 // GitHub CLI's sign-in, for a Claude Code a person let use it: gh finds its configuration, never prompts, and git asks gh
 // for the credential of github.com -- and of github.com alone -- as a helper named in git's environment (no git config
@@ -167,12 +183,14 @@ function githubForClaude(config: AppConfig): Record<string, string> {
   };
 }
 
-// `azure` / `github`: a person let Claude Code use that CLI's sign-in, so its `az` finds the profile, or its `gh` and
-// `git push` find GitHub's. Otherwise it is not told where the sign-in is (and its tools are refused the directory).
-export function claudeEnv(config: AppConfig, o: { azure?: boolean; github?: boolean } = {}): Record<string, string> {
+// A Claude Code process of ONE connection: `configDir` is that connection's own config home (CLAUDE_CONFIG_DIR) -- where
+// its login is, its sessions and the plugins installed for it. `azure` / `github`: a person let Claude Code use that
+// CLI's sign-in, so its `az` finds the profile, or its `gh` and `git push` find GitHub's. Otherwise it is not told where
+// the sign-in is (and its tools are refused the directory).
+export function claudeEnv(config: AppConfig, configDir: string, o: { azure?: boolean; github?: boolean } = {}): Record<string, string> {
   return {
     ...baseEnv(config),
-    CLAUDE_CONFIG_DIR: config.data.claude,
+    CLAUDE_CONFIG_DIR: configDir,
     ORBIT_STORE_DIR: config.data.orbit,
     DISABLE_AUTOUPDATER: "1",
     BROWSER: "true",

@@ -5,7 +5,7 @@ import { accessSync, chmodSync, constants, mkdirSync, rmSync, writeFileSync } fr
 import { join } from "node:path";
 import type { DataDirs } from "./config.js";
 
-export const PRIVATE_DIRS: (keyof DataDirs)[] = ["app", "claude", "github", "azure", "orbit", "sessions", "workspaces", "home", "repos", "control", "research"];
+export const PRIVATE_DIRS: (keyof DataDirs)[] = ["app", "connections", "github", "azure", "orbit", "sessions", "workspaces", "home", "repos", "control", "research"];
 
 export function ensureDataDirs(data: DataDirs): void {
   mkdirSync(data.root, { recursive: true, mode: 0o700 });
@@ -17,8 +17,10 @@ export function ensureDataDirs(data: DataDirs): void {
       // A directory another user owns keeps its mode; the storage check reports whether it is writable.
     }
   }
-  // The control plane's own HOME (governed deployment).
+  // The control plane's own HOME (governed deployment), and its credential store (an AI connection's API key, one file
+  // each, 0600: never in a connection's home, never mounted where an agent runs).
   mkdirSync(join(data.control, "home"), { recursive: true, mode: 0o700 });
+  mkdirSync(join(data.control, "credentials"), { recursive: true, mode: 0o700 });
 }
 
 // Whether every directory exists and can be written: a probe file is written and removed in each. The probe's name is

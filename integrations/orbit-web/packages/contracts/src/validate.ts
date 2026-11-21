@@ -18,7 +18,6 @@ import { THEMES, type ThemePreference } from "./status.js";
 import type {
   AzureLoginRequest,
   ChangeBranchRequest,
-  ClaudeLoginCodeRequest,
   ShareRequest,
   CreateSessionRequest,
   RepositoryRef,
@@ -230,35 +229,6 @@ export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsReques
     ...(body.azureForClaude !== undefined ? { azureForClaude: body.azureForClaude as boolean } : {}),
     ...(body.theme !== undefined ? { theme: body.theme as ThemePreference } : {}),
   }));
-}
-
-// POST /api/claude/login takes nothing: Orbit Web signs in with a Claude account only (`--claudeai`), so there is no
-// mode to choose. An empty object is accepted; a field is refused by name (an Anthropic Console account is not offered).
-export function checkClaudeLogin(body: unknown): Checked<null> {
-  if (body === undefined || body === null) return { ok: true, value: null };
-  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  return checked(unknownFields(body, []), () => null);
-}
-
-// The account's display name (a business name): plain text, bounded; empty clears it.
-export const ACCOUNT_NAME_LENGTH = 120;
-
-export function checkUpdateAccount(body: unknown): Checked<{ displayName: string }> {
-  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["displayName"]);
-  const name = typeof body.displayName === "string" ? body.displayName.trim() : null;
-  // eslint-disable-next-line no-control-regex -- refusing control characters is the point
-  if (name === null || name.length > ACCOUNT_NAME_LENGTH || /[\u0000-\u001f\u007f]/.test(name)) errors.push(`displayName must be text of at most ${ACCOUNT_NAME_LENGTH} characters`);
-  return checked(errors, () => ({ displayName: name ?? "" }));
-}
-
-// The code a person copies from the Claude sign-in page: printable, no whitespace, bounded.
-export function checkLoginCode(body: unknown): Checked<ClaudeLoginCodeRequest> {
-  if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["code"]);
-  const code = typeof body.code === "string" ? body.code.trim() : "";
-  if (code.length === 0 || code.length > LIMITS.loginCodeLength || !/^[\x21-\x7e]+$/.test(code)) errors.push("code must be the code shown on the sign-in page");
-  return checked(errors, () => ({ code }));
 }
 
 // A Microsoft Entra tenant: its id (a GUID) or a domain it owns. Never something an argument parser could read as an

@@ -11,7 +11,7 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import type { AppConfig } from "../../config/config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
-import { claudeEnv } from "../../infra/process/env.js";
+import { claudeEnv, neutralClaudeDir } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
 
 export const ENVIRONMENT_HERE: Readonly<Record<string, string>> = {
@@ -88,7 +88,7 @@ export class AutoModeService implements OnModuleInit {
 
   private async fetch(): Promise<void> {
     try {
-      const r = await this.process.run(this.config.binaries.claude, ["auto-mode", "defaults"], { cwd: this.config.data.home, env: claudeEnv(this.config), timeoutMs: READ_TIMEOUT_MS });
+      const r = await this.process.run(this.config.binaries.claude, ["auto-mode", "defaults"], { cwd: this.config.data.home, env: claudeEnv(this.config, neutralClaudeDir(this.config)), timeoutMs: READ_TIMEOUT_MS });
       const defaults = succeeded(r) ? parseDefaults(r.stdout) : null;
       if (defaults === null) this.failed(endedHow(r));
       else {

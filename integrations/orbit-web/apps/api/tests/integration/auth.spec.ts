@@ -7,21 +7,20 @@ import { FakeProcessPort, program, type FakeChild } from "../../src/testing/fake
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { eventually, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
 
-// GitHub's sign-in is asked for only once Orbit Web is signed in to a Claude account (sign-in.spec.ts holds that gate).
+// GitHub's sign-in is asked for only by a signed-in user (identity.spec.ts holds that gate).
 const githubSignedOut = (fake: FakeProcessPort) =>
   fake.on(program("gh", "auth", "status"), { run: { stdout: '{"hosts":{}}', stderr: "You are not logged into any GitHub hosts. To log in, run: gh auth login" } });
 
-describe("signed in to Claude, GitHub not connected yet", () => {
+describe("signed in, GitHub not connected yet", () => {
   let h: Harness;
   before(async () => (h = await startHarness({ fake: githubSignedOut(signedIn(new FakeProcessPort(new NodeProcessPort()))), env: { GH_TOKEN: "gho_shouldneverreachgh000000000000000000000", GITHUB_TOKEN: "x" } })));
   after(() => h.close());
 
-  test("health answers and the setup page says who is signed in to Claude, and that GitHub is not connected", async () => {
+  test("health answers and the setup page says which AI CLIs are installed, and that GitHub is not connected", async () => {
     const health = await h.get("/api/health");
     assert.equal(health.status, 200);
     const setup = (await h.get("/api/setup/status")).body as SetupStatus;
-    assert.equal(setup.claude.state, "connected");
-    assert.deepEqual(setup.claude.account, { email: "octo@example.com", organization: "Octo Org", plan: "max" });
+    assert.deepEqual(setup.runtimes.map((r) => [r.runtime, r.state, r.version]), [["claude", "installed", "2.1.328"], ["codex", "not_installed", null], ["agy", "not_installed", null]]);
     assert.equal(setup.github.state, "not_connected");
     assert.equal(setup.versions.web, ORBIT_WEB_VERSION);
     assert.equal(setup.health.orbitPlugin.ok, true);

@@ -2,12 +2,11 @@
 // server retrieved from the sources a session selects -- with citations the server verified. Independent of
 // repositories and of the chats' records; the account's own, like its chats (access.ts), and governed by its policy
 // (every run is decided before it starts: runner/research-runner.service.ts).
-import { Inject, Injectable, Module, type OnModuleInit, type Provider } from "@nestjs/common";
+import { Module, type Provider } from "@nestjs/common";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { Db } from "../../infra/db/db.js";
-import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
-import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
+import { ConnectionsModule } from "../connections/connections.module.js";
 import { GovernanceModule } from "../governance/governance.module.js";
 import { SettingsModule } from "../settings/settings.module.js";
 import { ResearchAccess } from "./access.js";
@@ -30,22 +29,8 @@ import { ResearchWorkspacesService } from "./workspaces.service.js";
 
 const store = <T>(Store: new (db: Db) => T): Provider => ({ provide: Store, useFactory: (db: Db) => new Store(db), inject: [Db] });
 
-// The Claude CLI's sign-in does not change (a sign-in, a sign-out, a switch of account) while a research run answers,
-// as while a chat's run works: the run would go on under another identity.
-@Injectable()
-class ResearchSignOutCheck implements OnModuleInit {
-  constructor(
-    @Inject(ClaudeAuthService) private readonly claude: ClaudeAuthService,
-    @Inject(ResearchRunnerService) private readonly runner: ResearchRunnerService,
-  ) {}
-
-  onModuleInit(): void {
-    this.claude.workCheck(async () => (this.runner.anyRunning() > 0 ? "Claude is still answering in a research session. Stop it, or wait for it to finish, first." : null));
-  }
-}
-
 @Module({
-  imports: [ClaudeAuthModule, GovernanceModule, SettingsModule],
+  imports: [ConnectionsModule, GovernanceModule, SettingsModule],
   providers: [
     store(WorkspaceStore),
     store(SourceStore),
@@ -64,7 +49,6 @@ class ResearchSignOutCheck implements OnModuleInit {
     ResearchSourcesService,
     ResearchSessionsService,
     ResearchEvidenceService,
-    ResearchSignOutCheck,
   ],
   controllers: [ResearchController],
 })

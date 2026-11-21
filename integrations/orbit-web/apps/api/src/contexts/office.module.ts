@@ -7,6 +7,8 @@
 // The sandbox provider and the connections' credential store are bound by whoever composes the application (the
 // container provider in a deployment, a fake in tests); without a provider employees are hired and their work waits.
 import { type DynamicModule, Module, type Provider } from "@nestjs/common";
+import { CredentialStore } from "../infra/connections/credentials.js";
+import { ConnectionsModule } from "../modules/connections/connections.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
 import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.port.js";
@@ -90,11 +92,15 @@ export class OfficeModule {
   // `bindings`: the sandbox provider (SANDBOX_PROVIDER) and the connections' secrets (CONNECTION_SECRETS), when there are.
   static forRoot(bindings: Provider[] = []): DynamicModule {
     const bound = new Set(bindings.map((b) => (typeof b === "object" && "provide" in b ? b.provide : b)));
-    // Unbound ports are bound to nothing (null), so a composition -- or a test -- can override them by their token.
-    const defaults: Provider[] = [SANDBOX_PROVIDER, CONNECTION_SECRETS].filter((t) => !bound.has(t)).map((t) => ({ provide: t, useValue: null }));
+    // An unbound sandbox provider is bound to nothing (null), so a composition -- or a test -- can override it by its token;
+    // the connections' keys are read from the Connections context's own credential store.
+    const defaults: Provider[] = [
+      ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useValue: null }]),
+      ...(bound.has(CONNECTION_SECRETS) ? [] : [{ provide: CONNECTION_SECRETS, useExisting: CredentialStore }]),
+    ];
     return {
       module: OfficeModule,
-      imports: [GovernanceModule],
+      imports: [GovernanceModule, ConnectionsModule],
       providers: [...PROVIDERS, ...defaults, ...bindings],
       controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
       exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs],

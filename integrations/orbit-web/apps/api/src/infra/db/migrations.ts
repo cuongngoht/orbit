@@ -5,8 +5,9 @@
 //
 // Three schemas, one per domain, each reached by its unqualified names (the connection's search path):
 //
-//   app         accounts and their Claude identities, browser sessions, settings, and the chats (Claude Code
-//               workspaces) with their messages, event journal, runs, shares and images
+//   app         accounts (the OrbitId of every record) and their users, setup codes, sign-in throttling, browser
+//               sessions, settings (the deployment's are the system account's), the AI connections of each account, and
+//               the chats (Claude Code workspaces) with their messages, event journal, runs, shares and images
 //   research    research workspaces, their sources (immutable revisions, chunks indexed for full-text search), sessions,
 //               runs, citations, notes and findings
 //   governance  each account's policy (revisions, overrides), run bindings, approvals, the audit record (one hash
@@ -44,7 +45,8 @@ BEGIN
 END $$;
 
 -- ===================================================================================================================
--- ACCOUNTS: one internal account per verified Claude identity.
+-- ACCOUNTS AND USERS: Orbit's own sign-in. An account (its id is the OrbitId) is made by a one-time setup code or by the
+-- trial seed, never by an AI CLI's sign-in; a user signs in to it with a username and a password.
 -- ===================================================================================================================
 
 CREATE TABLE app.accounts (
@@ -90,10 +92,13 @@ CREATE TABLE app.users (
   UNIQUE (account_id, id)
 );
 CREATE TRIGGER users_account_fixed BEFORE UPDATE ON app.users FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+-- A verified email names ONE user: a share by email reaches exactly one person.
+CREATE UNIQUE INDEX one_user_per_verified_email ON app.users (email) WHERE email_verified_at IS NOT NULL;
 
 -- One-time codes an operator prints in a terminal of the server: the first administrator, a new account, or a password
 -- reset. Kept as a hash; consumed by one conditional update, so of two browsers only one succeeds. A code that makes
--- an account belongs to the system account until it is used.
+-- an account belongs to the system account until it is used; a reset's is the account of the user it resets.
+-- consumed_by: the user the code made (or reset).
 CREATE TABLE app.setup_codes (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL REFERENCES app.accounts (id),
@@ -104,7 +109,8 @@ CREATE TABLE app.setup_codes (
   expires_at timestamptz NOT NULL,
   consumed_at timestamptz,
   consumed_by uuid,
-  CHECK ((purpose = 'reset_password') = (user_id IS NOT NULL))
+  CHECK ((purpose = 'reset_password') = (user_id IS NOT NULL)),
+  FOREIGN KEY (account_id, user_id) REFERENCES app.users (account_id, id)
 );
 
 -- Failed sign-ins counted per key (a username, or a hashed client address) in a window: what slows a guesser down.
@@ -132,6 +138,7 @@ CREATE TABLE app.account_sessions (
   FOREIGN KEY (account_id, user_id) REFERENCES app.users (account_id, id)
 );
 CREATE INDEX account_sessions_open ON app.account_sessions (account_id) WHERE revoked_at IS NULL;
+CREATE INDEX account_sessions_of_user ON app.account_sessions (user_id) WHERE revoked_at IS NULL;
 
 -- What an account set for itself: its preferences, its privileged switches, its connector choices.
 CREATE TABLE app.account_settings (
@@ -175,7 +182,7 @@ CREATE INDEX sessions_by_account ON app.sessions (account_id, updated_at DESC);
 CREATE INDEX sessions_by_status ON app.sessions (status);
 CREATE TRIGGER sessions_account_fixed BEFORE UPDATE ON app.sessions FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
--- Who an owner shared a chat with, by the email of their Claude identity.
+-- Who an owner shared a chat with, by their share address (a verified email, or <username>@users.orbit.local).
 CREATE TABLE app.session_access (
   account_id uuid NOT NULL,
   session_id text NOT NULL,
@@ -825,6 +832,7 @@ CREATE TABLE app.ai_connections (
   cloud jsonb,
   auth_state text NOT NULL CHECK (auth_state IN ('connected', 'disconnected', 'auth_required', 'error')),
   reason text,
+  reason_code text,
   identity text,
   -- What tells two provider identities apart (lower-cased, never shown): one identity, one account.
   identity_key text,

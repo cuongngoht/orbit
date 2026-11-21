@@ -88,7 +88,8 @@ describe("a project's skills and plugins, with project plugins turned on", () =>
     assert.deepEqual(fake.callsOf(program("claude", "plugin", "marketplace", "add")).map((c) => c.args), [["plugin", "marketplace", "add", "acme/claude-plugins"]]);
     assert.deepEqual(fake.callsOf(program("claude", "plugin", "install")).map((c) => c.args), [["plugin", "install", "fmt@acme", "--scope", "user"], ["plugin", "install", "broken@acme", "--scope", "user"]]);
     assert.deepEqual(fake.callsOf(program("claude", "plugin", "disable")).map((c) => c.args), [["plugin", "disable", "fmt@acme", "--scope", "user"]]);
-    for (const c of fake.callsOf(program("claude", "plugin"))) assert.equal(c.env.CLAUDE_CONFIG_DIR, h.config.data.claude);
+    // Installed for the account's own Claude Code connection: in its config home.
+    for (const c of fake.callsOf(program("claude", "plugin"))) assert.match(c.env.CLAUDE_CONFIG_DIR ?? "", new RegExp(`^${h.config.data.connections}/${h.accountId}/[0-9a-f-]{36}/claude$`));
   });
 
   test("its skills, commands and agents are carried in a plugin built for the session", () => {

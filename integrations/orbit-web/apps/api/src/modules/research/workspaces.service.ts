@@ -4,12 +4,13 @@
 // governance recorded about it stays. Deleting one removes everything it holds, rows and files, and asks for its name to
 // be typed back first.
 import { Inject, Injectable } from "@nestjs/common";
-import { checkCreateWorkspace, checkDeleteWorkspace, checkUpdateAccess, checkUpdateWorkspace, type AccessList, type ResearchWorkspaceDetail, type ResearchWorkspaceSummary } from "@orbit-web/contracts";
+import { checkCreateWorkspace, checkDeleteWorkspace, checkUpdateWorkspace, type AccessList, type ResearchWorkspaceDetail, type ResearchWorkspaceSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { EventBus } from "../../core/events/event-bus.js";
 import { accepted, badRequest, conflict } from "../../common/errors.js";
 import { Db } from "../../infra/db/db.js";
 import { contextOf, type Owner } from "../auth/principal.js";
+import { ShareRecipients } from "../auth/share-recipients.js";
 import { GovernedResources } from "../governance/resources.service.js";
 import { ResearchAccess } from "./access.js";
 import { OBJECT_STORE } from "./ingestion/ingestion.service.js";
@@ -35,6 +36,7 @@ export class ResearchWorkspacesService {
     @Inject(GovernedResources) private readonly resources: GovernedResources,
     @Inject(OBJECT_STORE) private readonly objects: ObjectStore,
     @Inject(EventBus) private readonly bus: EventBus,
+    @Inject(ShareRecipients) private readonly recipients: ShareRecipients,
   ) {}
 
   async list(viewer: Owner): Promise<ResearchWorkspaceSummary[]> {
@@ -101,10 +103,11 @@ export class ResearchWorkspacesService {
     return { access: (await this.access.levelOf(w, viewer)) ?? "shared", owner: w.ownerEmail, people: await this.workspaces.people(w.id) };
   }
 
-  // The owner names everyone it is shared with (its own email is never on the list: it owns it).
+  // The owner names everyone it is shared with -- users of this deployment, by username or verified email (its own
+  // address is never on the list: it owns it).
   async share(id: string, body: unknown, viewer: Owner): Promise<AccessList> {
     const w = await this.access.workspace(id, viewer, "owner");
-    const people = accepted(checkUpdateAccess(body)).people.filter((p) => p !== w.ownerEmail && p !== viewer.email);
+    const people = (await this.recipients.resolve(body)).filter((p) => p !== w.ownerEmail && p !== viewer.email);
     await this.workspaces.share(w, people, viewer.email);
     await this.views.notifyWorkspace(w.id);
     return this.people(id, viewer);

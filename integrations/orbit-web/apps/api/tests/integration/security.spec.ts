@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
 import { after, before, describe, test } from "node:test";
-import { CLAUDE_SIGN_IN_REQUIRED, CSRF_HEADER } from "@orbit-web/contracts";
-import { browserAt, signInBrowser, startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
+import { SIGN_IN_REQUIRED, CSRF_HEADER } from "@orbit-web/contracts";
+import { browserAt, signInBrowser, startHarness, TEST_PASSWORD, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
 
 const errorCode = (r: Reply): string | undefined => (r.body as { error?: { code?: string } } | null)?.error?.code;
 
@@ -86,7 +86,7 @@ describe("token mode, for a host name beyond loopback", () => {
     h = await startHarness({ env: { ORBIT_WEB_ALLOWED_HOSTS: "orbit.internal", ORBIT_WEB_ACCESS_TOKEN: token } });
     const jar: Record<string, string> = {};
     assert.equal((await browserAt(h.url, jar).send("POST", "/api/access", { token })).status, 204);
-    owner = await signInBrowser(h.url, jar);
+    owner = await signInBrowser(h.url, "octo", TEST_PASSWORD, jar);
   });
   after(() => h.close());
 
@@ -95,7 +95,7 @@ describe("token mode, for a host name beyond loopback", () => {
     assert.equal((await h.anonymous.get("/api/health")).status, 200);
     const tokenOnly = await h.anonymous.get("/api/setup/status", { authorization: `Bearer ${token}` });
     assert.equal(tokenOnly.status, 401, "the token opens the door; it is nobody's sign-in");
-    assert.equal(errorCode(tokenOnly), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(errorCode(tokenOnly), SIGN_IN_REQUIRED);
     assert.equal((await owner.get("/api/setup/status")).status, 200);
   });
 
@@ -109,7 +109,7 @@ describe("token mode, for a host name beyond loopback", () => {
     assert.match(cookie, /Max-Age=2592000/, "not a session cookie: a browser restart or a redeploy asks for nothing again");
     const cookieOnly = await fetch(`${h.url}/api/settings`, { headers: { cookie: cookie.split(";")[0] as string } });
     assert.equal(cookieOnly.status, 401, "past the token, the browser signs in with Claude");
-    assert.equal(((await cookieOnly.json()) as { error: { code: string } }).error.code, CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(((await cookieOnly.json()) as { error: { code: string } }).error.code, SIGN_IN_REQUIRED);
     assert.equal((await owner.get("/api/settings")).status, 200);
   });
 

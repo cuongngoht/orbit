@@ -17,9 +17,8 @@ import { currentCorrelation } from "../../common/request-scope.js";
 import { AccountsService } from "./accounts.service.js";
 import { contextOf, type GovernanceContext, type Principal } from "./principal.js";
 
-// The browser session's cookie, and the cookie that binds a sign-in flow to the browser that started it.
+// The browser session's cookie.
 export const SESSION_COOKIE = "orbit_web_session";
-export const LOGIN_COOKIE = "orbit_web_login";
 
 export interface Resolution {
   principal: Principal;
@@ -27,8 +26,6 @@ export interface Resolution {
   invalidRunToken: boolean;
   // The session token this request carried, when it named a live session (its owner is `principal`).
   sessionToken: string | null;
-  // The `<email>|<org>` key of the owner's identity: what the runtime's CLI must still hold.
-  identityKey: string | null;
 }
 
 const unmapped = (address: string): string => (address.startsWith("::ffff:") ? address.slice(7) : address);
@@ -96,14 +93,13 @@ export class PrincipalResolver {
     if (typeof runToken === "string" && runToken.length > 0) {
       const binding = await this.binding(runToken);
       // A research run's token opens the egress proxy alone: never the agent gateway, never anything else.
-      if (binding === null || binding.kind === "research") return { principal: anonymous, invalidRunToken: true, sessionToken: null, identityKey: null };
-      return { principal: { kind: "agent", binding }, invalidRunToken: false, sessionToken: null, identityKey: null };
+      if (binding === null || binding.kind === "research") return { principal: anonymous, invalidRunToken: true, sessionToken: null };
+      return { principal: { kind: "agent", binding }, invalidRunToken: false, sessionToken: null };
     }
     const token = agentNetwork ? null : cookieValue(req.headers.cookie, SESSION_COOKIE);
-    if (token === null || token.length === 0) return { principal: anonymous, invalidRunToken: false, sessionToken: null, identityKey: null };
+    if (token === null || token.length === 0) return { principal: anonymous, invalidRunToken: false, sessionToken: null };
     const resolved = await this.accounts.resolve(token);
-    if (resolved === null) return { principal: anonymous, invalidRunToken: false, sessionToken: null, identityKey: null };
-    const identity = await this.accounts.identityOf(resolved.owner.accountId);
-    return { principal: resolved.owner, invalidRunToken: false, sessionToken: token, identityKey: identity === null ? null : `${identity.emailNorm}|${identity.orgKey}` };
+    if (resolved === null) return { principal: anonymous, invalidRunToken: false, sessionToken: null };
+    return { principal: resolved.owner, invalidRunToken: false, sessionToken: token };
   }
 }

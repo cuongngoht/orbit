@@ -52,7 +52,7 @@ export const EVENT_CATALOG = {
   "customizations.changed": { stream: "app", durable: false, summary: "A project's skills or plugins changed." },
   "governance.changed": { stream: "app", durable: false, summary: "Something governance keeps changed (operators, the Constitution, agents, workspaces, audit, findings, reports): read it again." },
   "approval.changed": { stream: "app", durable: false, summary: "A protected action's approval was asked for, decided or spent." },
-  "claude.models": { stream: "app", durable: false, summary: "The models the signed-in Claude account may use were read again." },
+  "claude.models": { stream: "app", durable: false, summary: "The models the account's default Claude Code connection may use were read again." },
   "research.status": { stream: "research", durable: true, summary: "A research session's status changed." },
   "research.run.started": { stream: "research", durable: true, summary: "A research run started, its evidence frozen to the sources and revisions it names." },
   "research.message.started": { stream: "research", durable: true, summary: "A research message started." },
@@ -71,6 +71,7 @@ export const EVENT_CATALOG = {
   "research.source.removed": { stream: "app", durable: false, summary: "A research source was deleted." },
   "research.evidence.changed": { stream: "app", durable: false, summary: "A research note or finding was created, changed or deleted." },
   "office.changed": { stream: "app", durable: false, summary: "Something in the account's virtual office changed (roster, missions, inbox, schedules, connections): read it again." },
+  "connections.changed": { stream: "app", durable: false, summary: "One of the account's AI connections was created, changed, checked, disconnected or removed: read the connections again." },
 } as const satisfies Record<string, EventSpec>;
 
 export type EventType = keyof typeof EVENT_CATALOG;

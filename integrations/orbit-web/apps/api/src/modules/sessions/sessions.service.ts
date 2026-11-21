@@ -23,7 +23,8 @@ import { ImageStore, imageRefOf, MessageStore, SessionStore, type SessionRecord,
 import { ImagesService } from "../images/images.service.js";
 import { OwnershipService } from "../access/ownership.service.js";
 import type { GovernanceContext } from "../auth/principal.js";
-import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
+import { ClaudeModelsService } from "../connections/claude-models.service.js";
+import { RunConnections } from "../connections/run-connections.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
 import { GovernedResources } from "../governance/resources.service.js";
 import { SettingsService } from "../settings/settings.module.js";
@@ -87,9 +88,10 @@ export class SessionsService {
     @Inject(ImagesService) private readonly images: ImagesService,
     @Inject(ImageStore) private readonly imageRows: ImageStore,
     @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
+    @Inject(RunConnections) private readonly connections: RunConnections,
   ) {}
 
-  // The chats of the viewer's account: its own, and those shared with its identity's email.
+  // The chats of the viewer's account: its own, and those shared with the viewer's share address.
   async list(): Promise<SessionSummary[]> {
     const who = viewer();
     return (await this.ownership.visible(who)).map((s) => summaryOf(s, levelFor(s, who)));
@@ -120,6 +122,8 @@ export class SessionsService {
   async create(body: unknown): Promise<SessionSummary> {
     const req = accepted(checkCreateSession(body));
     const who = viewer();
+    // A chat runs on the account's own Claude Code connection: none connected, no chat (409, nothing made).
+    await this.connections.require(who.accountId);
     // The first message's images: the creator's own uploads, unsent -- held before anything is made.
     const imageIds = req.images ?? [];
     await this.images.owned(imageIds, who, null);

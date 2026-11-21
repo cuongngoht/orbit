@@ -24,6 +24,7 @@ import { isSessionId } from "../../common/workspace-path.js";
 import { ProjectStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import { AccessModule } from "../access/access.module.js";
 import { OwnershipService } from "../access/ownership.service.js";
+import { ConnectionsModule } from "../connections/connections.module.js";
 import { SettingsModule, SettingsService } from "../settings/settings.module.js";
 import { frontmatter } from "./frontmatter.js";
 import { isRegularDir, readSmall } from "./inventory.js";
@@ -185,7 +186,7 @@ export class ProjectController {
 }
 
 @Module({
-  imports: [SettingsModule, AccessModule],
+  imports: [SettingsModule, AccessModule, ConnectionsModule],
   providers: [ProjectService, CustomizationsService],
   controllers: [ProjectController],
   exports: [ProjectService],

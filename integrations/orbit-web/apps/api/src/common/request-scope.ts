@@ -6,7 +6,7 @@ import { HttpStatus } from "@nestjs/common";
 import type { NextFunction, Request, Response } from "express";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { CLAUDE_SIGN_IN_REQUIRED } from "@orbit-web/contracts";
+import { SIGN_IN_REQUIRED } from "@orbit-web/contracts";
 import type { Owner, Principal } from "../modules/auth/principal.js";
 import { ApiError } from "./errors.js";
 
@@ -51,6 +51,6 @@ export function viewerOrNull(): Owner | null {
 
 export function viewer(): Owner {
   const v = viewerOrNull();
-  if (v === null) throw new ApiError(HttpStatus.UNAUTHORIZED, CLAUDE_SIGN_IN_REQUIRED, "Sign in to Orbit Web with your Claude account first.");
+  if (v === null) throw new ApiError(HttpStatus.UNAUTHORIZED, SIGN_IN_REQUIRED, "Sign in to Orbit Web first.");
   return v;
 }

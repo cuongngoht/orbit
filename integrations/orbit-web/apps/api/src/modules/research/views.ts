@@ -1,14 +1,12 @@
 // What the API answers about research records, and the app-stream notifications that keep every page that may see them
 // current: one place builds each view, so a list, a detail and a notification never disagree.
 //
-// A notification is sent to the workspace's AUDIENCE (its account, and the emails it is shared with: access.ts) and to
-// nobody else. The access level it carries is the one the account the runtime serves now has -- the only account whose
-// pages are open (one Claude identity per runtime): its owner, or, when it reaches anybody else, somebody it is shared
-// with.
+// A notification is sent to the workspace's AUDIENCE (its account, and the people it is shared with: access.ts) and to
+// nobody else -- the access level it carries said to each: `owner` to the owner account's pages, `shared` to the pages
+// of those it is shared with (several accounts' pages are open at once).
 import { Inject, Injectable } from "@nestjs/common";
 import { findingCode, type AccessLevel, type ResearchCitation, type ResearchFinding, type ResearchNote, type ResearchSessionSummary, type ResearchSourceSummary, type ResearchWorkspaceSummary } from "@orbit-web/contracts";
-import { EventBus, type Audience } from "../../core/events/event-bus.js";
-import { AccountsService } from "../auth/accounts.service.js";
+import { accountAudience, EventBus, type Audience } from "../../core/events/event-bus.js";
 import { ResearchAccess } from "./access.js";
 import { EvidenceStore, type CitationRecord, type FindingRecord, type NoteRecord } from "./store/evidence.js";
 import { ResearchSessionStore, type ResearchSessionRecord } from "./store/sessions.js";
@@ -23,7 +21,6 @@ export class ResearchViews {
     @Inject(ResearchSessionStore) private readonly sessions: ResearchSessionStore,
     @Inject(EvidenceStore) private readonly evidence: EvidenceStore,
     @Inject(ResearchAccess) private readonly access: ResearchAccess,
-    @Inject(AccountsService) private readonly accounts: AccountsService,
     @Inject(EventBus) private readonly bus: EventBus,
   ) {}
 
@@ -99,14 +96,14 @@ export class ResearchViews {
   async notifyWorkspace(id: string): Promise<void> {
     const w = await this.workspaces.get(id);
     if (w === null) return;
-    this.bus.publishApp("research.workspace.changed", { workspace: await this.workspace(w, await this.levelNow(w)) }, await this.access.audience(w));
+    await this.eachLevel(w, async (access, audience) => this.bus.publishApp("research.workspace.changed", { workspace: await this.workspace(w, access) }, audience));
   }
 
   async notifySession(id: string): Promise<void> {
     const s = await this.sessions.get(id);
     const w = s === null ? null : await this.workspaces.get(s.workspaceId);
     if (s === null || w === null) return;
-    this.bus.publishApp("research.session.summary", { session: await this.session(s, w, await this.levelNow(w)) }, await this.access.audience(w));
+    await this.eachLevel(w, async (access, audience) => this.bus.publishApp("research.session.summary", { session: await this.session(s, w, access) }, audience));
   }
 
   async notifySessionsOf(workspaceId: string): Promise<void> {
@@ -124,9 +121,12 @@ export class ResearchViews {
     this.bus.publishApp("research.evidence.changed", { workspaceId: w.id, kind, id, removed }, audience);
   }
 
-  // The access level the account the runtime serves now has: its owner's, or -- reaching anybody else -- a share's.
-  private async levelNow(w: WorkspaceRecord): Promise<AccessLevel> {
-    return (await this.accounts.active()) === w.accountId ? "owner" : "shared";
+  // What is said to the owner account (`owner`), and to the people the workspace is shared with (`shared`) -- each its own.
+  private async eachLevel(w: WorkspaceRecord, send: (access: AccessLevel, audience: Audience) => Promise<unknown>): Promise<void> {
+    await send("owner", accountAudience(w.accountId));
+    const people = await this.workspaces.emails(w.id);
+    // No account has the empty id: an audience of the people alone.
+    if (people.length > 0) await send("shared", accountAudience("", people));
   }
 
   private citationWith(c: CitationRecord, source: SourceRecord | null): ResearchCitation {

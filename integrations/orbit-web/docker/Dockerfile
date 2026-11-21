@@ -164,13 +164,16 @@ LABEL org.opencontainers.image.title="Orbit Web" \
       org.opencontainers.image.licenses="MIT"
 
 # The runtime user, and the persistent directories it owns alone (a named volume is initialised from these).
+# /data/connections holds each AI connection's own config home (/data/connections/<OrbitId>/<connectionId>/), and
+# /data/control/credentials an API-key connection's key (one 0600 file each). /data/claude is no longer Orbit Web's:
+# it is made only because a compose file may still mount it.
 RUN groupadd --system --gid 10001 orbit \
  && useradd --system --uid 10001 --gid orbit --home-dir /data/home --no-create-home --shell /usr/sbin/nologin orbit \
- && mkdir -p /data/app /data/claude /data/github /data/azure /data/orbit /data/sessions /data/workspaces /data/home \
-    /data/repos /data/control /data/research \
+ && mkdir -p /data/app /data/claude /data/connections /data/github /data/azure /data/orbit /data/sessions /data/workspaces \
+    /data/home /data/repos /data/control /data/control/credentials /data/research \
  && chown -R orbit:orbit /data \
- && chmod 0700 /data/app /data/claude /data/github /data/azure /data/orbit /data/sessions /data/workspaces /data/home \
-    /data/repos /data/control /data/research
+ && chmod 0700 /data/app /data/claude /data/connections /data/github /data/azure /data/orbit /data/sessions /data/workspaces \
+    /data/home /data/repos /data/control /data/control/credentials /data/research
 
 COPY --from=tools /opt/tini /usr/local/bin/tini
 COPY --from=tools /opt/gh /opt/gh
@@ -189,13 +192,11 @@ COPY --from=build /src/docker/healthcheck.mjs /src/docker/build-info.mjs /opt/or
 # command by Orbit Web, never configured anywhere.
 COPY --chmod=0755 integrations/orbit-web/docker/git-credential-azure-cli.mjs /opt/orbit-web/docker/git-credential-azure-cli.mjs
 
-# CLAUDE_CONFIG_DIR: where the Claude CLI keeps its sign-in -- Orbit Web's own sign-in -- for every `claude` in the
-# container, so a terminal sign-in (`docker exec -it orbit-web claude auth login --claudeai`) lands where Orbit Web
-# reads it. Orbit Web also names it for each Claude process it starts.
+# No CLAUDE_CONFIG_DIR here: every Claude process Orbit Web starts is one AI connection's, and is given that
+# connection's own config home (Settings → AI Connections); a connection is signed in by `cli/connect.js <id>`.
 ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/opt/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_ENV=production \
     HOME=/data/home \
-    CLAUDE_CONFIG_DIR=/data/claude \
     NO_COLOR=1 \
     DISABLE_AUTOUPDATER=1 \
     ORBIT_WEB_BIND=0.0.0.0 \

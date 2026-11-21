@@ -100,7 +100,8 @@ describe("a chat, end to end through the API", () => {
     assert.equal(after1(detail, "--permission-mode"), "auto", "Autonomous is Claude Code's auto mode");
     assert.ok(after1(detail, "--session-id"));
     assert.equal(call.cwd, join(h.config.data.workspaces, session.id, "repository"));
-    assert.equal(call.env.CLAUDE_CONFIG_DIR, h.config.data.claude);
+    // The account's own Claude Code connection: its config home, and nobody else's.
+    assert.match(call.env.CLAUDE_CONFIG_DIR ?? "", new RegExp(`^${h.config.data.connections}/${h.accountId}/[0-9a-f-]{36}/claude$`));
     assert.equal(call.env.ORBIT_STORE_DIR, h.config.data.orbit);
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(GH_|GITHUB_)/.test(k)), []);
     // The container's own Claude credential variables would take the place of the account signed in here.

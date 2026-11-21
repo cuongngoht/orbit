@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 export interface DataDirs {
   root: string;
   app: string;
-  claude: string;
+  // The AI connections' config homes, one per connection: `<connections>/<OrbitId>/<connectionId>/{claude,codex,agy}`
+  // (the CLI's own login lives there and nowhere else).
+  connections: string;
   github: string;
   azure: string;
   orbit: string;
@@ -87,11 +89,29 @@ export interface DatabaseConfig {
   statementTimeoutMs: number;
 }
 
-// A browser's session, issued when that browser finishes a Claude sign-in: it ends `lifetimeMs` after it began, or after
+// A browser's session, issued when a user of this browser signs in: it ends `lifetimeMs` after it began, or after
 // `idleMs` with no request, whichever comes first.
 export interface SessionConfig {
   lifetimeMs: number;
   idleMs: number;
+}
+
+// The cost of the password hash (scrypt). Production's is fixed here and read from no variable: only a test harness
+// lowers it, by replacing `identity.kdf` on the configuration it made.
+export interface KdfParams {
+  N: number;
+  r: number;
+  p: number;
+  maxmem: number;
+}
+
+export const PRODUCTION_KDF: KdfParams = { N: 2 ** 17, r: 8, p: 1, maxmem: 256 * 1024 * 1024 };
+
+export interface IdentityConfig {
+  kdf: KdfParams;
+  // ORBIT_WEB_TRIAL=1: a localhost-only trial, pre-seeded with the account `admin` / `123456` (refused at start anywhere
+  // else: trialRefusal).
+  trial: boolean;
 }
 
 export interface AppConfig {
@@ -107,7 +127,7 @@ export interface AppConfig {
   secureCookie: boolean;
   maxBudgetUsd: number | null;
   // `azureGitHelper`: the git credential helper an Azure Repos clone uses (shipped in the image).
-  binaries: { claude: string; gh: string; git: string; az: string; python: string; node: string; azureGitHelper: string };
+  binaries: { claude: string; codex: string; agy: string; gh: string; git: string; az: string; python: string; node: string; azureGitHelper: string };
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
   sourceEnv: Readonly<Record<string, string | undefined>>;
   limits: Limits;
@@ -121,6 +141,7 @@ export interface AppConfig {
   research: ResearchConfig;
   database: DatabaseConfig;
   session: SessionConfig;
+  identity: IdentityConfig;
 }
 
 export class ConfigError extends Error {}
@@ -142,7 +163,7 @@ export function dataDirs(root: string): DataDirs {
   return {
     root,
     app: join(root, "app"),
-    claude: join(root, "claude"),
+    connections: join(root, "connections"),
     github: join(root, "github"),
     azure: join(root, "azure"),
     orbit: join(root, "orbit"),
@@ -292,6 +313,26 @@ function defaultWebDist(): string | null {
   return existsSync(join(candidate, "index.html")) ? candidate : null;
 }
 
+// ORBIT_WEB_TRIAL: "1" turns the localhost-only trial on; unset, empty or "0" leaves it off.
+function trialFlag(raw: string | undefined): boolean {
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw === "1") return true;
+  throw new ConfigError("ORBIT_WEB_TRIAL must be 1 (the localhost-only trial) or 0");
+}
+
+// Why a trial may NOT start here (null: it may). The trial account's password is public (`admin` / `123456`), so the
+// installation must be one nobody else can reach: loopback host names only (the host guard then refuses any other
+// Host), no access token (a token means somebody meant to expose it), the single deployment, and nothing that says it
+// is served to the world (a public origin, cookies for HTTPS).
+export function trialRefusal(env: Readonly<Record<string, string | undefined>>, o: { widened: string[]; accessToken: string | null; deployment: Deployment }): string | null {
+  if (o.widened.length > 0) return `ORBIT_WEB_ALLOWED_HOSTS names ${o.widened.join(", ")}: a trial answers loopback host names only (localhost, 127.0.0.1, ::1)`;
+  if (o.accessToken !== null) return "ORBIT_WEB_ACCESS_TOKEN is set: a trial has no access token (it is never reachable from another machine)";
+  if (o.deployment !== "single") return `ORBIT_WEB_DEPLOYMENT is ${o.deployment}: a trial is the single deployment only`;
+  if ((env.ORBIT_WEB_PUBLIC_ORIGIN ?? "") !== "") return "ORBIT_WEB_PUBLIC_ORIGIN is set: a trial has no public origin";
+  if (env.ORBIT_WEB_COOKIE_SECURE === "1") return "ORBIT_WEB_COOKIE_SECURE is set: a trial is not served over HTTPS to anybody";
+  return null;
+}
+
 export function loadConfig(env: Readonly<Record<string, string | undefined>>): AppConfig {
   const extraHosts = hostList(env.ORBIT_WEB_ALLOWED_HOSTS);
   const accessToken = env.ORBIT_WEB_ACCESS_TOKEN && env.ORBIT_WEB_ACCESS_TOKEN.length > 0 ? env.ORBIT_WEB_ACCESS_TOKEN : null;
@@ -303,6 +344,9 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
   const port = positiveInt(env.ORBIT_WEB_PORT, 3000, "ORBIT_WEB_PORT");
   const data = dataDirs(absolute(env.ORBIT_WEB_DATA_DIR, "/data", "ORBIT_WEB_DATA_DIR"));
   const governance = governedConfig(env, port);
+  const trial = trialFlag(env.ORBIT_WEB_TRIAL);
+  const refusal = trial ? trialRefusal(env, { widened, accessToken, deployment: governance.deployment }) : null;
+  if (refusal !== null) throw new ConfigError(`ORBIT_WEB_TRIAL=1 refused: ${refusal}. The trial account's password is public, so a trial runs on this machine alone.`);
   return {
     port,
     bind: env.ORBIT_WEB_BIND && env.ORBIT_WEB_BIND.length > 0 ? env.ORBIT_WEB_BIND : "127.0.0.1",
@@ -316,6 +360,8 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     maxBudgetUsd: budget(env.ORBIT_WEB_MAX_BUDGET_USD),
     binaries: {
       claude: env.ORBIT_WEB_CLAUDE_BIN || "claude",
+      codex: env.ORBIT_WEB_CODEX_BIN || "codex",
+      agy: env.ORBIT_WEB_AGY_BIN || "agy",
       gh: env.ORBIT_WEB_GH_BIN || "gh",
       git: env.ORBIT_WEB_GIT_BIN || "git",
       az: env.ORBIT_WEB_AZ_BIN || "az",
@@ -336,5 +382,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
       statementTimeoutMs: 60_000,
     },
     session: sessionConfig(env),
+    identity: { kdf: { ...PRODUCTION_KDF }, trial },
   };
 }

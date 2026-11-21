@@ -1,4 +1,4 @@
-// THE CONNECTORS of the signed-in Claude account, as its own Claude CLI says them -- pure: the probe's command line, its
+// THE CONNECTORS of a Claude Code connection's account, as its own CLI says them (run against that connection's home) -- pure: the probe's command line, its
 // requests, and its answer read into a list. Asked through the control protocol (the one the Agent SDK speaks):
 // `initialize`, then `mcp_status` until the list has settled -- the account's claude.ai connectors arrive a moment after
 // the CLI starts. Nothing else is sent, so no model is called. The probe has no tool and is allowed none (`dontAsk`); it

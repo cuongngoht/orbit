@@ -15,8 +15,8 @@ import { APP_CONFIG } from "../../core/tokens.js";
 import { Public } from "../auth/decorators.js";
 import { accepted, ApiError, badRequest } from "../../common/errors.js";
 import { ACCESS_COOKIE, accessTokenMatches, accessTokenPresented } from "../../infra/security/guards.js";
-import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
-import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
+import { ConnectionsModule } from "../connections/connections.module.js";
+import { ClaudeModelsService } from "../connections/claude-models.service.js";
 import { GovernanceModule } from "../governance/governance.module.js";
 import type { GovernanceContext } from "../auth/principal.js";
 import { PrincipalResolver } from "../auth/principals.js";
@@ -115,7 +115,7 @@ export class SettingsController {
 }
 
 @Module({
-  imports: [GovernanceModule, ClaudeAuthModule],
+  imports: [GovernanceModule, ConnectionsModule],
   providers: [SettingsService],
   controllers: [SettingsController],
   exports: [SettingsService],

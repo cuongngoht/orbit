@@ -4,12 +4,10 @@ import { applyDelta, DURABLE_EVENT_TYPES, EVENT_CATALOG, isDurableType, isEventT
 import { EFFORT_CHOICES, MODEL_CHOICES, MODE_PERMISSION } from "./models.js";
 import {
   checkChangeBranch,
-  checkClaudeLogin,
   checkShareRequest,
   checkCreateSession,
   isRepositoryRef,
   splitAzureId,
-  checkLoginCode,
   checkSendMessage,
   checkUpdateSession,
   checkUpdateSettings,
@@ -132,12 +130,6 @@ test("the event catalog is the one list of what exists, which stream it travels 
   assert.equal(isDurableType("research.citation.recorded"), true);
 });
 
-test("a sign-in code is printable and has no whitespace", () => {
-  assert.deepEqual(checkLoginCode({ code: " abc#DEF-123 " }), { ok: true, value: { code: "abc#DEF-123" } });
-  assert.equal(checkLoginCode({ code: "a b" }).ok, false);
-  assert.equal(checkLoginCode({ code: "" }).ok, false);
-});
-
 test("a delta never doubles text a client already holds, and a gap waits", () => {
   assert.equal(applyDelta("", { messageId: "m", offset: 0, text: "Hel" }), "Hel");
   assert.equal(applyDelta("Hel", { messageId: "m", offset: 3, text: "lo" }), "Hello");
@@ -154,13 +146,4 @@ test("an Azure tenant is a GUID or a domain, never an option", async () => {
   assert.deepEqual(checkAzureLogin({ tenant: "" }), { ok: true, value: {} });
   for (const bad of ["--allow-no-subscriptions", "a b.com", "x", "contoso", { a: 1 }]) assert.equal(checkAzureLogin({ tenant: bad }).ok, false, String(bad));
   assert.equal(checkAzureLogin({ tenant: "contoso.com", extra: 1 }).ok, false);
-});
-
-test("the Claude sign-in takes no mode: a Claude account is the only sign-in", () => {
-  assert.deepEqual(checkClaudeLogin(undefined), { ok: true, value: null });
-  assert.deepEqual(checkClaudeLogin(null), { ok: true, value: null });
-  assert.deepEqual(checkClaudeLogin({}), { ok: true, value: null });
-  assert.equal(checkClaudeLogin({ mode: "console" }).ok, false);
-  assert.equal(checkClaudeLogin({ mode: "claudeai" }).ok, false);
-  assert.equal(checkClaudeLogin("claudeai").ok, false);
 });

@@ -10,7 +10,7 @@ import { EventBus } from "../../core/events/event-bus.js";
 import { accepted, conflict, notFound } from "../../common/errors.js";
 import { redactSecrets } from "../../infra/security/redact.js";
 import type { Owner } from "../auth/principal.js";
-import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
+import { ClaudeModelsService } from "../connections/claude-models.service.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { ResearchAccess } from "./access.js";
 import { ResearchRunnerService } from "./runner/research-runner.service.js";

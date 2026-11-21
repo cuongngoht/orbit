@@ -30,8 +30,9 @@ import { claudeEnv } from "../../../infra/process/env.js";
 import { LineSplitter } from "../../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../../infra/process/process.port.js";
 import { bounded, redactSecrets, tail } from "../../../infra/security/redact.js";
-import { ClaudeConnectorsService } from "../../claude-auth/claude-connectors.service.js";
-import { ClaudeModelsService } from "../../claude-auth/claude-models.service.js";
+import { ClaudeConnectorsService } from "../../connections/claude-connectors.service.js";
+import { ClaudeModelsService } from "../../connections/claude-models.service.js";
+import { RunConnections, type RunConnection } from "../../connections/run-connections.js";
 import { decideOutcome } from "../../claude-runner/outcome.js";
 import { StreamMapper, TEXT_LIMIT, type MappedEvent } from "../../claude-runner/stream-mapper.js";
 import type { Principal } from "../../auth/principal.js";
@@ -120,6 +121,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
     @Inject(ClaudeConnectorsService) private readonly connectorChoices: ClaudeConnectorsService,
+    @Inject(RunConnections) private readonly connections: RunConnections,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is interrupted, never run again.
@@ -154,6 +156,8 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   // retrieved, then the run is decided by the account's policy and started -- in the background, so the answer streams.
   async ask(session: ResearchSessionRecord, question: string, startedBy: Principal): Promise<RunAccepted> {
     if (this.isRunning(session.id) || session.status === "running") throw conflict("run_active", "This research session is still answering. Stop it or wait for it to finish.");
+    // Asked of the account's own Claude Code connection, or not at all (409 connection_required / _unavailable).
+    await this.connections.require(session.accountId);
     // Held from here: a second question at the same moment finds this one under way.
     this.starting.add(session.id);
     try {
@@ -172,7 +176,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       );
       if (session.draftQuestion !== null) await this.sessions.update(session.id, { draftQuestion: null });
       await this.setStatus(session.id, "running", null, runId);
-      const effort = this.effortOf(session);
+      const effort = await this.effortOf(session);
       await this.stream.publish(session.id, "research.run.started", { model: session.model, effort, sources: frozen, passages: passages.length, matched: passages.filter((p) => p.match === "fts").length }, runId);
       const revisions = await this.sources.revisionsByIds([...new Set(passages.map((p) => p.chunk.revisionId))]);
       const prompt = researchPrompt({ question, history, passages: passages.map((p) => this.promptPassage(p, frozen, revisions)), nonce: newNonce() });
@@ -214,9 +218,9 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   }
 
   // The effort the account's catalog says this model takes (none, for a model that takes no level).
-  private effortOf(session: ResearchSessionRecord): string | null {
-    const catalog = this.models.cached(session.accountId);
-    return effortFor(catalog === null ? null : modelOf(catalog, session.model), session.effort);
+  private async effortOf(session: ResearchSessionRecord): Promise<string | null> {
+    const catalog = await this.models.catalog(session.accountId);
+    return effortFor(modelOf(catalog, session.model), session.effort);
   }
 
   private promptPassage(p: RetrievedPassage, frozen: readonly FrozenRevision[], revisions: ReadonlyMap<string, RevisionRecord>) {
@@ -235,14 +239,17 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
   // governance could not decide -- never starts.
   private async governed(session: ResearchSessionRecord, prompt: string, runId: string, effort: string | null, startedBy: Principal): Promise<void> {
     try {
-      const choices = await this.connectorChoices.forRun(session.accountId);
+      // The account's Claude Code connection, as it is now (it may have been disconnected since the question came).
+      const connection = await this.connections.ready(session.accountId);
+      if (connection === null) return await this.notStarted(session, runId, "This account's Claude Code connection is not connected, so the question was not asked: check it in Settings → AI Connections.");
+      const choices = await this.connectorChoices.forRun(session.accountId, connection.connection.id);
       const prepared = await this.governance.prepareResearch({ accountId: session.accountId, researchWorkspaceId: session.workspaceId, researchSessionId: session.id }, runId, { startedBy, connectors: choices.research });
       if (!prepared.ok) return await this.notStarted(session, runId, prepared.message);
       if (this.stopRequested.has(session.id)) return await this.stoppedBeforeStart(session, runId, prepared.plan);
       const allowed = allowedNamesOf(prepared.plan);
       const connectors = choices.research.filter((c) => allowed.has(c.name));
       const denied = choices.known.filter((c) => !allowed.has(c.name)).map((c) => c.prefix);
-      this.start(session, prompt, runId, prepared.plan, effort, connectors, denied);
+      this.start(session, prompt, runId, prepared.plan, effort, connectors, denied, connection);
     } catch (err) {
       await this.notStarted(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`).catch((e: unknown) => this.logger.error(`research run ${runId} could not be refused cleanly: ${message(e)}`));
     } finally {
@@ -265,11 +272,11 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     await this.setStatus(session.id, "failed", why.slice(0, 300), runId);
   }
 
-  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], deniedConnectors: string[]): void {
+  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], deniedConnectors: string[], connection: RunConnection): void {
     const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd, connectors, deniedConnectors });
     // The agent's HOME: a directory that exists wherever Claude Code runs. With no tool, nothing in it is read.
     const cwd = this.config.data.home;
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config), ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config, connection.configDir), ...connection.secretEnv, ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,

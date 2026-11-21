@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import {
-  CLAUDE_SIGN_IN_REQUIRED,
+  SIGN_IN_REQUIRED,
   MUTATION_HEADER,
   RUN_TOKEN_HEADER,
   type AgentPushResult,
@@ -209,7 +209,7 @@ describe("a chat's run under its account's policy, its agent, and its push (GitH
     const who = seen.whoami?.body as AgentWhoAmI;
     assert.deepEqual(who, { runId: who.runId, accountId: h.accountId, kind: "chat", workspaceId: session.id, agentId: "claude-code", policyRevision: optional.id, scope: "ACCOUNT_WORKSPACE" });
     for (const probe of ["switchWithToken", "policy", "draft", "approve", "session"]) assert.deepEqual([seen[probe]?.status, errorOf(seen[probe])], [403, "agent_outside_gateway"], probe);
-    assert.deepEqual([seen.switchWithout?.status, errorOf(seen.switchWithout)], [401, CLAUDE_SIGN_IN_REQUIRED], "the CLI being signed in makes no request an owner's");
+    assert.deepEqual([seen.switchWithout?.status, errorOf(seen.switchWithout)], [401, SIGN_IN_REQUIRED], "the CLI being signed in makes no request an owner's");
     assert.equal((seen.credential?.body as { verdict: string }).verdict, "deny");
     pushed = seen.push?.body as AgentPushResult;
     assert.equal(seen.push?.status, 200, JSON.stringify(seen.push?.body));
@@ -300,7 +300,7 @@ describe("a chat's run under its account's policy, its agent, and its push (GitH
   });
 
   test("the owner's push from the chat waits for the owner's own approval where the policy asks for one", async () => {
-    assert.equal(code(await h.anonymous.send("POST", `/api/sessions/${session.id}/push`, {})), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(code(await h.anonymous.send("POST", `/api/sessions/${session.id}/push`, {})), SIGN_IN_REQUIRED);
     const asked = await h.send("POST", `/api/sessions/${session.id}/push`, {});
     assert.equal(asked.status, 200, JSON.stringify(asked.body));
     const view = (asked.body as { approval: ApprovalView }).approval;

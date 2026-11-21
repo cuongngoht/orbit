@@ -23,6 +23,29 @@ export const SETUP_REQUIRED = "setup_required";
 export const INVALID_CREDENTIALS = "invalid_credentials";
 export const TOO_MANY_ATTEMPTS = "too_many_attempts";
 export const PASSWORD_CHANGE_REQUIRED = "password_change_required";
+// A setup code that was used, expired, never issued -- or names another user than the one asked for (HTTP 400). Which
+// of these it was is never said.
+export const SETUP_CODE_INVALID = "setup_code_invalid";
+// A first-administrator code used where an account exists already (HTTP 409).
+export const SETUP_ALREADY_DONE = "setup_already_done";
+// The username is another user's (HTTP 409): usernames are unique in the deployment.
+export const USERNAME_TAKEN = "username_taken";
+// A change named a version (If-Match) that is not the record's any more (HTTP 412), or named none where one is needed
+// (HTTP 428).
+export const STALE_VERSION = "stale_version";
+export const PRECONDITION_REQUIRED = "precondition_required";
+// A share named somebody who is not a user of this deployment, or an email that is no user's VERIFIED email (HTTP 400).
+export const SHARE_RECIPIENT_UNKNOWN = "share_recipient_unknown";
+
+// Why a one-time setup code was printed (`cli/governance.js owner setup-code | reset-password`).
+export const SETUP_CODE_PURPOSES = ["first_admin", "new_account", "reset_password"] as const;
+export type SetupCodePurpose = (typeof SETUP_CODE_PURPOSES)[number];
+
+// THE SHARE ADDRESS of a user: what a chat or a research workspace is shared with, and what a share is matched against.
+// It is the user's VERIFIED email when they have one; otherwise an address of this deployment's own that no mail ever
+// reaches (`<username>@users.orbit.local`) -- so a user with no verified email can still be shared with, by username.
+export const SHARE_ADDRESS_DOMAIN = "users.orbit.local";
+export const shareAddressOf = (username: string): string => `${username}@${SHARE_ADDRESS_DOMAIN}`;
 
 // The id of an Orbit account: the tenant every record belongs to. A branded string, so an id of anything else is not
 // passed where an account's is expected.
@@ -41,7 +64,13 @@ export interface AuthUser {
   role: UserRole;
   // The trial seed's password, or one an operator reset: the page asks for a new one.
   mustChangePassword: boolean;
+  // The trial seed's `123456` is still this user's password (only the trial account's user ever has it).
+  trialPassword: boolean;
   lastLoginAt: string | null;
+  // What others share with this user by (shareAddressOf): the verified email, or the username's own address.
+  shareAddress: string;
+  // For If-Match on PATCH /api/auth/profile.
+  version: number;
 }
 
 export interface AuthAccount {
@@ -94,6 +123,14 @@ export interface SetupRequest {
   companyName?: string;
   timezone: string;
   contactEmail?: string | null;
+}
+
+// A password reset (`cli/governance.js owner reset-password` printed the code for exactly this user): the same route as
+// the setup, POST /api/auth/setup -- the page's other fields are allowed and ignored.
+export interface PasswordResetRequest {
+  code: string;
+  username: string;
+  password: string;
 }
 
 export interface ChangePasswordRequest {
@@ -223,6 +260,50 @@ export function checkSetup(body: unknown): Checked<Required<SetupRequest>> {
     timezone: body.timezone as string,
     contactEmail,
   }));
+}
+
+// A one-time code as a person types it: the server compares it without its dashes, spaces and case.
+export const normalizeSetupCode = (code: string): string => code.replace(/[\s-]/g, "").toUpperCase();
+
+export function checkPasswordReset(body: unknown): Checked<PasswordResetRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["code", "username", "password", "fullName", "companyName", "timezone", "contactEmail"]);
+  const username = normalizeUsername(body.username);
+  if (typeof body.code !== "string" || body.code.trim().length < 8 || body.code.length > IDENTITY_LIMITS.codeLength) errors.push("code must be the one-time code printed on the server");
+  if (username === null) errors.push("username must be the username the code was printed for");
+  errors.push(...passwordProblems(body.password, username));
+  return checked(errors, () => ({ code: (body.code as string).trim(), username: username as string, password: body.password as string }));
+}
+
+// WHO A SHARE NAMES: a user of this deployment, by username, or by an email -- which counts only when it is some user's
+// VERIFIED email (the server decides that; this only reads the shape).
+export type ShareRecipient = { kind: "username"; username: string } | { kind: "email"; email: string };
+
+export const SHARE_PEOPLE_MAX = 20;
+
+export function shareRecipientOf(v: unknown): ShareRecipient | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  if (t.includes("@")) {
+    const email = emailOf(t);
+    return email === null ? null : { kind: "email", email };
+  }
+  const username = normalizeUsername(t);
+  return username === null ? null : { kind: "username", username };
+}
+
+// PUT …/access: the whole list of people it is shared with (an empty list: shared with nobody).
+export function checkAccessPeople(body: unknown): Checked<{ people: ShareRecipient[] }> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["people"]);
+  const people = Array.isArray(body.people) ? body.people.map(shareRecipientOf) : null;
+  if (people === null || people.length > SHARE_PEOPLE_MAX) errors.push(`people must be a list of at most ${SHARE_PEOPLE_MAX} usernames or emails`);
+  else if (people.some((p) => p === null)) errors.push("every entry of people must be a username or an email address");
+  return checked(errors, () => {
+    const unique = new Map<string, ShareRecipient>();
+    for (const p of people as ShareRecipient[]) unique.set(p.kind === "username" ? `u:${p.username}` : `e:${p.email}`, p);
+    return { people: [...unique.values()] };
+  });
 }
 
 export function checkChangePassword(body: unknown, username: string | null): Checked<ChangePasswordRequest> {

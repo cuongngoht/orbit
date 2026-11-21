@@ -7,7 +7,7 @@ import { AzureAuthModule } from "./modules/azure-auth/azure-auth.module.js";
 import { BrokerModule } from "./modules/broker/broker.module.js";
 import { ChangesModule } from "./modules/changes/changes.module.js";
 import { ChatModule } from "./modules/chat/chat.module.js";
-import { ClaudeAuthModule } from "./modules/claude-auth/claude-auth.module.js";
+import { ConnectionsModule } from "./modules/connections/connections.module.js";
 import { ClaudeRunnerModule } from "./modules/claude-runner/claude-runner.module.js";
 import { GithubModule } from "./modules/github/github.module.js";
 import { HealthModule } from "./modules/health/health.module.js";
@@ -33,7 +33,7 @@ export class AppModule {
         AuthModule,
         HealthModule,
         SetupModule,
-        ClaudeAuthModule,
+        ConnectionsModule,
         AccessModule,
         GithubModule,
         AzureAuthModule,

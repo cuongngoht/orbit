@@ -26,6 +26,7 @@ import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { Db } from "../../infra/db/db.js";
+import { RunConnections } from "../connections/run-connections.js";
 import { baseEnv, claudeEnv } from "../../infra/process/env.js";
 import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../infra/process/process.port.js";
 import { tail } from "../../infra/security/redact.js";
@@ -57,6 +58,9 @@ export interface ProjectRuntime {
   enabledPlugins: Record<string, true>;
 }
 
+// One `claude plugin …` call, as the chat's connection runs it (its own config home).
+type ClaudeCall = (args: string[]) => Promise<RunResult>;
+
 @Injectable()
 export class ProjectService {
   private readonly logger = new Logger("Project");
@@ -68,6 +72,7 @@ export class ProjectService {
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(SettingsService) private readonly settings: SettingsService,
     @Inject(Db) private readonly db: Db,
+    @Inject(RunConnections) private readonly connections: RunConnections,
   ) {}
 
   pluginDir(sessionId: string): string {
@@ -160,45 +165,51 @@ export class ProjectService {
   private async installDeclared(session: SessionRecord, start: ProjectInventory, marketplaces: DeclaredMarketplace[]): Promise<ProjectInventory> {
     const declared = start.plugins.filter((p) => p.kind === "declared");
     if (declared.length === 0) return start;
-    const installed = parseList((await this.claude(["plugin", "list", "--json"])).stdout, "id");
-    const known = parseList((await this.claude(["plugin", "marketplace", "list", "--json"])).stdout, "name");
+    // A plugin is installed for the Claude Code connection the chat's runs use (in its own config home): with none
+    // connected, there is nowhere to install it.
+    const connection = await this.connections.ready(session.accountId);
+    if (connection === null) {
+      let inventory = start;
+      for (const plugin of declared) inventory = await this.setPlugin(session.id, inventory, { ...plugin, state: "failed", detail: "No connected Claude Code connection to install it for: connect one in Settings → AI Connections, then start a new chat." });
+      return inventory;
+    }
+    const env = { ...claudeEnv(this.config, connection.configDir), ...connection.secretEnv };
+    const claude = (args: string[]): Promise<RunResult> => this.process.run(this.config.binaries.claude, args, { cwd: this.config.data.home, env, timeoutMs: CLI_TIMEOUT_MS });
+    const installed = parseList((await claude(["plugin", "list", "--json"])).stdout, "id");
+    const known = parseList((await claude(["plugin", "marketplace", "list", "--json"])).stdout, "name");
     const added = new Map<string, string | null>();
     let inventory = start;
     for (const plugin of declared) {
       const marketplace = marketplaceOf(plugin.id);
-      if (!added.has(marketplace)) added.set(marketplace, known.has(marketplace) ? null : await this.addMarketplace(session, marketplaces.find((m) => m.name === marketplace) ?? null));
+      if (!added.has(marketplace)) added.set(marketplace, known.has(marketplace) ? null : await this.addMarketplace(session, marketplaces.find((m) => m.name === marketplace) ?? null, claude));
       inventory = await this.setPlugin(session.id, inventory, { ...plugin, state: "installing", detail: null });
-      inventory = await this.setPlugin(session.id, inventory, await this.install(plugin, installed.has(plugin.id), added.get(marketplace) ?? null));
+      inventory = await this.setPlugin(session.id, inventory, await this.install(plugin, installed.has(plugin.id), added.get(marketplace) ?? null, claude));
     }
     return inventory;
   }
 
   // Adds a marketplace the project declares; the CLI's words when it could not (null when it did, or when the
   // marketplace is not declared here and may be one the CLI already knows).
-  private async addMarketplace(session: SessionRecord, marketplace: DeclaredMarketplace | null): Promise<string | null> {
+  private async addMarketplace(session: SessionRecord, marketplace: DeclaredMarketplace | null, claude: ClaudeCall): Promise<string | null> {
     if (marketplace === null) return null;
     const l = marketplace.location;
     const dir = l.kind === "directory" ? within(session.workspacePath, ...l.path.replace(/^\.\//, "").split("/")) : null;
     const arg = l.kind === "github" ? l.repo : l.kind === "git" || l.kind === "url" ? l.url : dir !== null && isRegularDir(dir) ? dir : null;
     if (arg === null) return `The marketplace ${marketplace.name} is not one Orbit Web can add (${marketplace.source}).`;
-    const r = await this.claude(["plugin", "marketplace", "add", arg]);
+    const r = await claude(["plugin", "marketplace", "add", arg]);
     return succeeded(r) ? null : `claude plugin marketplace add ${marketplace.name} ${endedHow(r)}: ${tail(r.stderr || r.stdout, 2)}`;
   }
 
-  private async install(plugin: ProjectPlugin, alreadyInstalled: boolean, marketplaceProblem: string | null): Promise<ProjectPlugin> {
+  private async install(plugin: ProjectPlugin, alreadyInstalled: boolean, marketplaceProblem: string | null, claude: ClaudeCall): Promise<ProjectPlugin> {
     if (alreadyInstalled) return { ...plugin, state: "installed", detail: "Already installed here; enabled for this project's chats." };
-    const r = await this.claude(["plugin", "install", plugin.id, "--scope", "user"]);
+    const r = await claude(["plugin", "install", plugin.id, "--scope", "user"]);
     if (!succeeded(r)) return { ...plugin, state: "failed", detail: marketplaceProblem ?? `claude plugin install ${endedHow(r)}: ${tail(r.stderr || r.stdout, 2)}` };
     // Installed for this project's chats only: switched off for the user, then enabled per run. A plugin that cannot be
     // switched off would run in every chat, so it is uninstalled instead.
-    const off = await this.claude(["plugin", "disable", plugin.id, "--scope", "user"]);
+    const off = await claude(["plugin", "disable", plugin.id, "--scope", "user"]);
     if (succeeded(off)) return { ...plugin, state: "installed", detail: null };
-    const removed = await this.claude(["plugin", "uninstall", plugin.id, "--scope", "user"]);
+    const removed = await claude(["plugin", "uninstall", plugin.id, "--scope", "user"]);
     const after = succeeded(removed) ? "so it was uninstalled" : `and uninstalling it failed too (${tail(removed.stderr || removed.stdout, 2)}) -- remove it with \`claude plugin uninstall ${plugin.id}\``;
     return { ...plugin, state: "failed", detail: `It could not be switched off for other chats (${tail(off.stderr || off.stdout, 2)}), ${after}.` };
-  }
-
-  private claude(args: string[]): Promise<RunResult> {
-    return this.process.run(this.config.binaries.claude, args, { cwd: this.config.data.home, env: claudeEnv(this.config), timeoutMs: CLI_TIMEOUT_MS });
   }
 }

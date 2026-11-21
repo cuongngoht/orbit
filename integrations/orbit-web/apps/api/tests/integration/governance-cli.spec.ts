@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
-import { CLAUDE_SIGN_IN_REQUIRED, type AuditPage, type ChainVerification, type FindingList } from "@orbit-web/contracts";
+import { SIGN_IN_REQUIRED, type AuditPage, type ChainVerification, type FindingList } from "@orbit-web/contracts";
 import { startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
 
 const CLI = fileURLToPath(new URL("../../src/cli/governance.js", import.meta.url));
@@ -68,7 +68,7 @@ describe("the governance terminal", () => {
     const r = run("revoke-sessions", `--account=${h.accountId}`);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, new RegExp(`1 browser session\\(s\\) of account ${h.accountId} ended`));
-    assert.equal(code(await h.get("/api/governance/overview")), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(code(await h.get("/api/governance/overview")), SIGN_IN_REQUIRED);
     again = await h.browser();
     assert.equal(again.accountId, h.accountId, "the same identity, the same account");
     const events = ok<AuditPage>(await again.get("/api/governance/audit?type=auth.sessions.revoked")).events;

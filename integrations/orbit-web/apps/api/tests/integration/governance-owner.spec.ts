@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import {
-  CLAUDE_SIGN_IN_REQUIRED,
+  SIGN_IN_REQUIRED,
   CSRF_HEADER,
   CSRF_INVALID,
   MUTATION_HEADER,
@@ -83,9 +83,9 @@ describe("the account's owner governs at once, and only the owner", () => {
 
   test("a browser with no session reaches none of it, and a change without the session's own CSRF token is refused and recorded", async () => {
     const reads = ["/api/governance/overview", "/api/governance/policy", "/api/governance/audit", "/api/governance/workspaces", "/api/governance/research", "/api/governance/approvals", "/api/governance/decisions", "/api/governance/findings", "/api/governance/reports"];
-    for (const path of reads) assert.equal(code(await h.anonymous.get(path)), CLAUDE_SIGN_IN_REQUIRED, path);
-    assert.equal(code(await h.anonymous.send("POST", "/api/governance/revisions", {})), CLAUDE_SIGN_IN_REQUIRED);
-    assert.equal(code(await h.anonymous.send("POST", "/api/governance/audit/verify")), CLAUDE_SIGN_IN_REQUIRED);
+    for (const path of reads) assert.equal(code(await h.anonymous.get(path)), SIGN_IN_REQUIRED, path);
+    assert.equal(code(await h.anonymous.send("POST", "/api/governance/revisions", {})), SIGN_IN_REQUIRED);
+    assert.equal(code(await h.anonymous.send("POST", "/api/governance/audit/verify")), SIGN_IN_REQUIRED);
     const change = (headers: Record<string, string>) => fetch(`${h.url}/api/governance/revisions`, { method: "POST", headers: { cookie: h.cookie, [MUTATION_HEADER]: "1", "content-type": "application/json", ...headers }, body: "{}" });
     const attempts: Record<string, string>[] = [{}, { [CSRF_HEADER]: "x".repeat(43) }];
     for (const headers of attempts) {
@@ -180,8 +180,8 @@ describe("another account's governance is not found from this one", () => {
 
   test("one Claude identity per runtime: once the CLI is Bob's, Alice's browser reads nothing", async () => {
     assert.notEqual(bob.accountId, aliceId);
-    assert.equal(code(await alice.get("/api/governance/overview")), CLAUDE_SIGN_IN_REQUIRED);
-    assert.equal(code(await alice.send("POST", "/api/governance/revisions", {})), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(code(await alice.get("/api/governance/overview")), SIGN_IN_REQUIRED);
+    assert.equal(code(await alice.send("POST", "/api/governance/revisions", {})), SIGN_IN_REQUIRED);
   });
 
   test("Bob's governance is his own -- his revision 1, his chain -- and none of Alice's records answers him, by any route", async () => {
@@ -233,7 +233,7 @@ describe("another account's governance is not found from this one", () => {
     assert.equal(ok<RevisionView>(await again.get(`/api/governance/revisions/${draft.id}`)).state, "DRAFT");
     assert.equal(ok<ResourceGovernanceList>(await again.get("/api/governance/workspaces")).resources.find((r) => r.id === chat.id)?.overridden, true);
     assert.equal(ok<ApprovalView>(await again.get(`/api/governance/approvals/${approval.id}`)).state, "pending");
-    assert.equal(code(await bob.get("/api/governance/overview")), CLAUDE_SIGN_IN_REQUIRED);
+    assert.equal(code(await bob.get("/api/governance/overview")), SIGN_IN_REQUIRED);
   });
 });
 

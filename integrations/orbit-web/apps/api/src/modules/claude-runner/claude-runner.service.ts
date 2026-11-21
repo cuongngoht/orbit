@@ -1,6 +1,9 @@
-// THE CLAUDE RUNNER: runs the official Claude Code CLI, headless, with the Orbit plugin (and the chat's project
-// plugins), in a session's workspace, with the model, effort and mode the session prefers. One run per session at a
-// time. The prompt goes in on stdin; the stream-json lines come out through the mapper as session events on the bus
+// THE CLAUDE RUNNER: runs the official Claude Code CLI, headless, in a session's workspace, with the model, effort and
+// mode the session prefers -- as the chat's ACCOUNT's default Claude Code connection: that connection's own config home
+// (CLAUDE_CONFIG_DIR), and its own key for an API-key connection; with no connected connection nothing is accepted (409
+// connection_required / connection_unavailable). The Orbit plugin is loaded only when the account's owner approved it
+// for chats on that connection, for the plugin's digest now; the chat's project plugins as before. One run per session
+// at a time. The prompt goes in on stdin; the stream-json lines come out through the mapper as session events on the bus
 // (what keeps the transcript, refreshes Orbit or feeds a browser SUBSCRIBES -- the runner only publishes, one event after
 // another, in the order the mapper made them); the outcome is decided from the exit status and the CLI's own result
 // line; a stop signals the process group (SIGINT, then SIGTERM, then SIGKILL). A restart of Orbit Web leaves no run
@@ -28,8 +31,9 @@ import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { ImageFiles } from "../../infra/storage/image-files.js";
 import { ImageStore, RunStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
 import type { Principal } from "../auth/principal.js";
-import { ClaudeConnectorsService, type RunConnectors } from "../claude-auth/claude-connectors.service.js";
-import { ClaudeModelsService } from "../claude-auth/claude-models.service.js";
+import { ClaudeConnectorsService, type RunConnectors } from "../connections/claude-connectors.service.js";
+import { ClaudeModelsService } from "../connections/claude-models.service.js";
+import { RunConnections, type RunConnection } from "../connections/run-connections.js";
 import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
 import { AutoModeService } from "./auto-mode.js";
@@ -94,6 +98,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
     @Inject(ClaudeConnectorsService) private readonly connectors: ClaudeConnectorsService,
     @Inject(Transcript) private readonly transcript: Transcript,
+    @Inject(RunConnections) private readonly connections: RunConnections,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -142,6 +147,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is changing; send your message once it has.");
     if (session.status === "preparing") throw conflict("workspace_not_ready", "The workspace is still being prepared.");
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
+    // The chat's account must have a connected Claude Code connection: its runs are that connection's.
+    await this.connections.require(session.accountId);
     const input = this.inputOf(text, images);
     const runId = randomUUID();
     const messageId = randomUUID();
@@ -189,9 +196,12 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   // -- it never starts undecided.
   private async governed(session: SessionRecord, input: RunInput, runId: string, startedBy: Principal): Promise<void> {
     try {
+      // The account's Claude Code connection, as it is now (it may have been disconnected since the message came).
+      const connection = await this.connections.ready(session.accountId);
+      if (connection === null) return await this.refuse(session, runId, "This account's Claude Code connection is not connected, so the run did not start: check it in Settings → AI Connections.");
       let decided: { plan: RunPlan; connectors: RunConnectors };
       try {
-        const connectors = await this.connectors.forRun(session.accountId);
+        const connectors = await this.connectors.forRun(session.accountId, connection.connection.id);
         const prepared = await this.governance.prepare(session, runId, { mode: session.mode, startedBy, connectors: connectors.chat });
         if (!prepared.ok) return await this.refuse(session, runId, prepared.message);
         decided = { plan: prepared.plan, connectors };
@@ -200,7 +210,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       }
       if (this.stopRequested.has(session.id)) return await this.stoppedBeforeStart(session, runId, decided.plan);
       try {
-        await this.start((await this.sessions.get(session.id)) ?? session, input, runId, decided.plan, decided.connectors);
+        await this.start((await this.sessions.get(session.id)) ?? session, input, runId, decided.plan, decided.connectors, connection);
       } catch (err) {
         // Nothing runs: no run record stays "running", and the run's binding ends.
         await this.runs.finish(runId, "failed", { exitCode: null, signal: null, costUsd: null });
@@ -257,7 +267,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     for (const run of runs.filter((r) => this.active.has(r.session.id))) await this.finalize(run, { code: null, signal: "SIGKILL", spawnError: null });
   }
 
-  private async start(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connectors: RunConnectors): Promise<void> {
+  private async start(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connectors: RunConnectors, connection: RunConnection): Promise<void> {
     const resume = session.turns > 0;
     // The chat's own account's preferences: whose switches hand Claude Code a sign-in.
     const prefs = await this.settings.get(session.accountId);
@@ -268,16 +278,18 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const github = credentials && prefs.githubForClaude && session.source === "github";
     const project = await this.project.runtime(session);
     // The effort the account's catalog says this model takes (none, for a model that takes no level).
-    const catalog = this.models.cached(session.accountId);
+    const catalog = await this.models.catalog(session.accountId);
+    // The Orbit plugin only when the account's owner approved it for chats on this connection, for its digest now.
+    const orbit = await this.connections.pluginApproved(connection.connection, "chat");
     // The connectors the policy allowed this run, of those its owner checked for chats; every other one the account has
     // is denied by name. An isolated run reaches none at all (--strict-mcp-config).
     const allowed = new Set(plan.connectors.map((c) => c.name));
     const deniedConnectors = plan.isolated ? [] : connectors.known.filter((c) => !allowed.has(c.name)).map((c) => c.prefix);
     const args = claudeArgs({
       model: session.model,
-      effort: effortFor(catalog === null ? null : modelOf(catalog, session.model), session.effort),
+      effort: effortFor(modelOf(catalog, session.model), session.effort),
       mode: session.mode,
-      pluginDirs: [this.config.pluginDir, ...project.pluginDirs],
+      pluginDirs: [...(orbit ? [this.config.pluginDir] : []), ...project.pluginDirs],
       enabledPlugins: project.enabledPlugins,
       autoModeEnvironment: this.autoMode.current(plan.isolated),
       sessionId: session.claudeSessionId,
@@ -293,11 +305,11 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       maxBudgetUsd: this.config.maxBudgetUsd,
       // The control plane's own rooms too. In the single deployment these rules are defence in depth only -- the agent
       // shares this container's user with them (README, "The limit, said plainly").
-      protectedDirs: [this.config.data.claude, this.config.data.github, this.config.data.app, this.config.data.control, ...(azure ? [] : [this.config.data.azure])],
+      protectedDirs: [this.config.data.connections, this.config.data.github, this.config.data.app, this.config.data.control, ...(azure ? [] : [this.config.data.azure])],
     });
     // The session reads as running since its message was accepted (send).
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, { azure, github }), ...plan.env } });
+    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, connection.configDir, { azure, github }), ...connection.secretEnv, ...plan.env } });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {

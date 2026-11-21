@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { AUDIT_SCHEMA_VERSION, seal, type AuditBody, type AuditEvent, type AuditEventType, type AuditPrincipalType, type AuditValue, type RevisionState, type RiskLevel } from "@orbit-web/governance-core";
 import type { FindingResolution, IsolationCheck, IsolationState, RevisionSource } from "@orbit-web/contracts";
+import { SYSTEM_ACCOUNT_ID } from "../accounts/stores.js";
 import { Db, jsonParam, type Row } from "../db/db.js";
 
 export const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
@@ -12,9 +13,15 @@ export const sha256 = (text: string): string => createHash("sha256").update(text
 const str = (v: unknown): string => String(v);
 const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
-// The chain a record is sealed onto: an account's own, or the deployment's (what concerns no account).
-export const DEPLOYMENT_CHAIN = "deployment";
-export const chainOf = (accountId: string | null): string => (accountId === null ? DEPLOYMENT_CHAIN : `account:${accountId}`);
+// The chain a record is sealed onto: an account's own. What concerns no account (a refused stranger, the deployment's
+// own checks) is the SYSTEM account's -- the deployment's chain, `account:<system id>`. At this boundary a null account
+// means the system account, so a caller that speaks of "the deployment" keeps working, and every row still carries an
+// account (the schema holds every account_id NOT NULL).
+export const DEPLOYMENT_CHAIN = `account:${SYSTEM_ACCOUNT_ID}`;
+export const accountOrSystem = (accountId: string | null): string => accountId ?? SYSTEM_ACCOUNT_ID;
+export const chainOf = (accountId: string | null): string => `account:${accountOrSystem(accountId)}`;
+// The other way: the system account's id read back as null (the deployment's own).
+const deploymentAsNull = (accountId: string | null): string | null => (accountId === SYSTEM_ACCOUNT_ID ? null : accountId);
 
 // ---- what an account's governance points at ---------------------------------------------------------------------------
 
@@ -130,7 +137,8 @@ export class AuditStore {
       const existing = await this.get(draft.accountId, draft.eventId);
       if (existing !== null) return existing;
       const seq = Number(head.head_seq) + 1;
-      const event = seal({ ...draft, schemaVersion: AUDIT_SCHEMA_VERSION, recordedAt: new Date().toISOString() }, seq, strOrNull(head.head_hash), sha256);
+      // The record is sealed with the account it is kept under (the system account's id for the deployment's own).
+      const event = seal({ ...draft, accountId: accountOrSystem(draft.accountId), schemaVersion: AUDIT_SCHEMA_VERSION, recordedAt: new Date().toISOString() }, seq, strOrNull(head.head_hash), sha256);
       await this.db.query(
         `INSERT INTO audit_events (chain_id, ${AUDIT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21::jsonb, $22, $23)`,
         [
@@ -199,14 +207,14 @@ export class AuditStore {
     return (await this.db.query(`SELECT ${AUDIT_COLUMNS} FROM audit_events WHERE chain_id = $1 AND occurred_at >= $2 AND occurred_at < $3 ORDER BY seq`, [chainOf(accountId), from, to])).map(eventOf);
   }
 
-  // Every chain there is: the deployment's (null) and one per account.
+  // Every chain there is: the deployment's (null: the system account's) and one per account.
   async chains(): Promise<(string | null)[]> {
-    return (await this.db.query("SELECT account_id FROM audit_chains ORDER BY id")).map((r) => strOrNull(r.account_id));
+    return (await this.db.query("SELECT account_id FROM audit_chains ORDER BY id")).map((r) => deploymentAsNull(strOrNull(r.account_id)));
   }
 
-  // The accounts whose chain holds a record that occurred in [from, to).
+  // The accounts (never the system account) whose chain holds a record that occurred in [from, to).
   async accountsActive(from: string, to: string): Promise<string[]> {
-    return (await this.db.query("SELECT DISTINCT account_id FROM audit_events WHERE account_id IS NOT NULL AND occurred_at >= $1 AND occurred_at < $2", [from, to])).map((r) => str(r.account_id));
+    return (await this.db.query("SELECT DISTINCT account_id FROM audit_events WHERE account_id <> $3 AND occurred_at >= $1 AND occurred_at < $2", [from, to, SYSTEM_ACCOUNT_ID])).map((r) => str(r.account_id));
   }
 }
 
@@ -595,16 +603,17 @@ export interface IsolationRecord {
   detail: string;
 }
 
-// Isolation is the DEPLOYMENT's fact (how the agent's container is placed), not any account's.
+// Isolation is the DEPLOYMENT's fact (how the agent's container is placed), not any account's: its rows are the system
+// account's.
 export class IsolationStore {
   constructor(private readonly db: Db) {}
 
   async latest(): Promise<IsolationRecord | null> {
-    const row = await this.db.one("SELECT * FROM isolation_checks ORDER BY id DESC LIMIT 1");
+    const row = await this.db.one("SELECT * FROM isolation_checks WHERE account_id = $1 ORDER BY id DESC LIMIT 1", [SYSTEM_ACCOUNT_ID]);
     return row === null ? null : { checkedAt: str(row.checked_at), state: str(row.state) as IsolationState, checks: row.checks as IsolationCheck[], detail: str(row.detail) };
   }
 
   async insert(r: IsolationRecord): Promise<void> {
-    await this.db.query("INSERT INTO isolation_checks (checked_at, state, checks, detail) VALUES ($1, $2, $3::jsonb, $4)", [r.checkedAt, r.state, jsonParam(r.checks), r.detail]);
+    await this.db.query("INSERT INTO isolation_checks (account_id, checked_at, state, checks, detail) VALUES ($1, $2, $3, $4::jsonb, $5)", [SYSTEM_ACCOUNT_ID, r.checkedAt, r.state, jsonParam(r.checks), r.detail]);
   }
 }

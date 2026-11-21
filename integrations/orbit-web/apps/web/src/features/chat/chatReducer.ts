@@ -3,8 +3,10 @@
 // not hold yet. Pure: the same events always give the same timeline.
 import {
   applyDelta,
-  type AnyAppEvent,
+  type AnySessionEvent,
+  type ImageRef,
   type OrbitPanel,
+  type ProjectInventory,
   type PermissionDeniedData,
   type RunNoticeData,
   type SessionCompletedData,
@@ -24,6 +26,8 @@ export interface MessageItem {
   streaming: boolean;
   partial: boolean;
   parentToolUseId: string | null;
+  // A person's message: the images it carried.
+  images?: ImageRef[];
 }
 
 export interface ToolItem {
@@ -78,7 +82,31 @@ export interface WorkspaceItem {
   workBranch: string | null;
 }
 
-export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem;
+// A person moved the working branch: to another branch, or to a new one made from the work as it was.
+export interface BranchItem {
+  kind: "branch";
+  id: string;
+  from: string | null;
+  workBranch: string;
+  created: boolean;
+}
+
+// Plan mode proposed a plan (the ExitPlanMode input): shown as a plan, with the way to carry it out.
+export interface PlanItem {
+  kind: "plan";
+  id: string;
+  plan: string;
+  truncated: boolean;
+}
+
+// What the repository brought for Claude Code, read on the workspace's first fetch.
+export interface ProjectItem {
+  kind: "project";
+  id: string;
+  inventory: ProjectInventory;
+}
+
+export type TimelineItem = MessageItem | ToolItem | RunStartItem | RunEndItem | NoticeItem | DeniedItem | WorkspaceItem | BranchItem | PlanItem | ProjectItem;
 
 export interface ChatState {
   lastSeq: number;
@@ -112,10 +140,16 @@ function workspace(state: ChatState, patch: Omit<WorkspaceItem, "kind" | "id">):
   return index === -1 ? { ...state, items: [...state.items, item] } : { ...state, items: replace(state.items, index, item) };
 }
 
+function project(state: ChatState, inventory: ProjectInventory): ChatState {
+  const index = findIndex(state.items, "project", "project");
+  const item: ProjectItem = { kind: "project", id: "project", inventory };
+  return index === -1 ? { ...state, items: [...state.items, item] } : { ...state, items: replace(state.items, index, item) };
+}
+
 // Messages still streaming when a run ends stop streaming (their completion, partial or not, arrives as an event).
 const settleStreaming = (items: TimelineItem[]): TimelineItem[] => items.map((i) => (i.kind === "message" && i.streaming ? { ...i, streaming: false } : i));
 
-function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
+function applyDurable(state: ChatState, e: AnySessionEvent): ChatState {
   switch (e.type) {
     case "workspace.preparing":
       return workspace(state, { step: e.data.step, state: "preparing", message: null, workBranch: null });
@@ -123,6 +157,18 @@ function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
       return workspace(state, { step: "ready", state: "ready", message: null, workBranch: e.data.workBranch });
     case "workspace.failed":
       return workspace(state, { step: e.data.step, state: "failed", message: e.data.message, workBranch: null });
+    case "workspace.branch":
+      return { ...state, items: [...state.items, { kind: "branch", id: `branch-${e.seq}`, from: e.data.from, workBranch: e.data.workBranch, created: e.data.created }] };
+    case "project.inventory":
+      return project(state, e.data.inventory);
+    case "project.plugin": {
+      const current = state.items.find((i): i is ProjectItem => i.kind === "project");
+      if (!current) return state;
+      const plugins = current.inventory.plugins.map((p) => (p.id === e.data.plugin.id && p.kind === e.data.plugin.kind ? e.data.plugin : p));
+      return project(state, { ...current.inventory, plugins });
+    }
+    case "plan.proposed":
+      return { ...state, items: [...state.items, { kind: "plan", id: `plan-${e.seq}`, plan: e.data.plan, truncated: e.data.truncated }] };
     case "session.status":
       return { ...state, status: e.data.status, statusReason: e.data.reason };
     case "session.started":
@@ -130,7 +176,7 @@ function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
     case "message.started":
       return upsertMessage(state, e.data.messageId, (m) => m, { role: e.data.role, text: "", streaming: true, partial: false, parentToolUseId: e.data.parentToolUseId });
     case "message.completed":
-      return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: e.data.text, streaming: false, partial: e.data.partial }), { role: e.data.role, text: "", streaming: false, partial: false, parentToolUseId: e.data.parentToolUseId });
+      return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: e.data.text, streaming: false, partial: e.data.partial, ...(e.data.images ? { images: e.data.images } : {}) }), { role: e.data.role, text: "", streaming: false, partial: false, parentToolUseId: e.data.parentToolUseId });
     case "tool.started":
       return findIndex(state.items, "tool", e.data.toolUseId) !== -1
         ? state
@@ -155,7 +201,7 @@ function applyDurable(state: ChatState, e: AnyAppEvent): ChatState {
   }
 }
 
-export function chatReducer(state: ChatState, e: AnyAppEvent): ChatState {
+export function chatReducer(state: ChatState, e: AnySessionEvent): ChatState {
   if (e.type === "message.delta") {
     return upsertMessage(state, e.data.messageId, (m) => ({ ...m, text: applyDelta(m.text, e.data), streaming: true }), { role: "assistant", text: "", streaming: true, partial: false, parentToolUseId: null });
   }

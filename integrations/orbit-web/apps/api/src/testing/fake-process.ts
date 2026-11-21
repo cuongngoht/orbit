@@ -2,7 +2,7 @@
 // script accepts goes to the real port when one is given (so git really runs on a real temporary repository), and
 // otherwise fails as a program that is not installed. Every call is recorded with its argument list and environment.
 import { EventEmitter } from "node:events";
-import type { ExitInfo, ProcessHandle, ProcessPort, RunOptions, RunResult, SpawnOptions } from "../infra/process/process.port.js";
+import type { BinaryResult, ExitInfo, ProcessHandle, ProcessPort, RunOptions, RunResult, SpawnOptions } from "../infra/process/process.port.js";
 
 export interface Call {
   file: string;
@@ -134,6 +134,13 @@ export class FakeProcessPort implements ProcessPort {
     if (script?.run !== undefined) return result(typeof script.run === "function" ? await script.run(call) : script.run);
     if (this.real !== null) return this.real.run(file, args, options);
     return result({ code: null, spawnError: "ENOENT" });
+  }
+
+  // Bytes out (a git bundle): always the real program when there is one -- recorded like any other call.
+  async runBinary(file: string, args: readonly string[], options: RunOptions): Promise<BinaryResult> {
+    this.calls.push({ file, args: [...args], cwd: options.cwd, env: options.env, input: options.input });
+    if (this.real !== null) return this.real.runBinary(file, args, options);
+    return { code: null, signal: null, spawnError: "ENOENT", stdout: Buffer.alloc(0), stderr: "", timedOut: false, truncated: false };
   }
 
   spawn(file: string, args: readonly string[], options: SpawnOptions): ProcessHandle {

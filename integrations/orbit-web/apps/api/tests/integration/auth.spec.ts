@@ -1,43 +1,42 @@
 // Mocked-process integration: the real Nest app, real HTTP and SSE, with the claude and gh programs scripted.
-// These prove Orbit Web's handling of the CLIs' sign-in flows -- not that a real sign-in works (README: blocked here).
+// These prove Orbit Web's handling of GitHub CLI's sign-in flow -- not that a real sign-in works (README: blocked here).
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import type { GitHubStatus, LoginSnapshot, SetupStatus } from "@orbit-web/contracts";
+import { ORBIT_WEB_VERSION, type GitHubStatus, type LoginSnapshot, type SetupStatus } from "@orbit-web/contracts";
 import { FakeProcessPort, program, type FakeChild } from "../../src/testing/fake-process.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { eventually, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
 
-const signedOut = (fake: FakeProcessPort) =>
-  fake
-    .on(program("claude", "auth", "status"), { run: { stdout: '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}', code: 1 } })
-    .on(program("gh", "auth", "status"), { run: { stdout: '{"hosts":{}}', stderr: "You are not logged into any GitHub hosts. To log in, run: gh auth login" } });
+// GitHub's sign-in is asked for only once Orbit Web is signed in to a Claude account (sign-in.spec.ts holds that gate).
+const githubSignedOut = (fake: FakeProcessPort) =>
+  fake.on(program("gh", "auth", "status"), { run: { stdout: '{"hosts":{}}', stderr: "You are not logged into any GitHub hosts. To log in, run: gh auth login" } });
 
-describe("first run: nothing signed in", () => {
+describe("signed in to Claude, GitHub not connected yet", () => {
   let h: Harness;
-  before(async () => (h = await startHarness({ fake: signedOut(signedIn(new FakeProcessPort(new NodeProcessPort()))), env: { GH_TOKEN: "gho_shouldneverreachgh000000000000000000000", GITHUB_TOKEN: "x" } })));
+  before(async () => (h = await startHarness({ fake: githubSignedOut(signedIn(new FakeProcessPort(new NodeProcessPort()))), env: { GH_TOKEN: "gho_shouldneverreachgh000000000000000000000", GITHUB_TOKEN: "x" } })));
   after(() => h.close());
 
-  test("health answers and the setup page says neither account is connected", async () => {
+  test("health answers and the setup page says who is signed in to Claude, and that GitHub is not connected", async () => {
     const health = await h.get("/api/health");
     assert.equal(health.status, 200);
     const setup = (await h.get("/api/setup/status")).body as SetupStatus;
-    assert.equal(setup.ready, false);
-    assert.equal(setup.claude.state, "not_connected");
+    assert.equal(setup.claude.state, "connected");
+    assert.deepEqual(setup.claude.account, { email: "octo@example.com", organization: "Octo Org", plan: "max" });
     assert.equal(setup.github.state, "not_connected");
-    assert.equal(setup.versions.web, "0.7.0");
+    assert.equal(setup.versions.web, ORBIT_WEB_VERSION);
     assert.equal(setup.health.orbitPlugin.ok, true);
   });
 
-  test("repositories and new chats wait for the accounts", async () => {
-    assert.equal((await h.get("/api/repositories")).status, 409);
-    const created = await h.send("POST", "/api/sessions", { repository: "octo/sum-fixture", branch: "main", model: "sonnet" });
+  test("repositories and new chats wait for GitHub", async () => {
+    assert.equal((await h.get("/api/repositories?source=github")).status, 409);
+    const created = await h.send("POST", "/api/sessions", { repository: { source: "github", id: "octo/sum-fixture" }, branch: "main", model: "sonnet" });
     assert.equal(created.status, 409);
-    assert.equal((created.body as { error: { code: string } }).error.code, "claude_not_connected");
+    assert.equal((created.body as { error: { code: string } }).error.code, "github_not_connected");
   });
 
   test("gh never sees GH_TOKEN or GITHUB_TOKEN, and nothing asks gh for its token", () => {
     const ghCalls = h.fake.callsOf(program("gh"));
-    assert.ok(ghCalls.length > 0);
+    assert.ok(ghCalls.some((c) => c.args[0] === "auth"), "gh auth status was asked");
     for (const c of ghCalls) {
       assert.equal(c.env.GH_TOKEN, undefined);
       assert.equal(c.env.GITHUB_TOKEN, undefined);
@@ -52,13 +51,14 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
   let fake: FakeProcessPort;
   let loggedIn = false;
   before(async () => {
-    fake = signedOut(signedIn(new FakeProcessPort(new NodeProcessPort())));
+    fake = githubSignedOut(signedIn(new FakeProcessPort(new NodeProcessPort())));
     fake.on(program("gh", "auth", "status"), { run: () => ({ stdout: loggedIn ? JSON.stringify({ hosts: { "github.com": [{ state: "success", active: true, login: "octo" }] } }) : '{"hosts":{}}' }) });
     h = await startHarness({ fake });
   });
   after(() => h.close());
 
-  test("the code and URL gh prints reach the page; connected is decided by gh auth status and gh api user", async () => {
+  test("the code and URL gh prints reach every page on the app stream; connected is decided by gh auth status and gh api user", async () => {
+    const app = await h.stream("/api/events");
     let child: FakeChild | null = null;
     fake.on(program("gh", "auth", "login"), {
       spawn: (c) => {
@@ -69,10 +69,13 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
     });
     const started = await h.send("POST", "/api/github/login");
     assert.equal(started.status, 202);
-    const { events } = await h.events("/api/github/login/events", { until: (es) => es.some((e) => e.state === "awaiting_user") });
-    const waiting = events.find((e) => e.state === "awaiting_user") as unknown as LoginSnapshot;
-    assert.equal(waiting.code, "WXYZ-1234");
-    assert.equal(waiting.url, "https://github.com/login/device");
+    const flowOf = (e: Record<string, unknown>) => (e.type === "connector.flow" ? (e.data as { connector: string; flow: LoginSnapshot }) : null);
+    const events = await app.until((es) => es.some((e) => flowOf(e)?.flow.state === "awaiting_user"));
+    const waiting = events.map(flowOf).find((f) => f?.flow.state === "awaiting_user") as { connector: string; flow: LoginSnapshot };
+    assert.equal(waiting.connector, "github");
+    const flow = waiting.flow;
+    assert.equal(flow.code, "WXYZ-1234");
+    assert.equal(flow.url, "https://github.com/login/device");
     const login = fake.callsOf(program("gh", "auth", "login"))[0];
     assert.deepEqual(login?.args, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--skip-ssh-key", "--insecure-storage"]);
     loggedIn = true;
@@ -81,6 +84,9 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
     const status = await eventually(async () => (await h.get("/api/github/status")).body as GitHubStatus, (s) => s.flow.state === "connected");
     assert.equal(status.state, "connected");
     assert.deepEqual(status.account, { login: "octo", name: "Octo Cat" });
+    const announced = await app.until((es) => es.some((e) => e.type === "connector.status"));
+    assert.deepEqual(announced.find((e) => e.type === "connector.status")?.data, { connector: "github", state: "connected", account: "octo" });
+    app.close();
   });
 
   test("a refused sign-in is failed with gh's own words", async () => {
@@ -123,48 +129,5 @@ describe("Connect GitHub: gh's device flow driven from the page", () => {
     assert.deepEqual(fake.callsOf(program("gh", "auth", "logout")).at(-1)?.args, ["auth", "logout", "--hostname", "github.com", "--user", "octo"]);
     assert.equal((out.body as GitHubStatus).state, "not_connected");
     assert.equal((out.body as GitHubStatus).account, null);
-  });
-});
-
-describe("Connect Claude: the official CLI's sign-in", () => {
-  let h: Harness;
-  let fake: FakeProcessPort;
-  let loggedIn = false;
-  before(async () => {
-    fake = signedIn(new FakeProcessPort(new NodeProcessPort()));
-    fake.on(program("claude", "auth", "status"), { run: () => ({ stdout: JSON.stringify({ loggedIn, authMethod: loggedIn ? "claude.ai" : "none", apiProvider: "firstParty" }) }) });
-    h = await startHarness({ fake });
-  });
-  after(() => h.close());
-
-  test("the URL is shown, the pasted code goes to that process's stdin only, and claude auth status decides", async () => {
-    let child: FakeChild | null = null;
-    fake.on(program("claude", "auth", "login"), {
-      spawn: (c) => {
-        child = c;
-        c.stdout("Opening browser to sign in…\nIf the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=s1\nPaste code here if prompted > ");
-        c.onInput(() => {
-          loggedIn = true;
-          c.stdout("\nLogin successful.\n");
-          c.exit(0);
-        });
-      },
-    });
-    const started = await h.send("POST", "/api/claude/login", { mode: "claudeai" });
-    assert.equal(started.status, 202);
-    const waiting = await eventually(async () => ((await h.get("/api/claude/status")).body as { flow: LoginSnapshot }).flow, (f) => f.state === "awaiting_user" && f.needsCode);
-    assert.equal(waiting.url, "https://claude.com/cai/oauth/authorize?code=true&state=s1");
-    assert.deepEqual(fake.callsOf(program("claude", "auth", "login"))[0]?.args, ["auth", "login", "--claudeai"]);
-    assert.equal((await h.send("POST", "/api/claude/login/code", { code: "a b" })).status, 400);
-    assert.equal((await h.send("POST", "/api/claude/login/code", { code: "abc123#state-s1" })).status, 202);
-    assert.deepEqual((child as unknown as FakeChild).written, ["abc123#state-s1\n"]);
-    const done = await eventually(async () => (await h.get("/api/claude/status")).body as { state: string; flow: LoginSnapshot }, (s) => s.flow.state === "connected");
-    assert.equal(done.state, "connected");
-  });
-
-  test("sign out runs claude auth logout", async () => {
-    fake.on(program("claude", "auth", "logout"), { run: () => ((loggedIn = false), { code: 0 }) });
-    const out = await h.send("POST", "/api/claude/logout");
-    assert.equal((out.body as { state: string }).state, "not_connected");
   });
 });

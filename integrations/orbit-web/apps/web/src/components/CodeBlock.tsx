@@ -1,24 +1,85 @@
-import { makeStyles, tokens } from "@fluentui/react-components";
+import { Button, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Checkmark16Regular, Copy16Regular } from "@fluentui/react-icons";
+import { useState } from "react";
 import { highlighted } from "./highlight";
 
 const useStyles = makeStyles({
+  wrap: {
+    width: "100%",
+    minWidth: 0,
+    maxWidth: "100%",
+    marginTop: "6px",
+    marginBottom: "8px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    overflow: "hidden",
+  },
+  bar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    paddingTop: "5px",
+    paddingRight: "8px",
+    paddingBottom: "5px",
+    paddingLeft: "14px",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+  },
+  lang: {
+    fontFamily: tokens.fontFamilyMonospace,
+    color: tokens.colorNeutralForeground3,
+  },
+  copyBtn: {
+    minHeight: "32px",
+    "@media (pointer: coarse)": { minHeight: "36px" },
+  },
   pre: {
     margin: 0,
-    padding: "10px 12px",
+    paddingTop: "10px",
+    paddingRight: "14px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
     overflowX: "auto",
-    borderRadius: tokens.borderRadiusMedium,
-    backgroundColor: tokens.colorNeutralBackground3,
+    WebkitOverflowScrolling: "touch",
     fontFamily: tokens.fontFamilyMonospace,
-    fontSize: tokens.fontSizeBase200,
-    lineHeight: tokens.lineHeightBase300,
+    fontSize: "13px",
+    lineHeight: "1.55",
   },
 });
 
 export function CodeBlock({ code, language }: { code: string; language?: string | null }) {
   const s = useStyles();
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
   return (
-    <pre className={s.pre}>
-      <code dangerouslySetInnerHTML={{ __html: highlighted(code, language) }} />
-    </pre>
+    <div className={s.wrap}>
+      <div className={s.bar}>
+        <Text size={100} className={s.lang}>
+          {language ?? "code"}
+        </Text>
+        <Button
+          className={s.copyBtn}
+          size="small"
+          appearance="subtle"
+          icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+          aria-label="Copy code"
+          onClick={() => void copy()}
+        >
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <pre className={s.pre}>
+        <code dangerouslySetInnerHTML={{ __html: highlighted(code, language) }} />
+      </pre>
+    </div>
   );
 }

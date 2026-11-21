@@ -2,13 +2,61 @@
 #
 #   cd integrations/orbit-web/docker && docker compose up -d --build
 #
-# Everything a person creates (the two sign-ins, chats, workspaces, Orbit's store) lives in the named volume, so
-# `docker compose restart` and `docker compose up -d --build` keep it. `docker compose down -v` deletes it.
+# Two services:
+#
+#   postgres   PostgreSQL 17 with pgvector: every record Orbit Web keeps (accounts, chats, research, governance). On a
+#              network of its own that only Orbit Web joins; never published on this machine.
+#   orbit-web  the API and the web app. It migrates the database at start (and refuses to start without it).
+#
+# The database role Orbit Web uses is created by docker/postgres/init/10-orbit.sh the first time the database volume is
+# made: a login, never a superuser; pgvector is enabled there by the server's superuser. Set your own passwords in a
+# `.env` file beside this one (URL-safe characters) BEFORE the first start:
+#
+#   ORBIT_WEB_DB_PASSWORD=...           Orbit Web's role
+#   ORBIT_WEB_POSTGRES_PASSWORD=...     the server's superuser (used by the init script only)
+#
+# Everything a person creates lives in the two named volumes, so `docker compose restart` and `docker compose up -d
+# --build` keep it. `docker compose down -v` deletes it. A volume of an earlier Orbit Web (SQLite) is not read: nothing
+# is imported from it, and nothing of it is deleted.
 name: orbit-web
 
 services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf
+    container_name: orbit-web-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ORBIT_WEB_POSTGRES_PASSWORD:-orbit-postgres-local}
+      POSTGRES_DB: postgres
+      # Read by the init script: Orbit Web's role and its password.
+      ORBIT_DB_PASSWORD: ${ORBIT_WEB_DB_PASSWORD:-orbit-local}
+    volumes:
+      - orbit-web-postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U orbit -d orbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    cap_drop:
+      - ALL
+    # What the PostgreSQL image's entrypoint needs to own its data directory and step down to its own user.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 30s
+
   orbit-web:
-    image: ghcr.io/cuongngoht/orbit-web:0.7.0
+    image: ghcr.io/cuongngoht/orbit-web:0.8.0
     build:
       context: ../../..
       dockerfile: integrations/orbit-web/docker/Dockerfile
@@ -20,8 +68,15 @@ services:
     volumes:
       - orbit-web-data:/data
     environment:
+      ORBIT_WEB_DATABASE_URL: postgres://orbit:${ORBIT_WEB_DB_PASSWORD:-orbit-local}@postgres:5432/orbit
       # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - db
     cap_drop:
       - ALL
     security_opt:
@@ -29,5 +84,11 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
+networks:
+  # The database's network: internal (no way out), joined by Orbit Web and the database alone.
+  db:
+    internal: true
+
 volumes:
   orbit-web-data:
+  orbit-web-postgres:

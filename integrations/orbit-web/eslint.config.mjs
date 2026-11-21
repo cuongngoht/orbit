@@ -21,9 +21,18 @@ export default tseslint.config(
   {
     // Nest resolves a provider by the CLASS a constructor names, which emitDecoratorMetadata reads at run time:
     // an import used only in a constructor's signature must stay a value import there.
+    //
+    // Every store is asynchronous (PostgreSQL): a promise nobody awaits is a write that may fail unseen or land after
+    // the answer, so the API is linted WITH its types, and a floating or misused promise is an error.
     files: ["apps/api/src/**/*.ts", "apps/api/tests/**/*.ts"],
-    languageOptions: { globals: globals.node },
-    rules: { "@typescript-eslint/consistent-type-imports": "off" },
+    languageOptions: { globals: globals.node, parserOptions: { project: "./apps/api/tsconfig.spec.json", tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      "@typescript-eslint/consistent-type-imports": "off",
+      // node:test's own functions return a promise the runner itself awaits.
+      "@typescript-eslint/no-floating-promises": ["error", { allowForKnownSafeCalls: [{ from: "package", package: "node:test", name: ["test", "describe", "it", "suite", "before", "after", "beforeEach", "afterEach"] }] }],
+      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+      "@typescript-eslint/await-thenable": "error",
+    },
   },
   {
     files: ["apps/web/**/*.{ts,tsx}"],

@@ -1,0 +1,111 @@
+// Bottom sheet container for mobile pickers and compact overlays, built on Fluent UI OverlayDrawer.
+import { Button, OverlayDrawer, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Dismiss20Regular } from "@fluentui/react-icons";
+import type { ReactNode } from "react";
+
+const useStyles = makeStyles({
+  sheet: {
+    width: "100%",
+    height: "auto",
+    maxHeight: "85dvh",
+    borderTopLeftRadius: "24px",
+    borderTopRightRadius: "24px",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    overflow: "hidden",
+    backgroundColor: "var(--orbit-card-bg)",
+    isolation: "isolate",
+  },
+  grabberWrap: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    paddingTop: "10px",
+    paddingBottom: "4px",
+    flexShrink: 0,
+    backgroundColor: "var(--orbit-card-bg)",
+  },
+  grabber: {
+    width: "36px",
+    height: "4px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralStroke1,
+    opacity: 0.45,
+  },
+  head: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    paddingTop: "4px",
+    paddingRight: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "16px",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+    flexShrink: 0,
+    backgroundColor: "var(--orbit-card-bg)",
+  },
+  close: {
+    minWidth: "44px",
+    minHeight: "44px",
+  },
+  body: {
+    width: "100%",
+    flexGrow: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingTop: "12px",
+    paddingRight: "16px",
+    paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    paddingLeft: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+    backgroundColor: "var(--orbit-card-bg)",
+  },
+});
+
+export interface ResponsiveSheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  ariaLabel?: string;
+  children: ReactNode;
+}
+
+export function ResponsiveSheet({ open, onOpenChange, title, ariaLabel, children }: ResponsiveSheetProps) {
+  const s = useStyles();
+  return (
+    <OverlayDrawer
+      open={open}
+      onOpenChange={(_, d) => onOpenChange(d.open)}
+      position="bottom"
+      modalType="modal"
+      className={s.sheet}
+      aria-label={ariaLabel ?? title}
+    >
+      <div className={s.grabberWrap} aria-hidden>
+        <span className={s.grabber} />
+      </div>
+      <div className={s.head}>
+        <Text weight="semibold" size={400}>
+          {title}
+        </Text>
+        <Button
+          className={s.close}
+          appearance="subtle"
+          icon={<Dismiss20Regular />}
+          aria-label="Close"
+          onClick={() => onOpenChange(false)}
+        />
+      </div>
+      <div className={s.body}>{children}</div>
+    </OverlayDrawer>
+  );
+}

@@ -6,9 +6,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { ChangesReport, FileDiff, OrbitPanel, SessionDetail, SessionSummary } from "@orbit-web/contracts";
-import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
+import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
+import { AUTO_MODE_DEFAULTS, claudeRun, eventually, REPOSITORY, signedIn, startHarness, type Harness } from "../../src/testing/harness.js";
 
 const after1 = (args: string[], flag: string): string | null => (args.includes(flag) ? (args[args.indexOf(flag) + 1] ?? null) : null);
 
@@ -52,22 +52,24 @@ describe("a chat, end to end through the API", () => {
   before(async () => {
     fake = signedIn(new FakeProcessPort(new NodeProcessPort()));
     fake.on(claudeRun, { spawn: fixingRun });
-    h = await startHarness({ fake, env: { GH_TOKEN: "gho_000000000000000000000000000000000000" } });
+    h = await startHarness({ fake, env: { GH_TOKEN: "gho_000000000000000000000000000000000000", ANTHROPIC_API_KEY: "sk-ant-api03-never-reaches-claude-code-00000000", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-never-reaches-claude-code-00000000" } });
   });
   after(() => h.close());
 
   test("repositories and branches come from gh, and only a listed repository opens", async () => {
-    const list = (await h.get("/api/repositories")).body as { repositories: { fullName: string }[] };
-    assert.deepEqual(list.repositories.map((r) => r.fullName), ["octo/sum-fixture", "acme/tools"]);
-    const branches = (await h.get(`/api/repositories/${REPOSITORY}/branches`)).body as { branches: { name: string; isDefault: boolean }[] };
+    const list = (await h.get("/api/repositories?source=github")).body as { source: string; repositories: { fullName: string; source: string; id: string }[] };
+    assert.equal(list.source, "github");
+    assert.deepEqual(list.repositories.map((r) => [r.source, r.id]), [["github", "octo/sum-fixture"], ["github", "acme/tools"]]);
+    const branches = (await h.get(`/api/repositories/branches?source=github&id=${REPOSITORY}`)).body as { branches: { name: string; isDefault: boolean }[] };
     assert.deepEqual(branches.branches.map((b) => [b.name, b.isDefault]), [["main", true], ["dev", false]]);
-    assert.equal((await h.get("/api/repositories/someone/else/branches")).status, 403);
-    assert.equal((await h.send("POST", "/api/sessions", { repository: "someone/else", branch: "main", model: "sonnet" })).status, 403);
-    assert.equal((await h.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "nope", model: "sonnet" })).status, 400);
+    assert.equal((await h.get("/api/repositories/branches?source=github&id=someone/else")).status, 403);
+    assert.equal((await h.get("/api/repositories?source=gitlab")).status, 400);
+    assert.equal((await h.send("POST", "/api/sessions", { repository: { source: "github", id: "someone/else" }, branch: "main", model: "sonnet" })).status, 403);
+    assert.equal((await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "nope", model: "sonnet" })).status, 400);
   });
 
   test("a new chat prepares its workspace, sends the first prompt, and streams the real run's events in order", async () => {
-    const created = await h.send("POST", "/api/sessions", { repository: REPOSITORY, branch: "main", model: "sonnet", prompt: "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test." });
+    const created = await h.send("POST", "/api/sessions", { repository: { source: "github", id: REPOSITORY }, branch: "main", model: "sonnet", prompt: "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test." });
     assert.equal(created.status, 201);
     session = created.body as SessionSummary;
     assert.equal(session.status, "preparing");
@@ -89,19 +91,36 @@ describe("a chat, end to end through the API", () => {
     assert.equal(started.claudeCodeVersion, "2.1.328");
   });
 
-  test("Claude Code ran headless in the workspace, with the Orbit plugin, the prompt on stdin, and no GitHub credential", () => {
+  test("Claude Code ran headless in the workspace, with the Orbit plugin, the prompt on stdin, as the signed-in Claude account and with no other credential", () => {
     const { call, child } = fake.children.find((c) => claudeRun(c.call.file, c.call.args)) as { call: Call; child: FakeChild };
     const detail = call.args;
     assert.equal(after1(detail, "--plugin-dir"), h.config.pluginDir);
     assert.equal(after1(detail, "--model"), "sonnet");
-    assert.equal(after1(detail, "--permission-mode"), "dontAsk");
+    assert.equal(after1(detail, "--effort"), "medium", "Settings' default effort");
+    assert.equal(after1(detail, "--permission-mode"), "auto", "Autonomous is Claude Code's auto mode");
     assert.ok(after1(detail, "--session-id"));
     assert.equal(call.cwd, join(h.config.data.workspaces, session.id, "repository"));
     assert.equal(call.env.CLAUDE_CONFIG_DIR, h.config.data.claude);
     assert.equal(call.env.ORBIT_STORE_DIR, h.config.data.orbit);
     assert.deepEqual(Object.keys(call.env).filter((k) => /^(GH_|GITHUB_)/.test(k)), []);
+    // The container's own Claude credential variables would take the place of the account signed in here.
+    assert.deepEqual(Object.keys(call.env).filter((k) => /^(ANTHROPIC_|CLAUDE_CODE_OAUTH)/.test(k)), []);
+    // The account's claude.ai connectors (Claude Docs among them): neither the flag nor the variable switches them off.
+    assert.equal(detail.includes("--strict-mcp-config"), false);
+    assert.equal(call.env.ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
     assert.deepEqual(child.written, ["Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test."]);
     assert.equal(child.inputClosed, true);
+  });
+
+  test("in Autonomous, auto mode's classifier is told this container has open internet -- the CLI's other rules unchanged", () => {
+    const { call } = fake.children.find((c) => claudeRun(c.call.file, c.call.args)) as { call: Call };
+    const environment = (JSON.parse(after1(call.args, "--settings") ?? "{}") as { autoMode?: { environment: string[] } }).autoMode?.environment ?? [];
+    assert.match(environment.find((e) => e.startsWith("**Network posture**")) ?? "", /Open internet egress/);
+    assert.match(environment.find((e) => e.startsWith("**Host containment**")) ?? "", /never read, printed or sent/);
+    const untouched = (e: string) => !/^\*\*(Network posture|Host containment)\*\*/.test(e);
+    assert.deepEqual(environment.filter(untouched), AUTO_MODE_DEFAULTS.environment.filter(untouched));
+    assert.equal(after1(call.args, "--allowedTools")?.includes("curl"), false, "no rule lets a network command past the classifier");
+    assert.equal(call.args.includes("WebFetch") || call.args.includes("WebSearch"), false, "the web tools are on until a person turns them off -- and, like curl, reviewed by the classifier");
   });
 
   test("the session keeps its history and outcome; the workspace is on its own branch with a commit identity", async () => {
@@ -140,18 +159,39 @@ describe("a chat, end to end through the API", () => {
     assert.deepEqual(events.map((e) => e.seq), [detail.lastSeq - 1, detail.lastSeq]);
   });
 
-  test("the next message continues the same Claude conversation, with the model the session now prefers", async () => {
+  test("the next message continues the same Claude conversation, with the model, effort and mode the session now prefers", async () => {
     const before = fake.children.length;
-    assert.equal((await h.send("PATCH", `/api/sessions/${session.id}`, { model: "opus", title: "Fix sum" })).status, 200);
+    assert.equal((await h.send("PATCH", `/api/sessions/${session.id}`, { model: "opus", effort: "xhigh", mode: "plan", title: "Fix sum" })).status, 200);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Also explain the fix." })).status, 202);
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
     const call = fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     const first = fake.children.find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
     assert.equal(after1(call.args, "--resume"), after1(first.args, "--session-id"));
     assert.equal(after1(call.args, "--model"), "opus");
+    assert.equal(after1(call.args, "--effort"), "xhigh");
+    assert.equal(after1(call.args, "--permission-mode"), "plan");
     const detail = (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail;
     assert.equal(detail.title, "Fix sum");
     assert.equal(detail.turns, 2);
+  });
+
+  test("with GitHub given to Claude Code, its next run may push and open pull requests through gh -- and only then", async () => {
+    const before = fake.children.length;
+    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: true })).status, 200);
+    assert.equal(((await h.get("/api/github/status")).body as { availableToClaude: boolean }).availableToClaude, true);
+    assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Push it and open a pull request." })).status, 202);
+    await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "completed");
+    const call = fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.call as Call;
+    assert.equal(call.env.GH_CONFIG_DIR, h.config.data.github, "gh finds its own sign-in");
+    assert.equal(call.env.GIT_CONFIG_KEY_0, "credential.https://github.com.helper", "git asks gh, for github.com alone");
+    assert.match(call.env.GIT_CONFIG_VALUE_0 ?? "", /auth git-credential$/);
+    assert.deepEqual(Object.keys(call.env).filter((k) => k === "GH_TOKEN" || k === "GITHUB_TOKEN"), [], "never a token variable");
+    assert.equal(call.args.includes("Bash(git push:*)"), false);
+    assert.equal(call.args.includes("Bash(gh:*)"), false);
+    for (const rule of ["Bash(gh auth:*)", "Bash(git credential:*)", `Read(/${h.config.data.github}/**)`]) assert.ok(call.args.includes(rule), rule);
+    assert.match(after1(call.args, "--append-system-prompt") ?? "", /open a pull request with gh/);
+    assert.equal((await h.send("PATCH", "/api/settings", { githubForClaude: false })).status, 200);
+    assert.equal(((await h.get("/api/github/status")).body as { availableToClaude: boolean }).availableToClaude, false);
   });
 
   test("stop interrupts the run's process group; an interrupted run is never completed", async () => {
@@ -160,6 +200,10 @@ describe("a chat, end to end through the API", () => {
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "running");
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "again" })).status, 409, "one run per session");
     assert.equal((await h.send("DELETE", `/api/sessions/${session.id}`)).status, 409, "a running chat is not deleted");
+    const signOut = await h.send("POST", "/api/claude/logout");
+    assert.equal(signOut.status, 409, "the account is not signed out while Claude Code works for it");
+    assert.equal((signOut.body as { error: { code: string } }).error.code, "run_active");
+    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), []);
     await eventually(() => fake.children.at(-1)?.child.written.length ?? 0, (n) => n > 0);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/stop`)).status, 202);
     const detail = await eventually(async () => (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail, (d) => d.status === "interrupted");

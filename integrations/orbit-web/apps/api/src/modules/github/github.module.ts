@@ -1,7 +1,8 @@
-import { Controller, Get, HttpCode, Inject, Module, Post, Req, Res } from "@nestjs/common";
+// GitHub CLI's sign-in, driven from Settings → Connectors. The flow's progress travels on the app stream
+// (`connector.flow`, `connector.status`), not a stream of its own.
+import { Controller, Get, HttpCode, Inject, Module, Post } from "@nestjs/common";
 import type { GitHubStatus, LoginSnapshot } from "@orbit-web/contracts";
-import type { Request, Response } from "express";
-import { openSse } from "../../infra/sse/sse.js";
+import { SettingsModule } from "../settings/settings.module.js";
 import { GhGateway } from "./gh.gateway.js";
 import { GithubAuthService } from "./github-auth.service.js";
 
@@ -26,14 +27,6 @@ export class GithubController {
     return this.github.cancel();
   }
 
-  @Get("login/events")
-  events(@Req() req: Request, @Res() res: Response): void {
-    let stop: () => void = () => undefined;
-    const channel = openSse(req, res, () => stop());
-    channel.send(this.github.flowSnapshot());
-    stop = this.github.subscribe((s) => channel.send(s));
-  }
-
   @Post("logout")
   @HttpCode(200)
   logout(): Promise<GitHubStatus> {
@@ -42,6 +35,7 @@ export class GithubController {
 }
 
 @Module({
+  imports: [SettingsModule],
   providers: [GhGateway, GithubAuthService],
   controllers: [GithubController],
   exports: [GhGateway, GithubAuthService],

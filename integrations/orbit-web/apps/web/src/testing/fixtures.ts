@@ -1,21 +1,151 @@
 // What the API answers, for the web app's tests.
-import type { AzureStatus, ClaudeStatus, GitHubStatus, LoginSnapshot, OrbitPanel, SessionDetail, SetupStatus } from "@orbit-web/contracts";
+import { defaultAccountPolicy, type AuditEvent, type Rule } from "@orbit-web/governance-core";
+import {
+  ORBIT_WEB_VERSION,
+  type ApprovalView,
+  type AzureStatus,
+  type AccountView,
+  type BrowserSession,
+  type ClaudeStatus,
+  type ConnectionState,
+  type GitHubStatus,
+  type GovernanceOverview,
+  type LoginSnapshot,
+  type OrbitPanel,
+  type OverrideView,
+  type ProjectInventory,
+  type Repository,
+  type ResourceGovernanceSummary,
+  type ResourceGovernanceView,
+  type ResourceKind,
+  type RevisionSummary,
+  type RevisionView,
+  type SessionDetail,
+  type SessionSummary,
+  type Settings,
+  type SetupStatus,
+  type SourcesStatus,
+} from "@orbit-web/contracts";
+
+// GET /api/settings, as a fresh Orbit Web answers it.
+export function settings(over: Partial<Settings> = {}): Settings {
+  return { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, githubForClaude: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
+}
+
+// GET /api/sources: by default neither source is connected (a chat still starts, without a repository).
+export function sources(github: ConnectionState = "not_connected", azure: ConnectionState = "not_connected"): SourcesStatus {
+  return {
+    sources: [
+      { source: "github", state: github, account: github === "connected" ? "octo" : null },
+      { source: "azure", state: azure, account: azure === "connected" ? "dev@contoso.com" : null },
+    ],
+  };
+}
+
+export const githubRepository = (over: Partial<Repository> = {}): Repository => ({
+  source: "github",
+  id: "octo/sum-fixture",
+  fullName: "octo/sum-fixture",
+  owner: "octo",
+  project: null,
+  name: "sum-fixture",
+  private: true,
+  defaultBranch: "main",
+  updatedAt: null,
+  archived: false,
+  fork: false,
+  ...over,
+});
+
+export const AZURE_REPOSITORY_ID = "contoso/3f1d2c4b-5a6e-4f70-8a9b-0c1d2e3f4a5b";
+
+export const azureRepository = (over: Partial<Repository> = {}): Repository => ({
+  source: "azure",
+  id: AZURE_REPOSITORY_ID,
+  fullName: "contoso/Platform/api",
+  owner: "contoso",
+  project: "Platform",
+  name: "api",
+  private: true,
+  defaultBranch: "develop",
+  updatedAt: null,
+  archived: false,
+  fork: false,
+  ...over,
+});
+
+// What a repository brought, as the workspace's first fetch read it.
+export function inventory(over: Partial<ProjectInventory> = {}): ProjectInventory {
+  return {
+    repository: "octo/sum-fixture",
+    loadedAt: "2026-11-20T00:00:00.000Z",
+    skills: [{ name: "release-notes", description: "Write the release notes from the merged PRs.", path: ".claude/skills/release-notes/SKILL.md" }],
+    commands: [{ name: "deploy", description: "Deploy the preview.", path: ".claude/commands/deploy.md" }],
+    agents: [],
+    claudeMd: true,
+    mcpServers: [],
+    marketplaces: [],
+    plugins: [{ id: "lint-kit@acme-tools", kind: "declared", source: "acme/claude-plugins", path: null, state: "declared", detail: null }],
+    loaded: true,
+    truncated: false,
+    ...over,
+  };
+}
 
 export const idleFlow = (): LoginSnapshot => ({ state: "idle", url: null, code: null, needsCode: false, message: null, startedAt: null, updatedAt: "2026-11-19T00:00:00.000Z" });
 
 const ok = { ok: true, detail: null };
 
+export const ACCOUNT_ID = "0b6f1f0e-9c1e-4a5e-8a8b-1f2a3b4c5d6e";
+
+// This browser session's CSRF token: every change carries it.
+export const CSRF = "c".repeat(64);
+
+// This browser's session, as the API says it.
+export const browserSession = (over: Partial<BrowserSession> = {}): BrowserSession => ({ accountId: ACCOUNT_ID, displayName: "", email: "octo@example.com", csrfToken: CSRF, expiresAt: "2026-12-01T00:00:00.000Z", ...over });
+
+// The Claude sign-in, as GET /api/claude/status says it: by default this browser is signed in to a Claude account.
+export function claudeStatus(over: Partial<ClaudeStatus> = {}): ClaudeStatus {
+  return { state: "connected", runtime: "connected", method: "claude.ai", account: { email: "octo@example.com", organization: "Octo Org", plan: "max" }, session: browserSession(), detail: null, flow: idleFlow(), ...over };
+}
+
+// GET /api/account: the account of this browser's session, and the browsers signed in to it.
+export const accountView = (over: Partial<AccountView> = {}): AccountView => ({
+  id: ACCOUNT_ID,
+  displayName: "",
+  email: "octo@example.com",
+  organization: "Octo Org",
+  plan: "max",
+  createdAt: "2026-11-19T00:00:00.000Z",
+  sessions: [{ id: "s-1", current: true, createdAt: "2026-11-19T00:00:00.000Z", lastSeenAt: "2026-11-19T00:00:00.000Z", expiresAt: "2026-11-26T00:00:00.000Z", userAgent: "Firefox" }],
+  ...over,
+});
+
+// A browser with no session: the CLI signed out (by default), or signed in already (`runtime: "connected"`).
+export const signedOutClaude = (over: Partial<ClaudeStatus> = {}): ClaudeStatus => claudeStatus({ state: "not_connected", runtime: "not_connected", method: null, account: null, session: null, ...over });
+
+// GET /api/setup/status, which answers only once Orbit Web is signed in to Claude: so Claude is signed in by default.
 export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
-  const c: ClaudeStatus = { state: "not_connected", method: null, source: null, detail: null, flow: idleFlow(), ...claude };
-  const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), ...github };
+  const c: ClaudeStatus = claudeStatus(claude);
+  const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...github };
   const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
-    versions: { web: "0.7.0", orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", node: "24.11.0" },
+    versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", python: "3.15.2", node: "24.11.0" },
     claude: c,
     github: g,
     azure: a,
-    health: { status: "ok", api: ok, claude: { ok: true, detail: "2.1.328" }, gh: { ok: true, detail: "2.89.0" }, git: ok, az: { ok: true, detail: "2.91.0" }, orbitPlugin: { ok: true, detail: "0.6.0" }, storage: ok },
-    ready: c.state === "connected" && g.state === "connected",
+    health: {
+      status: "ok",
+      api: ok,
+      claude: { ok: true, detail: "2.1.328" },
+      gh: { ok: true, detail: "2.89.0" },
+      git: ok,
+      az: { ok: true, detail: "2.91.0" },
+      python: { ok: true, detail: "3.15.2" },
+      orbitPlugin: { ok: true, detail: "0.6.0" },
+      storage: ok,
+      database: { ok: true, detail: null, server: "17.6", schema: 3, latestSchema: 3, pgvector: "0.8.1" },
+    },
   };
 }
 
@@ -25,12 +155,17 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
   return {
     id: SESSION_ID,
     title: "Fix sum",
+    source: "github",
     repository: "octo/sum-fixture",
     branch: "main",
     workBranch: "orbit-web/0b6c2f5e",
     model: "sonnet",
+    effort: "medium",
+    mode: "autonomous",
     status: "ready",
     statusReason: null,
+    access: "owner",
+    owner: "octo@example.com",
     createdAt: "2026-11-19T00:00:00.000Z",
     updatedAt: "2026-11-19T00:00:00.000Z",
     baseCommit: "a".repeat(40),
@@ -40,6 +175,12 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
     messages: [],
     ...over,
   };
+}
+
+// A chat as the sidebar lists it (the detail without its messages).
+export function sessionSummary(over: Partial<SessionSummary> = {}): SessionSummary {
+  const { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt } = sessionDetail(over);
+  return { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt };
 }
 
 export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {
@@ -61,6 +202,171 @@ export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {
     failure: null,
     stop: null,
     verdict: { word: "unknown", label: "Unknown", source: "No Orbit task is linked to this session, so Orbit has given no verdict." },
+    ...over,
+  };
+}
+
+// ---- governance -------------------------------------------------------------------------------------------------------
+//
+// One account, one owner: the browser signed in to the Claude account governs it. Records name the owner as
+// `owner:<account>`, an agent as `agent:<id>`, Orbit Web itself as `system:<what>`.
+
+export const OWNER = `owner:${ACCOUNT_ID}`;
+export const POLICY_DIGEST = "d".repeat(64);
+export const DRAFT_DIGEST = "e".repeat(64);
+export const WORKSPACE_ID = SESSION_ID;
+export const RESEARCH_WORKSPACE_ID = "4f8e2a1c-7b3d-4e5f-9a0b-1c2d3e4f5a6b";
+
+// GET /api/governance/overview, for an account with one chat, one research workspace and its default policy in effect.
+export function governanceOverview(over: Partial<GovernanceOverview> = {}): GovernanceOverview {
+  return {
+    account: { id: ACCOUNT_ID, displayName: "", email: "octo@example.com" },
+    deployment: "single",
+    effective: { id: "rev-1", revision: 1, digest: POLICY_DIGEST, publishedAt: "2026-11-20T09:00:00.000Z", source: "default" },
+    counts: { workspaces: 1, researchWorkspaces: 1, runningRuns: 0, pendingApprovals: 1, openFindings: 0, draftRevisions: 0, overrides: 0 },
+    isolation: { deployment: "single", state: "not_proven", checkedAt: null, checks: [], detail: "Claude Code runs in this container, as this container's user: its isolation from Orbit Web cannot be proven here." },
+    audit: { count: 12, head: "a1".repeat(32), lastVerification: null },
+    ...over,
+  };
+}
+
+// One revision of the account's policy, as the revisions list says it: by default the default policy, in effect.
+export function revisionSummary(over: Partial<RevisionSummary> = {}): RevisionSummary {
+  return {
+    id: "rev-1",
+    revision: 1,
+    state: "PUBLISHED",
+    digest: POLICY_DIGEST,
+    name: "default",
+    risk: null,
+    source: "default",
+    basedOn: null,
+    createdAt: "2026-11-20T09:00:00.000Z",
+    createdBy: "system:provisioning",
+    updatedAt: "2026-11-20T09:00:00.000Z",
+    confirmedBy: null,
+    confirmedAt: null,
+    publishedAt: "2026-11-20T09:00:00.000Z",
+    publishedBy: "system:provisioning",
+    ...over,
+  };
+}
+
+// One revision with its document (by default the governed deployment's default policy), as GET /revisions/:id says it.
+export function revisionView(over: Partial<RevisionView> = {}): RevisionView {
+  return {
+    ...revisionSummary(),
+    document: defaultAccountPolicy(ACCOUNT_ID, "governed"),
+    errors: [],
+    warnings: [],
+    impact: null,
+    base: null,
+    authors: ["system:provisioning"],
+    history: [],
+    ...over,
+  };
+}
+
+// A draft of the owner's, compared with the revision in effect (`rev-1`).
+export function draftView(over: Partial<RevisionView> = {}): RevisionView {
+  return revisionView({ id: "rev-2", revision: null, state: "DRAFT", digest: DRAFT_DIGEST, name: "next", source: "copy", basedOn: "rev-1", createdBy: OWNER, updatedAt: "2026-11-20T10:05:00.000Z", publishedAt: null, publishedBy: null, base: "rev-1", authors: [OWNER], ...over });
+}
+
+// An override's view, of the rules given.
+export function overrideView(rules: Rule[], over: Partial<OverrideView> = {}): OverrideView {
+  const kind = over.kind ?? "workspace";
+  const resourceId = over.resourceId ?? WORKSPACE_ID;
+  return {
+    kind,
+    resourceId,
+    override: { apiVersion: "orbit.governance/v2", kind: "PolicyOverride", metadata: { accountId: ACCOUNT_ID, level: kind, target: resourceId, name: "override for Fix sum" }, rules },
+    digest: "b".repeat(64),
+    setAt: "2026-11-20T11:00:00.000Z",
+    setBy: OWNER,
+    warnings: rules.filter((r) => r.effect === "allow").map((r) => ({ ruleId: r.id, code: "OVERLAY_CANNOT_WIDEN" as const, message: "An override only narrows: an allow rule in it changes nothing." })),
+    ...over,
+  };
+}
+
+// A chat or research workspace of the account, as governance lists it.
+export function resourceSummary(kind: ResourceKind = "workspace", over: Partial<ResourceGovernanceSummary> = {}): ResourceGovernanceSummary {
+  return {
+    kind,
+    id: kind === "workspace" ? WORKSPACE_ID : RESEARCH_WORKSPACE_ID,
+    title: kind === "workspace" ? "Fix sum" : "Market study",
+    createdAt: "2026-11-19T00:00:00.000Z",
+    deletedAt: null,
+    overridden: false,
+    runningRuns: 0,
+    pendingApprovals: 0,
+    ...over,
+  };
+}
+
+// One audit record of the account.
+export function auditEvent(over: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    schemaVersion: 2,
+    eventId: "evt-1",
+    eventType: "policy.decision",
+    occurredAt: "2026-11-20T10:00:00.000Z",
+    recordedAt: "2026-11-20T10:00:00.000Z",
+    accountId: ACCOUNT_ID,
+    principalId: "agt-1",
+    principalType: "agent",
+    agentId: "agt-1",
+    workspaceId: WORKSPACE_ID,
+    runId: "run-1",
+    correlationId: "cor-1",
+    causationId: null,
+    policyRevision: "rev-1",
+    decisionId: "dec-1",
+    outcome: "allow",
+    reasonCodes: ["RULE_MATCHED"],
+    evidenceRefs: [],
+    data: { action: "repository.write", resource: "", environment: "development" },
+    seq: 7,
+    previousHash: "f0".repeat(32),
+    hash: "f1".repeat(32),
+    ...over,
+  };
+}
+
+// One chat or research workspace as governance shows it: the policy it inherits, its override, what runs, its activity.
+export function resourceView(kind: ResourceKind = "workspace", over: Partial<ResourceGovernanceView> = {}): ResourceGovernanceView {
+  return {
+    ...resourceSummary(kind),
+    policy: { revisionId: "rev-1", revision: 1, digest: POLICY_DIGEST },
+    override: null,
+    activity: [auditEvent()],
+    ...over,
+  };
+}
+
+export const FINGERPRINT = "f".repeat(64);
+
+export function approval(over: Partial<ApprovalView> = {}): ApprovalView {
+  return {
+    id: "apr-1",
+    action: "repository.push",
+    environment: "development",
+    fingerprint: FINGERPRINT,
+    state: "pending",
+    params: { repository: "github:octo/sum-fixture", remote: "https://github.com/octo/sum-fixture.git", ref: "refs/heads/orbit-web/0b6c2f5e", commit: "a".repeat(40), force: false, expectedRemoteOid: null, branch: "orbit-web/0b6c2f5e", sourceRef: "refs/orbit/push/x", sessionId: SESSION_ID },
+    summary: "Push aaaaaaaaaaaa to orbit-web/0b6c2f5e of octo/sum-fixture (GitHub): 1 commit(s), 1 file(s)",
+    requestedAt: "2026-11-20T10:00:00.000Z",
+    requestedBy: "agent:agt-1",
+    requestedByType: "agent",
+    agentId: "agt-1",
+    workspaceId: SESSION_ID,
+    runId: "run-1",
+    decisionId: "dec-1",
+    expiresAt: "2026-11-21T10:00:00.000Z",
+    decidedBy: null,
+    decidedAt: null,
+    consumedAt: null,
+    outcome: null,
+    change: { files: 1, insertions: 1, deletions: 1, commits: 1, diffstat: " sum.mjs | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n" },
     ...over,
   };
 }

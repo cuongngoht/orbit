@@ -1,0 +1,21 @@
+{
+  "name": "@orbit-web/governance-core",
+  "version": "0.8.0",
+  "private": true,
+  "description": "Orbit Web's governance rules as pure functions: the action vocabulary, the Constitution and its lifecycle, policy decisions, approvals, the audit chain and the auditor. It knows no agent runtime, no HTTP and no storage.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.spec.json && node --test --test-reporter=spec \".spec-dist/**/*.spec.js\""
+  }
+}

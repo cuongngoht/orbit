@@ -2,12 +2,18 @@
 //
 //   hostGuard     the Host header must name an allowed host (loopback by default). A page on another site that
 //                 re-binds its own name to 127.0.0.1 still sends ITS name as Host, and is refused (DNS rebinding).
-//   accessGate    with ORBIT_WEB_ACCESS_TOKEN set, every /api call but the health check needs the token, as an
-//                 HttpOnly SameSite=Strict cookie (so EventSource works) or a bearer header.
+//   accessGate    with ORBIT_WEB_ACCESS_TOKEN set, every /api call but the health check and reading a shared chat's
+//                 link needs the token, as an HttpOnly SameSite=Strict cookie (so EventSource works) or a bearer header.
 //   mutationGuard a state-changing call must carry the X-Orbit-Web header (a cross-site page cannot add it without a
 //                 CORS preflight, which is never answered), an Origin of this very host when the browser sends one,
-//                 and a JSON body when it has a body.
+//                 and a JSON body when it has a body -- but for the one research upload route, whose body is a file's
+//                 own bytes.
 //   headers       a strict Content-Security-Policy and the usual hardening headers on every response.
+//
+// The AGENT GATEWAY (/api/agent/...) is the one exception to the first three: a governed run reaches it by Orbit Web's
+// name on the agent network (not a loopback Host), without the access token, and from a program rather than a page.
+// It is authenticated by its run's own token instead (modules/governance), which a browser never sends by itself, and
+// answers nothing else.
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { MUTATION_HEADER } from "@orbit-web/contracts";
@@ -35,6 +41,7 @@ export function hostnameOf(host: string | undefined): string | null {
 
 export function hostGuard(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
+    if (isAgentPath(req)) return next();
     const name = hostnameOf(req.headers.host);
     if (name !== null && config.allowedHosts.includes(name)) return next();
     refuse(res, 421, "host_not_allowed", "This host name is not one Orbit Web answers to.");
@@ -63,9 +70,23 @@ function presentedToken(req: Request): string | null {
 
 const OPEN_PATHS = new Set(["/api/health", "/api/access"]);
 
+// The path as a router could match it -- lower case, repeated slashes as one -- which is the path every guard here
+// decides on: a guard comparing the path as sent while the router matched any case let `/API/…` past the access token.
+// (The router is made case-sensitive and strict too, bootstrap.ts; this keeps the guards right whatever it does.)
+export const routedPath = (path: string): string => path.toLowerCase().replace(/\/{2,}/g, "/");
+
+const isApi = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/");
+
+// The agent gateway: a governed run's door, authenticated by the run's own token (modules/governance).
+export const isAgentPath = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/agent/");
+
+// A shared chat's link (modules/share): READING it is the one thing a link's token opens, before the access token. Its
+// shape and its existence are the share module's to judge, so a token that names no share is not found either way.
+export const isSharedRead = (req: Pick<Request, "method" | "path">): boolean => (req.method === "GET" || req.method === "HEAD") && /^\/api\/shared\/[^/]+$/.test(routedPath(req.path));
+
 export function accessGate(config: AppConfig) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (config.accessToken === null || !req.path.startsWith("/api/") || OPEN_PATHS.has(req.path)) return next();
+    if (config.accessToken === null || !isApi(req) || OPEN_PATHS.has(routedPath(req.path)) || isSharedRead(req) || isAgentPath(req)) return next();
     const token = presentedToken(req);
     if (token !== null && sameToken(token, config.accessToken)) return next();
     refuse(res, 401, "access_token_required", "This Orbit Web needs its access token.");
@@ -73,6 +94,13 @@ export function accessGate(config: AppConfig) {
 }
 
 export const accessTokenMatches = (config: AppConfig, token: string): boolean => config.accessToken !== null && sameToken(token, config.accessToken);
+
+// Whether this request itself carries the access token (cookie or bearer): what a route that gives the token out checks
+// again, whatever the gate in front of it decided.
+export function accessTokenPresented(config: AppConfig, req: Request): boolean {
+  const token = presentedToken(req);
+  return token !== null && accessTokenMatches(config, token);
+}
 
 function originMatches(req: Request): boolean {
   const origin = req.headers.origin;
@@ -86,14 +114,31 @@ function originMatches(req: Request): boolean {
 
 const hasBody = (req: Request): boolean => Number(req.headers["content-length"] ?? 0) > 0 || req.headers["transfer-encoding"] !== undefined;
 
+const typeIs = (req: Request, type: string): boolean => String(req.headers["content-type"] ?? "").startsWith(type);
+
+// The ONE route whose body is not JSON: a research source's file, sent as its own bytes (never as a form). Only that
+// method on that path, only as application/octet-stream -- and held to the header, origin and site rules below like
+// every change; the route itself bounds what it reads (modules/research).
+export const RESEARCH_UPLOAD = /^\/api\/research\/workspaces\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/sources\/upload$/;
+
+// A chat image's upload.
+export const IMAGE_UPLOAD = /^\/api\/images$/;
+
+// The uploads -- the only bodies besides JSON: the file's own bytes, posted to one of these routes and no other.
+export const RAW_UPLOADS: readonly RegExp[] = [RESEARCH_UPLOAD, IMAGE_UPLOAD];
+
+export const isRawUpload = (req: Pick<Request, "method" | "path" | "headers">): boolean =>
+  req.method === "POST" && RAW_UPLOADS.some((route) => route.test(routedPath(req.path))) && String(req.headers["content-type"] ?? "").startsWith("application/octet-stream");
+
 export function mutationGuard() {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (SAFE_METHODS.has(req.method) || !req.path.startsWith("/api/")) return next();
+    if (SAFE_METHODS.has(req.method) || !isApi(req)) return next();
+    if (isAgentPath(req)) return hasBody(req) && !typeIs(req, "application/json") ? refuse(res, 415, "json_required", "A request body must be JSON.") : next();
     if (req.headers[MUTATION_HEADER] !== "1") return refuse(res, 403, "missing_header", `A change needs the ${MUTATION_HEADER} header.`);
     if (!originMatches(req)) return refuse(res, 403, "cross_origin", "A change must come from this page's own origin.");
     const site = req.headers["sec-fetch-site"];
     if (site !== undefined && site !== "same-origin" && site !== "none") return refuse(res, 403, "cross_site", "A change must come from this page's own origin.");
-    if (hasBody(req) && !String(req.headers["content-type"] ?? "").startsWith("application/json")) return refuse(res, 415, "json_required", "A request body must be JSON.");
+    if (hasBody(req) && !typeIs(req, "application/json") && !isRawUpload(req)) return refuse(res, 415, "json_required", "A request body must be JSON.");
     next();
   };
 }
@@ -111,6 +156,15 @@ const CSP = [
   "form-action 'self'",
   "frame-ancestors 'none'",
 ].join("; ");
+
+// An API answer is never kept by a cache between the browser and Orbit Web: it may hold an account's records or a
+// session's CSRF token.
+export function noStore() {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (isApi(req)) res.setHeader("Cache-Control", "no-store");
+    next();
+  };
+}
 
 export function securityHeaders() {
   return (_req: Request, res: Response, next: NextFunction): void => {

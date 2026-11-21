@@ -89,6 +89,12 @@ export interface AttemptHandle {
   modelPlane: string | null;
   provider: ProviderKind;
   createdAt: string;
+  // How the model plane sees what the runtime adapter needs: the connection's config home (container: its mount point;
+  // process: the directory itself), an empty working directory for the CLI, and the command that starts the Orbit tool
+  // bridge there (the bridge's own environment -- ORBIT_TOOL_URL, ORBIT_RUN_TOKEN -- is given by the adapter in the MCP config).
+  modelPlaneHome: string;
+  modelPlaneCwd: string;
+  bridgeCommand: { command: string; args: string[] };
 }
 
 export interface ExecRequest {

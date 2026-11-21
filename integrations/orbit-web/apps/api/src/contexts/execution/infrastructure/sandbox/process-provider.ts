@@ -1,0 +1,364 @@
+// THE PROCESS PROVIDER -- DEVELOPMENT ONLY (ADR 0067). No container runtime: an employee's areas are directories under
+// <data>/workforce (the same layout as the workforce volume), the CLI is a local child process, nothing is limited and
+// nothing is isolated. It says so: its attestation is `not_isolated`, it never runs a shell (exec is refused), and its
+// storage is SOFT_MONITORED (measured). The file operations still hold every path to the workspace's own places, through
+// links. The compose files never use it.
+import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statfsSync, statSync, writeFileSync, writeSync, chmodSync, constants as fsConstants } from "node:fs";
+import { availableParallelism, totalmem } from "node:os";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { UsageView } from "@orbit-web/contracts";
+import { contained } from "../../../../common/workspace-path.js";
+import type { ProcessPort } from "../../../../infra/process/process.port.js";
+import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
+import type { SandboxProvider } from "../../application/sandbox.port.js";
+import { AllocatorError, checkAttemptSpec, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
+import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
+import { nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
+
+const MiB = 1024 * 1024;
+const NOT_ISOLATED = "development provider: the CLI runs as a local process beside Orbit Web, with no container, no limit and no isolation -- no shell is granted, file tools only";
+
+// The Orbit tool bridge, as built beside this file (dist/bridge/main.js).
+const BRIDGE_MAIN = fileURLToPath(new URL("../../../../bridge/main.js", import.meta.url));
+
+export interface ProcessProviderOptions {
+  // Orbit Web's data directory: <data>/workforce holds the areas, <data>/connections the connections' homes.
+  dataRoot: string;
+  // How the CLI is started (a local child).
+  process: ProcessPort;
+  readInput?: (storePath: string) => Promise<Buffer>;
+  now?: () => Date;
+}
+
+interface AttemptRecordFile {
+  dispatchKey: string;
+  runId: string;
+  ids: EmployeeIds;
+  assignmentId: string;
+  teamRoomId: string | null;
+  connectionHome: string;
+  createdAt: string;
+  stopped: boolean;
+}
+
+const duBytes = (p: string): number => {
+  let total = 0;
+  const walk = (d: string): void => {
+    let names: string[];
+    try {
+      names = readdirSync(d);
+    } catch {
+      return;
+    }
+    for (const n of names) {
+      const full = join(d, n);
+      const st = lstatSync(full, { throwIfNoEntry: false });
+      if (st === undefined) continue;
+      if (st.isDirectory()) walk(full);
+      else total += st.size;
+    }
+  };
+  if (existsSync(p)) walk(p);
+  return total;
+};
+
+export class ProcessSandboxProvider implements SandboxProvider {
+  readonly kind = "process" as const;
+  private readonly root: string;
+  private readonly now: () => Date;
+
+  constructor(private readonly o: ProcessProviderOptions) {
+    this.root = join(o.dataRoot, "workforce");
+    this.now = o.now ?? (() => new Date());
+  }
+
+  private at(rel: string): string {
+    const p = join(this.root, rel);
+    if (!contained(this.root, p)) throw new AllocatorError("bad_request", `${rel} leads outside the workforce directory`);
+    return p;
+  }
+
+  private readJson<T>(rel: string): T | null {
+    const p = this.at(rel);
+    return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as T) : null;
+  }
+
+  private writeJson(rel: string, value: unknown): void {
+    const p = this.at(rel);
+    mkdirSync(dirname(p), { recursive: true, mode: 0o700 });
+    const tmp = `${p}.tmp-${randomBytes(4).toString("hex")}`;
+    writeFileSync(tmp, JSON.stringify(value), { mode: 0o600 });
+    renameSync(tmp, p);
+  }
+
+  async probe(): Promise<HostCapabilities> {
+    const probedAt = this.now().toISOString();
+    mkdirSync(this.root, { recursive: true, mode: 0o700 });
+    let storageMiB: number | null = null;
+    try {
+      const s = statfsSync(this.root);
+      storageMiB = Math.floor((s.bavail * s.bsize) / MiB);
+    } catch {
+      // unknown
+    }
+    return {
+      provider: "process",
+      runtime: { reachable: true, version: process.version, cgroup: null, detail: NOT_ISOLATED },
+      limits: { cpu: "UNSUPPORTED", memory: "UNSUPPORTED", pids: "UNSUPPORTED", evidence: "the process provider applies no limit" },
+      storage: { mechanism: "measured", perArea: "SOFT_MONITORED", hostProtection: "UNSUPPORTED", evidence: `development only: the areas are directories under ${this.root}, measured; nothing refuses a write past a quota`, probedAt },
+      host: { cpuMillis: availableParallelism() * 1000, memoryMiB: Math.floor(totalmem() / MiB), storageMiB },
+      shellPossible: false,
+      probedAt,
+    };
+  }
+
+  private area(area: AreaState["area"], quotaMiB: number, path: string): AreaState {
+    return { area, quotaMiB, level: "SOFT_MONITORED", evidence: "measured (development provider): nothing refuses a write past the quota", usedMiB: Math.round((duBytes(this.at(path)) / MiB) * 100) / 100 };
+  }
+
+  async provisionEmployee(idsIn: SandboxIds, quotasIn: { deskMiB: number; cacheMiB: number }): Promise<ProvisionResult> {
+    const ids = checkSandboxIds(idsIn);
+    const quotas = checkQuotas(quotasIn);
+    const existing = this.readJson<{ sandboxId: string; archived: boolean }>(sandboxMeta(ids));
+    if (existing !== null && existing.sandboxId !== ids.sandboxId) return { state: "FAILED", areas: [], reason: `this employee's sandbox is ${existing.sandboxId}, not ${ids.sandboxId}` };
+    if (existing?.archived) return { state: "FAILED", areas: [], reason: "the employee is archived" };
+    for (const d of ["files/toolbox/skills", "files/toolbox/scripts"]) mkdirSync(this.at(`${deskArea(ids)}/${d}`), { recursive: true, mode: 0o700 });
+    if (this.readJson(`${deskArea(ids)}/version`) === null) this.writeJson(`${deskArea(ids)}/version`, { version: 0, by: null, from: null, changed: [] });
+    if (quotas.cacheMiB > 0) mkdirSync(this.at(cacheArea(ids)), { recursive: true, mode: 0o700 });
+    for (const dir of [`${deskArea(ids)}/files`, ...(quotas.cacheMiB > 0 ? [cacheArea(ids)] : [])]) {
+      const probe = join(this.at(dir), `.orbit-write-test-${randomBytes(6).toString("hex")}`);
+      writeFileSync(probe, randomBytes(64 * 1024), { flag: "wx" });
+      rmSync(probe);
+    }
+    this.writeJson(sandboxMeta(ids), { ...ids, ...quotas, state: "READY", archived: false, createdAt: this.now().toISOString() });
+    const areas = [this.area("desk", quotas.deskMiB, deskArea(ids))];
+    if (quotas.cacheMiB > 0) areas.push(this.area("cache", quotas.cacheMiB, cacheArea(ids)));
+    return { state: "READY", areas, reason: null };
+  }
+
+  async archiveEmployee(idsIn: SandboxIds): Promise<void> {
+    const ids = checkSandboxIds(idsIn);
+    const record = this.readJson<Record<string, unknown>>(sandboxMeta(ids));
+    if (record === null) throw new AllocatorError("not_found", "no such sandbox");
+    this.writeJson(sandboxMeta(ids), { ...record, archived: true });
+  }
+
+  async measure(idsIn: SandboxIds): Promise<AreaState[]> {
+    const ids = checkSandboxIds(idsIn);
+    const record = this.readJson<{ deskMiB: number; cacheMiB: number }>(sandboxMeta(ids));
+    if (record === null) throw new AllocatorError("not_found", "no such sandbox");
+    return [this.area("desk", record.deskMiB, deskArea(ids)), ...(record.cacheMiB > 0 ? [this.area("cache", record.cacheMiB, cacheArea(ids))] : [])];
+  }
+
+  private sync(mode: "seed" | "publish", src: string, dst: string): { code: number | null; out: Record<string, unknown> } {
+    const r = spawnSync(process.execPath, ["-e", nodeScript(syncScript), mode, src, dst], { encoding: "utf8", maxBuffer: 64 * MiB });
+    try {
+      return { code: r.status, out: JSON.parse(r.stdout) as Record<string, unknown> };
+    } catch {
+      return { code: r.status, out: { error: r.stderr } };
+    }
+  }
+
+  async prepareWorkspace(idsIn: SandboxIds, assignmentIdIn: string, scratchMiBIn: number): Promise<AreaState> {
+    const ids = checkSandboxIds(idsIn);
+    const assignmentId = checkId(assignmentIdIn, "assignmentId");
+    const scratchMiB = intIn(scratchMiBIn, 16, 4 * 1024 * 1024, "scratchMiB");
+    const record = this.readJson<{ sandboxId: string; archived: boolean }>(sandboxMeta(ids));
+    if (record === null || record.sandboxId !== ids.sandboxId || record.archived) throw new AllocatorError("conflict", "the employee's sandbox is not READY");
+    const scratch = scratchArea(ids, assignmentId);
+    for (const d of SCRATCH_DIRS) mkdirSync(this.at(`${scratch}/${d}`), { recursive: true, mode: 0o700 });
+    if (this.readJson(workspaceMeta(ids, assignmentId)) === null) {
+      const desk = this.readJson<{ version: number }>(`${deskArea(ids)}/version`);
+      const r = this.sync("seed", this.at(`${deskArea(ids)}/files`), this.at(`${scratch}/work`));
+      if (r.code !== 0) throw new Error(`seeding the workspace failed: ${JSON.stringify(r.out)}`);
+      this.writeJson(workspaceMeta(ids, assignmentId), { assignmentId, seededFromDeskVersion: desk?.version ?? 0, scratchMiB, createdAt: this.now().toISOString() });
+    }
+    return this.area("scratch", scratchMiB, scratch);
+  }
+
+  async publishWorkspace(idsIn: SandboxIds, assignmentIdIn: string, expectedIn: number): Promise<PublishResult> {
+    const ids = checkSandboxIds(idsIn);
+    const assignmentId = checkId(assignmentIdIn, "assignmentId");
+    const expected = intIn(expectedIn, 0, Number.MAX_SAFE_INTEGER, "expectedDeskVersion");
+    const desk = this.readJson<{ version: number; by: string | null; from: number | null; changed: string[] }>(`${deskArea(ids)}/version`) ?? { version: 0, by: null, from: null, changed: [] };
+    if (desk.by === assignmentId) return { published: true, deskVersion: desk.version, changed: desk.changed, reason: null };
+    if (desk.version !== expected) return { published: false, deskVersion: desk.version, changed: [], reason: `the desk is at version ${desk.version}, not ${expected}: it changed after this assignment's workspace was prepared` };
+    if (this.readJson(workspaceMeta(ids, assignmentId)) === null) return { published: false, deskVersion: desk.version, changed: [], reason: "this assignment has no workspace" };
+    const r = this.sync("publish", this.at(`${scratchArea(ids, assignmentId)}/work`), this.at(`${deskArea(ids)}/files`));
+    if (r.code !== 0) return { published: false, deskVersion: desk.version, changed: [], reason: String(r.out.reason ?? r.out.error ?? "the publish failed") };
+    const changed = (r.out.changed as string[] | undefined) ?? [];
+    this.writeJson(`${deskArea(ids)}/version`, { version: desk.version + 1, by: assignmentId, from: expected, changed });
+    return { published: true, deskVersion: desk.version + 1, changed, reason: null };
+  }
+
+  async removeWorkspace(idsIn: SandboxIds, assignmentIdIn: string): Promise<{ gone: boolean; detail: string }> {
+    const ids = checkSandboxIds(idsIn);
+    const assignmentId = checkId(assignmentIdIn, "assignmentId");
+    const dir = this.at(assignmentDir(ids, assignmentId));
+    rmSync(dir, { recursive: true, force: true });
+    return existsSync(dir) ? { gone: false, detail: "the workspace is still there" } : { gone: true, detail: "the workspace's directory is gone (read back)" };
+  }
+
+  private attemptDir(dispatchKey: string): string {
+    return this.at(`attempts/${attemptHash(checkDispatchKey(dispatchKey))}`);
+  }
+
+  private handleOf(r: AttemptRecordFile): AttemptHandle {
+    const home = join(this.o.dataRoot, connectionSubpath(r.ids.orbitId, r.connectionHome));
+    if (!contained(join(this.o.dataRoot, "connections"), home)) throw new AllocatorError("bad_request", "the connection's home leads outside the connections room");
+    return {
+      runId: r.runId,
+      dispatchKey: r.dispatchKey,
+      toolPlane: this.at(`${scratchArea(r.ids, r.assignmentId)}/work`),
+      modelPlane: null,
+      provider: "process",
+      createdAt: r.createdAt,
+      modelPlaneHome: home,
+      modelPlaneCwd: join(this.attemptDir(r.dispatchKey), "cwd"),
+      bridgeCommand: { command: process.execPath, args: [BRIDGE_MAIN] },
+    };
+  }
+
+  async startAttempt(specIn: AttemptSpec): Promise<AttemptHandle> {
+    const spec = checkAttemptSpec({ ...specIn, inputs: [] });
+    const dir = this.attemptDir(spec.dispatchKey);
+    const existing = existsSync(join(dir, "attempt.json")) ? (JSON.parse(readFileSync(join(dir, "attempt.json"), "utf8")) as AttemptRecordFile) : null;
+    if (existing !== null) {
+      if (existing.runId !== spec.runId || existing.ids.employeeId !== spec.employeeId) throw new AllocatorError("conflict", `the dispatch key ${spec.dispatchKey} belongs to another run`);
+      return this.handleOf(existing);
+    }
+    if (this.readJson(workspaceMeta(spec, spec.assignmentId)) === null) throw new AllocatorError("conflict", "the assignment's workspace was not prepared");
+    const input = this.at(`${scratchArea(spec, spec.assignmentId)}/input`);
+    for (const name of readdirSync(input)) rmSync(join(input, name), { recursive: true, force: true });
+    for (const i of specIn.inputs) {
+      if (this.o.readInput === undefined) throw new AllocatorError("bad_request", "this provider was given no way to read inputs");
+      writeFileSync(join(input, checkInputName(i.name)), await this.o.readInput(i.storePath), { flag: "wx", mode: 0o444 });
+    }
+    if (spec.teamRoom !== null) mkdirSync(this.at(teamArea(spec.orbitId, spec.teamRoom.id)), { recursive: true, mode: 0o700 });
+    mkdirSync(join(dir, "cwd"), { recursive: true, mode: 0o700 });
+    const record: AttemptRecordFile = { dispatchKey: spec.dispatchKey, runId: spec.runId, ids: { orbitId: spec.orbitId, employeeId: spec.employeeId, sandboxId: spec.sandboxId }, assignmentId: spec.assignmentId, teamRoomId: spec.teamRoom?.id ?? null, connectionHome: spec.modelPlane.connectionHome, createdAt: this.now().toISOString(), stopped: false };
+    writeFileSync(join(dir, "attempt.json"), JSON.stringify(record), { mode: 0o600 });
+    return this.handleOf(record);
+  }
+
+  private record(dispatchKey: string): AttemptRecordFile | null {
+    const p = join(this.attemptDir(dispatchKey), "attempt.json");
+    return existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as AttemptRecordFile) : null;
+  }
+
+  async find(dispatchKey: string): Promise<AttemptStatus | null> {
+    const r = this.record(dispatchKey);
+    if (r === null) return null;
+    return { handle: this.handleOf(r), toolPlaneRunning: !r.stopped, modelPlaneRunning: false, oomKilled: { modelPlane: false, toolPlane: false } };
+  }
+
+  async attest(): Promise<AttemptEvidence> {
+    const checkedAt = this.now().toISOString();
+    return { attestation: { provider: "process", state: "not_isolated", shell: false, detail: NOT_ISOLATED, checks: [{ name: "isolation", ok: false, detail: NOT_ISOLATED }], checkedAt }, applied: null, observed: null };
+  }
+
+  modelPlane(): ProcessPort {
+    return this.o.process;
+  }
+
+  async exec(_handle: AttemptHandle, _req: ExecRequest): Promise<ExecResult> {
+    throw new AllocatorError("shell_refused", NOT_ISOLATED);
+  }
+
+  // A tool path (/work, /output, /team, /toolbox) as a directory of this attempt, held inside its place through links.
+  private place(handle: AttemptHandle, path: string): { abs: string; root: string } {
+    const r = this.record(handle.dispatchKey);
+    if (r === null) throw new AllocatorError("not_found", "no such attempt");
+    const tool = checkToolPath(path);
+    const scratch = this.at(scratchArea(r.ids, r.assignmentId));
+    const roots: Record<string, string | null> = { "/work": join(scratch, "work"), "/output": join(scratch, "output"), "/team": r.teamRoomId === null ? null : this.at(teamArea(r.ids.orbitId, r.teamRoomId)) };
+    const top = Object.keys(roots).find((k) => tool === k || tool.startsWith(`${k}/`)) as string;
+    const root = roots[top];
+    if (root === null || root === undefined) throw new AllocatorError("bad_request", `${top} is not part of this attempt`);
+    const abs = join(root, relative(top, tool));
+    if (!contained(root, abs)) throw new AllocatorError("bad_request", "the path leads out of the workspace through a link");
+    return { abs, root };
+  }
+
+  async readFile(handle: AttemptHandle, path: string, maxBytesIn: number): Promise<Buffer | null> {
+    const maxBytes = intIn(maxBytesIn, 0, MAX_FILE_BYTES, "maxBytes");
+    const { abs } = this.place(handle, path);
+    if (!existsSync(abs)) return null;
+    const st = statSync(abs);
+    if (!st.isFile()) throw new AllocatorError("bad_request", "not a file");
+    if (st.size > maxBytes) throw new AllocatorError("file_too_large", `the file is larger than allowed (${st.size} bytes)`);
+    const fd = openSync(realpathSync(abs), fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    try {
+      return readFileSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  }
+
+  async writeFile(handle: AttemptHandle, path: string, bytes: Buffer): Promise<void> {
+    if (bytes.length > MAX_FILE_BYTES) throw new AllocatorError("file_too_large", "a file of at most 64 MiB");
+    const { abs, root } = this.place(handle, path);
+    if (abs === root) throw new AllocatorError("bad_request", "not a file path");
+    // The missing directories, one at a time, none made through a link that leads out.
+    let dir = root;
+    for (const seg of relative(root, dirname(abs)).split("/").filter((s) => s.length > 0)) {
+      dir = join(dir, seg);
+      const st = lstatSync(dir, { throwIfNoEntry: false });
+      if (st === undefined) mkdirSync(dir, { mode: 0o755 });
+      else if (st.isSymbolicLink() && !contained(root, dir)) throw new AllocatorError("bad_request", "the directory leads out of the workspace through a link");
+      else if (!st.isSymbolicLink() && !st.isDirectory()) throw new AllocatorError("bad_request", "a part of the path is not a directory");
+    }
+    if (!contained(root, dirname(abs))) throw new AllocatorError("bad_request", "the directory leads out of the workspace through a link");
+    const st = lstatSync(abs, { throwIfNoEntry: false });
+    if (st?.isSymbolicLink()) throw new AllocatorError("bad_request", "the file is a link");
+    if (st?.isDirectory()) throw new AllocatorError("bad_request", "a directory is in the way");
+    const tmp = join(dirname(abs), `.orbit-write-${randomBytes(6).toString("hex")}`);
+    const fd = openSync(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o644);
+    try {
+      writeSync(fd, bytes);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    chmodSync(tmp, 0o644);
+    renameSync(tmp, abs);
+  }
+
+  async list(handle: AttemptHandle, dir: string, maxEntriesIn: number): Promise<FileEntry[]> {
+    const maxEntries = intIn(maxEntriesIn, 1, 10_000, "maxEntries");
+    const { abs, root } = this.place(handle, dir);
+    if (!existsSync(abs)) throw new AllocatorError("not_found", `${dir} does not exist`);
+    if (!statSync(abs).isDirectory()) throw new AllocatorError("bad_request", "not a directory");
+    const real = realpathSync(abs);
+    const realRoot = realpathSync(root);
+    return readdirSync(real)
+      .sort()
+      .slice(0, maxEntries)
+      .flatMap((name) => {
+        const st = lstatSync(join(real, name), { throwIfNoEntry: false });
+        if (st === undefined) return [];
+        return [{ path: relative(realRoot, join(real, name)), type: st.isSymbolicLink() ? ("symlink" as const) : st.isDirectory() ? ("dir" as const) : st.isFile() ? ("file" as const) : ("other" as const), size: st.isFile() ? st.size : 0 }];
+      });
+  }
+
+  async usage(handle: AttemptHandle): Promise<{ modelPlane: UsageView | null; toolPlane: UsageView | null }> {
+    const r = this.record(handle.dispatchKey);
+    if (r === null) return { modelPlane: null, toolPlane: null };
+    const disk = Math.round((duBytes(this.at(scratchArea(r.ids, r.assignmentId))) / MiB) * 100) / 100;
+    return { modelPlane: null, toolPlane: { cpuSeconds: null, memoryCurrentMiB: null, memoryPeakMiB: null, oomKilled: false, pidsPeak: null, diskUsedMiB: disk, networkBytesIn: null, networkBytesOut: null, sampledAt: this.now().toISOString() } };
+  }
+
+  async stop(handle: AttemptHandle): Promise<void> {
+    const r = this.record(handle.dispatchKey);
+    if (r !== null) writeFileSync(join(this.attemptDir(handle.dispatchKey), "attempt.json"), JSON.stringify({ ...r, stopped: true }), { mode: 0o600 });
+  }
+
+  async remove(handle: AttemptHandle): Promise<{ gone: boolean; detail: string }> {
+    const dir = this.attemptDir(handle.dispatchKey);
+    rmSync(dir, { recursive: true, force: true });
+    return existsSync(dir) ? { gone: false, detail: "the attempt's directory is still there" } : { gone: true, detail: "the attempt's directory is gone (read back)" };
+  }
+}

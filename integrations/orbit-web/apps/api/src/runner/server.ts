@@ -9,7 +9,7 @@
 // can reach the internet or resolve a public name directly. Its answers are this container's word -- a check of the deployment's wiring, not proof against a runner the
 // agent has taken over.
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
@@ -114,16 +114,45 @@ async function attest(socket: Socket, f: AttestFrame): Promise<void> {
   socket.end();
 }
 
-function serve(socket: Socket): void {
+export interface RunnerOptions {
+  // A runner started with a token (an employee attempt's model plane) refuses every connection whose first frame does
+  // not name it, and closes one that names nothing within AUTH_DEADLINE_MS.
+  token?: string | null;
+  // Variables every program it starts is given beneath the ones the frame names (the model plane's PATH, and an API key
+  // the allocator placed in the container's environment).
+  baseEnv?: Record<string, string>;
+}
+
+const AUTH_DEADLINE_MS = 10_000;
+const digest = (s: string): Buffer => createHash("sha256").update(s, "utf8").digest();
+const sameToken = (given: string, expected: string): boolean => timingSafeEqual(digest(given), digest(expected));
+
+function serve(socket: Socket, options: RunnerOptions): void {
   let child: ChildProcess | null = null;
   let begun = false;
+  const token = options.token ?? null;
+  let authenticated = token === null;
+  const deadline = token === null ? null : setTimeout(() => socket.destroy(), AUTH_DEADLINE_MS);
+  deadline?.unref();
   socket.setEncoding("utf8");
   const splitter = new LineSplitter((line) => {
+    if (socket.destroyed) return;
     const f = clientFrame(line);
     if (f === null) return send(socket, { t: "error", message: "not a frame the runner reads" });
+    if (!authenticated) {
+      if (f.op === "auth" && token !== null && sameToken(f.token, token)) {
+        authenticated = true;
+        if (deadline !== null) clearTimeout(deadline);
+        return;
+      }
+      send(socket, { t: "error", message: "this runner answers only its own attempt: name its token first" });
+      socket.destroy();
+      return;
+    }
+    if (f.op === "auth") return;
     if (f.op === "spawn" && !begun) {
       begun = true;
-      child = startProgram(socket, f);
+      child = startProgram(socket, { ...f, env: { ...(options.baseEnv ?? {}), ...f.env } });
       return;
     }
     if (f.op === "attest" && !begun) {
@@ -144,8 +173,8 @@ function serve(socket: Socket): void {
   });
 }
 
-export function startRunner(port: number, host = "0.0.0.0"): Promise<Server> {
-  const server = createServer(serve);
+export function startRunner(port: number, host = "0.0.0.0", options: RunnerOptions = {}): Promise<Server> {
+  const server = createServer((socket) => serve(socket, options));
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => resolve(server));

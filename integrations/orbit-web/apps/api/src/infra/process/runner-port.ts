@@ -48,7 +48,7 @@ class RunnerHandle implements BinaryHandle {
   private settle: (exit: ExitInfo) => void = () => undefined;
   private settled = false;
 
-  constructor(host: string, port: number, spawnFrame: ClientFrame) {
+  constructor(host: string, port: number, spawnFrame: ClientFrame, token: string | null = null) {
     this.exited = new Promise((resolve) => {
       this.settle = (exit) => {
         if (this.settled) return;
@@ -66,7 +66,9 @@ class RunnerHandle implements BinaryHandle {
       connected = true;
       clearTimeout(timer);
     });
-    // Frames written before the connection opens are queued by the socket itself.
+    // Frames written before the connection opens are queued by the socket itself. A runner started with a token (a
+    // model plane) hears the token first, or nothing at all.
+    if (token !== null) this.socket.write(frame({ op: "auth", token }));
     this.socket.write(frame(spawnFrame));
     const splitter = new LineSplitter((line) => this.heard(runnerFrame(line)), MAX_FRAME);
     this.socket.on("data", (chunk: string) => splitter.push(chunk));
@@ -125,13 +127,15 @@ export interface Attestation {
 }
 
 export class RunnerProcessPort implements ProcessPort {
+  // `token`: the runner's own (a model plane's runner refuses a connection that does not name it first).
   constructor(
     readonly host: string,
     readonly port: number,
+    private readonly token: string | null = null,
   ) {}
 
   spawn(file: string, args: readonly string[], options: SpawnOptions): RunnerHandle {
-    return new RunnerHandle(this.host, this.port, { op: "spawn", file, args: [...args], cwd: options.cwd, env: options.env, binary: false });
+    return new RunnerHandle(this.host, this.port, { op: "spawn", file, args: [...args], cwd: options.cwd, env: options.env, binary: false }, this.token);
   }
 
   run(file: string, args: readonly string[], options: RunOptions): Promise<RunResult> {
@@ -139,7 +143,7 @@ export class RunnerProcessPort implements ProcessPort {
   }
 
   runBinary(file: string, args: readonly string[], options: RunOptions): Promise<BinaryResult> {
-    return runBytes(new RunnerHandle(this.host, this.port, { op: "spawn", file, args: [...args], cwd: options.cwd, env: options.env, binary: true }), options);
+    return runBytes(new RunnerHandle(this.host, this.port, { op: "spawn", file, args: [...args], cwd: options.cwd, env: options.env, binary: true }, this.token), options);
   }
 
   // The isolation check, asked of the runner (runner/server.ts attest).
@@ -166,6 +170,7 @@ export class RunnerProcessPort implements ProcessPort {
         clearTimeout(timer);
         if (!answered) reject(new Error("the runner closed the connection without answering"));
       });
+      if (this.token !== null) socket.write(frame({ op: "auth", token: this.token }));
       socket.write(frame({ op: "attest", ...request }));
     });
   }

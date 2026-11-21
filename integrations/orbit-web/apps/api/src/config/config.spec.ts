@@ -76,3 +76,29 @@ test("a browser session lasts a week and ends after a day idle unless a person s
 test("there is no governance directory: governance's records are in the database", () => {
   assert.equal("governance" in loadConfig({}).data, false);
 });
+
+test("the password hash's cost is production's, read from no variable; a connection's home and keys have rooms of their own", () => {
+  const c = loadConfig({ ORBIT_WEB_KDF_N: "2", ORBIT_WEB_SCRYPT_N: "2" });
+  assert.deepEqual([c.identity.kdf.N, c.identity.kdf.r, c.identity.kdf.p], [2 ** 17, 8, 1]);
+  assert.equal(c.data.connections, "/data/connections");
+  assert.equal("claude" in c.data, false, "no Claude sign-in of the installation's own");
+  assert.equal(c.identity.trial, false);
+});
+
+test("a trial starts only where nobody else can reach it -- and says which condition failed", () => {
+  const trial = (env: Record<string, string>) => () => loadConfig({ ORBIT_WEB_TRIAL: "1", ...env });
+  assert.equal(trial({})().identity.trial, true, "loopback, no token, single, nothing public: a trial");
+  assert.equal(loadConfig({ ORBIT_WEB_TRIAL: "0" }).identity.trial, false);
+  assert.throws(() => loadConfig({ ORBIT_WEB_TRIAL: "yes" }), /ORBIT_WEB_TRIAL must be 1/);
+  const refused: [Record<string, string>, RegExp][] = [
+    [{ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com", ORBIT_WEB_ACCESS_TOKEN: "a-long-and-random-access-token" }, /ORBIT_WEB_ALLOWED_HOSTS names orbit\.example\.com: a trial answers loopback host names only/],
+    [{ ORBIT_WEB_ACCESS_TOKEN: "a-long-and-random-access-token" }, /ORBIT_WEB_ACCESS_TOKEN is set: a trial has no access token/],
+    [{ ORBIT_WEB_DEPLOYMENT: "governed", ORBIT_WEB_RUNNER: "orbit-agent:7070", ORBIT_WEB_AGENT_NETWORKS: "172.30.0.0/24", ORBIT_WEB_AGENT_CONTROL_HOST: "orbit-web" }, /ORBIT_WEB_DEPLOYMENT is governed: a trial is the single deployment only/],
+    [{ ORBIT_WEB_PUBLIC_ORIGIN: "https://orbit.example.com" }, /ORBIT_WEB_PUBLIC_ORIGIN is set: a trial has no public origin/],
+    [{ ORBIT_WEB_COOKIE_SECURE: "1" }, /ORBIT_WEB_COOKIE_SECURE is set/],
+  ];
+  for (const [env, why] of refused) {
+    assert.throws(trial(env), (err: unknown) => err instanceof ConfigError && why.test(err.message) && /ORBIT_WEB_TRIAL=1 refused/.test(err.message), JSON.stringify(env));
+  }
+  assert.equal(trial({ ORBIT_WEB_ALLOWED_HOSTS: "localhost,127.0.0.1" })().identity.trial, true, "naming loopback names again widens nothing");
+});

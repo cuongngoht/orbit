@@ -7,7 +7,7 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js verify    # exit 1 unless it is ready
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> [--with-data]
 //
-// RESET drops every schema of Orbit Web's (app, research, governance, workforce and the migrator's own, orbit) -- every
+// RESET drops every schema of Orbit Web's (each one its migrations create, and the migrator's own, orbit) -- every
 // account, user, chat, research record, AI connection and audit record -- and migrates again: an empty database at this
 // build's schema. It refuses unless --confirm names the database's own name. --with-data also empties Orbit Web's own
 // rooms on disk (images and run logs, sessions, workspaces, repositories' copies, research objects, the AI connections'
@@ -41,14 +41,15 @@ async function reset(db: Db): Promise<number> {
     name = (await resetSchemas(db, opt("confirm"))).database;
   } catch (err) {
     if (!(err instanceof SchemaError)) throw err;
-    say(`reset refused: it drops every account, user, chat, research record, AI connection, office record and audit record. ${err.message} (Orbit Web stopped first).`);
+    const own = String((await db.one("SELECT current_database() AS name"))?.name ?? "");
+    say(`reset refused: it drops every account, user, chat, research record, AI connection, office record and audit record of the database "${own}". Run it again with --confirm=${own} (Orbit Web stopped first).`);
     return 1;
   }
   const s = await migrate(db);
   say(`reset: the database "${name}" was emptied and migrated again: schema version ${s.version}, pgvector ${s.vector ?? "missing"}.`);
   if (process.argv.includes("--with-data")) {
     const emptied = emptyRooms(loadConfig(process.env).data);
-    say(`reset: Orbit Web's rooms on disk were emptied (${emptied.join(", ")}).`);
+    say(`reset: ${emptied.removed} item(s) removed from Orbit Web's rooms on disk (${emptied.rooms.join(", ")}).`);
   }
   return 0;
 }

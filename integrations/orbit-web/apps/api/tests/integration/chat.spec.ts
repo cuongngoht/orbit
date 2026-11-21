@@ -196,20 +196,20 @@ describe("a chat, end to end through the API", () => {
   });
 
   test("stop interrupts the run's process group; an interrupted run is never completed", async () => {
+    const before = fake.children.length;
     fake.on(claudeRun, { spawn: longRun });
     await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "Run something long." });
     await eventually(async () => ((await h.get(`/api/sessions/${session.id}`)).body as SessionDetail).status, (s) => s === "running");
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/messages`, { text: "again" })).status, 409, "one run per session");
     assert.equal((await h.send("DELETE", `/api/sessions/${session.id}`)).status, 409, "a running chat is not deleted");
-    const signOut = await h.send("POST", "/api/claude/logout");
-    assert.equal(signOut.status, 409, "the account is not signed out while Claude Code works for it");
-    assert.equal((signOut.body as { error: { code: string } }).error.code, "run_active");
-    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), []);
-    await eventually(() => fake.children.at(-1)?.child.written.length ?? 0, (n) => n > 0);
+    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), [], "nothing signs the account's Claude Code connection out under a run");
+    // THIS run's process, once it has the prompt (the session is "running" before its connection is checked and the
+    // process started; an earlier run's process is not this one).
+    const run = await eventually(() => fake.children.slice(before).find((c) => claudeRun(c.call.file, c.call.args))?.child, (c) => (c?.written.length ?? 0) > 0);
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/stop`)).status, 202);
     const detail = await eventually(async () => (await h.get(`/api/sessions/${session.id}`)).body as SessionDetail, (d) => d.status === "interrupted");
     assert.equal(detail.statusReason, "user_stop");
-    assert.deepEqual(fake.children.at(-1)?.child.signals, ["SIGINT"]);
+    assert.deepEqual(run?.signals, ["SIGINT"]);
     const { events } = await h.events(`/api/sessions/${session.id}/events`, { lastEventId: detail.lastSeq - 6, until: (es) => es.some((e) => e.type === "session.interrupted"), timeoutMs: 2000 });
     assert.ok(events.some((e) => e.type === "tool.failed" && (e.data as { interrupted: boolean }).interrupted), "the open tool is closed as interrupted");
     assert.equal((await h.send("POST", `/api/sessions/${session.id}/stop`)).status, 409);

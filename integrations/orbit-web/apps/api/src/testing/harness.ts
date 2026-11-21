@@ -281,7 +281,15 @@ async function claudeStatusFor(fake: FakeProcessPort, call: Call): Promise<{ std
 export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   const dataDir = o.dataDir ?? mkdtempSync(join(tmpdir(), "orbit-web-test-"));
   const database = o.database ?? (await createTestDatabase());
-  const config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ORBIT_WEB_DATABASE_URL: database.url, ...o.env });
+  let config: AppConfig;
+  try {
+    config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ORBIT_WEB_DATABASE_URL: database.url, ...o.env });
+  } catch (err) {
+    // A configuration Orbit Web refuses to start with: nothing of the test is left behind.
+    if (o.database === undefined) await database.drop();
+    if (o.dataDir === undefined) rmSync(dataDir, { recursive: true, force: true });
+    throw err;
+  }
   config.limits = { ...DEFAULT_LIMITS, loginTimeoutMs: 3_000, stopGraceMs: 300, orbitRefreshMs: 50, connectorPollMs: 20, connectorDeadlineMs: 2_000 };
   // A test's passwords are hashed cheaply (production's cost is fixed in config.ts and read from no variable).
   config.identity.kdf = { N: 2 ** 10, r: 8, p: 1, maxmem: 32 * 1024 * 1024 };
@@ -363,16 +371,20 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   };
 
   // A harness that cannot set itself up stops what it started: a test file never hangs on an app nobody closes.
-  let user: TestUser | null = null;
-  let owner: Browser | null = null;
+  const signedInAs = async (): Promise<{ user: TestUser | null; owner: Browser | null }> => {
+    if (o.signIn === false) return { user: null, owner: null };
+    const u = await account(o.user ?? "octo", o.account);
+    return { user: u, owner: await as(u.username, o.account) };
+  };
+  let made: { user: TestUser | null; owner: Browser | null };
   try {
-    user = o.signIn === false ? null : await account(o.user ?? "octo", o.account);
-    owner = user === null ? null : await as(user.username, o.account);
+    made = await signedInAs();
   } catch (err) {
     await app.close().catch(() => undefined);
     if (o.database === undefined) await database.drop().catch(() => undefined);
     throw err;
   }
+  const { user, owner } = made;
   const me = owner ?? anonymous;
   return {
     url,
@@ -608,7 +620,7 @@ export async function eventually<T>(read: () => Promise<T> | T, ok: (v: T) => bo
   for (;;) {
     const v = await read();
     if (ok(v)) return v;
-    if (Date.now() - start > timeoutMs) throw new Error(`condition not met in ${timeoutMs} ms: ${JSON.stringify(v).slice(0, 500)}`);
+    if (Date.now() - start > timeoutMs) throw new Error(`condition not met in ${timeoutMs} ms: ${(JSON.stringify(v) ?? String(v)).slice(0, 500)}`);
     await new Promise((r) => setTimeout(r, 25));
   }
 }

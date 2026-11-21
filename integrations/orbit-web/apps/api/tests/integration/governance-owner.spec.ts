@@ -26,12 +26,10 @@ import {
   type SimulateResult,
 } from "@orbit-web/contracts";
 import type { Constitution } from "@orbit-web/governance-core";
-import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { systemContext } from "../../src/modules/auth/principal.js";
 import { ApprovalService } from "../../src/modules/governance/approvals.service.js";
 import { PolicyService } from "../../src/modules/governance/policy.service.js";
-import { FakeProcessPort, program } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, eventually, signedIn, startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
+import { eventually, startHarness, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
 
 const code = (r: Reply): string | undefined => (r.body as { error?: { code?: string } } | null)?.error?.code;
 
@@ -113,7 +111,9 @@ describe("the account's owner governs at once, and only the owner", () => {
     const on = ok<Settings>(await h.send("PATCH", "/api/settings", { githubForClaude: true, projectPlugins: true }));
     assert.deepEqual([on.githubForClaude, on.projectPlugins], [true, true]);
     ok<Settings>(await h.send("PATCH", "/api/settings", { githubForClaude: false }));
-    const changes = (await auditOf(h, "type=settings.privileged.changed")).map((e) => JSON.stringify([e.principalType, e.data.setting, e.data.value, e.outcome]));
+    // (The account's AI connection and its Orbit plugin grant are recorded with the same type: not these switches.)
+    const switches = (await auditOf(h, "type=settings.privileged.changed")).filter((e) => ["githubForClaude", "projectPlugins", "azureForClaude"].includes(String(e.data.setting)));
+    const changes = switches.map((e) => JSON.stringify([e.principalType, e.data.setting, e.data.value, e.outcome]));
     assert.equal(changes[0], JSON.stringify(["human", "githubForClaude", false, "narrowed"]));
     assert.deepEqual(new Set(changes.slice(1)), new Set([JSON.stringify(["human", "githubForClaude", true, "authorized"]), JSON.stringify(["human", "projectPlugins", true, "authorized"])]));
     const decided = (await auditOf(h, "type=policy.decision")).filter((e) => e.data.action === "settings.privileged.write");
@@ -132,11 +132,7 @@ describe("the account's owner governs at once, and only the owner", () => {
   });
 });
 
-const ALICE = { ...CLAUDE_SIGNED_IN, email: "alice@example.com", orgId: "org-a", orgName: "Alice Org" };
-const BOB = { ...CLAUDE_SIGNED_IN, email: "bob@example.com", orgId: "org-b", orgName: "Bob Org" };
-
 describe("another account's governance is not found from this one", () => {
-  const state = { who: ALICE as Record<string, unknown> };
   let h: Harness;
   let alice: Browser;
   let bob: Browser;
@@ -145,15 +141,8 @@ describe("another account's governance is not found from this one", () => {
   let draft: RevisionView;
   let approval: ApprovalView;
   let aliceEvent: string;
-  // A new browser signed in as `who` -- which makes `who` the runtime's identity, and ends the sessions of the one before.
-  const as = (who: Record<string, unknown>): Promise<Browser> => {
-    state.who = who;
-    return h.browser();
-  };
-
   before(async () => {
-    const fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(program("claude", "auth", "status"), { run: () => ({ stdout: JSON.stringify(state.who) }) });
-    h = await startHarness({ fake });
+    h = await startHarness({ user: "alice" });
     alice = h;
     aliceId = h.accountId as string;
     chat = ok<SessionSummary>(await alice.send("POST", "/api/sessions", { repository: null, model: "haiku" }));
@@ -174,14 +163,15 @@ describe("another account's governance is not found from this one", () => {
     });
     approval = ok<ApprovalView>(await alice.get(`/api/governance/approvals/${asked.id}`));
     aliceEvent = (await auditOf(alice, "limit=1"))[0]?.eventId as string;
-    bob = await as(BOB);
+    bob = await h.as("bob");
   });
   after(() => h.close());
 
-  test("one Claude identity per runtime: once the CLI is Bob's, Alice's browser reads nothing", async () => {
+  test("two accounts are signed in at once, each to its own governance", async () => {
     assert.notEqual(bob.accountId, aliceId);
-    assert.equal(code(await alice.get("/api/governance/overview")), SIGN_IN_REQUIRED);
-    assert.equal(code(await alice.send("POST", "/api/governance/revisions", {})), SIGN_IN_REQUIRED);
+    assert.equal(ok<GovernanceOverview>(await alice.get("/api/governance/overview")).account.id, aliceId, "Alice's browser still reads hers");
+    assert.equal(ok<GovernanceOverview>(await bob.get("/api/governance/overview")).account.id, bob.accountId);
+    assert.equal(code(await h.anonymous.get("/api/governance/overview")), SIGN_IN_REQUIRED);
   });
 
   test("Bob's governance is his own -- his revision 1, his chain -- and none of Alice's records answers him, by any route", async () => {
@@ -227,13 +217,13 @@ describe("another account's governance is not found from this one", () => {
     );
   });
 
-  test("Alice, signing in again, finds her governance as she left it -- and Bob's browser reads nothing now", async () => {
-    const again = await as(ALICE);
+  test("Alice, signing in again from another browser, finds her governance as she left it -- and Bob still his own", async () => {
+    const again = await h.as("alice");
     assert.equal(again.accountId, aliceId);
     assert.equal(ok<RevisionView>(await again.get(`/api/governance/revisions/${draft.id}`)).state, "DRAFT");
     assert.equal(ok<ResourceGovernanceList>(await again.get("/api/governance/workspaces")).resources.find((r) => r.id === chat.id)?.overridden, true);
     assert.equal(ok<ApprovalView>(await again.get(`/api/governance/approvals/${approval.id}`)).state, "pending");
-    assert.equal(code(await bob.get("/api/governance/overview")), SIGN_IN_REQUIRED);
+    assert.equal(ok<GovernanceOverview>(await bob.get("/api/governance/overview")).account.id, bob.accountId, "a sign-in of one account ends nothing of another's");
   });
 });
 

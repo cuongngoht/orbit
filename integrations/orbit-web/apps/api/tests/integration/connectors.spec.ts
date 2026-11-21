@@ -1,17 +1,15 @@
-// THE CLAUDE CONNECTORS a run may use: the signed-in account's own (its Claude CLI's `mcp_status`, asked over the control
-// protocol), each with where it may be used -- a chat, research -- as that account's person checked it. A chat is denied
+// THE CLAUDE CONNECTORS a run may use: the account's own (its Claude Code connection's CLI's `mcp_status`, asked over the
+// control protocol in that connection's home), each with where it may be used -- a chat, research -- as that account's
+// person checked it. A chat is denied
 // what is unchecked for chats; research (a conversation like a chat, its sources references) may use what is checked for
 // research, by name, and is stopped the moment it reaches for anything else; a question needs no source to be asked.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import type { ConnectorList, ResearchSessionDetail, ResearchWorkspaceSummary, SessionDetail, SessionSummary } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
-import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, claudeConnectorsProbe, claudeRun, connectorsProbe, eventually, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
+import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
+import { claudeConnectorsProbe, claudeRun, connectorsProbe, eventually, homeOf, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { answered, newWorkspace } from "../../src/testing/research-client.js";
-
-const ALICE = { ...CLAUDE_SIGNED_IN, email: "alice@example.com", orgId: "org-a", orgName: "Alice Org" };
-const BOB = { ...CLAUDE_SIGNED_IN, email: "bob@example.com", orgId: "org-b", orgName: "Bob Org" };
 
 const SERVERS = [
   { name: "claude.ai Claude Docs", status: "connected", tools: Array.from({ length: 8 }, () => ({})) },
@@ -55,22 +53,15 @@ function researchUsing(tool: string, answer: string) {
 describe("the Claude connectors a run may use", () => {
   let h: Harness;
   let fake: FakeProcessPort;
-  // The browser signed in now: Alice's at first. The Claude CLI holds one identity at a time: becoming Bob signs a
-  // browser in as Bob (Alice's sessions end), becoming Alice again signs one in as her.
+  // Alice's browser; Bob is another account, signed in at the same time.
   let me: Browser;
-  const state = { who: ALICE as Record<string, unknown> };
-  const as = async (account: Record<string, unknown>) => {
-    state.who = account;
-    me = await h.browser();
-  };
   const connectors = async (): Promise<ConnectorList> => (await me.get("/api/claude/connectors")).body as ConnectorList;
 
   before(async () => {
     fake = signedIn(new FakeProcessPort(new NodeProcessPort()))
-      .on(program("claude", "auth", "status"), { run: () => ({ stdout: JSON.stringify(state.who) }) })
       .on(claudeConnectorsProbe, { spawn: connectorsProbe(() => SERVERS) })
       .on(claudeRun, { spawn: quickChat });
-    h = await startHarness({ fake });
+    h = await startHarness({ fake, user: "alice" });
     me = h.owner as Browser;
   });
   after(() => h.close());
@@ -90,6 +81,7 @@ describe("the Claude connectors a run may use", () => {
     assert.ok(probe);
     assert.equal(after1(probe.args, "--tools"), "");
     assert.equal(after1(probe.args, "--permission-mode"), "dontAsk");
+    assert.equal(homeOf(probe.env.CLAUDE_CONFIG_DIR)?.accountId, h.accountId, "asked in the account's own connection home");
   });
 
   test("a person's choices are kept for their own account alone", async () => {
@@ -98,13 +90,9 @@ describe("the Claude connectors a run may use", () => {
     const gmail = (r.body as ConnectorList).connectors.find((c) => c.label === "Gmail");
     assert.deepEqual([gmail?.chat, gmail?.research], [false, false]);
     assert.equal((await me.send("PUT", "/api/claude/connectors", { connectors: { "claude.ai Gmail": { write: true } } })).status, 400);
-    await as(BOB);
-    try {
-      const bobs = await connectors();
-      assert.deepEqual(bobs.connectors.find((c) => c.label === "Gmail")?.chat, true, "Bob's choices are his own");
-    } finally {
-      await as(ALICE);
-    }
+    const bob = await h.as("bob");
+    const bobs = (await bob.send("POST", "/api/claude/connectors/refresh")).body as ConnectorList;
+    assert.deepEqual(bobs.connectors.find((c) => c.label === "Gmail")?.chat, true, "Bob's choices are his own");
     assert.equal((await connectors()).connectors.find((c) => c.label === "Gmail")?.chat, false);
   });
 

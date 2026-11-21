@@ -7,10 +7,11 @@ import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { DataDirs } from "../../config/config.js";
 import type { Db } from "./db.js";
-import { SchemaError } from "./migrate.js";
+import { ownedSchemas, SchemaError } from "./migrate.js";
 
-// Every schema the initial migration makes (`orbit` holds the migrations' own record).
-export const ORBIT_SCHEMAS = ["workforce", "governance", "research", "app", "orbit"] as const;
+// Every schema Orbit Web's migrations make (`orbit` holds the migrations' own record): read from the migrations, so a
+// schema a later migration adds is dropped too. pgvector's `public` stays: the extension is the database's.
+export const ORBIT_SCHEMAS: readonly string[] = ownedSchemas();
 
 export async function resetSchemas(db: Db, confirm: string | null): Promise<{ database: string }> {
   const row = await db.one("SELECT current_database() AS name");
@@ -25,9 +26,10 @@ export async function resetSchemas(db: Db, confirm: string | null): Promise<{ da
 // (desks, workspaces, artifacts).
 export const RESET_ROOMS: readonly (keyof DataDirs)[] = ["app", "sessions", "workspaces", "repos", "research", "connections"];
 
-// Empties each room (keeping the room itself). Returns the rooms emptied.
-export function emptyRooms(data: DataDirs): string[] {
+// Empties each room (keeping the room itself). Returns the rooms, and how many items were removed from them.
+export function emptyRooms(data: DataDirs): { rooms: string[]; removed: number } {
   const rooms = [...RESET_ROOMS.map((k) => data[k]), join(data.control, "credentials"), join(data.root, "workforce")];
+  let removed = 0;
   for (const dir of rooms) {
     let entries: string[];
     try {
@@ -35,7 +37,10 @@ export function emptyRooms(data: DataDirs): string[] {
     } catch {
       continue;
     }
-    for (const name of entries) rmSync(join(dir, name), { recursive: true, force: true });
+    for (const name of entries) {
+      rmSync(join(dir, name), { recursive: true, force: true });
+      removed += 1;
+    }
   }
-  return rooms;
+  return { rooms, removed };
 }

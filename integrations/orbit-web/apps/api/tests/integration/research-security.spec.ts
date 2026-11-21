@@ -14,14 +14,12 @@ import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { RESEARCH_SYSTEM_PROMPT } from "../../src/modules/research/runner/research-args.js";
 import { ResearchViews } from "../../src/modules/research/views.js";
 import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, eventually, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
+import { eventually, researchRun, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { answered, errorCode, newWorkspace, settledSource } from "../../src/testing/research-client.js";
 import { passagesOf, researchAnswer } from "../../src/testing/research-fixtures.js";
 import { filled, routesOf } from "../../src/testing/routes.js";
 
 const after1 = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
-const ALICE = { ...CLAUDE_SIGNED_IN, email: "alice@example.com", orgId: "org-a" };
-const BOB = { ...CLAUDE_SIGNED_IN, email: "bob@example.com", orgId: "org-b" };
 const ANTHROPIC_KEY = `sk-ant-api03-${"Q".repeat(40)}`;
 const GITHUB_TOKEN = `ghp_${"z".repeat(36)}`;
 
@@ -158,20 +156,14 @@ describe("a research run is no coding run", () => {
 
 describe("one account's research is not another's", () => {
   let h: Harness;
-  const state = { who: ALICE as Record<string, unknown> };
-  // One Claude identity per runtime: signing in as another account ends the sessions of the one before.
-  const signInAs = async (who: Record<string, unknown>): Promise<Browser> => {
-    state.who = who;
-    return h.browser();
-  };
+  // A browser of an account of its own (made the first time), signed in beside every other.
+  const signInAs = (name: string): Promise<Browser> => h.as(name);
   let alice: { workspace: ResearchWorkspaceSummary; source: ResearchSourceSummary; session: ResearchSessionDetail };
   let note: ResearchNote;
   let finding: ResearchFinding;
   before(async () => {
-    const fake = signedIn(new FakeProcessPort(new NodeProcessPort()))
-      .on(program("claude", "auth", "status"), { run: () => ({ stdout: JSON.stringify(state.who) }) })
-      .on(researchRun, { spawn: researchAnswer(echo) });
-    h = await startHarness({ fake });
+    const fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(echo) });
+    h = await startHarness({ fake, user: "alice" });
     alice = await workspaceWith(h, "Alice's research", "Alice's confidential finding: the merger closes in May.");
     await h.send("POST", `/api/research/sessions/${alice.session.id}/messages`, { text: "When does the merger close?" });
     const done = await answered(h, alice.session.id);
@@ -181,17 +173,24 @@ describe("one account's research is not another's", () => {
   });
   after(() => h.close());
 
-  test("a page of one account stops hearing anything the moment another account signs in", async () => {
+  test("another account signing in ends nothing of this one's: its page keeps hearing its own session", async () => {
     const page = await h.stream(`/api/research/sessions/${alice.session.id}/events`);
-    await page.until((es) => es.length > 0);
-    const bob = await signInAs(BOB);
-    await Promise.race([page.ended, new Promise((_, reject) => setTimeout(() => reject(new Error("Alice's research stream was still open after Bob signed in")), 5_000))]);
-    assert.equal((await h.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 401, "Alice's session ended with the switch");
-    assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404);
+    try {
+      await page.until((es) => es.length > 0);
+      const bob = await signInAs("bob");
+      let ended = false;
+      void page.ended.then(() => (ended = true));
+      await new Promise((r) => setTimeout(r, 150));
+      assert.equal(ended, false, "Alice's stream stays open");
+      assert.equal((await h.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 200, "Alice's session stands");
+      assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404);
+    } finally {
+      page.close();
+    }
   });
 
   test("another account reaches nothing of it, through any research route", async () => {
-    const bob = await signInAs(BOB);
+    const bob = await signInAs("bob");
     assert.deepEqual((await bob.get("/api/research/workspaces")).body, []);
     assert.deepEqual((await bob.get("/api/research/sessions")).body, []);
     const ids: Record<string, string> = { workspaces: alice.workspace.id, sources: alice.source.id, sessions: alice.session.id, notes: note.id, findings: finding.id };
@@ -207,7 +206,7 @@ describe("one account's research is not another's", () => {
   });
 
   test("another account hears nothing of it on the app stream, while it hears its own", async () => {
-    const bob = await signInAs(BOB);
+    const bob = await signInAs("bob");
     const own = await workspaceWith(bob, "Bob's stream", "Bob's own words.");
     const stream = await bob.stream("/api/events");
     try {
@@ -226,7 +225,7 @@ describe("one account's research is not another's", () => {
   });
 
   test("its own records cannot reach into it: a selection, a note or a finding naming another workspace's ids is refused", async () => {
-    const bob = await signInAs(BOB);
+    const bob = await signInAs("bob");
     const mine = await workspaceWith(bob, "Bob's research", "Bob's own notes.");
     assert.equal((await bob.send("PUT", `/api/research/sessions/${mine.session.id}/sources`, { sources: [mine.source.id, alice.source.id] })).status, 404);
     assert.equal((await bob.send("POST", `/api/research/workspaces/${mine.workspace.id}/findings`, { title: "Stolen", statement: "x", citations: [finding.citations[0]?.id] })).status, 404);
@@ -237,7 +236,7 @@ describe("one account's research is not another's", () => {
   });
 
   test("an account id a request names changes nothing: the session's account decides", async () => {
-    const bob = await signInAs(BOB);
+    const bob = await signInAs("bob");
     const aliceAccount = String((await h.sql("SELECT account_id FROM research.research_workspaces WHERE id = $1", [alice.workspace.id]))[0]?.account_id);
     assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}?accountId=${aliceAccount}`)).status, 404);
     assert.equal((await bob.get(`/api/research/workspaces/${alice.workspace.id}`, { "x-account-id": aliceAccount })).status, 404);
@@ -246,10 +245,10 @@ describe("one account's research is not another's", () => {
     if (made.status === 201) assert.equal(String((await h.sql("SELECT account_id FROM research.research_workspaces WHERE id = $1", [(made.body as ResearchWorkspaceSummary).id]))[0]?.account_id), bob.accountId);
   });
 
-  test("shared by email, it opens -- to read and ask in -- but only its owner deletes it or shares it on", async () => {
-    const owner = await signInAs(ALICE);
+  test("shared with a user (by a verified email), it opens -- to read and ask in -- but only its owner deletes it or shares it on", async () => {
+    const owner = await signInAs("alice");
     assert.equal((await owner.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: ["bob@example.com"] })).status, 200);
-    const bob = await signInAs(BOB);
+    const bob = await signInAs("bob");
     const listed = (await bob.get("/api/research/workspaces")).body as ResearchWorkspaceSummary[];
     assert.deepEqual(listed.find((w) => w.id === alice.workspace.id)?.access, "shared");
     assert.equal((await bob.send("POST", `/api/research/sessions/${alice.session.id}/messages`, { text: "Anything else?" })).status, 202);
@@ -265,24 +264,22 @@ describe("one account's research is not another's", () => {
     assert.equal((reviewed.body as ResearchFinding).status, "needs_review", "but it may review it");
     const shared = (await h.sql("SELECT account_id FROM research.research_messages WHERE session_id = $1", [alice.session.id])).map((r) => String(r.account_id));
     assert.equal(new Set(shared).size, 1, "what Bob asked in Alice's session is the session's -- Alice's account's");
-    const again = await signInAs(ALICE);
+    const again = await signInAs("alice");
     assert.equal((await again.send("PUT", `/api/research/workspaces/${alice.workspace.id}/access`, { people: [] })).status, 200);
-    const closed = await signInAs(BOB);
+    const closed = await signInAs("bob");
     assert.equal((await closed.get(`/api/research/workspaces/${alice.workspace.id}`)).status, 404, "unshared: closed again");
   });
 });
 
 describe("a research run a stop or a restart cut short is interrupted -- never completed, never run again", () => {
-  test("a graceful restart interrupts it; the next start says so and runs nothing on its own; signing out waits for a run", async () => {
+  test("a graceful restart interrupts it; the next start says so and runs nothing on its own", async () => {
     const fake = signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(() => "Partly written answer that never ends", { hang: true }) });
     const first = await startHarness({ fake });
     const { session } = await workspaceWith(first, "Restart", "Some text about restarts.");
     await first.send("POST", `/api/research/sessions/${session.id}/messages`, { text: "Tell me about restarts." });
     await eventually(() => researchCalls(fake).length, (n) => n === 1);
     await eventually(async () => ((await first.get(`/api/research/sessions/${session.id}`)).body as ResearchSessionDetail).status, (s) => s === "running");
-    const signOut = await first.send("POST", "/api/claude/logout");
-    assert.deepEqual([signOut.status, errorCode(signOut)], [409, "run_active"]);
-    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), []);
+    assert.deepEqual(fake.callsOf(program("claude", "auth", "logout")), [], "nothing signs the connection out under a run");
     await first.close(true);
 
     const again = signedIn(new FakeProcessPort(new NodeProcessPort())).on(researchRun, { spawn: researchAnswer(() => "never") });

@@ -9,12 +9,10 @@ import { after, before, describe, test } from "node:test";
 import { CSRF_HEADER, IMAGE_LIMITS, MUTATION_HEADER, type ImageRef, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../src/infra/process/node-process.js";
 import { ImagesService, UNCLAIMED_MS } from "../../src/modules/images/images.service.js";
-import { FakeProcessPort, program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
-import { CLAUDE_SIGNED_IN, claudeRun, eventually, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
+import { FakeProcessPort, type Call, type FakeChild } from "../../src/testing/fake-process.js";
+import { claudeRun, eventually, signedIn, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 import { gifOf, pngHeaderOf, pngOf } from "../../src/testing/image-fixtures.js";
 
-const ALICE = { ...CLAUDE_SIGNED_IN, email: "alice@example.com", orgId: "org-a", orgName: "Alice Org" };
-const BOB = { ...CLAUDE_SIGNED_IN, email: "bob@example.com", orgId: "org-b", orgName: "Bob Org" };
 
 const after1 = (args: string[], flag: string): string | null => (args.includes(flag) ? (args[args.indexOf(flag) + 1] ?? null) : null);
 
@@ -36,10 +34,10 @@ describe("images in a chat message", () => {
   // The browser signed in now: Alice's at first. The Claude CLI holds one identity at a time, so becoming Bob signs a
   // browser in as Bob (Alice's sessions end), and becoming Alice again signs a browser in as her.
   let me: Browser;
-  const state = { who: ALICE as Record<string, unknown> };
-  const as = async (account: Record<string, unknown>) => {
-    state.who = account;
-    me = await h.browser();
+
+  // A browser of another account (or of Alice's again), signed in beside the others.
+  const as = async (name: string) => {
+    me = await h.as(name);
   };
   const upload = (bytes: Buffer, contentType = "application/octet-stream") =>
     fetch(`${h.url}/api/images`, { method: "POST", headers: { [MUTATION_HEADER]: "1", [CSRF_HEADER]: me.csrf, cookie: me.cookie, "content-type": contentType }, body: bytes }).then(async (r) => ({ status: r.status, body: (await r.json()) as ImageRef & { error?: { code: string } } }));
@@ -56,9 +54,8 @@ describe("images in a chat message", () => {
 
   before(async () => {
     const fake = signedIn(new FakeProcessPort(new NodeProcessPort()))
-      .on(program("claude", "auth", "status"), { run: () => ({ stdout: JSON.stringify(state.who) }) })
       .on(claudeRun, { spawn: quickRun });
-    h = await startHarness({ fake });
+    h = await startHarness({ fake, user: "alice" });
     me = h.owner as Browser;
   });
   after(() => h.close());
@@ -139,7 +136,7 @@ describe("images in a chat message", () => {
     assert.deepEqual([again.status, (again.body as { error: { code: string } }).error.code], [409, "image_sent"]);
 
     const other = (await upload(pngOf(4, 4))).body;
-    await as(BOB);
+    await as("bob");
     try {
       const bobs = await chat();
       await settled(bobs.id);
@@ -147,7 +144,7 @@ describe("images in a chat message", () => {
       assert.equal(taken.status, 404, "somebody else's image is not found");
       assert.equal((await read(`/api/sessions/${created.id}/images/${image.id}`)).status, 404, "nor is a chat Bob may not read");
     } finally {
-      await as(ALICE);
+      await as("alice");
     }
   });
 

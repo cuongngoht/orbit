@@ -107,6 +107,10 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     }
   }
 
+  // A Stop that came while a run was still being decided or started (the session reads as running from the moment its
+  // message is accepted): honoured as soon as there is something to stop -- before the process, or the moment it exists.
+  private readonly stopRequested = new Set<string>();
+
   isRunning(sessionId: string): boolean {
     return this.active.has(sessionId) || this.starting.has(sessionId);
   }
@@ -194,6 +198,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       } catch (err) {
         return await this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`);
       }
+      if (this.stopRequested.has(session.id)) return await this.stoppedBeforeStart(session, runId, decided.plan);
       try {
         await this.start((await this.sessions.get(session.id)) ?? session, input, runId, decided.plan, decided.connectors);
       } catch (err) {
@@ -206,7 +211,17 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       this.logger.error(`run ${runId} could not be refused: ${message(err)}`);
     } finally {
       this.starting.delete(session.id);
+      this.stopRequested.delete(session.id);
     }
+  }
+
+  // Stopped before Claude Code was started: nothing ran, and the run is interrupted -- never completed, never started later.
+  private async stoppedBeforeStart(session: SessionRecord, runId: string, plan: RunPlan): Promise<void> {
+    await this.db.tx(async () => {
+      await this.bus.publishSession(session.id, "session.interrupted", { reason: "user_stop", exitCode: null, signal: null }, runId);
+      await this.setStatus(session.id, "interrupted", "user_stop", runId);
+    });
+    await this.governance.finished(plan, runId, "interrupted", null);
   }
 
   private async refuse(session: SessionRecord, runId: string, message: string): Promise<void> {
@@ -218,6 +233,10 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
 
   stop(sessionId: string, by: "user_stop" | "server_restart" = "user_stop"): void {
     const run = this.active.get(sessionId);
+    if (!run && this.starting.has(sessionId)) {
+      this.stopRequested.add(sessionId);
+      return;
+    }
     if (!run) throw conflict("not_running", "Nothing is running in this session.");
     if (run.stoppedBy !== null) return;
     run.stoppedBy = by;
@@ -305,6 +324,8 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     });
     handle.write(input.data);
     handle.closeInput();
+    // A Stop asked while it was being started stops it now that it exists.
+    if (this.stopRequested.has(session.id)) this.stop(session.id, "user_stop");
   }
 
   private onLine(run: ActiveRun, line: string): void {

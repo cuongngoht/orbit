@@ -184,8 +184,16 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     }
   }
 
+  // A Stop that came while the run was still being prepared or decided (the session reads as running from the moment
+  // its question is accepted): honoured before anything starts.
+  private readonly stopRequested = new Set<string>();
+
   stop(sessionId: string, by: "user_stop" | "server_restart" = "user_stop"): void {
     const run = this.active.get(sessionId);
+    if (!run && this.starting.has(sessionId)) {
+      this.stopRequested.add(sessionId);
+      return;
+    }
     if (!run) throw conflict("not_running", "Nothing is running in this research session.");
     if (run.stoppedBy !== null) return;
     run.stoppedBy = by;
@@ -230,6 +238,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       const choices = await this.connectorChoices.forRun(session.accountId);
       const prepared = await this.governance.prepareResearch({ accountId: session.accountId, researchWorkspaceId: session.workspaceId, researchSessionId: session.id }, runId, { startedBy, connectors: choices.research });
       if (!prepared.ok) return await this.notStarted(session, runId, prepared.message);
+      if (this.stopRequested.has(session.id)) return await this.stoppedBeforeStart(session, runId, prepared.plan);
       const allowed = allowedNamesOf(prepared.plan);
       const connectors = choices.research.filter((c) => allowed.has(c.name));
       const denied = choices.known.filter((c) => !allowed.has(c.name)).map((c) => c.prefix);
@@ -238,7 +247,16 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       await this.notStarted(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`).catch((e: unknown) => this.logger.error(`research run ${runId} could not be refused cleanly: ${message(e)}`));
     } finally {
       this.starting.delete(session.id);
+      this.stopRequested.delete(session.id);
     }
+  }
+
+  // Stopped before Claude was started: nothing ran, and the run is interrupted -- never completed, never started later.
+  private async stoppedBeforeStart(session: ResearchSessionRecord, runId: string, plan: RunPlan): Promise<void> {
+    await this.runs.finish(runId, "interrupted", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: null });
+    await this.stream.publish(session.id, "research.run.interrupted", { reason: "user_stop" }, runId);
+    await this.setStatus(session.id, "interrupted", "user_stop", runId);
+    await this.governance.finished(plan, runId, "interrupted", null);
   }
 
   private async notStarted(session: ResearchSessionRecord, runId: string, why: string): Promise<void> {

@@ -76,6 +76,11 @@ bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, 
   stream every open page holds, so no shutdown hook after it ran -- the database was never closed, and the container was
   killed at its 20-second grace. A stop now ends those connections (a page reconnects to the next start from the last
   event it saw) after the runs are stopped, closes the database pool and exits in about a second.
+- **A chat reads as running from the moment its message is accepted, and a Stop then is honoured** (found while moving
+  to PostgreSQL: every run is now decided by the account's policy before it starts, asynchronously). The message and
+  the status are kept in one transaction before the answer, so a page never sees the run before it as the current one;
+  a Stop that comes while the run is still being decided or started ends it interrupted, and Claude Code is never
+  started for it -- in a chat and in a research session alike.
 - **Governance is the account's, and its owner is the person signed in** (ADR 0063, ADR 0066). No operator, password,
   role, organization, agent registry or bootstrap code: Governance opens with the sign-in, shows the account's
   **Workspaces** and **Research** (each with the policy that applies, inherited or narrowed, its runs, approvals and

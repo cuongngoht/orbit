@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi } from "../../testing/fakeApi";
-import { approval, browserSession, CSRF, FINGERPRINT, SESSION_ID, sessionDetail } from "../../testing/fixtures";
+import { approval, authSession, CSRF, FINGERPRINT, SESSION_ID, sessionDetail } from "../../testing/fixtures";
 import { renderLive } from "../../testing/render";
 import { PushButton } from "./PushButton";
 
-beforeEach(() => rememberSession(browserSession()));
+beforeEach(() => rememberSession(authSession()));
 afterEach(() => rememberSession(null));
 
 describe("Push branch", () => {

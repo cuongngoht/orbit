@@ -1,6 +1,6 @@
-// Token mode: this Orbit Web answers a host name beyond loopback, so before anything -- the Claude sign-in included -- it
+// Token mode: this Orbit Web answers a host name beyond loopback, so before anything -- Orbit's own sign-in included -- it
 // asks for its access token: the one made when it was deployed, given with the link to it. Two steps, said as two: the
-// token here, then Continue with Claude (shown, waiting). An access link (`#access=<token>`) fills and sends it itself.
+// token here, then Orbit's sign-in (shown, waiting). An access link (`#access=<token>`) fills and sends it itself.
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ClipboardPaste16Regular, Eye16Regular, EyeOff16Regular } from "@fluentui/react-icons";
 import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
@@ -120,7 +120,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
         <img src="/orbit.svg" alt="" className={s.logo} />
         <h1 className={s.heading}>Sign in to Orbit Web</h1>
         <Text align="center" className={s.lead}>
-          This Orbit Web is reachable from the internet, so it asks for its access token first. Then you sign in with your Claude account.
+          This Orbit Web is reachable from the internet, so it asks for its access token first. Then you sign in with your Orbit username and password.
         </Text>
       </div>
       <section className={s.card} aria-label="Sign in to Orbit Web">
@@ -165,18 +165,18 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
             </Button>
           )}
         </form>
-        <div className={s.step} aria-label="Next: sign in with Claude">
+        <div className={s.step} aria-label="Next: sign in to Orbit">
           <div className={s.stepTitle}>
             <span className={`${s.number} ${s.numberWaiting}`}>2</span>
             <Text weight="semibold" className={s.muted}>
-              Sign in with your Claude account
+              Sign in with your Orbit username and password
             </Text>
           </div>
           <Button className={s.wide} appearance="secondary" disabled>
-            Continue with Claude
+            Sign in
           </Button>
           <Text size={200} className={s.muted}>
-            Opens once the access token is accepted: a link to sign in with Claude, and a code to paste back.
+            Opens once the access token is accepted. Signing in to Orbit starts no AI provider's sign-in.
           </Text>
         </div>
       </section>

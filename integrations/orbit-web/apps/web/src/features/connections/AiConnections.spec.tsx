@@ -1,0 +1,179 @@
+import { act, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { rememberSession } from "../../services/account";
+import { fakeApi, withStatus } from "../../testing/fakeApi";
+import { pushApp } from "../../testing/events";
+import { FakeEventSource } from "../../testing/fakeEventSource";
+import { CSRF, authSession } from "../../testing/fixtures";
+import { CONN_CLAUDE, CONN_CLAUDE_KEY, PLUGIN_DIGEST, connection, connectionsView } from "../../testing/officeFixtures";
+import { renderLive } from "../../testing/render";
+import { AiConnectionsSection } from "./AiConnectionsSection";
+
+beforeEach(() => rememberSession(authSession()));
+afterEach(() => rememberSession(null));
+
+const card = async (name: string) => screen.findByRole("region", { name });
+
+describe("Settings → AI Connections: three CLIs, each said as its own CLI says it", () => {
+  test("tells apart signing in to Orbit, connecting a provider, enabling a plugin and granting connectors", async () => {
+    fakeApi().on("GET", "/api/connections", () => connectionsView());
+    renderLive(<AiConnectionsSection />);
+    const helper = await screen.findByLabelText("What is what");
+    for (const t of ["Signing in to Orbit", "Connecting a provider", "Enabling a plugin", "Granting connectors"]) expect(within(helper).getByText(t)).toBeInTheDocument();
+    expect(await card("Claude Code")).toBeInTheDocument();
+    expect(await card("OpenAI Codex")).toBeInTheDocument();
+    expect(await card("Google Antigravity")).toBeInTheDocument();
+  });
+
+  test("a CLI that is not installed says why, and offers no connection", async () => {
+    fakeApi().on("GET", "/api/connections", () => connectionsView());
+    renderLive(<AiConnectionsSection />);
+    const codex = await card("OpenAI Codex");
+    expect(within(codex).getByText("Not installed")).toBeInTheDocument();
+    expect(within(codex).getByText(/codex was not found on this server's PATH/)).toBeInTheDocument();
+    expect(within(codex).getByRole("button", { name: "Add a connection" })).toBeDisabled();
+    expect(within(codex).getByText(/the CLI is not installed on this server/)).toBeInTheDocument();
+  });
+
+  test("a way of signing in that is not permitted or not verified is shown disabled, with its note and its source", async () => {
+    fakeApi().on("GET", "/api/connections", () => connectionsView());
+    renderLive(<AiConnectionsSection />);
+    const agy = await card("Google Antigravity");
+    const row = within(agy).getByRole("listitem", { name: "Subscription sign-in: Not permitted" });
+    expect(row.textContent).toContain("not permitted by the provider's terms");
+    expect(within(row).getByRole("link", { name: "Source" })).toHaveAttribute("href", "https://antigravity.google/terms");
+    await userEvent.click(within(agy).getByRole("button", { name: "Add a connection" }));
+    const form = within(agy).getByRole("form", { name: "Add a Google Antigravity connection" });
+    expect(within(form).getByRole("radio", { name: /Subscription sign-in — Not permitted/ })).toBeDisabled();
+    expect(within(form).getByRole("radio", { name: "API key" })).toBeEnabled();
+    const codex = await card("OpenAI Codex");
+    expect(within(codex).getByRole("listitem", { name: "API key: Not verified" })).toBeInTheDocument();
+  });
+
+  test("a connection: its label, the default mark, its method, its status in words, who it is signed in as, its models and efforts, its capabilities", async () => {
+    fakeApi().on("GET", "/api/connections", () => connectionsView());
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(conn.textContent).toContain("Default");
+    expect(conn.textContent).toContain("Subscription sign-in");
+    expect(within(conn).getByText("Connected")).toBeInTheDocument();
+    expect(conn.textContent).toContain("Signed in as ann@example.com");
+    expect(conn.textContent).toContain("Models from your account");
+    const models = within(conn).getByRole("list", { name: "Models of Claude subscription" });
+    expect(models.textContent).toContain("Sonnet 5.5 (sonnet) · recommended — effort Low, Medium, High");
+    expect(models.textContent).toContain("Haiku 5.5 (haiku) — no effort levels");
+    const caps = within(conn).getByLabelText("Runtime capabilities");
+    expect(caps.textContent).toContain("Web search");
+    expect(caps.textContent).toContain("Run without local tools (employees)");
+  });
+
+  test("a subscription not signed in yet shows the one terminal command to run on the server, to copy -- the URL and code never pass through Orbit", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    fakeApi().on("GET", "/api/connections", () => connectionsView({ connections: [connection({ auth: "disconnected", identity: null, reason: "No login in this connection's folder yet." })] }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(within(conn).getByText("Disconnected")).toBeInTheDocument();
+    const command = within(conn).getByLabelText("Terminal command");
+    expect(command).toHaveTextContent(`docker compose run --rm orbit-connect claude ${CONN_CLAUDE}`);
+    expect(conn.textContent).toContain("The sign-in URL and code never pass through Orbit");
+    await userEvent.click(within(conn).getByRole("button", { name: "Copy" }));
+    expect(writeText).toHaveBeenCalledWith(`docker compose run --rm orbit-connect claude ${CONN_CLAUDE}`);
+    expect(await within(conn).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  test("an API key is typed once, sent once, and never shown back", async () => {
+    const KEY = "sk-ant-api03-ThisIsTheSecretKeyValue_0123456789";
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("POST", "/api/connections", () => withStatus(201, connection({ id: CONN_CLAUDE_KEY, method: "api_key", label: "Claude key", terminalCommand: null, isDefault: false })));
+    renderLive(<AiConnectionsSection />);
+    const claude = await card("Claude Code");
+    await userEvent.click(within(claude).getByRole("button", { name: "Add a connection" }));
+    const form = within(claude).getByRole("form", { name: "Add a Claude Code connection" });
+    await userEvent.click(within(form).getByRole("radio", { name: "API key" }));
+    const field = within(form).getByLabelText(/^API key/, { selector: "input[type=password]" });
+    expect(field).toHaveAttribute("type", "password");
+    await userEvent.type(within(form).getByRole("textbox", { name: /Label/ }), "Claude key");
+    await userEvent.type(field, KEY);
+    await userEvent.click(within(form).getByRole("button", { name: "Add connection" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "POST" && c.path === "/api/connections")).toBe(true));
+    const post = api.calls.find((c) => c.method === "POST" && c.path === "/api/connections");
+    expect(post?.body).toEqual({ runtime: "claude", method: "api_key", label: "Claude key", apiKey: KEY });
+    expect(post?.headers["x-orbit-csrf"]).toBe(CSRF);
+    await waitFor(() => expect(within(claude).queryByRole("form", { name: "Add a Claude Code connection" })).toBeNull());
+    expect(document.body.innerHTML).not.toContain(KEY);
+  });
+
+  test("the Orbit plugin on Claude Code: version and digest, a switch per use, and a grant names the digest shown", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection({ plugins: { ...(connection().plugins as NonNullable<ReturnType<typeof connection>["plugins"]>), useCases: { chat: { approved: false, needsConfirmation: false, decidedAt: null }, employee: { approved: true, needsConfirmation: true, decidedAt: "2026-11-20T00:00:00.000Z" } } } })] }))
+      .on("PUT", `/api/connections/${CONN_CLAUDE}/plugins/orbit`, () => connection().plugins);
+    renderLive(<AiConnectionsSection />);
+    const plugin = await within(await card("Claude Code")).findByRole("region", { name: "Plugins → Orbit" });
+    expect(plugin.textContent).toContain("Version 0.6.0");
+    expect(plugin.textContent).toContain(PLUGIN_DIGEST.slice(0, 12));
+    // A grant made for an earlier version is not a grant of this one: it waits for a confirmation.
+    expect(within(plugin).getByText("Needs your confirmation")).toBeInTheDocument();
+    expect(within(plugin).getByRole("switch", { name: "Use the Orbit plugin for employees" })).not.toBeChecked();
+    await userEvent.click(within(plugin).getByRole("switch", { name: "Use the Orbit plugin in chats" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ useCase: "chat", approved: true, digest: PLUGIN_DIGEST }));
+  });
+
+  test("never an Orbit plugin switch on Codex or Antigravity", async () => {
+    fakeApi().on(
+      "GET",
+      "/api/connections",
+      () =>
+        connectionsView({
+          connections: [connection(), connection({ id: "c1000000-0000-4000-8000-000000000009", runtime: "agy", label: "Gemini key", method: "api_key", terminalCommand: null, plugins: null, isDefault: true })],
+        }),
+    );
+    renderLive(<AiConnectionsSection />);
+    const agy = await card("Google Antigravity");
+    expect(await within(agy).findByRole("listitem", { name: "Connection Gemini key" })).toBeInTheDocument();
+    expect(within(agy).queryByRole("region", { name: "Plugins → Orbit" })).toBeNull();
+    expect(within(agy).queryByRole("switch")).toBeNull();
+    expect(within(await card("OpenAI Codex")).queryByRole("switch")).toBeNull();
+    expect(within(await card("Claude Code")).getAllByRole("switch")).toHaveLength(2);
+  });
+
+  test("Re-check asks the CLI again; Disconnect says what it does, asks first, then signs the CLI out", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("POST", `/api/connections/${CONN_CLAUDE}/check`, () => connection())
+      .on("POST", `/api/connections/${CONN_CLAUDE}/disconnect`, () => connection({ auth: "disconnected" }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    await userEvent.click(within(conn).getByRole("button", { name: "Re-check" }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === `/api/connections/${CONN_CLAUDE}/check`)).toBe(true));
+    expect(conn.textContent).toMatch(/Disconnect signs the CLI out of this connection and removes its login: the 2 employee\(s\) on it take no new work/);
+    await userEvent.click(within(conn).getByRole("button", { name: "Disconnect" }));
+    const dialog = await screen.findByRole("dialog", { name: "Disconnect Claude subscription?" });
+    expect(dialog.textContent).toContain("Nothing switches to another provider by itself.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === `/api/connections/${CONN_CLAUDE}/disconnect`)).toBe(true));
+  });
+
+  test("a fallback list is labelled as one, and an expired login is said as Authentication required", async () => {
+    fakeApi().on("GET", "/api/connections", () => connectionsView({ canHire: false, connections: [connection({ auth: "auth_required", reason: "The login expired.", catalog: { ...connection().catalog, source: "fallback" } })] }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(within(conn).getByText("Authentication required")).toBeInTheDocument();
+    expect(conn.textContent).toContain("A fallback list, not read from your account: chats may use it, employees never do.");
+    expect(screen.getByText(/To hire employees, connect at least one CLI/)).toBeInTheDocument();
+  });
+
+  test("the office's notification that connections changed reads them again", async () => {
+    const api = fakeApi().on("GET", "/api/connections", () => connectionsView());
+    renderLive(<AiConnectionsSection />);
+    await card("Claude Code");
+    await waitFor(() => expect(FakeEventSource.instances.some((s) => s.url === "/api/events" && !s.closed)).toBe(true));
+    await act(async () => undefined);
+    const before = api.calls.filter((c) => c.path === "/api/connections").length;
+    pushApp("office.changed", { areas: ["roster"], missionId: null, version: 8 });
+    pushApp("office.changed", { areas: ["connections"], missionId: null, version: 9 });
+    await waitFor(() => expect(api.calls.filter((c) => c.path === "/api/connections").length).toBe(before + 1));
+  });
+});

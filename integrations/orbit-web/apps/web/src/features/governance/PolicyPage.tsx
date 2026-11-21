@@ -39,6 +39,7 @@ import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
+import { EmployeeNetworkSection, splitNetwork, type EmployeeNetwork } from "./EmployeeNetwork";
 import { PolicyTable } from "./PolicyTable";
 import { Card, CleanSelect, ErrorBar, Word, byWhom, short, useParts, when } from "./parts";
 
@@ -358,7 +359,9 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
 function RevisionDetail({ revision, revisions, onChanged }: { revision: RevisionView; revisions: readonly RevisionSummary[]; onChanged: (r: RevisionView) => void }) {
   const s = useParts();
   const styles = useStyles();
-  const [shown, setShown] = useState(() => tableable(revision.document));
+  // The employee network section edits its own part of the document; the table edits the rest.
+  const [shown, setShown] = useState(() => tableable(splitNetwork(revision.document).rest));
+  const [network, setNetwork] = useState<EmployeeNetwork | null>(() => splitNetwork(revision.document).network);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -431,10 +434,20 @@ function RevisionDetail({ revision, revisions, onChanged }: { revision: Revision
           <MessageBarBody>This revision cannot be shown: {shown.problem}. Start a new draft from the policy in effect.</MessageBarBody>
         </MessageBar>
       )}
+      {shown.document !== null && (
+        <EmployeeNetworkSection
+          value={network}
+          editable={editable}
+          onChange={(next) => {
+            setNetwork(next);
+            setDirty(true);
+          }}
+        />
+      )}
       {open && (
         <div className={s.row}>
           {editable && (
-            <Button onClick={() => act("PUT", path, { document: shown.document, expectedDigest: revision.digest })} disabled={busy || !dirty}>
+            <Button onClick={() => act("PUT", path, { document: network !== null ? { ...shown.document, employeeNetwork: network } : shown.document, expectedDigest: revision.digest })} disabled={busy || !dirty}>
               Save draft
             </Button>
           )}

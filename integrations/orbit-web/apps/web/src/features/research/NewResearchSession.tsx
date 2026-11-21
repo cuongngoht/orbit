@@ -1,13 +1,13 @@
 // A NEW RESEARCH SESSION: in a new research workspace (named here) or one this account already has, with the model and
 // effort its account may use, and -- if wanted -- a first question, asked as soon as a selected source is ready. No
 // repository, no branch and no GitHub: research needs none of them.
-import { Button, Dropdown, Field, Input, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Dropdown, Field, Input, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { ShieldCheckmark16Regular } from "@fluentui/react-icons";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchSessionDetail, type ResearchWorkspaceSummary, type Settings } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
-import { errorText } from "../../services/api";
+import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
 import { ModelEffortPicker } from "../composer/RunPickers";
 import { research } from "./api";
@@ -58,7 +58,7 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const preferred = settings?.defaultModel ?? DEFAULT_MODEL;
   const run = { model: model ?? (catalog.source !== "account" || modelOf(catalog, preferred) !== null ? preferred : catalog.recommended), effort: effort ?? settings?.defaultEffort ?? DEFAULT_EFFORT };
   const list = workspaces.data ?? [];
@@ -73,7 +73,7 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
       const session = await research.createSession(workspaceId, { model: run.model, effort: run.effort, ...(question.trim() ? { question: question.trim() } : {}) });
       onCreated(session);
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     } finally {
       setBusy(false);
     }
@@ -131,11 +131,7 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
         <Field className={s.field} label="First question (optional)" hint="Asked at once when a selected source is ready. In a new workspace it waits for you: add sources, then ask it.">
           <Textarea className={s.control} value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder="What do these sources say about…" />
         </Field>
-        {error && (
-          <MessageBar intent="error">
-            <MessageBarBody>{error}</MessageBarBody>
-          </MessageBar>
-        )}
+        <ApiErrorBar error={error} />
         <div className={s.footer}>
           <div className={s.privacy}>
             <ShieldCheckmark16Regular className={s.privacyIcon} aria-hidden />

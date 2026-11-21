@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { SessionSummary } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import { fakeApi } from "../testing/fakeApi";
-import { SESSION_ID, claudeStatus, sessionSummary } from "../testing/fixtures";
+import { SESSION_ID, authAccount, authUser, sessionSummary } from "../testing/fixtures";
 import { renderUi } from "../testing/render";
 import { Sidebar, type SidebarProps } from "./Sidebar";
 
@@ -21,7 +21,8 @@ function show(over: Partial<SidebarProps> = {}) {
     loading: false,
     selected: SESSION_ID,
     collapsed: false,
-    account: claudeStatus().account,
+    user: authUser(),
+    account: authAccount(),
     signingOut: false,
     onToggle: vi.fn(),
     onNew: vi.fn(),
@@ -95,15 +96,18 @@ describe("the sidebar", () => {
     expect(p.onDeleted).toHaveBeenCalledWith(OTHER);
   });
 
-  test("the account at the bottom: who is signed in, Settings, Sign out", async () => {
+  test("the person signed in to Orbit at the bottom, by full name: Settings, Sign out", async () => {
     fakeApi();
     const p = show();
-    await userEvent.click(screen.getByRole("button", { name: "Signed in as octo@example.com" }));
-    expect(await screen.findByText("Signed in with Claude")).toBeInTheDocument();
-    expect(screen.getByText("Octo Org · max")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Signed in as Ann Owner" });
+    expect(button.textContent).toContain("Ann Owner");
+    await userEvent.click(button);
+    expect(await screen.findByText("Signed in to Orbit")).toBeInTheDocument();
+    expect(screen.getByText("@admin · Octo & Co")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/Claude/);
     await userEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
     expect(p.onSettings).toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "Signed in as octo@example.com" }));
+    await userEvent.click(screen.getByRole("button", { name: "Signed in as Ann Owner" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(p.onSignOut).toHaveBeenCalled();
   });
@@ -115,15 +119,26 @@ describe("the sidebar", () => {
     await userEvent.click(screen.getByRole("button", { name: "New session" }));
     expect(p.onNew).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Customize" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Signed in as octo@example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Signed in as Ann Owner" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Open the sidebar" }));
     expect(p.onToggle).toHaveBeenCalled();
+  });
+
+  test("the Office entry opens the office and is the current page while it is open", async () => {
+    fakeApi();
+    const onOffice = vi.fn();
+    show({ onOffice, office: true, selected: null });
+    const office = screen.getByRole("button", { name: "Office" });
+    expect(office).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "New session" })).not.toHaveAttribute("aria-current");
+    await userEvent.click(office);
+    expect(onOffice).toHaveBeenCalled();
   });
 
   test("no chats yet, and while signing out the account cannot be used twice", () => {
     fakeApi();
     show({ sessions: [], selected: null, signingOut: true });
     expect(screen.getByText("No chats yet.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Signed in as octo@example.com" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Signed in as Ann Owner" })).toBeDisabled();
   });
 });

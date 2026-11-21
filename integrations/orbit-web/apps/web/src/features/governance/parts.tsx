@@ -250,6 +250,7 @@ export function Card({
   actions,
   children,
   className,
+  label,
 }: {
   title?: ReactNode;
   icon?: ReactNode;
@@ -257,10 +258,12 @@ export function Card({
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  // The card's accessible name, when it should be a landmark a person can jump to.
+  label?: string;
 }) {
   const s = useParts();
   return (
-    <section className={mergeClasses(s.card, className)}>
+    <section className={mergeClasses(s.card, className)} aria-label={label}>
       {(title !== undefined || actions !== undefined || description !== undefined) && (
         <div className={s.between}>
           <div className={s.cardTitleWrap}>

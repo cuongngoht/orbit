@@ -7,6 +7,8 @@ export interface Resource<T> {
   error: string | null;
   errorCode: string | null;
   loading: boolean;
+  // When the data shown was read (ISO): what a page says as "Data as of".
+  loadedAt: string | null;
   reload: () => Promise<void>;
   set: (value: T) => void;
 }
@@ -16,6 +18,7 @@ export function useResource<T>(load: (() => Promise<T>) | null, deps: unknown[],
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(load !== null);
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const loader = useRef(load);
   useEffect(() => {
     loader.current = load;
@@ -24,6 +27,7 @@ export function useResource<T>(load: (() => Promise<T>) | null, deps: unknown[],
     if (!loader.current) return;
     try {
       setData(await loader.current());
+      setLoadedAt(new Date().toISOString());
       setError(null);
       setErrorCode(null);
     } catch (err) {
@@ -37,6 +41,10 @@ export function useResource<T>(load: (() => Promise<T>) | null, deps: unknown[],
     setLoading(true);
     await fetchNow();
   }, [fetchNow]);
+  const set = useCallback((value: T) => {
+    setData(value);
+    setLoadedAt(new Date().toISOString());
+  }, []);
   useEffect(() => {
     loader.current = load;
     void fetchNow();
@@ -45,5 +53,5 @@ export function useResource<T>(load: (() => Promise<T>) | null, deps: unknown[],
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the caller names what the load depends on
   }, deps);
-  return { data, error, errorCode, loading, reload, set: setData };
+  return { data, error, errorCode, loading, loadedAt, reload, set };
 }

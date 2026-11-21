@@ -6,6 +6,7 @@ import { Badge, Button, MessageBar, MessageBarActions, MessageBarBody, Spinner, 
 import { Add16Regular, ArrowClockwise16Regular, ArrowDown16Regular, BookOpen24Regular, Checkmark16Regular, Copy16Regular, Info16Regular, Lightbulb16Regular, NoteAdd16Regular, TextBulletListSquare16Regular } from "@fluentui/react-icons";
 import type { ResearchCitation, ResearchMessage } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { Markdown } from "../../components/Markdown";
 import { useViewport } from "../../hooks/useViewport";
 import { Composer } from "../composer/Composer";
@@ -272,7 +273,8 @@ export interface ResearchChatProps {
   onAddFinding: (message: LiveMessage) => void;
   onAddSources?: () => void;
   onOpenSources?: () => void;
-  error: string | null;
+  // The last refusal, as the API said it (a question that needs an AI connection says where to connect one).
+  error: unknown;
   right?: ReactNode;
 }
 
@@ -428,11 +430,7 @@ export function ResearchChat(p: ResearchChatProps) {
           onStop={p.onStop}
           above={
             <>
-              {p.error && (
-                <MessageBar intent="error">
-                  <MessageBarBody>{p.error}</MessageBarBody>
-                </MessageBar>
-              )}
+              <ApiErrorBar error={p.error} />
               {p.draftQuestion && messages.length === 0 && (
                 <div className={s.draftCard}>
                   <div className={s.draftBody}>

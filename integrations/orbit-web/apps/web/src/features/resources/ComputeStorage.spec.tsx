@@ -1,0 +1,86 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { rememberSession } from "../../services/account";
+import { fakeApi, withStatus } from "../../testing/fakeApi";
+import { authSession } from "../../testing/fixtures";
+import { resourceSummary } from "../../testing/officeFixtures";
+import { renderLive } from "../../testing/render";
+import { ComputeStorageSection } from "./ComputeStorageSection";
+
+beforeEach(() => rememberSession(authSession()));
+afterEach(() => rememberSession(null));
+
+const rowOf = (table: HTMLElement, first: string) => within(table).getAllByRole("row").find((r) => r.textContent?.startsWith(first)) as HTMLElement;
+
+describe("Settings → Compute & storage: what the account's employees may use, level by level", () => {
+  test("the host's capacity and how it was learned, the budget beside its authorization, what is reserved and free, storage by category, and how much runs or waits", async () => {
+    fakeApi().on("GET", "/api/office/resources", () => resourceSummary());
+    renderLive(<ComputeStorageSection />);
+    const capacity = await screen.findByRole("region", { name: "Infrastructure capacity" });
+    expect(within(capacity).getByText("Detected from this host")).toBeInTheDocument();
+    const cap = within(capacity).getByRole("table", { name: "Capacity" });
+    expect(rowOf(cap, "CPU").textContent).toBe("CPU8 vCPU2 vCPU6 vCPU");
+    expect(rowOf(cap, "Memory").textContent).toBe("Memory16 GiB4 GiB12 GiB");
+    expect(capacity.textContent).toContain("Hard limit — the kernel refuses past it");
+    const budget = within(screen.getByRole("region", { name: "Account budget" })).getByRole("table", { name: "Budget and authorization" });
+    expect(rowOf(budget, "Persistent storage").textContent).toBe("Persistent storage100 GiB180 GiB");
+    expect(rowOf(budget, "Work at the same time").textContent).toBe("Work at the same time34");
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(now.textContent).toContain("CPU reserved2.5 vCPU");
+    expect(now.textContent).toContain("CPU available3.5 vCPU");
+    expect(now.textContent).toContain("Waiting for resources1");
+    expect(now.textContent).toContain("Cannot start as configured0");
+    expect(now.textContent).toContain("An idle employee reserves no CPU or memory");
+    const storage = within(screen.getByRole("region", { name: "Storage" })).getByRole("table", { name: "Storage by category" });
+    expect(rowOf(storage, "Desks and toolboxes").textContent).toBe("Desks and toolboxes25 GiB2 GiB");
+    expect(rowOf(storage, "Artifacts").textContent).toBe("Artifacts0 MiB256 MiB");
+  });
+
+  test("the budget is lowered against the version read, and never offered above the operator's authorization", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("PATCH", "/api/office/resources/budget", () => resourceSummary({ budget: { ...resourceSummary().budget, cpuMillis: 4000, version: 3 } }));
+    renderLive(<ComputeStorageSection />);
+    const form = await screen.findByRole("form", { name: "Change the budget" });
+    const save = within(form).getByRole("button", { name: "Save the budget" });
+    expect(save).toBeDisabled();
+    const cpu = within(form).getByRole("spinbutton", { name: /^CPU \(vCPU\)/ });
+    await userEvent.clear(cpu);
+    await userEvent.type(cpu, "8");
+    expect(within(form).getByText("At most 6 vCPU, the operator's authorization.")).toBeInTheDocument();
+    expect(save).toBeDisabled();
+    await userEvent.clear(cpu);
+    await userEvent.type(cpu, "4");
+    expect(save).toBeEnabled();
+    await userEvent.click(save);
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
+    const patch = api.calls.find((c) => c.method === "PATCH");
+    expect(patch?.body).toEqual({ cpuMillis: 4000 });
+    expect(patch?.headers["if-match"]).toBe('"2"');
+    expect(form.textContent).toContain("node dist/cli/governance.js budget set");
+  });
+
+  test("a budget that moved on is not saved over: the latest is offered", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("PATCH", "/api/office/resources/budget", () => withStatus(412, { error: { code: "stale_version", message: "stale" } }));
+    renderLive(<ComputeStorageSection />);
+    const form = await screen.findByRole("form", { name: "Change the budget" });
+    const concurrent = within(form).getByRole("spinbutton", { name: /^Work at the same time/ });
+    await userEvent.clear(concurrent);
+    await userEvent.type(concurrent, "2");
+    await userEvent.click(within(form).getByRole("button", { name: "Save the budget" }));
+    expect(await within(form).findByText("The budget changed since this page read it: nothing was saved.")).toBeInTheDocument();
+    const reads = api.calls.filter((c) => c.path === "/api/office/resources").length;
+    await userEvent.click(within(form).getByRole("button", { name: "Load the latest" }));
+    await waitFor(() => expect(api.calls.filter((c) => c.path === "/api/office/resources").length).toBeGreaterThan(reads));
+  });
+
+  test("a budget below what running work holds says it is over budget until that work ends -- nothing is stopped", async () => {
+    const base = resourceSummary();
+    fakeApi().on("GET", "/api/office/resources", () => resourceSummary({ budget: { ...base.budget, cpuMillis: 2000 } }));
+    renderLive(<ComputeStorageSection />);
+    expect(await screen.findByText("Over budget until running work ends: new work waits; nothing running is stopped.")).toBeInTheDocument();
+  });
+});

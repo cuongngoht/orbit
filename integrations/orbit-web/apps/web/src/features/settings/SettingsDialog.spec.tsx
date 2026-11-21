@@ -1,12 +1,12 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { AccountView, Customizations, SetupStatus } from "@orbit-web/contracts";
+import type { Customizations, SetupStatus } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { SettingsSection } from "../../hooks/useHashRoute";
-import { fakeApi, type FakeApi } from "../../testing/fakeApi";
+import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
-import { SESSION_ID, accountView, claudeStatus, idleFlow, inventory, settings, setupStatus } from "../../testing/fixtures";
+import { SESSION_ID, authAccount, authStatus, authUser, idleFlow, inventory, sessionViews, settings, setupStatus } from "../../testing/fixtures";
 import { renderLive } from "../../testing/render";
 import type { SignOut } from "../auth/useSignOut";
 import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
@@ -31,15 +31,15 @@ const CUSTOMIZATIONS: Customizations = {
 
 // The fake API answers the last route registered for a path: the account this dialog reads is given here, not registered
 // beside it.
-function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "github" | "azure"; api?: FakeApi; account?: AccountView } = {}) {
+function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "github" | "azure"; api?: FakeApi } = {}) {
   let status = o.status ?? setupStatus();
   const api = (o.api ?? fakeApi())
     .on("GET", "/api/setup/status", () => status)
     .on("GET", "/api/customizations", () => CUSTOMIZATIONS)
     .on("PATCH", "/api/settings", (body) => settings(body as object))
-    .on("GET", "/api/account", () => o.account ?? accountView());
-  const signOut: SignOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
-  const p: SettingsDialogProps = { section, connector: o.connector ?? null, claude: claudeStatus(), signOut, settings: settings(), onSettings: vi.fn(), onSection: vi.fn(), onClose: vi.fn() };
+    .on("GET", "/api/auth/sessions", () => sessionViews());
+  const signOut: SignOut = { signOut: vi.fn(async () => undefined), signOutEverywhere: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+  const p: SettingsDialogProps = { section, connector: o.connector ?? null, auth: { ...authStatus(), user: authUser() }, onAuth: vi.fn(), signOut, settings: settings(), onSettings: vi.fn(), onSection: vi.fn(), onClose: vi.fn() };
   renderLive(<SettingsDialog {...p} />);
   return { p, api, signOut, setStatus: (s: SetupStatus) => (status = s), statusReads: () => api.calls.filter((c) => c.path === "/api/setup/status").length };
 }
@@ -60,11 +60,11 @@ describe("Settings: the sections, over the page", () => {
     const { p } = show("account");
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     const nav = within(dialog).getByRole("navigation", { name: "Settings sections" });
-    expect(sections(nav)).toEqual(["Account", "Appearance", "Code", "Connectors", "Claude connectors", "Skills", "Plugins", "System"]);
+    expect(sections(nav)).toEqual(["Account", "Appearance", "Code", "AI Connections", "Compute & storage", "Connectors", "Claude connectors", "Skills", "Plugins", "System"]);
     expect(within(nav).getByRole("button", { name: "Account" })).toHaveAttribute("aria-current", "page");
     expect(within(dialog).getByRole("heading", { name: "Account" })).toBeInTheDocument();
     await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search settings" }), "effort");
-    expect(sections(nav)).toEqual(["Code"]);
+    expect(sections(nav)).toEqual(["Code", "AI Connections"]);
     await userEvent.click(within(nav).getByRole("button", { name: "Code" }));
     expect(p.onSection).toHaveBeenCalledWith("code");
     await userEvent.clear(within(dialog).getByRole("searchbox", { name: "Search settings" }));
@@ -74,28 +74,52 @@ describe("Settings: the sections, over the page", () => {
     expect(p.onClose).toHaveBeenCalled();
   });
 
-  test("Account: the account this browser is signed in to, its business name, its browsers, and the two ways out", async () => {
+  test("Account: the person and the Orbit account -- profile, company with If-Match, password, sessions -- and the ways out", async () => {
+    let accountReply: unknown = authAccount({ companyName: "Octo Labs", version: 4 });
     const api = fakeApi()
-      .on("PUT", "/api/account", (body) => accountView(body as object))
-      .on("DELETE", "/api/account/sessions/s-2", () => undefined);
-    const signedIn = accountView({ displayName: "Octo & Co", sessions: [...accountView().sessions, { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" }] });
-    const { signOut } = show("account", { api, account: signedIn });
+      .on("PATCH", "/api/auth/profile", (body) => authUser(body as object))
+      .on("PATCH", "/api/account", () => accountReply)
+      .on("GET", "/api/account", () => authAccount({ companyName: "Octo Labs", version: 5 }))
+      .on("DELETE", "/api/auth/sessions/s-2", () => withStatus(204));
+    const { p, signOut } = show("account", { api });
     const account = await screen.findByLabelText("Account");
-    expect(await within(account).findByText("Octo & Co")).toBeInTheDocument();
-    expect(account.textContent).toContain("octo@example.com");
-    expect(account.textContent).toContain("Octo Org · max");
-    expect(within(account).getByText("This browser")).toBeInTheDocument();
-    const name = within(account).getByRole("textbox", { name: /Business name/ });
-    await userEvent.clear(name);
-    await userEvent.type(name, "Octo Labs");
-    await userEvent.click(within(account).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ displayName: "Octo Labs" }));
-    await userEvent.click(within(account).getByRole("button", { name: "Sign out" }));
-    await waitFor(() => expect(api.calls.some((c) => c.method === "DELETE" && c.path === "/api/account/sessions/s-2")).toBe(true));
+    expect(account.textContent).toContain("Ann Owner");
+    expect(account.textContent).toContain("@admin · Owner · Octo & Co");
+    // The email is the user's, and unverified until Orbit can send mail.
+    const profile = within(account).getByRole("form", { name: "Your profile" });
+    expect(within(profile).getByText("unverified")).toBeInTheDocument();
+    const fullName = within(profile).getByRole("textbox", { name: /Full name/ });
+    await userEvent.clear(fullName);
+    await userEvent.type(fullName, "Ann B. Owner");
+    await userEvent.click(within(profile).getByRole("button", { name: "Save profile" }));
+    await waitFor(() => expect(api.calls.find((c) => c.path === "/api/auth/profile")?.body).toEqual({ fullName: "Ann B. Owner" }));
+    await waitFor(() => expect(p.onAuth).toHaveBeenCalledWith(expect.objectContaining({ user: expect.objectContaining({ fullName: "Ann B. Owner" }) })));
+    // The account is changed against the version read.
+    const org = within(account).getByRole("form", { name: "Orbit account" });
+    const company = within(org).getByRole("textbox", { name: "Company name" });
+    await userEvent.clear(company);
+    await userEvent.type(company, "Octo Labs");
+    await userEvent.click(within(org).getByRole("button", { name: "Save account" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PATCH" && c.path === "/api/account")).toBeDefined());
+    const patch = api.calls.find((c) => c.method === "PATCH" && c.path === "/api/account");
+    expect(patch?.body).toEqual({ companyName: "Octo Labs" });
+    expect(patch?.headers["if-match"]).toBe('"3"');
+    // A version that moved on is said, and the latest is offered -- never saved over.
+    accountReply = withStatus(412, { error: { code: "stale_version", message: "The account changed." } });
+    await userEvent.click(within(org).getByRole("button", { name: "Save account" }));
+    expect(await within(org).findByText(/The account changed since this page read it: nothing was saved/)).toBeInTheDocument();
+    await userEvent.click(within(org).getByRole("button", { name: "Load the latest" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "GET" && c.path === "/api/account")).toBe(true));
+    // The sessions of the user: one ended, this browser, or all.
+    const sessions = await within(account).findByRole("list", { name: "Signed-in sessions" });
+    expect(within(sessions).getByText("This browser")).toBeInTheDocument();
+    await userEvent.click(within(sessions).getByRole("button", { name: "Sign out Safari on a phone" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "DELETE" && c.path === "/api/auth/sessions/s-2")).toBe(true));
     await userEvent.click(within(account).getByRole("button", { name: "Sign out of this browser" }));
     expect(signOut.signOut).toHaveBeenCalled();
-    await userEvent.click(within(account).getByRole("button", { name: "Sign the account out everywhere" }));
-    expect(signOut.signOutAccount).toHaveBeenCalled();
+    await userEvent.click(within(account).getByRole("button", { name: "Sign out everywhere" }));
+    expect(signOut.signOutEverywhere).toHaveBeenCalled();
+    expect(within(account).getByRole("form", { name: "Change password" })).toBeInTheDocument();
   });
 
   test("Account: the access link, to copy or open in another browser -- given only to whoever is in", async () => {

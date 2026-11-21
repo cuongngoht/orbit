@@ -64,6 +64,53 @@ a,
   }
 }
 
+/* A form control never pushes its field -- or the card and the page around it -- wider than the screen: a field is a
+   one-column grid whose track would otherwise never shrink below the control's own text (a native select's longest
+   option, an input's default size and the buttons beside it). */
+.fui-Field {
+  min-width: 0;
+}
+
+.fui-Field > .fui-Input,
+.fui-Field > .fui-Select,
+.fui-Field > .fui-Textarea,
+.fui-Field > .fui-SpinButton,
+.fui-Field > .fui-Combobox,
+.fui-Field > .fui-Dropdown {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fui-Select__select {
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+/* Touch targets of the office, the sign-in pages and the account's settings: 44 px on a coarse pointer, said once here
+   rather than on each control. A link inside a sentence keeps its line's height: it is part of the text. */
+@media (pointer: coarse) {
+  .orbit-touch .fui-Button,
+  .orbit-touch .fui-ToggleButton,
+  .orbit-touch .fui-MenuButton,
+  .orbit-touch .fui-Tab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .orbit-touch .fui-Checkbox,
+  .orbit-touch .fui-Radio,
+  .orbit-touch .fui-Switch {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .orbit-touch .orbit-target {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
 .orbit-hscroll {
   scrollbar-width: none;
   -ms-overflow-style: none;

@@ -1,8 +1,8 @@
 // THE SIDEBAR, as in Claude Code: Orbit and a collapse button; New session, Search (it filters the recents), Customize
 // (Settings → Skills); the recent sessions of both kinds -- a chat (code icon, its source) or a research session (book
 // icon, its workspace), each with a dot while it works or when it failed, a mark when another account shared it, and a
-// menu to rename or delete it -- filtered by kind, kept current by the app stream; and at the bottom the Claude account
-// Orbit Web is signed in with, whose menu opens Settings or signs out.
+// menu to rename or delete it -- filtered by kind, kept current by the app stream; and at the bottom the person signed in
+// to Orbit, by their full name, whose menu opens Settings or signs out.
 import {
   Avatar,
   Button,
@@ -37,6 +37,7 @@ import {
 import {
   Add20Regular,
   BookOpen16Regular,
+  BuildingMultiple20Regular,
   ChevronDown12Regular,
   Code16Regular,
   Delete16Regular,
@@ -52,10 +53,9 @@ import {
   Settings20Regular,
   SignOut20Regular,
 } from "@fluentui/react-icons";
-import type { ClaudeAccount, ResearchSessionSummary, SessionSummary } from "@orbit-web/contracts";
+import type { AuthAccount, AuthUser, ResearchSessionSummary, SessionSummary } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
 import { SourceMark } from "../components/SourceMark";
-import { accountLine } from "../features/auth/account";
 import { errorText, send } from "../services/api";
 
 const useStyles = makeStyles({
@@ -134,13 +134,18 @@ export interface SidebarProps {
   selected: string | null;
   collapsed: boolean;
   isDrawer?: boolean;
-  account: ClaudeAccount | null;
+  // Who is signed in to Orbit, and the account (company) it is.
+  user: AuthUser | null;
+  account?: AuthAccount | null;
   signingOut: boolean;
   onToggle: () => void;
   onNew: () => void;
   onOpen: (id: string) => void;
   onCustomize: () => void;
   onSettings: () => void;
+  // The office is open (and its entry is the current page).
+  office?: boolean;
+  onOffice?: () => void;
   // The Governance console is open (and its entry is the current page).
   governance?: boolean;
   onGovernance?: () => void;
@@ -151,10 +156,16 @@ export interface SidebarProps {
   onResearchDeleted?: (id: string) => void;
 }
 
-function AccountMenu({ account, collapsed, busy, onSettings, onSignOut }: { account: ClaudeAccount | null; collapsed: boolean; busy: boolean; onSettings: () => void; onSignOut: () => void }) {
+// The person signed in, as a line under their name: their username and the company of the account, when it has one.
+const userLine = (user: AuthUser | null, account: AuthAccount | null): string | null => {
+  const parts = [user ? `@${user.username}` : null, account?.companyName || null].filter((p): p is string => typeof p === "string" && p !== "");
+  return parts.length > 0 ? parts.join(" · ") : null;
+};
+
+function AccountMenu({ user, account, collapsed, busy, onSettings, onSignOut }: { user: AuthUser | null; account: AuthAccount | null; collapsed: boolean; busy: boolean; onSettings: () => void; onSignOut: () => void }) {
   const s = useStyles();
-  const name = account?.email ?? "Claude account";
-  const line = accountLine(account);
+  const name = user?.fullName || user?.username || "Your account";
+  const line = userLine(user, account);
   return (
     <Menu positioning="above-start">
       <MenuTrigger disableButtonEnhancement>
@@ -162,11 +173,6 @@ function AccountMenu({ account, collapsed, busy, onSettings, onSignOut }: { acco
           {!collapsed && (
             <span className={s.accountText}>
               <span className={s.email}>{name}</span>
-              {account?.plan && (
-                <Text size={200} className={s.muted}>
-                  {account.plan}
-                </Text>
-              )}
             </span>
           )}
           {!collapsed && <ChevronDown12Regular />}
@@ -175,7 +181,7 @@ function AccountMenu({ account, collapsed, busy, onSettings, onSignOut }: { acco
       <MenuPopover>
         <MenuList>
           <MenuGroup>
-            <MenuGroupHeader>Signed in with Claude</MenuGroupHeader>
+            <MenuGroupHeader>Signed in to Orbit</MenuGroupHeader>
             <div className={s.who}>
               <Text weight="semibold">{name}</Text>
               {line && (
@@ -228,6 +234,11 @@ export function Sidebar(p: SidebarProps) {
           <Tooltip content="Customize" relationship="label">
             <Button appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
           </Tooltip>
+          {p.onOffice && (
+            <Tooltip content="Office" relationship="label">
+              <Button appearance="subtle" icon={<BuildingMultiple20Regular />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
+            </Tooltip>
+          )}
           {p.onGovernance && (
             <Tooltip content="Governance" relationship="label">
               <Button appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
@@ -236,7 +247,7 @@ export function Sidebar(p: SidebarProps) {
         </div>
         <div style={{ flexGrow: 1 }} />
         <div className={mergeClasses(s.foot, s.footCollapsed)}>
-          <AccountMenu account={p.account} collapsed busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
+          <AccountMenu user={p.user} account={p.account ?? null} collapsed busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
         </div>
       </nav>
     );
@@ -255,7 +266,7 @@ export function Sidebar(p: SidebarProps) {
         </Tooltip>
       </div>
       <div className={s.nav}>
-        <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance ? "page" : undefined} onClick={p.onNew}>
+        <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && !p.office && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance && !p.office ? "page" : undefined} onClick={p.onNew}>
           New session
         </Button>
         {searching ? (
@@ -282,6 +293,11 @@ export function Sidebar(p: SidebarProps) {
         <Button className={s.navItem} appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize}>
           Customize
         </Button>
+        {p.onOffice && (
+          <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={<BuildingMultiple20Regular />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
+            Office
+          </Button>
+        )}
         {p.onGovernance && (
           <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
             Governance
@@ -339,7 +355,7 @@ export function Sidebar(p: SidebarProps) {
         })}
       </ul>
       <div className={s.foot}>
-        <AccountMenu account={p.account} collapsed={false} busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
+        <AccountMenu user={p.user} account={p.account ?? null} collapsed={false} busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
       </div>
       {renaming && (
         <RenameDialog

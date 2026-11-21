@@ -17,8 +17,10 @@ import { NewResearchSession } from "./features/research/NewResearchSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
 import { AccessPage } from "./pages/AccessPage";
+import { OfficeView } from "./features/office/OfficeView";
 import { fakeApi } from "./testing/fakeApi";
-import { ACCOUNT_ID, SESSION_ID, claudeStatus, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
+import { EMP_ANA, connectionsView, employeeDetail, roster } from "./testing/officeFixtures";
+import { ACCOUNT_ID, SESSION_ID, authAccount, authStatus, authUser, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, sessionViews, settings, setupStatus, sources } from "./testing/fixtures";
 import { researchDetail, workspaceSummary, WORKSPACE_ID } from "./testing/researchFixtures";
 import { renderLive, renderUi } from "./testing/render";
 
@@ -60,7 +62,7 @@ const tabletViewport = () =>
 
 function signedInApi() {
   return fakeApi()
-    .on("GET", "/api/claude/status", () => claudeStatus())
+    .on("GET", "/api/auth/status", () => authStatus())
     .on("GET", "/api/settings", () => settings())
     .on("GET", "/api/sessions", () => [sessionSummary()])
     .on("GET", "/api/sources", () => sources())
@@ -176,17 +178,19 @@ describe("responsive mobile-first layout", () => {
     };
     fakeApi()
       .on("GET", "/api/setup/status", () => setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo" } }))
-      .on("GET", "/api/customizations", () => customizations);
+      .on("GET", "/api/customizations", () => customizations)
+      .on("GET", "/api/auth/sessions", () => sessionViews());
 
     const onSection = vi.fn();
-    const signOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+    const signOut = { signOut: vi.fn(async () => undefined), signOutEverywhere: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
     function Harness() {
       const [section, setSection] = useState<SettingsSection>("account");
       return (
         <SettingsDialog
           section={section}
           connector={null}
-          claude={claudeStatus()}
+          auth={{ ...authStatus(), user: authUser() }}
+          onAuth={() => undefined}
           signOut={signOut}
           settings={settings()}
           onSettings={() => undefined}
@@ -371,5 +375,36 @@ describe("responsive mobile-first layout", () => {
     expect(css).toContain(".fui-Input__input");
     expect(css).toContain(".fui-Textarea__textarea");
     expect(css).toContain("font-size: 16px !important;");
+  });
+
+  test("the office on a phone: the filters in a menu, and an employee or a mission as its own screen with Back", async () => {
+    mobileViewport();
+    fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail());
+    const go = vi.fn();
+    const view = renderLive(<OfficeView page="overview" item={null} tab={null} go={go} account={authAccount()} />);
+    expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Office" })).toBeInTheDocument();
+    // The pickers wait in a sheet behind one button, beside the search.
+    expect(screen.queryByRole("combobox", { name: "Department" })).toBeNull();
+    expect(screen.getByRole("searchbox", { name: "Search employees" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    expect(await screen.findByRole("combobox", { name: "Department" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    view.unmount();
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab={null} go={go} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(go).toHaveBeenCalledWith("overview");
+    // On a phone a detail screen gives the office's tabs' room to the record.
+    expect(screen.queryByRole("navigation", { name: "Office" })).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Employee" })).toBeInTheDocument();
+    // The rules a phone needs and jsdom cannot lay out: 44 px targets on a coarse pointer, fields that shrink to the screen.
+    const css = readFileSync([resolve(process.cwd(), "src/themes/global.css"), resolve(process.cwd(), "apps/web/src/themes/global.css"), resolve(process.cwd(), "integrations/orbit-web/apps/web/src/themes/global.css")].find((p) => existsSync(p)) as string, "utf8");
+    expect(css).toMatch(/@media \(pointer: coarse\) \{\s*\.orbit-touch \.fui-Button,/);
+    expect(css).toContain(".fui-Field > .fui-Select,");
+    expect(css).toContain(".orbit-touch .orbit-target");
   });
 });

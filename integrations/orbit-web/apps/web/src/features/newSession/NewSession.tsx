@@ -2,14 +2,15 @@
 // Claude Code -- the toolbar holds the draft (a repository of either source, or none; its branch; the model and effort;
 // the mode) and sending the first message creates the chat with them and opens it. RESEARCH: a workspace of sources
 // (new, or one this account has), the model, and an optional first question -- no repository and no GitHub.
-import { Avatar, Button, MessageBar, MessageBarBody, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Avatar, Button, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { BookOpen20Regular, Code20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import type { ResearchSessionDetail } from "@orbit-web/contracts";
 import { NewResearchSession } from "../research/NewResearchSession";
-import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, modelOf, type ClaudeAccount, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
+import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, modelOf, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
-import { errorText, send } from "../../services/api";
+import { ApiErrorBar } from "../../components/ApiErrorBar";
+import { send } from "../../services/api";
 import { uploadImage } from "../../services/images";
 import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
@@ -115,7 +116,7 @@ export function NewSession({
   onResearchCreated,
   onConnect,
   onOpenNav,
-  account,
+  userName,
   onOpenAccount,
 }: {
   settings: Settings | null;
@@ -124,7 +125,8 @@ export function NewSession({
   onResearchCreated?: (s: ResearchSessionDetail) => void;
   onConnect: (source: RepositorySource) => void;
   onOpenNav?: () => void;
-  account?: ClaudeAccount | null;
+  // The signed-in user's full name, on the account button of a narrow screen.
+  userName?: string | null;
   onOpenAccount?: () => void;
 }) {
   const s = useStyles();
@@ -137,7 +139,7 @@ export function NewSession({
   const [effort, setEffort] = useState<EffortChoice | null>(null);
   const [mode, setMode] = useState<ModeChoice | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const catalog = useModelCatalog();
   // Settings' default model, unless this account cannot use it: then the one its CLI recommends.
   const preferred = settings?.defaultModel ?? DEFAULT_MODEL;
@@ -161,7 +163,7 @@ export function NewSession({
       const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...run, ...(prompt.trim().length > 0 ? { prompt } : {}), ...(images.length > 0 ? { images } : {}) });
       onCreated(created);
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     } finally {
       setBusy(false);
     }
@@ -177,13 +179,7 @@ export function NewSession({
       onSend={(text, images) => void start(text, images)}
       onUploadImage={uploadImage}
       commandsPath={choice ? `/api/commands?source=${choice.source}&repository=${encodeURIComponent(choice.repository.id)}` : "/api/commands"}
-      above={
-        error && (
-          <MessageBar intent="error">
-            <MessageBarBody>{error}</MessageBarBody>
-          </MessageBar>
-        )
-      }
+      above={error !== null && <ApiErrorBar error={error} />}
       left={
         <>
           <RepositoryPicker
@@ -220,7 +216,7 @@ export function NewSession({
             <Button
               className={s.touchBtn}
               appearance="subtle"
-              icon={<Avatar name={account?.email ?? "Claude account"} size={24} />}
+              icon={<Avatar name={userName ?? "Account"} size={24} />}
               aria-label="Account and settings"
               onClick={onOpenAccount}
             />

@@ -36,7 +36,8 @@ export function fakeApi(): FakeApi {
     if (!route) return new Response(JSON.stringify({ error: { code: "not_found", message: `no route ${method} ${url.pathname}` } }), { status: 404 });
     const out = route.handler(body, url);
     const reply = out instanceof WithStatus ? out : new WithStatus(200, out);
-    return new Response(reply.body === undefined ? "" : JSON.stringify(reply.body), { status: reply.status, headers: { "content-type": "application/json" } });
+    // No body at all (not an empty one) when there is nothing to say: a 204 may carry none.
+    return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), { status: reply.status, headers: { "content-type": "application/json" } });
   });
   return api;
 }

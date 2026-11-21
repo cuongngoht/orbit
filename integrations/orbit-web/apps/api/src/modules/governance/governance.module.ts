@@ -1,50 +1,31 @@
-// GOVERNANCE: operators and their sessions, the global gate every route passes, the policy decision point, the
-// privileged settings, and the audit record. The rules are governance-core's; this module binds them to the stores,
-// the HTTP routes and the clock.
+// GOVERNANCE, per ACCOUNT: the account's policy and the overrides that narrow it for one chat or research workspace,
+// the policy decision point, the runs it binds, approvals, the privileged settings, the audit record (one hash chain
+// per account), findings and reports -- and, from an account's creation, its chain and its default policy (hooks). The
+// rules are governance-core's; this module binds them to the stores, the HTTP routes and the clock. Who may ask is the
+// auth module's (one global gate): every route here is the account owner's.
 import { Module } from "@nestjs/common";
 import { HealthModule } from "../health/health.module.js";
-import { APP_GUARD } from "@nestjs/core";
 import { ApprovalService } from "./approvals.service.js";
 import { AuditController } from "./audit.controller.js";
 import { AuditorController } from "./auditor.controller.js";
 import { AuditService } from "./audit.service.js";
-import { BOOTSTRAP_ANNOUNCER, BootstrapCode, stdoutAnnouncer } from "./bootstrap-code.js";
-import { ConstitutionService } from "./constitution.service.js";
 import { EgressService } from "./egress.service.js";
 import { FindingsService } from "./findings.service.js";
 import { GovernanceController } from "./governance.controller.js";
-import { GovernanceGuard } from "./governance.guard.js";
+import { GovernanceHooks } from "./hooks.service.js";
 import { IsolationService } from "./isolation.service.js";
-import { OperatorController, OperatorsController } from "./operator.controller.js";
-import { OperatorService } from "./operator.service.js";
+import { OverridesService } from "./overrides.service.js";
 import { PolicyService } from "./policy.service.js";
-import { PrincipalResolver } from "./principals.js";
-import { RegistryService } from "./registry.service.js";
+import { ResourcesController } from "./resources.controller.js";
+import { GovernedResources } from "./resources.service.js";
+import { RevisionsService } from "./revisions.service.js";
 import { RunGovernanceService } from "./run-governance.service.js";
 import { PrivilegedSettingsGate } from "./settings-gate.js";
 
 @Module({
   imports: [HealthModule],
-  providers: [
-    { provide: BOOTSTRAP_ANNOUNCER, useValue: stdoutAnnouncer },
-    BootstrapCode,
-    AuditService,
-    OperatorService,
-    PrincipalResolver,
-    PolicyService,
-    PrivilegedSettingsGate,
-    ConstitutionService,
-    RegistryService,
-    ApprovalService,
-    FindingsService,
-    IsolationService,
-    EgressService,
-    RunGovernanceService,
-    // After the Claude sign-in gate (its module is imported first): a signed-out Orbit Web answers every route with the
-    // Claude sign-in, governance's or not.
-    { provide: APP_GUARD, useClass: GovernanceGuard },
-  ],
-  controllers: [OperatorController, OperatorsController, AuditController, GovernanceController, AuditorController],
-  exports: [AuditService, OperatorService, PrincipalResolver, PolicyService, PrivilegedSettingsGate, ConstitutionService, RegistryService, ApprovalService, FindingsService, IsolationService, RunGovernanceService],
+  providers: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, EgressService, RunGovernanceService, GovernanceHooks],
+  controllers: [GovernanceController, ResourcesController, AuditController, AuditorController],
+  exports: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, RunGovernanceService],
 })
 export class GovernanceModule {}

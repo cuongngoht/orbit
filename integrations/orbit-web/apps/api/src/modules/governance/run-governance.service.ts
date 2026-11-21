@@ -234,7 +234,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
   // or non-essential traffic -- nothing that would leave by another door. Research has no gateway.
   private envFor(token: string, kind: RunBinding["kind"]): Record<string, string> {
     const g = this.config.governance;
-    const gateway = kind === "chat" ? { ORBIT_AGENT_GATEWAY: `http://${g.agentControlHost}:${this.config.port}/api/agent`, ORBIT_AGENT_TOKEN: token } : {};
+    const gateway: Record<string, string> = kind === "chat" ? { ORBIT_AGENT_GATEWAY: `http://${g.agentControlHost}:${this.config.port}/api/agent`, ORBIT_AGENT_TOKEN: token } : {};
     if (g.deployment !== "governed" || g.proxyPort === null) return gateway;
     return { ...gateway, ...egressProxyEnv(g.agentControlHost, g.proxyPort, "run", token), ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   }

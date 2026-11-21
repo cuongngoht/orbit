@@ -1,9 +1,9 @@
-// THE AUDIT RECORD, read:
+// THE ACCOUNT'S AUDIT RECORD, read by its owner -- its own chain, never another account's, never the deployment's (that
+// one is the installation terminal's: cli/governance.ts):
 //
-//   GET  /api/governance/audit?before=<seq>&limit=<n>&type=<t>[,<t>]   audit.read, newest first
-//   GET  /api/governance/audit/:eventId                                audit.read
-//   POST /api/governance/audit/verify                                   audit.verify -- the chain checked whole, and
-//                                                                       the check itself recorded
+//   GET  /api/governance/audit?before=<seq>&limit=<n>&type=<t>[,<t>]   newest first
+//   GET  /api/governance/audit/:eventId
+//   POST /api/governance/audit/verify                                   the chain checked whole, and the check recorded
 //
 // Nothing here writes a record of its own choosing, and no route changes or removes one: there is no such route.
 import { Controller, Get, HttpCode, Inject, Param, Post, Query, Req } from "@nestjs/common";
@@ -11,10 +11,10 @@ import { isAuditEventType, type AuditEvent } from "@orbit-web/governance-core";
 import type { AuditPage, ChainVerification } from "@orbit-web/contracts";
 import type { Request } from "express";
 import { badRequest, notFound } from "../../common/errors.js";
+import { viewer } from "../../common/request-scope.js";
 import { AuditStore } from "../../infra/governance/stores.js";
+import { PrincipalResolver } from "../auth/principals.js";
 import { AuditService } from "./audit.service.js";
-import { RequirePermission } from "./decorators.js";
-import { PrincipalResolver } from "./principals.js";
 
 const MAX_PAGE = 200;
 
@@ -37,25 +37,23 @@ export class AuditController {
   ) {}
 
   @Get()
-  @RequirePermission("audit.read")
-  page(@Query("before") before?: string, @Query("limit") limit?: string, @Query("type") type?: string): AuditPage {
+  async page(@Query("before") before?: string, @Query("limit") limit?: string, @Query("type") type?: string): Promise<AuditPage> {
+    const accountId = viewer().accountId;
     const q = pageQuery(before, limit, type);
-    const events = this.store.page(q);
+    const events = await this.store.page(accountId, q);
     const last = events.at(-1);
-    return { events, next: events.length === q.limit && last !== undefined && last.seq > 1 ? last.seq : null, head: this.store.head() };
+    return { events, next: events.length === q.limit && last !== undefined && last.seq > 1 ? last.seq : null, head: await this.store.head(accountId) };
   }
 
   @Post("verify")
-  @RequirePermission("audit.verify")
   @HttpCode(200)
-  verify(@Req() req: Request): ChainVerification {
-    return this.audit.verifyAndRecord(this.principals.context(req));
+  verify(@Req() req: Request): Promise<ChainVerification> {
+    return this.audit.verifyAndRecord(this.principals.context(req), viewer().accountId);
   }
 
   @Get(":eventId")
-  @RequirePermission("audit.read")
-  one(@Param("eventId") eventId: string): AuditEvent {
-    const event = this.store.get(eventId);
+  async one(@Param("eventId") eventId: string): Promise<AuditEvent> {
+    const event = await this.store.get(viewer().accountId, eventId);
     if (event === null) throw notFound("The audit record");
     return event;
   }

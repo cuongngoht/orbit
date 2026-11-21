@@ -1,17 +1,17 @@
-// FINDINGS AND DAILY REPORTS:
+// FINDINGS AND DAILY REPORTS, of the session's account only:
 //
-//   GET  /api/governance/findings                      findings.read    worked out from the audit record, now
-//   POST /api/governance/findings/:id/resolve          findings.manage  { resolution, note }
-//   GET  /api/governance/reports                       reports.read
-//   GET  /api/governance/reports/:id                   reports.read
-//   GET  /api/governance/reports/:id/markdown          reports.read     the report as text
-//   POST /api/governance/reports                       reports.generate { day: YYYY-MM-DD }
+//   GET  /api/governance/findings                      worked out from the account's audit record, now
+//   POST /api/governance/findings/:id/resolve          { resolution, note }
+//   GET  /api/governance/reports
+//   GET  /api/governance/reports/:id
+//   GET  /api/governance/reports/:id/markdown          the report as text (an export: the account's records alone)
+//   POST /api/governance/reports                       { day: YYYY-MM-DD }
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req, Res } from "@nestjs/common";
 import type { FindingList, FindingView, ReportList, ReportView } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
-import { RequirePermission } from "./decorators.js";
+import { viewer } from "../../common/request-scope.js";
+import { PrincipalResolver } from "../auth/principals.js";
 import { FindingsService } from "./findings.service.js";
-import { PrincipalResolver } from "./principals.js";
 
 @Controller("governance")
 export class AuditorController {
@@ -21,40 +21,34 @@ export class AuditorController {
   ) {}
 
   @Get("findings")
-  @RequirePermission("findings.read")
-  list(): FindingList {
-    return this.findings.current();
+  list(): Promise<FindingList> {
+    return this.findings.current(viewer().accountId);
   }
 
   @Post("findings/:id/resolve")
-  @RequirePermission("findings.manage")
   @HttpCode(200)
-  resolve(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): FindingView {
+  resolve(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<FindingView> {
     return this.findings.resolve(this.principals.context(req), id, body);
   }
 
   @Get("reports")
-  @RequirePermission("reports.read")
-  reports(): ReportList {
-    return { reports: this.findings.reportList() };
+  async reports(): Promise<ReportList> {
+    return { reports: await this.findings.reportList(viewer().accountId) };
   }
 
   @Post("reports")
-  @RequirePermission("reports.generate")
-  generate(@Req() req: Request, @Body() body: unknown): ReportView {
+  generate(@Req() req: Request, @Body() body: unknown): Promise<ReportView> {
     return this.findings.generate(this.principals.context(req), body);
   }
 
   @Get("reports/:id")
-  @RequirePermission("reports.read")
-  report(@Param("id") id: string): ReportView {
-    return this.findings.report(id);
+  report(@Param("id") id: string): Promise<ReportView> {
+    return this.findings.report(viewer().accountId, id);
   }
 
   @Get("reports/:id/markdown")
-  @RequirePermission("reports.read")
-  markdown(@Param("id") id: string, @Res() res: Response): void {
-    const view = this.findings.report(id);
+  async markdown(@Param("id") id: string, @Res() res: Response): Promise<void> {
+    const view = await this.findings.report(viewer().accountId, id);
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="governance-report-${view.day}.md"`);
     res.setHeader("Cache-Control", "no-store");

@@ -7,7 +7,7 @@ import { ConfigError, loadConfig as load } from "./config.js";
 
 // Orbit Web keeps its records in PostgreSQL: every configuration names it.
 const DATABASE = "postgres://orbit:secret@postgres:5432/orbit";
-const loadConfig = (env: Record<string, string>) => load({ ORBIT_WEB_DATABASE_URL: DATABASE, ...env });
+const loadConfig = (env: Readonly<Record<string, string | undefined>>) => load({ ORBIT_WEB_DATABASE_URL: DATABASE, ...env });
 
 test("defaults: loopback only, port 3000, /data, the bundled plugin", () => {
   const c = loadConfig({});

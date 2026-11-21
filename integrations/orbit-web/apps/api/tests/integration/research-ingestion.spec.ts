@@ -8,7 +8,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { MUTATION_HEADER, type ResearchSourceContent, type ResearchSourceRevision, type ResearchSourceSummary, type ResearchWorkspaceSummary } from "@orbit-web/contracts";
+import { CSRF_HEADER, MUTATION_HEADER, type ResearchSourceContent, type ResearchSourceRevision, type ResearchSourceSummary, type ResearchWorkspaceSummary } from "@orbit-web/contracts";
 import { URL_ADDRESS_POLICY, type AddressPolicy } from "../../src/modules/research/ingestion/url-fetcher.js";
 import { startHarness, type Harness } from "../../src/testing/harness.js";
 import { errorCode, newWorkspace, settledSource, upload, uploaded } from "../../src/testing/research-client.js";
@@ -49,11 +49,11 @@ describe("an upload is what its bytes say, within its bound, under a name the se
     assert.equal(existsSync(join(h.config.data.research, "workspaces", workspace.id, "objects", hash.slice(0, 2), hash)), true);
     assert.equal(existsSync(join(h.config.data.root, "etc")), false);
     assert.equal((await upload(h, workspace.id, "bad\u0007name.txt", Buffer.from("x"))).status, 400);
-    const unnamed = await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { [MUTATION_HEADER]: "1", "content-type": "application/octet-stream" }, body: "text" });
+    const unnamed = await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { [MUTATION_HEADER]: "1", cookie: h.cookie, [CSRF_HEADER]: h.csrf, "content-type": "application/octet-stream" }, body: "text" });
     assert.equal(unnamed.status, 400, "the file must be named");
   });
 
-  test("the one non-JSON body is that route's alone, and still needs the header and this origin", async () => {
+  test("the one non-JSON body is that route's alone, and still needs the header, this origin, and this browser's session", async () => {
     const headers = { "content-type": "application/octet-stream", "x-orbit-filename": "a.txt" };
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers, body: "x" })).status, 403, "no X-Orbit-Web header");
     assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { ...headers, [MUTATION_HEADER]: "1", origin: "https://attacker.example" }, body: "x" })).status, 403);
@@ -61,6 +61,10 @@ describe("an upload is what its bytes say, within its bound, under a name the se
     assert.equal((await fetch(`${h.url}/api/settings`, { method: "PATCH", headers: { ...headers, [MUTATION_HEADER]: "1" }, body: "x" })).status, 415);
     const json = await h.send("POST", `/api/research/workspaces/${workspace.id}/sources/upload`, { file: "x" });
     assert.equal(json.status, 415, "a file is never a JSON or form body");
+    const signed = { ...headers, [MUTATION_HEADER]: "1", cookie: h.cookie };
+    assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: { "content-type": "application/octet-stream", "x-orbit-filename": "a.txt", [MUTATION_HEADER]: "1" }, body: "x" })).status, 401, "no session: the CLI being signed in is not this browser being signed in");
+    assert.equal((await fetch(`${h.url}/api/research/workspaces/${workspace.id}/sources/upload`, { method: "POST", headers: signed, body: "x" })).status, 403, "a session's cookie without its CSRF token changes nothing");
+    assert.deepEqual(await sourcesOf(h, workspace.id), [], "and nothing was stored");
   });
 
   test("a document that cannot be read fails with why: a broken PDF, a scanned one, a broken or exploding Word file", async () => {

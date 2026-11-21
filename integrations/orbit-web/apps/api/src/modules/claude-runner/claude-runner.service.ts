@@ -42,6 +42,8 @@ import { Transcript } from "./transcript.js";
 const STDERR_LIMIT = 16 * 1024;
 const RUN_LOG_LIMIT = 20 * 1024 * 1024;
 
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 interface ActiveRun {
   runId: string;
   session: SessionRecord;
@@ -180,14 +182,25 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   // -- it never starts undecided.
   private async governed(session: SessionRecord, input: RunInput, runId: string, startedBy: Principal): Promise<void> {
     try {
-      const connectors = await this.connectors.forRun(session.accountId);
-      const prepared = await this.governance.prepare(session, runId, { mode: session.mode, startedBy, connectors: connectors.chat });
-      if (!prepared.ok) return await this.refuse(session, runId, prepared.message);
-      await this.start((await this.sessions.get(session.id)) ?? session, input, runId, prepared.plan, connectors);
+      let decided: { plan: RunPlan; connectors: RunConnectors };
+      try {
+        const connectors = await this.connectors.forRun(session.accountId);
+        const prepared = await this.governance.prepare(session, runId, { mode: session.mode, startedBy, connectors: connectors.chat });
+        if (!prepared.ok) return await this.refuse(session, runId, prepared.message);
+        decided = { plan: prepared.plan, connectors };
+      } catch (err) {
+        return await this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`);
+      }
+      try {
+        await this.start((await this.sessions.get(session.id)) ?? session, input, runId, decided.plan, decided.connectors);
+      } catch (err) {
+        // Nothing runs: no run record stays "running", and the run's binding ends.
+        await this.runs.finish(runId, "failed", { exitCode: null, signal: null, costUsd: null });
+        await this.refuse(session, runId, `The run could not be started: ${message(err)}`);
+        await this.governance.finished(decided.plan, runId, "failed", null);
+      }
     } catch (err) {
-      await this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${err instanceof Error ? err.message : String(err)}`).catch((e: unknown) =>
-        this.logger.error(`run ${runId} could not be refused: ${e instanceof Error ? e.message : String(e)}`),
-      );
+      this.logger.error(`run ${runId} could not be refused: ${message(err)}`);
     } finally {
       this.starting.delete(session.id);
     }

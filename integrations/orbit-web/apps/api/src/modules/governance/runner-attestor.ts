@@ -1,5 +1,6 @@
 // THE ISOLATION CHECK, asked of the agent container's runner (governed deployment). The control plane writes a fresh
-// random value in each of its own rooms -- the chats' database, governance, both CLIs' sign-ins, its own HOME -- and in
+// random value in each of its own rooms -- the chats' images, the research sources, both CLIs' sign-ins, its own HOME
+// (the database is not a room: it is a server on a network the agent's container is not on) -- and in
 // the rooms the agent shares (the sessions, the control plane's copies of the repositories), then asks the runner what
 // it sees. The check holds only if every room of the control plane is ABSENT there, the shared ones are present with
 // exactly what was written, the copies of the repositories cannot be written from there, a direct connection to the
@@ -14,7 +15,7 @@ import type { RunnerProcessPort } from "../../infra/process/runner-port.js";
 import type { Attestor } from "./isolation.service.js";
 
 // The rooms the agent's container must never see, and those it must.
-const CONTROL_ROOMS = ["app", "governance", "github", "azure", "control", "research"] as const;
+const CONTROL_ROOMS = ["app", "github", "azure", "control", "research"] as const;
 const SHARED_ROOMS = ["sessions", "repos"] as const;
 
 // An address on the internet (no name to resolve) and a name every public resolver answers.

@@ -1,28 +1,29 @@
 // THE INSTALLATION'S OWN TERMINAL for governance: what a person who runs the control plane's container can do when no
-// page can -- the first owner without the log's code, an owner's password when every owner is locked out, and a check
-// of the audit chain. It works on governance's database directly (the API may be running or not), writes every change
-// as an audit record of the principal `system:installation-terminal`, and reads a password from standard input only
-// (never an argument, which a process list would show).
+// page can -- see what the database holds (the accounts, their browser sessions, each audit chain), check the audit
+// chains (each account's, and the deployment's own, which no page shows), and end browser sessions. There is no owner to
+// enrol and no password to reset: an account is made by a Claude sign-in, and nothing here makes one or opens a session.
+// Every change is written as an audit record of the principal `system:installation-terminal`, on the account's chain.
 //
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js status
-//   docker compose exec -T orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js init-owner --username=<u> --organization=<name> < password.txt
-//   docker compose exec -T orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js reset-password --username=<u> [--owner] < password.txt
-//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js verify-audit
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js verify-audit [--account=<id> | --deployment]
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js revoke-sessions --account=<id> | --all
 //
-// It is a door for whoever can already run commands in the control plane's container -- the same person who can read
-// its log and its database. In the governed deployment the agent's container has no governance database at all: run
-// there, every command finds nothing to change.
-import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+// It reads ORBIT_WEB_DATABASE_URL like the API, refuses a database that is not at this build's schema, and changes no
+// schema itself. It is a door for whoever can already run commands in the control plane's container -- the same person
+// who can read its environment. In the governed deployment the agent's container has neither the variable nor a route to
+// the database: run there, it reaches nothing.
+import "reflect-metadata";
+import { randomUUID } from "node:crypto";
 import { verifyChain, type AuditEventType } from "@orbit-web/governance-core";
-import { GOVERNANCE_LIMITS, isUsername } from "@orbit-web/contracts";
-import { loadConfig } from "../config/config.js";
-import { GovernanceDatabase } from "../infra/governance/governance-db.js";
-import { AuditStore, OperatorStore, sha256 } from "../infra/governance/stores.js";
-import { hashPassword } from "../modules/governance/passwords.js";
+import { ConfigError, loadConfig } from "../config/config.js";
+import { SEARCH_PATH } from "../core/core.module.js";
+import { AccountStore, BrowserSessionStore, RuntimeIdentityStore } from "../infra/accounts/stores.js";
+import { Db } from "../infra/db/db.js";
+import { verifySchema } from "../infra/db/migrate.js";
+import { AuditStore, sha256 } from "../infra/governance/stores.js";
 
 const TERMINAL = "installation-terminal";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const opt = (name: string): string | null => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 const flag = (name: string): boolean => process.argv.includes(`--${name}`);
@@ -31,25 +32,49 @@ function say(line: string): void {
   process.stdout.write(`${line}\n`);
 }
 
-function fail(line: string, code = 1): never {
-  process.stderr.write(`governance: ${line}\n`);
-  process.exit(code);
+class Refusal extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+  ) {
+    super(message);
+  }
 }
 
-function open(): { database: GovernanceDatabase; operators: OperatorStore; audit: AuditStore } {
-  const config = loadConfig(process.env);
-  const file = join(config.data.governance, "governance.db");
-  if (!existsSync(config.data.governance)) fail(`no governance directory at ${config.data.governance}: this is not Orbit Web's control plane`, 2);
-  const database = new GovernanceDatabase(file);
-  return { database, operators: new OperatorStore(database), audit: new AuditStore(database) };
+const chainName = (accountId: string | null): string => (accountId === null ? "deployment" : `account ${accountId}`);
+
+interface Opened {
+  db: Db;
+  audit: AuditStore;
+  accounts: AccountStore;
+  sessions: BrowserSessionStore;
+  runtime: RuntimeIdentityStore;
 }
 
-function record(s: { operators: OperatorStore; audit: AuditStore }, type: AuditEventType, outcome: string, data: Record<string, unknown>): void {
-  s.audit.append({
+async function open(): Promise<Opened> {
+  let config;
+  try {
+    config = loadConfig(process.env);
+  } catch (err) {
+    throw new Refusal(err instanceof ConfigError ? err.message : String(err), 2);
+  }
+  const db = new Db({ url: config.database.url, poolMax: 2, connectTimeoutMs: config.database.connectTimeoutMs, statementTimeoutMs: config.database.statementTimeoutMs, searchPath: SEARCH_PATH, applicationName: "orbit-web-terminal" });
+  try {
+    await verifySchema(db);
+  } catch (err) {
+    await db.close();
+    throw new Refusal(`the database cannot be used: ${err instanceof Error ? err.message : String(err)}`, 2);
+  }
+  return { db, audit: new AuditStore(db), accounts: new AccountStore(db), sessions: new BrowserSessionStore(db), runtime: new RuntimeIdentityStore(db) };
+}
+
+async function record(s: Opened, accountId: string | null, type: AuditEventType, outcome: string, data: Record<string, unknown>): Promise<void> {
+  if (accountId !== null && (await s.audit.head(accountId)) === null) await s.audit.openChain(accountId);
+  await s.audit.append({
     eventId: `evt-${randomUUID()}`,
     eventType: type,
     occurredAt: new Date().toISOString(),
-    organizationId: s.operators.organization()?.id ?? "uninitialized",
+    accountId,
     principalId: TERMINAL,
     principalType: "system",
     agentId: null,
@@ -66,78 +91,86 @@ function record(s: { operators: OperatorStore; audit: AuditStore }, type: AuditE
   });
 }
 
-function passwordFromStdin(): string {
-  const text = readFileSync(0, "utf8").replace(/\r?\n$/, "");
-  if (text.length < GOVERNANCE_LIMITS.passwordMin || text.length > GOVERNANCE_LIMITS.passwordMax) fail(`the password on standard input must be ${GOVERNANCE_LIMITS.passwordMin}-${GOVERNANCE_LIMITS.passwordMax} characters`);
-  return text;
+async function checkChain(s: Opened, accountId: string | null): Promise<{ ok: boolean; line: string }> {
+  const check = verifyChain(await s.audit.all(accountId), sha256);
+  if (check.ok) return { ok: true, line: `audit, ${chainName(accountId)}: ${check.count} record(s), the chain holds, head ${check.head ?? "none"}` };
+  return { ok: false, line: `audit, ${chainName(accountId)}: the chain does NOT hold at record ${check.brokenAt} (${check.problem}, ${check.eventId})` };
 }
 
-function status(): void {
-  const s = open();
-  const org = s.operators.organization();
-  say(org === null ? "governance: no owner yet (start Orbit Web and read its log for the first owner's code, or use init-owner)" : `organization: ${org.name} (${org.id})`);
-  for (const o of s.operators.list()) say(`operator ${o.username}: ${o.status}, roles ${o.roles.join(", ") || "none"}`);
-  const check = verifyChain(s.audit.all(), sha256);
-  say(check.ok ? `audit: ${check.count} record(s), the chain holds, head ${check.head ?? "none"}` : `audit: the chain does NOT hold at record ${check.brokenAt} (${check.problem})`);
-  s.database.close();
-}
-
-async function initOwner(): Promise<void> {
-  const username = opt("username") ?? "";
-  const organization = opt("organization") ?? "";
-  if (!isUsername(username)) fail("--username must be 2-64 lower-case letters, digits, dots, dashes or underscores");
-  if (organization.trim().length === 0 || organization.length > GOVERNANCE_LIMITS.organizationNameLength) fail("--organization must name the organization");
-  const hash = await hashPassword(passwordFromStdin());
-  const s = open();
-  s.database.transaction(() => {
-    if (s.operators.organization() !== null) fail("governance already has an owner: use reset-password", 3);
-    const at = new Date().toISOString();
-    const id = `op-${randomUUID()}`;
-    s.operators.createOrganization({ id: `org-${randomBytes(6).toString("hex")}`, name: organization.trim(), createdAt: at });
-    s.operators.create({ id, username, displayName: opt("display-name") ?? username, passwordHash: hash, status: "active", createdAt: at, createdBy: TERMINAL, passwordChangedAt: at });
-    s.operators.grant(id, "organization_owner", TERMINAL, at);
-    record(s, "governance.initialized", "initialized", { organizationName: organization.trim() });
-    record(s, "operator.created", "created", { operatorId: id, username, roles: "organization_owner" });
-    record(s, "operator.role.granted", "granted", { operatorId: id, role: "organization_owner" });
-  });
-  s.database.close();
-  say(`governance: ${username} is the owner of ${organization.trim()}. Restart Orbit Web if it is running, so that its first-owner code is withdrawn.`);
-}
-
-async function resetPassword(): Promise<void> {
-  const username = opt("username") ?? "";
-  const hash = await hashPassword(passwordFromStdin());
-  const s = open();
-  s.database.transaction(() => {
-    const o = s.operators.byUsername(username);
-    if (o === null) fail(`no operator is named ${username}`, 3);
-    const at = new Date().toISOString();
-    record(s, "operator.recovery.issued", "issued", { operatorId: o.id });
-    s.operators.setPassword(o.id, hash, at);
-    record(s, "operator.password.changed", "changed", { operatorId: o.id });
-    const ended = s.operators.revokeSessions(o.id, at, "recovered");
-    if (ended > 0) record(s, "operator.session.revoked", "revoked", { operatorId: o.id, sessions: ended });
-    if (o.status !== "active") {
-      s.operators.setStatus(o.id, "active");
-      record(s, "operator.reinstated", "reinstated", { operatorId: o.id });
+async function status(s: Opened): Promise<number> {
+  const runtime = await s.runtime.get();
+  say(runtime.accountId === null ? "runtime: no account signed in through a browser" : `runtime: serving account ${runtime.accountId}`);
+  let broken = false;
+  for (const accountId of await s.audit.chains()) {
+    if (accountId !== null) {
+      const identity = await s.accounts.identityOfAccount(accountId);
+      const open = await s.sessions.open(accountId);
+      say(`account ${accountId}: ${identity?.email ?? "(no identity)"}, ${open.length} open browser session(s)`);
     }
-    s.operators.clearFailures(username);
-    if (flag("owner") && s.operators.grant(o.id, "organization_owner", TERMINAL, at)) record(s, "operator.role.granted", "granted", { operatorId: o.id, role: "organization_owner" });
+    const c = await checkChain(s, accountId);
+    broken ||= !c.ok;
+    say(c.line);
+  }
+  return broken ? 2 : 0;
+}
+
+async function verifyAudit(s: Opened): Promise<number> {
+  const account = opt("account");
+  if (account !== null && !UUID.test(account)) throw new Refusal("--account must be an account's id", 1);
+  const chains = account !== null ? [account] : flag("deployment") ? [null] : await s.audit.chains();
+  let broken = false;
+  for (const accountId of chains) {
+    const c = await checkChain(s, accountId);
+    if (c.ok) say(c.line);
+    else process.stderr.write(`governance: ${c.line}\n`);
+    broken ||= !c.ok;
+  }
+  return broken ? 2 : 0;
+}
+
+async function revokeSessions(s: Opened): Promise<number> {
+  const account = opt("account");
+  const at = new Date().toISOString();
+  if (account !== null) {
+    if (!UUID.test(account)) throw new Refusal("--account must be an account's id", 1);
+    if ((await s.accounts.get(account)) === null) throw new Refusal(`no account ${account}`, 3);
+    const ended = await s.db.tx(async () => {
+      const ids = await s.sessions.revokeAccount(account, at, "revoked_by_terminal");
+      await record(s, account, "auth.sessions.revoked", "revoked", { sessions: ids.length, reason: "revoked_by_terminal" });
+      return ids.length;
+    });
+    say(`governance: ${ended} browser session(s) of account ${account} ended; its owner signs in again with Claude.`);
+    return 0;
+  }
+  if (!flag("all")) throw new Refusal("revoke-sessions needs --account=<id> or --all", 1);
+  const ended = await s.db.tx(async () => {
+    const all = await s.sessions.revokeAll(at, "revoked_by_terminal");
+    const byAccount = new Map<string, number>();
+    for (const e of all) byAccount.set(e.accountId, (byAccount.get(e.accountId) ?? 0) + 1);
+    for (const [accountId, n] of byAccount) await record(s, accountId, "auth.sessions.revoked", "revoked", { sessions: n, reason: "revoked_by_terminal" });
+    return all.length;
   });
-  s.database.close();
-  say(`governance: ${username}'s password was reset and every session of theirs ended${flag("owner") ? "; they own the organization" : ""}.`);
+  say(`governance: ${ended} browser session(s) ended; every owner signs in again with Claude.`);
+  return 0;
 }
 
-function verifyAudit(): void {
-  const s = open();
-  const check = verifyChain(s.audit.all(), sha256);
-  s.database.close();
-  if (!check.ok) fail(`the chain does NOT hold at record ${check.brokenAt} (${check.problem}, ${check.eventId})`, 2);
-  say(`audit: ${check.count} record(s), the chain holds, head ${check.head ?? "none"}`);
+const COMMANDS: Record<string, (s: Opened) => Promise<number>> = { status, "verify-audit": verifyAudit, "revoke-sessions": revokeSessions };
+
+async function main(): Promise<number> {
+  const command = COMMANDS[process.argv[2] ?? ""];
+  if (command === undefined) throw new Refusal(`usage: governance.js ${Object.keys(COMMANDS).join(" | ")}`, 1);
+  const s = await open();
+  try {
+    return await command(s);
+  } finally {
+    await s.db.close();
+  }
 }
 
-const COMMANDS: Record<string, () => void | Promise<void>> = { status, "init-owner": initOwner, "reset-password": resetPassword, "verify-audit": verifyAudit };
-
-const command = COMMANDS[process.argv[2] ?? ""];
-if (command === undefined) fail(`usage: governance.js ${Object.keys(COMMANDS).join(" | ")}`);
-else await command();
+main().then(
+  (code) => process.exit(code),
+  (err: unknown) => {
+    process.stderr.write(`governance: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(err instanceof Refusal ? err.code : 1);
+  },
+);

@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { loadConfig } from "../../config/config.js";
-import { azureEnv, azureGitEnv, claudeEnv, ghEnv, gitEnv, orbitEnv, TELEMETRY_DEFAULTS } from "./env.js";
+import { azureEnv, azureGitEnv, claudeEnv, controlEnv, ghEnv, githubGitEnv, gitEnv, orbitEnv, TELEMETRY_DEFAULTS } from "./env.js";
 
 const ENDPOINT = "https://collector.example:4318";
 const HEADERS = "Authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789";
 
-const config = (env: Record<string, string> = {}) => loadConfig({ ORBIT_WEB_DATA_DIR: "/srv/orbit-web", ...env });
+const config = (env: Record<string, string> = {}) => loadConfig({ ORBIT_WEB_DATA_DIR: "/srv/orbit-web", ORBIT_WEB_DATABASE_URL: "postgres://orbit:secret@postgres:5432/orbit", ...env });
 
 const telemetryOf = (env: Record<string, string>) => Object.fromEntries(Object.entries(env).filter(([name]) => name.startsWith("OTEL_") || name === "CLAUDE_CODE_ENABLE_TELEMETRY"));
 
@@ -46,4 +46,12 @@ test("the image declares every telemetry attribute as the code does -- but where
   const { CLAUDE_CODE_ENABLE_TELEMETRY: _on, ...attributes } = TELEMETRY_DEFAULTS;
   assert.deepEqual(Object.fromEntries(declared), attributes);
   for (const never of ["OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS", "CLAUDE_CODE_ENABLE_TELEMETRY"]) assert.equal(declared.has(never), false, never);
+});
+
+test("the database's URL -- and any PostgreSQL connection variable -- reaches no program Orbit Web starts", () => {
+  const c = config({ ORBIT_WEB_DATABASE_URL: "postgres://orbit:hunter2@postgres:5432/orbit", PGPASSWORD: "hunter2", PGHOST: "postgres", DATABASE_URL: "postgres://x:y@z/w" });
+  for (const env of [claudeEnv(c, { azure: true, github: true }), gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), githubGitEnv(c), controlEnv(c), orbitEnv(c, null)]) {
+    assert.deepEqual(Object.keys(env).filter((k) => k.startsWith("PG") || k.includes("DATABASE")), []);
+    assert.equal(JSON.stringify(env).includes("hunter2"), false);
+  }
 });

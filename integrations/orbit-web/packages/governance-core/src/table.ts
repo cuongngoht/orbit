@@ -1,13 +1,16 @@
 // THE CONSTITUTION AS A TABLE: what a person ticks in the console instead of writing JSON. One row per action of the
 // vocabulary, with two boxes -- "allowed" and "a person approves it first" -- whose three combinations are the three
 // effects (neither ticked: denied). The hosts the agent may reach are a list, the obligations and the default decision
-// are boxes. A rule the table cannot show -- one that names a principal type or an environment, or a resource other
-// than a host the agent may reach -- is kept exactly as written.
+// are boxes, and the employee network access is its mode, its allow-list and its limits. A rule the table cannot show --
+// one that names a principal type or an environment, or a resource other than a host the agent may reach -- is kept
+// exactly as written.
 //
 // Reading a Constitution into the table and writing it back changes nothing the table did not change: a rule keeps its
-// place and its id, and a row nobody ticked keeps following the default decision. What the table writes is checked by
-// the same checkConstitution as any document, on the server.
+// place and its id, a row nobody ticked keeps following the default decision, and a policy that does not say its
+// employee network access goes on not saying it while it is left as it was. What the table writes is checked by the
+// same checkConstitution as any document, on the server.
 import type { Constitution, DefaultDecision, Obligations, Rule } from "./constitution.js";
+import { employeeNetworkOf, NETWORK_LIMIT_KEYS, type EmployeeNetwork } from "./network.js";
 import { ACTION_KINDS, strictest, type ActionKind, type Effect } from "./vocabulary.js";
 
 export interface ActionRow {
@@ -24,6 +27,8 @@ export interface ConstitutionTable {
   // The hosts (`host:port`) an allow rule of network.egress names, in the order they are written.
   egressHosts: string[];
   obligations: Obligations;
+  // What an employee's assignment may reach (AUTONOMOUS, nothing listed and no limit when the policy does not say).
+  employeeNetwork: EmployeeNetwork;
   // The rules the table does not show, kept as written.
   kept: Rule[];
 }
@@ -47,8 +52,23 @@ export function tableOf(c: Constitution): ConstitutionTable {
     rows: ACTION_KINDS.map((action) => rowOf(c, action)),
     egressHosts: c.rules.filter((r) => shownAs(r) === "host").map((r) => r.resource as string),
     obligations: { ...c.obligations },
+    employeeNetwork: copyOf(employeeNetworkOf(c)),
     kept: c.rules.filter((r) => shownAs(r) === "kept"),
   };
+}
+
+function copyOf(n: EmployeeNetwork): EmployeeNetwork {
+  return { mode: n.mode, allow: [...n.allow], ...(n.limits !== undefined ? { limits: { ...n.limits } } : {}) };
+}
+
+const sameNetwork = (a: EmployeeNetwork, b: EmployeeNetwork): boolean =>
+  a.mode === b.mode && a.allow.length === b.allow.length && a.allow.every((h, i) => h === b.allow[i]) && NETWORK_LIMIT_KEYS.every((k) => a.limits?.[k] === b.limits?.[k]) && (a.limits === undefined) === (b.limits === undefined);
+
+// The employee network access the table says, as the document says it: not said at all while a policy that did not say
+// it is left as it was.
+function networkOf(c: Constitution, t: ConstitutionTable): Partial<Pick<Constitution, "employeeNetwork">> {
+  if (c.employeeNetwork === undefined && sameNetwork(t.employeeNetwork, employeeNetworkOf(c))) return {};
+  return { employeeNetwork: copyOf(t.employeeNetwork) };
 }
 
 // A host the agent may reach, as a person types it: `name:port`, lower case. null when it is not one.
@@ -87,5 +107,6 @@ export function withTable(c: Constitution, t: ConstitutionTable): Constitution {
   const taken = new Set(rules.map((r) => r.id));
   for (const row of t.rows) if (row.stated && !written.has(row.action)) rules.push({ id: freshId(slug(row.action), taken), action: row.action, effect: row.effect });
   for (const host of wanted) rules.push({ id: freshId(`egress-${slug(host)}`, taken), action: "network.egress", resource: host, effect: "allow" });
-  return { ...c, defaults: { decision: t.defaultDecision }, obligations: { ...t.obligations }, rules };
+  const { employeeNetwork: _said, ...rest } = c;
+  return { ...rest, defaults: { decision: t.defaultDecision }, obligations: { ...t.obligations }, ...networkOf(c, t), rules };
 }

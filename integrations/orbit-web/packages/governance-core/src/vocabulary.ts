@@ -99,7 +99,7 @@ export type PrivilegedSetting = (typeof PRIVILEGED_SETTINGS)[number];
 
 // THE CLAUDE ACCOUNT'S OWN SERVICE: where the Claude Code CLI signs in and reaches its model (the hosts Anthropic
 // documents for Claude Code: the API, Claude Console's sign-in and claude.ai's). Declared once: the default policy
-// lets an agent reach exactly these, and Orbit Web's own Claude sign-in reaches these and nothing else.
+// lets a chat's or a research session's agent reach exactly these.
 export const CLAUDE_ACCOUNT_HOSTS = [
   { rule: "egress-model-api", host: "api.anthropic.com", port: 443 },
   { rule: "egress-model-auth", host: "platform.claude.com", port: 443 },
@@ -121,12 +121,26 @@ export const REASON_CODES = [
   "ACCOUNT_MISMATCH",
   "ISOLATION_NOT_PROVEN",
   "AUDIT_UNAVAILABLE",
-  // Orbit Web's own Claude sign-in, decided by its fixed channel (the Claude account's hosts), never by a policy.
-  "SIGN_IN_CHANNEL",
+  // An employee's connection, decided by the policy's employee network access (network.ts): any public host on 80 or
+  // 443 (AUTONOMOUS), a host the allow-list names (RESTRICTED), a host it does not name, a port that is not 80 or 443.
+  "EMPLOYEE_NETWORK_AUTONOMOUS",
+  "EMPLOYEE_NETWORK_ALLOWED",
+  "EMPLOYEE_NETWORK_NOT_LISTED",
+  "EMPLOYEE_NETWORK_PORT",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 
 // What a decision is about, inside one account: the account itself (its settings, its policy), one of its chats
-// (Claude Code workspaces), or one of its research workspaces. Every run is held to its account's policy, and says which.
-export const ENFORCEMENT_SCOPES = ["ACCOUNT", "ACCOUNT_WORKSPACE", "ACCOUNT_RESEARCH"] as const;
+// (Claude Code workspaces), one of its research workspaces, or one of its employees (an assignment's run). Every run is
+// held to its account's policy, and says which.
+export const ENFORCEMENT_SCOPES = ["ACCOUNT", "ACCOUNT_WORKSPACE", "ACCOUNT_RESEARCH", "ACCOUNT_EMPLOYEE"] as const;
 export type EnforcementScope = (typeof ENFORCEMENT_SCOPES)[number];
+
+// The kinds of run a policy decides for: a chat's, a research session's, an employee's assignment.
+export const RUN_KINDS = ["chat", "research", "assignment"] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
+
+export const isRunKind = (v: unknown): v is RunKind => typeof v === "string" && (RUN_KINDS as readonly string[]).includes(v);
+
+// What a run's decisions are about.
+export const RUN_SCOPES: Record<RunKind, EnforcementScope> = { chat: "ACCOUNT_WORKSPACE", research: "ACCOUNT_RESEARCH", assignment: "ACCOUNT_EMPLOYEE" };

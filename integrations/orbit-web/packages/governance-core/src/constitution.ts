@@ -10,6 +10,7 @@
 // The document carries no revision number and no author: those are facts ABOUT a revision, kept by whoever stores it,
 // so that the same content always has the same digest.
 import { checked, isRecord, unknownFields, type Checked } from "./canonical.js";
+import { employeeNetworkErrors, type EmployeeNetwork } from "./network.js";
 import {
   ACTIONS,
   CLAUDE_ACCOUNT_HOSTS,
@@ -62,13 +63,16 @@ export interface Constitution {
   // What an action no rule speaks about receives. Never "allow": an action nobody thought of is not permitted.
   defaults: { decision: DefaultDecision };
   obligations: Obligations;
+  // What an employee's assignment may reach from its sandbox (network.ts). Not said: AUTONOMOUS, with no limit.
+  employeeNetwork?: EmployeeNetwork;
   rules: Rule[];
 }
 
 export type AccountPolicy = Constitution;
 
-// What an override applies to: one chat (Claude Code workspace), or one research workspace, of the account.
-export const OVERLAY_LEVELS = ["workspace", "research_workspace"] as const;
+// What an override applies to: one chat (Claude Code workspace), one research workspace, or one employee (the runs of
+// its assignments), of the account.
+export const OVERLAY_LEVELS = ["workspace", "research_workspace", "employee"] as const;
 export type OverlayLevel = (typeof OVERLAY_LEVELS)[number];
 
 export interface PolicyOverlay {
@@ -158,11 +162,12 @@ function defaultsErrors(d: unknown): string[] {
 export function checkConstitution(body: unknown): Checked<Constitution> {
   if (!isRecord(body)) return { ok: false, errors: ["a policy is a JSON object"] };
   const errors = [
-    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "rules"]),
+    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "employeeNetwork", "rules"]),
     ...headErrors(body, POLICY_KIND),
     ...constitutionMetadataErrors(body.metadata),
     ...defaultsErrors(body.defaults),
     ...obligationErrors(body.obligations),
+    ...employeeNetworkErrors(body.employeeNetwork),
     ...rulesErrors(body.rules, "rules"),
   ];
   return checked(errors, () => body as unknown as Constitution);
@@ -172,7 +177,7 @@ function overlayMetadataErrors(m: unknown): string[] {
   if (!isRecord(m)) return ["metadata must be an object"];
   const errors = unknownFields(m, ["accountId", "level", "target", "name"], "metadata.");
   if (!isText(m.accountId, LIMITS.idLength)) errors.push("metadata.accountId must name the account");
-  if (typeof m.level !== "string" || !(OVERLAY_LEVELS as readonly string[]).includes(m.level)) errors.push("metadata.level must be workspace or research_workspace");
+  if (typeof m.level !== "string" || !(OVERLAY_LEVELS as readonly string[]).includes(m.level)) errors.push("metadata.level must be workspace, research_workspace or employee");
   if (!isText(m.target, LIMITS.resourceLength)) errors.push("metadata.target must name what the override applies to");
   if (!isText(m.name, LIMITS.nameLength)) errors.push(`metadata.name must be text of at most ${LIMITS.nameLength} characters`);
   return errors;
@@ -214,6 +219,9 @@ export type PolicyDeployment = "single" | "governed";
 //             them), and isolation OPTIONAL -- it can never be proven there, and requiring it would refuse every run.
 //   governed  the strict default: the web tools and connectors denied (the agent's only way out is the egress proxy),
 //             isolation REQUIRED.
+//
+// In both, an employee's assignment reaches every public host on ports 80 and 443 (employee network access AUTONOMOUS,
+// no limit): its owner restricts it to an allow-list, or sets limits, through the policy's lifecycle.
 export function defaultAccountPolicy(accountId: string, deployment: PolicyDeployment, name = "default"): Constitution {
   const single = deployment === "single";
   return {
@@ -222,6 +230,7 @@ export function defaultAccountPolicy(accountId: string, deployment: PolicyDeploy
     metadata: { accountId, name },
     defaults: { decision: "deny" },
     obligations: { auditDecisions: "all", dailyReport: true, isolation: single ? "optional" : "required" },
+    employeeNetwork: { mode: "AUTONOMOUS", allow: [] },
     rules: [
       { id: "run-start", action: "agent.run.start", effect: "allow" },
       { id: "workspace-read", action: "repository.read", effect: "allow" },

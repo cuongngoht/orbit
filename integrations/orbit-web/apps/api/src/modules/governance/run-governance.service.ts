@@ -16,7 +16,7 @@
 // what it runs as is a fixed profile (`claude-code` for a chat, `claude-research` for research), not a registration.
 // A research run's token opens the egress proxy alone: the agent gateway refuses it (auth/principals.ts).
 import { Inject, Injectable, type OnApplicationBootstrap } from "@nestjs/common";
-import type { EnforcementScope } from "@orbit-web/governance-core";
+import { RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
 import type { IsolationState } from "@orbit-web/contracts";
 import { randomBytes } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
@@ -40,8 +40,8 @@ const RUN_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const CHAT_AGENT = "claude-code";
 export const RESEARCH_AGENT = "claude-research";
 
-// What a run's decisions are about: a chat's, or a research workspace's.
-export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => (b.kind === "chat" ? "ACCOUNT_WORKSPACE" : "ACCOUNT_RESEARCH");
+// What a run's decisions are about: a chat's, a research workspace's, or an employee's (an assignment's run).
+export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => RUN_SCOPES[b.kind];
 
 export interface RunPlan {
   scope: EnforcementScope;

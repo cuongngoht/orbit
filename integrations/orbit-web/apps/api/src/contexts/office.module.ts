@@ -25,12 +25,15 @@ import { OfficeGovernance } from "./shared/application/commands.js";
 import { EventDispatcher } from "./shared/infrastructure/consumers.js";
 import { Idempotency } from "./shared/infrastructure/idempotency.js";
 import { Outbox } from "./shared/infrastructure/outbox.js";
+import { DeliveriesService } from "./work/application/deliveries.service.js";
 import { MissionQueries } from "./work/application/mission.queries.js";
+import { SchedulesService } from "./work/application/schedules.service.js";
 import { MissionsService } from "./work/application/missions.service.js";
 import { DecisionRepository } from "./work/infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "./work/infrastructure/repositories.js";
 import { SourcesCheck } from "./work/infrastructure/sources.check.js";
 import { MissionsController } from "./work/presentation/missions.controller.js";
+import { SchedulesController } from "./work/presentation/schedules.controller.js";
 import { EmployeeEligibility } from "./workforce/application/eligibility.js";
 import { EmployeeQueries } from "./workforce/application/employee.queries.js";
 import { HiringService } from "./workforce/application/hiring.service.js";
@@ -65,6 +68,8 @@ const PROVIDERS: Provider[] = [
   SourcesCheck,
   MissionsService,
   MissionQueries,
+  SchedulesService,
+  DeliveriesService,
   // execution
   RunRepository,
   RunRequests,
@@ -89,8 +94,8 @@ export class OfficeModule {
       module: OfficeModule,
       imports: [GovernanceModule],
       providers: [...PROVIDERS, ...defaults, ...bindings],
-      controllers: [OfficeController, MissionsController, ToolsController],
-      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, ArtifactStore],
+      controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
+      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore],
     };
   }
 }

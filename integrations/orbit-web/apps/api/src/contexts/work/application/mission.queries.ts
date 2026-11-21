@@ -23,6 +23,7 @@ import { RunViews } from "../../execution/application/run-views.js";
 import { missing } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
+import { DeliveriesService } from "./deliveries.service.js";
 
 const PAGE = 50;
 const s = (v: unknown): string => String(v);
@@ -148,6 +149,7 @@ export class MissionQueries {
     @Inject(RunViews) private readonly runViews: RunViews,
     @Inject(DecisionRepository) private readonly decisions: DecisionRepository,
     @Inject(Outbox) private readonly outbox: Outbox,
+    @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
   ) {}
 
   async list(orbitId: string, q: { state?: string; employee?: string; cursor?: string }): Promise<MissionList> {
@@ -258,7 +260,7 @@ export class MissionQueries {
       assignments,
       handoffs,
       timeline: await this.timeline(orbitId, missionId),
-      deliveries: [],
+      deliveries: await this.deliveries.ofMission(orbitId, missionId),
       resourceVersion: await this.outbox.version(orbitId),
     };
   }

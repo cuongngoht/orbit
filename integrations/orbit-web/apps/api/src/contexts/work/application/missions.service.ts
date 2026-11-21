@@ -93,7 +93,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
 
   // ---- giving work ------------------------------------------------------------------------------------------------
 
-  async create(actor: Actor, body: unknown, key: unknown): Promise<StoredAnswer> {
+  // `origin`: the schedule and occurrence that made this mission (the scheduler's), null for a person's.
+  async create(actor: Actor, body: unknown, key: unknown, origin: { scheduleId: string; occurrenceId: string } | null = null): Promise<StoredAnswer> {
     const req = accepted(checkCreateMission(body));
     if (!isIdempotencyKey(key)) throw invalid("idempotency_key_required", "Send an Idempotency-Key header (8-128 letters, digits, dots, dashes, colons or underscores) with every new mission.");
     const orbitId = actor.command.orbitId;
@@ -110,7 +111,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         const held = await this.assignments.heldBy(orbitId, req.targetEmployeeId);
         if ((held !== null || !el.eligible) && req.whenBusy === "reject") throw await this.busy(orbitId, req.targetEmployeeId, held, el, actor.command.correlationId);
         const at = new Date().toISOString();
-        const mission = Mission.create({ id: randomUUID(), orbitId, title: req.title, goal: req.goal, createdBy: actor.command.actor, acceptanceMode: req.acceptanceMode, acceptanceCriteria: req.acceptanceCriteria, deliverables: req.deliverables, researchWorkspaceId: req.workspaceId, sourceRevisionIds: req.sourceRevisionIds, deadline: req.deadline, priority: req.priority, scheduleId: null, occurrenceId: null, createdAt: at });
+        const mission = Mission.create({ id: randomUUID(), orbitId, title: req.title, goal: req.goal, createdBy: actor.command.actor, acceptanceMode: req.acceptanceMode, acceptanceCriteria: req.acceptanceCriteria, deliverables: req.deliverables, researchWorkspaceId: req.workspaceId, sourceRevisionIds: req.sourceRevisionIds, deadline: req.deadline, priority: req.priority, scheduleId: origin?.scheduleId ?? null, occurrenceId: origin?.occurrenceId ?? null, createdAt: at });
         const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId: req.targetEmployeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at });
         await this.missions.insert(mission);
         const claimNow = held === null && el.eligible;

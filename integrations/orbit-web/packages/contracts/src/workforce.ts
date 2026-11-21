@@ -602,7 +602,7 @@ export interface CommandResult {
 
 // ---- needs me (the inbox) ------------------------------------------------------------------------------------------
 
-export const INBOX_KINDS = ["acceptance", "information", "external_action", "reconciliation", "delivery_channel", "unschedulable", "blocked"] as const;
+export const INBOX_KINDS = ["acceptance", "information", "external_action", "reconciliation", "delivery_channel", "unschedulable", "blocked", "report"] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
 
 export const INBOX_KIND_TEXT: Record<InboxKind, string> = {
@@ -613,6 +613,7 @@ export const INBOX_KIND_TEXT: Record<InboxKind, string> = {
   delivery_channel: "Set up delivery",
   unschedulable: "Work that can never start as configured",
   blocked: "Work that is blocked",
+  report: "A report delivered to you",
 };
 
 export const INBOX_STATES = ["open", "resolved", "expired", "withdrawn"] as const;

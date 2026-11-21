@@ -5,13 +5,21 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js status    # schema version, pgvector
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js migrate   # apply what is missing
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js verify    # exit 1 unless it is ready
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database> [--with-data]
+//       a FRESH START: drops every Orbit Web schema of that database and makes the schema again; --with-data also
+//       empties Orbit Web's own rooms on disk (chats, workspaces, research objects, connections, desks, artifacts).
+//       0.8.0 is the initial schema: a database a development build made is refused at start and reset this way (or
+//       with `docker compose down -v`).
 //
 // Exit codes: 0 done / ready, 1 not ready or refused (said why), 2 a usage or configuration error.
 import { readFileSync } from "node:fs";
 import { SEARCH_PATH } from "../core/core.module.js";
 import { ConfigError } from "../config/config.js";
 import { Db } from "../infra/db/db.js";
+import { loadConfig } from "../config/config.js";
+import { ensureDataDirs } from "../config/data-dirs.js";
 import { migrate, schemaState, verifySchema } from "../infra/db/migrate.js";
+import { emptyRooms, resetSchemas } from "../infra/db/reset.js";
 
 function say(line: string): void {
   process.stdout.write(`${line}\n`);
@@ -27,12 +35,25 @@ function url(): string {
 
 async function main(): Promise<number> {
   const command = process.argv[2] ?? "status";
-  if (!["status", "migrate", "verify"].includes(command)) {
-    say("usage: db.js status | migrate | verify");
+  if (!["status", "migrate", "verify", "reset"].includes(command)) {
+    say("usage: db.js status | migrate | verify | reset --confirm=<database> [--with-data]");
     return 2;
   }
   const db = new Db({ url: url(), poolMax: 2, connectTimeoutMs: 10_000, statementTimeoutMs: 300_000, searchPath: SEARCH_PATH, applicationName: "orbit-web-cli" });
   try {
+    if (command === "reset") {
+      const confirm = process.argv.find((a) => a.startsWith("--confirm="))?.slice("--confirm=".length) ?? null;
+      const { database } = await resetSchemas(db, confirm);
+      say(`reset: every Orbit Web schema of "${database}" was dropped`);
+      if (process.argv.includes("--with-data")) {
+        const config = loadConfig(process.env);
+        say(`emptied: ${emptyRooms(config.data).join(", ")}`);
+        ensureDataDirs(config.data);
+      }
+      const s = await migrate(db);
+      say(`migrated: schema version ${s.version} of ${s.latest}`);
+      return 0;
+    }
     if (command === "migrate") {
       const s = await migrate(db);
       say(`migrated: schema version ${s.version} of ${s.latest}, pgvector ${s.vector ?? "missing"}, PostgreSQL ${s.server}`);

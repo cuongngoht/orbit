@@ -1288,7 +1288,7 @@ CREATE TABLE workforce.artifacts (
 CREATE TABLE workforce.decisions (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('acceptance', 'information', 'external_action', 'reconciliation', 'delivery_channel', 'unschedulable', 'blocked')),
+  kind text NOT NULL CHECK (kind IN ('acceptance', 'information', 'external_action', 'reconciliation', 'delivery_channel', 'unschedulable', 'blocked', 'report')),
   state text NOT NULL CHECK (state IN ('open', 'resolved', 'expired', 'withdrawn')),
   mission_id uuid NOT NULL,
   assignment_id uuid,

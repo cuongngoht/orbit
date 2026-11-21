@@ -7,9 +7,12 @@ import { after, before, describe, test } from "node:test";
 import { Db, DatabaseUnavailable, jsonParam } from "../../src/infra/db/db.js";
 import { migrate, schemaState, SchemaError, verifySchema } from "../../src/infra/db/migrate.js";
 import { MIGRATIONS } from "../../src/infra/db/migrations.js";
+import { resetSchemas } from "../../src/infra/db/reset.js";
 import { createTestDatabase, type TestDatabase } from "../../src/testing/database.js";
 
-const SEARCH_PATH = ["app", "research", "governance", "public"];
+const SEARCH_PATH = ["app", "research", "governance", "workforce", "public"];
+// The deployment's own records belong to this reserved account (it never signs in).
+const SYSTEM_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 const open = (url: string): Db => new Db({ url, poolMax: 8, connectTimeoutMs: 5_000, statementTimeoutMs: 30_000, searchPath: SEARCH_PATH });
 
 describe("an empty PostgreSQL database becomes Orbit Web's", () => {
@@ -29,11 +32,44 @@ describe("an empty PostgreSQL database becomes Orbit Web's", () => {
     assert.equal(state.version, MIGRATIONS.at(-1)?.version);
     assert.equal(state.latest, state.version);
     assert.match(state.vector ?? "", /^\d+\.\d+/);
-    const tables = await db.query("SELECT table_schema || '.' || table_name AS t FROM information_schema.tables WHERE table_schema IN ('app', 'research', 'governance') ORDER BY 1");
-    for (const name of ["app.accounts", "app.account_identities", "app.account_sessions", "app.sessions", "app.events", "research.research_chunks", "governance.audit_events", "governance.policy_revisions"]) {
+    const tables = await db.query("SELECT table_schema || '.' || table_name AS t FROM information_schema.tables WHERE table_schema IN ('app', 'research', 'governance', 'workforce') ORDER BY 1");
+    for (const name of ["app.accounts", "app.users", "app.account_sessions", "app.ai_connections", "app.sessions", "app.events", "research.research_chunks", "governance.audit_events", "governance.policy_revisions", "workforce.employees", "workforce.assignments", "workforce.reservations", "workforce.runs", "workforce.events"]) {
       assert.ok(tables.some((r) => r.t === name), name);
     }
+    // Gone with 0.8.0: the account per Claude identity, and the one identity the CLI held for the whole deployment.
+    for (const name of ["app.account_identities", "app.runtime_identity", "app.settings"]) assert.equal(tables.some((r) => r.t === name), false, name);
     assert.equal((await verifySchema(db)).version, state.version);
+  });
+
+  test("every table belongs to an Orbit account: account_id uuid NOT NULL, tied by a foreign key toward app.accounts", async () => {
+    const tables = await db.query("SELECT table_schema AS s, table_name AS t FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema IN ('app', 'research', 'governance', 'workforce') ORDER BY 1, 2");
+    // The two named exceptions: app.accounts (its id IS the OrbitId) and orbit.schema_migrations (not in these schemas).
+    const problems: string[] = [];
+    for (const { s: schema, t: table } of tables) {
+      const name = `${String(schema)}.${String(table)}`;
+      if (name === "app.accounts") continue;
+      const col = await db.one("SELECT data_type, is_nullable FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = 'account_id'", [String(schema), String(table)]);
+      if (col === null) {
+        problems.push(`${name} has no account_id`);
+        continue;
+      }
+      if (col.data_type !== "uuid" || col.is_nullable !== "NO") problems.push(`${name}.account_id is ${String(col.data_type)} ${col.is_nullable === "NO" ? "NOT NULL" : "nullable"}`);
+      const fks = await db.query(
+        `SELECT c.confrelid::regclass::text AS target,
+                (SELECT a.attname FROM pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1]) AS first
+         FROM pg_constraint c WHERE c.contype = 'f' AND c.conrelid = $1::regclass`,
+        [name],
+      );
+      if (!fks.some((f) => f.first === "account_id")) problems.push(`${name} has no foreign key that starts with account_id`);
+    }
+    assert.deepEqual(problems, []);
+  });
+
+  test("the deployment's own records belong to the reserved system account, which never signs in", async () => {
+    const row = await db.one("SELECT kind, status FROM app.accounts WHERE id = $1", [SYSTEM_ACCOUNT]);
+    assert.equal(row?.kind, "system");
+    const users = await db.one("SELECT count(*) AS n FROM app.users WHERE account_id = $1", [SYSTEM_ACCOUNT]);
+    assert.equal(Number(users?.n), 0);
   });
 
   test("running the migrations again changes nothing", async () => {
@@ -43,9 +79,9 @@ describe("an empty PostgreSQL database becomes Orbit Web's", () => {
     assert.deepEqual(await db.query("SELECT version, checksum, applied_at FROM orbit.schema_migrations ORDER BY version"), before);
   });
 
-  test("a migration whose text changed after it was applied is refused, and so is a database a newer build migrated", async () => {
+  test("a database a development build of 0.8.0 made is refused, with the fresh start to run -- and so is one a newer build migrated", async () => {
     const changed = MIGRATIONS.map((m) => ({ ...m, sql: `${m.sql}\n-- edited` }));
-    await assert.rejects(migrate(db, changed), (err: unknown) => err instanceof SchemaError && /text changed/.test(err.message));
+    await assert.rejects(migrate(db, changed), (err: unknown) => err instanceof SchemaError && /development build/.test(err.message) && /db\.js reset --confirm=/.test(err.message));
     await assert.rejects(migrate(db, []), (err: unknown) => err instanceof SchemaError || err instanceof RangeError || err instanceof Error);
   });
 
@@ -149,6 +185,29 @@ describe("a database that cannot be used is said, never replaced", () => {
     try {
       assert.equal((await schemaState(db)).version, 0);
       await assert.rejects(verifySchema(db), SchemaError);
+    } finally {
+      await db.close();
+      await t.drop();
+    }
+  });
+});
+
+describe("a fresh start: 0.8.0 is the initial schema, and a database is reset only when it is named", () => {
+  test("reset refuses unless --confirm names this very database; named, every Orbit Web table goes and the schema is made again", async () => {
+    const t = await createTestDatabase();
+    const db = open(t.url);
+    try {
+      await migrate(db);
+      await db.query("INSERT INTO app.accounts (id, kind, display_name, company_name, contact_email, timezone, locale, status, created_at, updated_at) VALUES (gen_random_uuid(), 'customer', 'Probe', '', NULL, 'UTC', 'en', 'active', now(), now())");
+      await assert.rejects(resetSchemas(db, null), (err: unknown) => err instanceof SchemaError && err.message.includes(`--confirm=${t.name}`));
+      await assert.rejects(resetSchemas(db, "another-database"), SchemaError);
+      assert.equal(Number((await db.one("SELECT count(*) AS n FROM app.accounts WHERE kind = 'customer'"))?.n), 1, "a refusal changes nothing");
+      assert.deepEqual(await resetSchemas(db, t.name), { database: t.name });
+      assert.equal((await schemaState(db)).version, 0);
+      const s = await migrate(db);
+      assert.equal(s.version, MIGRATIONS.at(-1)?.version);
+      assert.equal(Number((await db.one("SELECT count(*) AS n FROM app.accounts WHERE kind = 'customer'"))?.n), 0, "nothing of before is left");
+      assert.equal((await db.one("SELECT kind FROM app.accounts WHERE id = $1", [SYSTEM_ACCOUNT]))?.kind, "system");
     } finally {
       await db.close();
       await t.drop();

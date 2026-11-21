@@ -47,7 +47,8 @@ const mediaOf = (name: string): string => MEDIA[name.slice(name.lastIndexOf(".")
 const AREAS = ["/work", "/output", "/input", "/toolbox", "/team"];
 const WRITABLE = ["/work", "/output", "/toolbox", "/team"];
 
-function pathOf(v: unknown, writable: boolean): string {
+// A path an employee named, held to its areas (exported for its tests). The provider contains it again on its side.
+export function pathOf(v: unknown, writable: boolean): string {
   if (typeof v !== "string" || v.length === 0 || v.length > 1024 || v.includes("\0")) throw invalid("bad_path", "A path is required.");
   const p = v.replace(/\/+$/, "") || "/";
   if (p.split("/").includes("..")) throw invalid("bad_path", "A path cannot go above its area.");

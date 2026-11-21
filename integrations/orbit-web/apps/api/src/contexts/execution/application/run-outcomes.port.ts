@@ -29,6 +29,18 @@ export interface RunEnd {
   stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | null;
 }
 
+// A research source revision the mission was given (pinned: immutable), with the label the employee cites it by.
+export interface PinnedSource {
+  label: string;
+  revisionId: string;
+  sourceId: string;
+  workspaceId: string;
+  title: string;
+  mediaType: string;
+  contentHash: string;
+  fileName: string | null;
+}
+
 // The assignment as an attempt sees it, and the employee it runs as -- re-checked at every dispatch.
 export interface AttemptContext {
   // This attempt's fence is the current one and the assignment still holds its employee (not paused, not cancelling).
@@ -37,6 +49,8 @@ export interface AttemptContext {
   missionTitle: string;
   brief: { goal: string; deliverables: { name: string; required: boolean }[]; acceptanceCriteria: string[]; revisions: { criteria: string }[]; answers: { question: string; answer: string }[] };
   deliverables: { name: string; required: boolean }[];
+  // The research sources the mission was pinned to, in their labelled order (S1, S2 ...).
+  sources: PinnedSource[];
   employee: {
     id: string;
     name: string;

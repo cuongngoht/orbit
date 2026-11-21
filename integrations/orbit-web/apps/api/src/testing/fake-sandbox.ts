@@ -32,6 +32,8 @@ export class FakeSandboxProvider implements SandboxProvider {
   shell = true;
   provisionFailures = 0;
   findFails = false;
+  // How the provider reads an input's bytes from Orbit Web's own store (bound by the test to the real reader).
+  readInput: ((storePath: string) => Promise<Buffer>) | null = null;
   exec_: (req: ExecRequest) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
 
   async probe(): Promise<HostCapabilities> {
@@ -116,6 +118,11 @@ export class FakeSandboxProvider implements SandboxProvider {
       bridgeCommand: { command: "node", args: ["/opt/orbit-web/bridge/main.js"] },
     };
     this.attempts.set(spec.dispatchKey, { handle, spec, running: true, removed: false, oom: { modelPlane: false, toolPlane: false } });
+    const files = this.files(handle);
+    for (const i of spec.inputs) {
+      if (this.readInput === null) throw new Error("this fake provider was given inputs but no way to read them");
+      files.set(`/input/${i.name}`, await this.readInput(i.storePath));
+    }
     return handle;
   }
 

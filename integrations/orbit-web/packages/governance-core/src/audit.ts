@@ -64,6 +64,7 @@ export const AUDIT_EVENTS = {
   "office.resources.changed": row("An employee's resources or the account's budget changed (they apply to future attempts).", "scope", "target", "before", "after"),
   "office.run.admitted": row("An employee's attempt was admitted with the resources it reserved.", "runId", "cpuMillis", "memoryMiB", "scratchMiB", "resourceRevision"),
   "office.run.released": row("An attempt's reserved resources were released once its containers were verified gone.", "runId", "reason"),
+  "office.run.network": row("What an employee's attempt reached on the network, summed up from the egress proxy's log of it (its digest seals the log).", "runId", "connections", "allowed", "refused", "limited", "hosts", "bytesIn", "bytesOut", "digest"),
 } as const satisfies Record<string, { summary: string; data: readonly string[] }>;
 
 export type AuditEventType = keyof typeof AUDIT_EVENTS;

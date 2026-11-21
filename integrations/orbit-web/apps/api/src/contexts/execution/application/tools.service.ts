@@ -13,6 +13,7 @@ import { conflictWith, invalid, refused } from "../../shared/domain.js";
 import { systemActor } from "../../shared/application/commands.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
+import { ResearchInputs, type ClaimInput } from "./research-inputs.js";
 import { RUN_OUTCOMES, type RunOutcomes, type StagedArtifact } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type SandboxProvider } from "./sandbox.port.js";
 
@@ -37,7 +38,7 @@ const TOOLS: ToolSpec[] = [
   { name: "write_file", description: "Create or replace a file in /work, /output, /toolbox or /team.", inputSchema: obj({ path: str("The file to write"), content: str("Its whole text") }, ["path", "content"]) },
   { name: "edit_file", description: "Replace one exact occurrence of a text in a file.", inputSchema: obj({ path: str("The file"), old_text: str("Text that occurs exactly once"), new_text: str("Its replacement") }, ["path", "old_text", "new_text"]) },
   { name: "shell", description: "Run a shell command in your sandbox (bash), in /work or a directory under it. Install packages, write and run scripts, build, test.", inputSchema: obj({ command: str("The command line"), cwd: str("A directory under /work (default /work)"), timeout_seconds: { type: "integer", minimum: 1, maximum: 3600 } }, ["command"]) },
-  { name: "submit_handoff", description: "Hand in your result once the deliverables are in /output: a short summary and the claims it rests on.", inputSchema: obj({ summary: str("What you did and how you checked it"), claims: { type: "array", items: obj({ text: str("A claim of your result"), sources: { type: "array", items: { type: "string" } }, url: str("A web page it rests on, if any") }, ["text"]) } }, ["summary"]) },
+  { name: "submit_handoff", description: "Hand in your result once the deliverables are in /output: a short summary and the claims it rests on. Cite a source you were given by its label (S1, S2 ...) and quote the exact words of it the claim rests on: Orbit checks the quote against the source.", inputSchema: obj({ summary: str("What you did and how you checked it"), claims: { type: "array", items: obj({ text: str("A claim of your result"), sources: { type: "array", items: { type: "string" }, description: "Labels of the sources it rests on, e.g. S1" }, quote: str("The exact words of the cited source the claim rests on"), url: str("A web page it rests on, if any") }, ["text"]) } }, ["summary"]) },
   { name: "ask_question", description: "Ask the person who gave you the work a question you cannot continue without. The work waits for the answer.", inputSchema: obj({ question: str("The question") }, ["question"]) },
 ];
 
@@ -74,6 +75,7 @@ export class ToolsService {
     @Inject(RunRepository) private readonly runs: RunRepository,
     @Inject(ArtifactStore) private readonly artifacts: ArtifactStore,
     @Inject(RUN_OUTCOMES) private readonly outcomes: RunOutcomes,
+    @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
   ) {}
 
@@ -157,13 +159,16 @@ export class ToolsService {
       const stored = await this.artifacts.put(run.orbitId, bytes);
       staged.push({ name, kind: "deliverable", mediaType: mediaOf(name), size: stored.size, sha256: stored.sha256 });
     }
-    const claims = Array.isArray(args.claims)
+    const asked: ClaimInput[] = Array.isArray(args.claims)
       ? args.claims.slice(0, 100).map((c) => {
           const x = (typeof c === "object" && c !== null ? c : {}) as Record<string, unknown>;
           const url = typeof x.url === "string" && /^https?:\/\//.test(x.url) ? x.url.slice(0, 2000) : null;
-          return { text: String(x.text ?? "").slice(0, 2000), sources: [], supported: false, web: url === null ? null : { url, readAt: new Date().toISOString() } };
+          const labels = Array.isArray(x.sources) ? x.sources.filter((l): l is string => typeof l === "string").slice(0, 10).map((l) => l.slice(0, 20)) : [];
+          return { text: String(x.text ?? "").slice(0, 2000), sources: labels, quote: typeof x.quote === "string" ? x.quote.slice(0, 1000) : null, url };
         })
       : [];
+    const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
+    const claims = await this.research.verify(run.orbitId, ctx?.sources ?? [], asked);
     const submissionKey = `${run.id}:${createHash("sha256").update(JSON.stringify({ summary, staged, claims: claims.map((c) => c.text) })).digest("hex").slice(0, 32)}`;
     try {
       const r = await this.outcomes.handoff(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, { runId: run.id, summary, artifacts: staged, claims, submissionKey });

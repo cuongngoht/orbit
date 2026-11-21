@@ -303,6 +303,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       missionTitle: m?.data.title ?? "",
       brief: { goal: b.goal, deliverables: b.deliverables, acceptanceCriteria: b.acceptanceCriteria, revisions: b.revisions, answers: b.answers },
       deliverables: b.deliverables,
+      sources: m === null ? [] : await this.sources.pinned(orbitId, m.data.researchWorkspaceId, m.data.sourceRevisionIds),
       employee: { id: a.data.employeeId, name: el?.name ?? "", profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
     };
   }

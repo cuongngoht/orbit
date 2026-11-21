@@ -1,0 +1,120 @@
+// WHAT A RESEARCH MISSION'S EMPLOYEE READS, and how its claims are held to it (Execution, reading Research's frozen
+// records through SQL and its object store -- never writing them).
+//
+// INPUTS. Each pinned revision is given to the attempt read-only in /input, under its label: `S1 - <title>.txt` -- the
+// text Orbit Web extracted and indexed, page by page -- and, for a file that is not text, the original bytes beside it.
+// They are named by a STORE PATH the sandbox provider asks Orbit Web to read (`research-text:<revision>`,
+// `research-object:<revision>`), resolved here for the account of the attempt only: a path never names a file.
+//
+// CLAIMS. A claim of a hand-in cites sources by label and quotes what it rests on. It is SUPPORTED only when every label
+// is a source this mission was given and the quote is found in that source's frozen text (spacing and letter case aside);
+// the passage found is kept (page, characters) as the citation. A claim resting on a web page is kept as "web, not
+// pinned" -- never as verified evidence.
+import { Inject, Injectable } from "@nestjs/common";
+import type { HandoffClaim } from "@orbit-web/contracts";
+import type { AppConfig } from "../../../config/config.js";
+import { APP_CONFIG } from "../../../core/tokens.js";
+import { Db } from "../../../infra/db/db.js";
+import { ObjectStore } from "../../../modules/research/sources/object-store.js";
+import type { PinnedSource } from "./run-outcomes.port.js";
+
+const TEXT_TYPES = /^(text\/|application\/(json|xml|csv))/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MIN_QUOTE = 12;
+
+const fileTitle = (t: string): string => t.replace(/[^\p{L}\p{N} ._-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60) || "source";
+const extensionOf = (s: PinnedSource): string => {
+  const fromName = s.fileName?.match(/\.([A-Za-z0-9]{1,8})$/)?.[1];
+  if (fromName !== undefined) return fromName.toLowerCase();
+  const known: Record<string, string> = { "application/pdf": "pdf", "text/html": "html", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx" };
+  return known[s.mediaType] ?? "bin";
+};
+
+// Text compared as a reader would: Unicode-normalized, one space for any run of spacing, letter case aside.
+const norm = (t: string): string => t.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+
+export interface ClaimInput {
+  text: string;
+  sources: string[];
+  quote: string | null;
+  url: string | null;
+}
+
+export type VerifiedClaim = HandoffClaim & { web?: { url: string; readAt: string } | null };
+
+@Injectable()
+export class ResearchInputs {
+  private readonly objects: ObjectStore;
+
+  constructor(
+    @Inject(APP_CONFIG) config: AppConfig,
+    @Inject(Db) private readonly db: Db,
+  ) {
+    this.objects = new ObjectStore(config.data.research);
+  }
+
+  // The inputs of an attempt: each pinned source's text, and its original bytes when it is not text.
+  inputsOf(orbitId: string, sources: readonly PinnedSource[]): { name: string; storePath: string }[] {
+    return sources.flatMap((s) => {
+      const base = `${s.label} - ${fileTitle(s.title)}`;
+      const text = { name: `${base}.txt`, storePath: `research-text:${orbitId}/${s.revisionId}` };
+      return TEXT_TYPES.test(s.mediaType) ? [text] : [text, { name: `${base}.${extensionOf(s)}`, storePath: `research-object:${orbitId}/${s.revisionId}` }];
+    });
+  }
+
+  // What the sandbox provider asks for an input's bytes. Only the two store paths above, of a revision of that account.
+  async read(storePath: string): Promise<Buffer> {
+    const m = /^research-(text|object):([0-9a-f-]{36})\/([0-9a-f-]{36})$/.exec(storePath);
+    if (m === null || !UUID.test(m[2] as string) || !UUID.test(m[3] as string)) throw new Error("not an input of a research mission");
+    const [, kind, orbitId, revisionId] = m as unknown as [string, "text" | "object", string, string];
+    const r = await this.db.one("SELECT workspace_id, content_hash FROM research.research_source_revisions WHERE account_id = $1 AND id = $2 AND status = 'indexed'", [orbitId, revisionId]);
+    if (r === null) throw new Error("the source revision is not there (or not indexed)");
+    if (kind === "object") return this.objects.read(String(r.workspace_id), String(r.content_hash));
+    return Buffer.from(await this.textOf(orbitId, revisionId), "utf8");
+  }
+
+  // The revision's frozen text, page by page.
+  private async textOf(orbitId: string, revisionId: string): Promise<string> {
+    const chunks = await this.db.query("SELECT page, text FROM research.research_chunks WHERE account_id = $1 AND revision_id = $2 ORDER BY ordinal", [orbitId, revisionId]);
+    let page: number | null = null;
+    const out: string[] = [];
+    for (const c of chunks) {
+      const p = c.page === null ? null : Number(c.page);
+      if (p !== null && p !== page) out.push(`\n[page ${p}]\n`);
+      page = p;
+      out.push(String(c.text));
+    }
+    return out.join("\n");
+  }
+
+  // Each claim held to the sources the mission was given.
+  async verify(orbitId: string, sources: readonly PinnedSource[], claims: readonly ClaimInput[]): Promise<VerifiedClaim[]> {
+    const byLabel = new Map(sources.map((s) => [s.label.toUpperCase(), s]));
+    const out: VerifiedClaim[] = [];
+    for (const c of claims) {
+      const web = c.url === null ? null : { url: c.url, readAt: new Date().toISOString() };
+      const labels = [...new Set(c.sources.map((l) => l.trim().toUpperCase()).filter((l) => l.length > 0))];
+      const quote = c.quote === null ? "" : norm(c.quote);
+      const found: HandoffClaim["sources"] = [];
+      for (const label of labels) {
+        const s = byLabel.get(label);
+        if (s === undefined || quote.length < MIN_QUOTE) continue;
+        const passage = await this.find(orbitId, s.revisionId, quote);
+        if (passage !== null) found.push({ label, sourceId: s.sourceId, revisionId: s.revisionId, locator: passage.locator, excerpt: passage.excerpt });
+      }
+      out.push({ text: c.text, sources: found, supported: labels.length > 0 && found.length === labels.length, ...(web !== null ? { web } : {}) });
+    }
+    return out;
+  }
+
+  // The chunk of a revision whose text holds the quote: its page (or chunk number) and the excerpt.
+  private async find(orbitId: string, revisionId: string, quote: string): Promise<{ locator: string; excerpt: string } | null> {
+    const chunks = await this.db.query("SELECT ordinal, page, char_start, text FROM research.research_chunks WHERE account_id = $1 AND revision_id = $2 ORDER BY ordinal", [orbitId, revisionId]);
+    for (const c of chunks) {
+      if (norm(String(c.text)).includes(quote)) return { locator: c.page !== null ? `page ${Number(c.page)}` : `passage ${Number(c.ordinal) + 1}`, excerpt: quote.slice(0, 300) };
+    }
+    // A quote across two passages.
+    const joined = norm(chunks.map((c) => String(c.text)).join(" "));
+    return joined.includes(quote) ? { locator: "across passages", excerpt: quote.slice(0, 300) } : null;
+  }
+}

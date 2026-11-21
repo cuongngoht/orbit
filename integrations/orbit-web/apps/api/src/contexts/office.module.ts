@@ -13,6 +13,7 @@ import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.p
 import { SANDBOX_PROVIDER } from "./execution/application/sandbox.port.js";
 import { ExecutionWorker } from "./execution/application/execution.worker.js";
 import { ResourcesService } from "./execution/application/resources.service.js";
+import { ResearchInputs } from "./execution/application/research-inputs.js";
 import { RUN_OUTCOMES } from "./execution/application/run-outcomes.port.js";
 import { RunRequests } from "./execution/application/run-requests.js";
 import { RunViews } from "./execution/application/run-views.js";
@@ -77,6 +78,7 @@ const PROVIDERS: Provider[] = [
   ResourcesService,
   AdmissionService,
   ArtifactStore,
+  ResearchInputs,
   ToolsService,
   WorkspacePublisher,
   ExecutionWorker,
@@ -95,7 +97,7 @@ export class OfficeModule {
       imports: [GovernanceModule],
       providers: [...PROVIDERS, ...defaults, ...bindings],
       controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
-      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore],
+      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs],
     };
   }
 }

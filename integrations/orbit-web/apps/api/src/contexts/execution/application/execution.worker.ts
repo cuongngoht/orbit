@@ -26,7 +26,9 @@ import { Db } from "../../../infra/db/db.js";
 import { baseEnv } from "../../../infra/process/env.js";
 import { LineSplitter } from "../../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle } from "../../../infra/process/process.port.js";
+import { RunConnectionLog, type RunNetworkSummary } from "../../../infra/egress/connection-log.js";
 import { redactSecrets } from "../../../infra/security/redact.js";
+import { AuditService } from "../../../modules/governance/audit.service.js";
 import { RunGovernanceService, type EmployeeNetwork, type RunPlan } from "../../../modules/governance/run-governance.service.js";
 import { systemActor, type Actor } from "../../shared/application/commands.js";
 import { DomainError } from "../../shared/domain.js";
@@ -36,6 +38,7 @@ import { emptyFacts, employeeArgs, employeeEnv, foldLine, initViolation, promptO
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import { AdmissionService } from "./admission.service.js";
 import { CONNECTION_SECRETS, type ConnectionSecrets } from "./connection-secrets.port.js";
+import { ResearchInputs } from "./research-inputs.js";
 import { RUN_OUTCOMES, type AttemptContext, type RunEnd, type RunOutcomes } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type AttemptSpec, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 import { WorkspacePublisher } from "./workspace-publisher.js";
@@ -129,6 +132,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     @Inject(RUN_OUTCOMES) private readonly outcomes: RunOutcomes,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(WorkspacePublisher) private readonly desk: WorkspacePublisher,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     @Optional() @Inject(CONNECTION_SECRETS) private readonly secrets: ConnectionSecrets | null = null,
   ) {
@@ -241,7 +246,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       modelPlane: { cpuMillis: modelPlane.cpuMillis, memoryMiB: modelPlane.memoryMiB, connectionHome: resolved.connection.home, env: {} },
       egress: { proxyHost: this.config.governance.agentControlHost, proxyPort: this.config.governance.proxyPort ?? 0, runToken: prep.token },
       bridge: { url: this.toolUrl(), runToken: prep.token },
-      inputs: [],
+      inputs: this.research.inputsOf(run.orbitId, ctx.sources),
       teamRoom: null,
     };
 
@@ -289,7 +294,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
 
     // The CLI, in the model plane.
     const p = ctx.employee.profile;
-    const systemPrompt = systemPromptOf({ name: ctx.employee.name, title: p.title, duties: p.duties, instructions: p.instructions, handoffStandard: p.handoffStandard, reportingRule: p.reportingRule, shell: attestation.shell, shellReason: attestation.shell ? null : attestation.detail, network: NETWORK_TEXT(prep.network) });
+    const systemPrompt = systemPromptOf({ name: ctx.employee.name, title: p.title, duties: p.duties, instructions: p.instructions, handoffStandard: p.handoffStandard, reportingRule: p.reportingRule, shell: attestation.shell, shellReason: attestation.shell ? null : attestation.detail, network: NETWORK_TEXT(prep.network), cites: ctx.sources.length > 0 });
     const args = employeeArgs({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID() });
     const env = employeeEnv(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
     const watched = await this.watch(entry, handle, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs }), resolved.profile.webSearch, profile.timeoutMinutes);
@@ -432,6 +437,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const lost = end.stoppedFor === "recover";
     if (gone.gone) await this.admission.release(run.orbitId, run.id, `attempt ${final.state}`);
     if (lost) return;
+    const network = handle === null ? null : await this.network(run, actor);
     const f = watched?.facts ?? null;
     const detail = gone.gone ? final.detail : `${final.detail ?? ""} Its sandbox was not verified removed (${gone.detail}): its resources stay reserved until it is.`.trim();
     await this.runs.transition(
@@ -443,7 +449,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
         endedAt: new Date().toISOString(),
         detail,
         usage,
-        observed: f === null ? null : { cli: f.init === null ? null : { model: f.init.model, version: f.init.version, tools: f.init.tools, plugins: f.init.plugins }, toolCalls: f.toolCalls, webSearches: f.webSearches, exit: watched === null ? null : { code: watched.exit.code, signal: watched.exit.signal } },
+        observed: f === null ? (network === null ? null : { network }) : { cli: f.init === null ? null : { model: f.init.model, version: f.init.version, tools: f.init.tools, plugins: f.init.plugins }, toolCalls: f.toolCalls, webSearches: f.webSearches, exit: watched === null ? null : { code: watched.exit.code, signal: watched.exit.signal }, network },
         modelUsage: f?.result === null || f === null ? null : { costUsd: f.result.costUsd, turns: f.result.turns, durationMs: f.result.durationMs },
       },
       run.fence,
@@ -452,6 +458,20 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     await this.governance.finished(plan, run.id, final.state, watched?.exit.code ?? null);
     await this.report(actor, run, final);
     await this.runs.releaseLease(run.orbitId, run.id, this.owner);
+  }
+
+  // What the attempt reached on the network (the egress proxy's log of it), summed up on the account's chain. A summary
+  // that cannot be read is said in the run's record, never invented.
+  private async network(run: RunRecord, actor: Actor): Promise<(Omit<RunNetworkSummary, "hosts"> & { hosts: string[]; hostCount: number }) | null> {
+    try {
+      const n = await new RunConnectionLog(this.db).summary(run.orbitId, run.id);
+      const hosts = n.hosts.slice(0, 50);
+      await this.audit.record(actor.governance, { type: "office.run.network", outcome: n.refused > 0 ? "refusals" : "ok", runId: run.id, data: { runId: run.id, connections: n.connections, allowed: n.allowed, refused: n.refused, limited: n.limited, hosts: hosts.join(" "), bytesIn: n.bytesIn, bytesOut: n.bytesOut, digest: n.digest } });
+      return { ...n, hosts, hostCount: n.hosts.length };
+    } catch (err) {
+      this.logger.warn(`The network summary of ${run.id} could not be recorded: ${this.messageOf(err)}`);
+      return null;
+    }
   }
 
   // A container the kernel killed for memory: said as such, and the model plane's never charged to the employee.

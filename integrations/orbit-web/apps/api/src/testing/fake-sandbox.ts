@@ -228,7 +228,7 @@ function bridgeOf(args: string[]): { url: string; token: string } {
 
 // A Claude Code stand-in that speaks its stream-json, reports the init line Orbit Web expects (or `init` given), calls
 // the tools the script asks through the tool endpoint, and ends with a result line.
-export function scriptedEmployee(script: EmployeeScript, o: { init?: (tools: string[]) => Record<string, unknown>; exitCode?: number } = {}): SpawnScript {
+export function scriptedEmployee(script: EmployeeScript, o: { init?: (tools: string[], prompt: string) => Record<string, unknown> | undefined; exitCode?: number } = {}): SpawnScript {
   return (child: FakeChild, call: Call) => {
     let prompt = "";
     // Like a real CLI: a signal ends it (what it had not done yet is never done).
@@ -239,7 +239,10 @@ export function scriptedEmployee(script: EmployeeScript, o: { init?: (tools: str
         const bridge = bridgeOf(call.args);
         const tools = ["TodoWrite", "mcp__orbit_tools__list_files", "mcp__orbit_tools__read_file", "mcp__orbit_tools__write_file", "mcp__orbit_tools__edit_file", "mcp__orbit_tools__shell", "mcp__orbit_tools__submit_handoff", "mcp__orbit_tools__ask_question"];
         const model = call.args[call.args.indexOf("--model") + 1] ?? "unknown";
-        child.line(o.init?.(tools) ?? { type: "system", subtype: "init", session_id: "fake-session", model, tools, mcp_servers: [{ name: "orbit_tools", status: "connected" }], plugins: [], claude_code_version: "2.1.330" });
+        child.line(o.init?.(tools, prompt) ?? { type: "system", subtype: "init", session_id: "fake-session", model, tools, mcp_servers: [{ name: "orbit_tools", status: "connected" }], plugins: [], claude_code_version: "2.1.330" });
+        // A model plane the worker refused (its init line) is killed before it acts.
+        await new Promise((r) => setImmediate(r));
+        if (child.signals.length > 0) return;
         let n = 0;
         const caller: ToolCaller = {
           prompt,

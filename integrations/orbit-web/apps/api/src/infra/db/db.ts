@@ -127,12 +127,24 @@ export class Db {
   async tx<T>(work: () => Promise<T>): Promise<T> {
     const outer = this.scopes.getStore();
     if (outer !== undefined && !outer.done) return this.savepoint(outer, work);
+    return this.transaction("BEGIN", work);
+  }
+
+  // A read of several statements that must agree with one another (a page made of a record and its parts): ONE snapshot
+  // of the database, read-only. Inside a transaction, that transaction's.
+  async snapshot<T>(work: () => Promise<T>): Promise<T> {
+    const outer = this.scopes.getStore();
+    if (outer !== undefined && !outer.done) return work();
+    return this.transaction("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY", work);
+  }
+
+  private async transaction<T>(begin: string, work: () => Promise<T>): Promise<T> {
     if (this.closed) throw new DatabaseUnavailable("the database is closed");
     const client = await this.connect();
     const scope: Scope = { client, after: [], depth: 0, done: false };
     let result: T;
     try {
-      await client.query("BEGIN");
+      await client.query(begin);
       result = await this.scopes.run(scope, work);
       await client.query("COMMIT");
     } catch (err) {

@@ -153,6 +153,10 @@ export class MissionQueries {
   ) {}
 
   async list(orbitId: string, q: { state?: string; employee?: string; cursor?: string }): Promise<MissionList> {
+    return this.db.snapshot(() => this.page(orbitId, q));
+  }
+
+  private async page(orbitId: string, q: { state?: string; employee?: string; cursor?: string }): Promise<MissionList> {
     const version = await this.outbox.version(orbitId);
     const params: unknown[] = [orbitId];
     let where = "m.account_id = $1 AND a.parent_id IS NULL";
@@ -203,8 +207,13 @@ export class MissionQueries {
     };
   }
 
+  // One mission in full, read from ONE snapshot: its row, its assignments, their runs and handoffs agree with each other.
   async detail(orbitId: string, missionId: string): Promise<MissionDetail> {
     if (!isWorkforceId(missionId)) throw missing("Mission");
+    return this.db.snapshot(() => this.read(orbitId, missionId));
+  }
+
+  private async read(orbitId: string, missionId: string): Promise<MissionDetail> {
     const m = await this.db.one("SELECT * FROM workforce.missions WHERE account_id = $1 AND id = $2", [orbitId, missionId]);
     if (m === null) throw missing("Mission");
     const rows = await this.db.query(

@@ -36,8 +36,13 @@ export class EmployeeQueries {
     @Inject(RunViews) private readonly runViews: RunViews,
   ) {}
 
+  // One employee in full, read from ONE snapshot.
   async detail(orbitId: string, id: string): Promise<EmployeeDetail> {
     if (!isWorkforceId(id)) throw missing("Employee");
+    return this.db.snapshot(() => this.read(orbitId, id));
+  }
+
+  private async read(orbitId: string, id: string): Promise<EmployeeDetail> {
     const [card] = await this.office.cards(orbitId, id);
     const e = await this.employees.get(orbitId, id);
     if (card === undefined || e === null) throw missing("Employee");

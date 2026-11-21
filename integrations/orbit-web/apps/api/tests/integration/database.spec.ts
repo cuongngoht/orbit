@@ -155,6 +155,24 @@ describe("an empty PostgreSQL database becomes Orbit Web's", () => {
     assert.deepEqual([...taken].sort((a, b) => a - b), Array.from({ length: 40 }, (_, i) => i + 1), "every number handed out once");
   });
 
+  test("a snapshot read sees one state of the database, whatever commits while it reads, and writes nothing", async () => {
+    await db.exec("CREATE TABLE app.snapshot_probe (k text PRIMARY KEY)");
+    const other = open(t.url);
+    try {
+      const seen = await db.snapshot(async () => {
+        const before = Number((await db.one("SELECT count(*) AS n FROM app.snapshot_probe"))?.n);
+        await other.query("INSERT INTO app.snapshot_probe (k) VALUES ('committed meanwhile')");
+        const after = Number((await db.one("SELECT count(*) AS n FROM app.snapshot_probe"))?.n);
+        return { before, after };
+      });
+      assert.deepEqual(seen, { before: 0, after: 0 });
+      assert.equal(Number((await db.one("SELECT count(*) AS n FROM app.snapshot_probe"))?.n), 1);
+      await assert.rejects(db.snapshot(() => db.query("INSERT INTO app.snapshot_probe (k) VALUES ('x')")), /read-only/);
+    } finally {
+      await other.close();
+    }
+  });
+
   test("a NUL character in a value is stored as U+FFFD, never refused", async () => {
     await db.exec("CREATE TABLE app.nul_probe (t text, j jsonb)");
     await db.query("INSERT INTO nul_probe (t, j) VALUES ($1, $2::jsonb)", ["a\u0000b", jsonParam({ s: "c\u0000d" })]);

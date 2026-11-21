@@ -172,6 +172,10 @@ export class OfficeService {
   // THE ROSTER: one read of the account's office -- departments, employee cards with their work label, counts -- filtered
   // and paged by a stable cursor (department position, name, id).
   async roster(orbitId: string, q: RosterQuery): Promise<Roster> {
+    return this.db.snapshot(() => this.rosterOf(orbitId, q));
+  }
+
+  private async rosterOf(orbitId: string, q: RosterQuery): Promise<Roster> {
     const office = await this.offices.get(orbitId);
     const version = await this.outbox.version(orbitId);
     const asOf = new Date().toISOString();

@@ -1,0 +1,2 @@
+# The allocator's shared secret (compose.yaml): the operator's, never committed.
+allocator.secret

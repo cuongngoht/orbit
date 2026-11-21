@@ -13,8 +13,18 @@
 # CLI, tini and CPython release files by SHA-256 per architecture, the Azure CLI by the plugin's own hash-checked lock,
 # the plugin by the commit ORBIT_REF names. No credential is
 # needed or kept: a person signs in after the container starts.
+#
+# Three more targets, for AI employees (ADR 0067), built the same way with --target:
+#
+#   workstation     an attempt's TOOL PLANE: the employee's own shell (Python, Node, git, a compiler, jq), non-root
+#   model-plane     an attempt's MODEL PLANE: the AI CLI, Orbit Web's runner and tool bridge -- no /etc/claude-code
+#   storage-helper  the allocator's storage helper: loop devices, XFS and btrfs tools (run privileged by the allocator
+#                   alone, with no network; never by an employee)
+#
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation -t orbit-web-workstation:0.8.0 .
 
 ARG NODE_IMAGE=node:24-bookworm@sha256:9d266751ca3d7fdbe651c878ffd5ad0a42fed49a18c283509267c97f025b7496
+ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451412543289
 
 # --- the web app and the API, built ---------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS build
@@ -153,6 +163,103 @@ RUN --mount=type=secret,id=ca,required=false \
     /opt/python/bin/python --version; /opt/python/bin/pip --version; \
     /opt/python/bin/python3 -m venv /tmp/venv-check && rm -rf /tmp/venv-check /tmp/python.tar.gz; \
     find /opt/python -name '__pycache__' -prune -exec rm -rf {} +
+
+# --- jq, for the employees' workstation, by SHA-256 per architecture -----------------------------------------------
+FROM ${NODE_IMAGE} AS jq
+ARG TARGETARCH
+ARG JQ_VERSION=1.7.1
+ARG JQ_SHA256_AMD64=5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5
+ARG JQ_SHA256_ARM64=4dd2d8a0661df0b22f1bb9a1f9830f06b6f3b8f7d91211a1ef5d7c4f06a8b4a5
+RUN --mount=type=secret,id=ca,required=false \
+    set -eu; \
+    if [ -s /run/secrets/ca ]; then export CURL_CA_BUNDLE=/run/secrets/ca; fi; \
+    case "${TARGETARCH}" in \
+      amd64) SHA="${JQ_SHA256_AMD64}" ;; \
+      arm64) SHA="${JQ_SHA256_ARM64}" ;; \
+      *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/jq "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-${TARGETARCH}"; \
+    echo "${SHA}  /tmp/jq" | sha256sum -c -; \
+    install -D -m 0755 /tmp/jq /opt/jq/bin/jq; \
+    /opt/jq/bin/jq --version; \
+    rm -f /tmp/jq
+
+# --- an employee's WORKSTATION: the tool plane of an attempt (ADR 0067) ---------------------------------------------
+# The same pinned Debian base as Orbit Web (git, curl, wget, unzip, gcc, g++, make and ca-certificates come with it),
+# the pinned CPython build above with pip and venv, the base's Node and npm, and jq. One non-root user, `employee`
+# (20001), and no sudo: inside its own container the employee runs any command, and has nothing to raise itself with.
+# The root filesystem is read-only at run time: everything it writes lands in a mounted, quota'd area.
+FROM ${NODE_IMAGE} AS workstation
+COPY --from=python /opt/python /opt/python
+COPY --from=jq /opt/jq/bin/jq /usr/local/bin/jq
+RUN set -eu; \
+    groupadd --system --gid 20001 employee; \
+    useradd --system --uid 20001 --gid employee --home-dir /home/employee --no-create-home --shell /bin/bash employee; \
+    mkdir -p /work /output /input /cache /team /home/employee; \
+    chown employee:employee /work /output /input /cache /team /home/employee; \
+    ln -s /work/toolbox /toolbox; \
+    rm -rf /etc/claude-code; \
+    if command -v sudo >/dev/null 2>&1; then echo "sudo must not be in the workstation" >&2; exit 1; fi; \
+    for t in python3 pip3 node npm git gcc g++ make curl wget unzip jq timeout; do \
+      PATH=/opt/python/bin:$PATH command -v "$t" >/dev/null || { echo "the workstation lacks $t" >&2; exit 1; }; \
+    done; \
+    /opt/python/bin/python3 -m venv /tmp/venv-check; \
+    rm -rf /tmp/venv-check
+ENV PATH=/opt/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/home/employee \
+    LANG=C.UTF-8
+USER employee
+WORKDIR /work
+CMD ["sleep", "infinity"]
+
+# --- an attempt's MODEL PLANE (ADR 0067): the AI CLI, Orbit Web's runner and its tool bridge, nothing else ----------
+# Claude Code as Orbit Web pins it, and Orbit Web's built API (the runner the allocator starts: runner/main.js; the
+# bridge: bridge/main.js). NO /etc/claude-code (Claude Code's managed settings: their hooks would run whatever the CLI
+# is told) -- the build fails if anything put one here. Its user is Orbit Web's (10001): a connection's config home,
+# which Orbit Web created, is written by the CLI only.
+FROM ${NODE_IMAGE} AS model-plane
+COPY --from=tools /opt/claude /opt/claude
+COPY --from=runtime-deps /opt/orbit-web /opt/orbit-web
+COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts/dist
+COPY --from=build /src/packages/governance-core/dist /opt/orbit-web/packages/governance-core/dist
+COPY --from=build /src/apps/api/dist /opt/orbit-web/apps/api/dist
+RUN set -eu; \
+    groupadd --system --gid 10001 orbit; \
+    useradd --system --uid 10001 --gid orbit --home-dir /home/orbit --no-create-home --shell /usr/sbin/nologin orbit; \
+    mkdir -p /connection /workdir /home/orbit; \
+    rm -rf /etc/claude-code; \
+    test ! -e /etc/claude-code; \
+    test -f /opt/orbit-web/apps/api/dist/runner/main.js; \
+    /opt/claude/bin/claude --version
+ENV PATH=/opt/claude/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    NODE_ENV=production \
+    HOME=/home/orbit \
+    NO_COLOR=1 \
+    DISABLE_AUTOUPDATER=1
+USER orbit
+WORKDIR /workdir
+CMD ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/runner/main.js"]
+
+# --- the allocator's STORAGE HELPER (ADR 0067): loop devices, filesystems and quotas for the workforce areas ---------
+# Run by the allocator alone, privileged and with no network; never an employee's. xfsprogs and btrfs-progs from the
+# distribution's archive (Ubuntu's: the base above, pinned by digest). Behind a TLS-inspecting proxy, its CA (the `ca`
+# secret) turns the archive to HTTPS for this step; it is never kept in a layer.
+FROM ${UBUNTU_IMAGE} AS storage-helper
+RUN --mount=type=secret,id=ca,required=false \
+    set -eu; \
+    APT=""; \
+    if [ -s /run/secrets/ca ]; then \
+      install -m 0644 /run/secrets/ca /tmp/build-ca.pem; \
+      sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources; \
+      APT="-o Acquire::https::CaInfo=/tmp/build-ca.pem"; \
+    fi; \
+    apt-get $APT update; \
+    DEBIAN_FRONTEND=noninteractive apt-get $APT install -y --no-install-recommends xfsprogs btrfs-progs util-linux e2fsprogs; \
+    rm -rf /var/lib/apt/lists/* /tmp/build-ca.pem; \
+    mkfs.xfs -V; \
+    btrfs --version; \
+    losetup --version
+CMD ["sleep", "infinity"]
 
 # --- the image -------------------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE}

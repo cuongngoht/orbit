@@ -22,6 +22,17 @@
 #
 # Every connection through the proxy is a decision of the policy of the account whose run it is (Governance → Policy):
 # an account is given the strict default policy of this deployment when it first signs in.
+#
+#   orbit-allocator  AI employees' attempts, as in compose.yaml: the only holder of the Docker socket; two containers
+#                    per attempt (model plane, tool plane) from fixed images, a fixed mount list and the employee's
+#                    limits; the employees' storage with its quotas. On the private `control` network, answering Orbit
+#                    Web alone (signed requests); no published port. Needs `allocator.secret` beside this file and the
+#                    three employee images (see compose.yaml).
+#   orbit-connect    (profile `tools`) a connection's sign-in in the operator's own terminal:
+#                    docker compose -f compose.governed.yaml run --rm orbit-connect claude <connectionId>
+#
+# The control plane (orbit-web, orbit-agent, postgres, orbit-allocator) runs within fixed limits (the *_CPUS, *_MEMORY,
+# *_PIDS knobs below): what the host has beyond them, less a reserve for the OS, is what employees may use.
 name: orbit-web-governed
 
 x-hardened: &hardened
@@ -31,6 +42,12 @@ x-hardened: &hardened
   security_opt:
     - no-new-privileges:true
   restart: unless-stopped
+
+x-employees: &employees
+  ORBIT_WEB_SANDBOX_PREFIX: orbit-web-governed
+  ORBIT_WEB_SANDBOX_NETWORK: orbit-web-governed-sandbox
+  ORBIT_WEB_MODEL_NETWORK: orbit-web-governed-model
+  ORBIT_WEB_ALLOCATOR_SECRET_FILE: /run/secrets/orbit-allocator
 
 services:
   postgres:
@@ -61,6 +78,9 @@ services:
       - SETUID
     security_opt:
       - no-new-privileges:true
+    cpus: ${ORBIT_WEB_POSTGRES_CPUS:-0.5}
+    mem_limit: ${ORBIT_WEB_POSTGRES_MEMORY:-768m}
+    pids_limit: ${ORBIT_WEB_POSTGRES_PIDS:-256}
     restart: unless-stopped
     stop_grace_period: 30s
 
@@ -83,13 +103,41 @@ services:
       ORBIT_WEB_EGRESS_PROXY_PORT: "3128"
       # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+      # AI employees: every attempt in its own two containers, made by the allocator.
+      <<: *employees
+      ORBIT_WEB_SANDBOX: container
+      ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171
+      ORBIT_WEB_ACCEPT_SOFT_STORAGE: ${ORBIT_WEB_ACCEPT_SOFT_STORAGE:-0}
+      ORBIT_WEB_CAPACITY_CPU: ${ORBIT_WEB_CAPACITY_CPU:-}
+      ORBIT_WEB_CAPACITY_MEMORY: ${ORBIT_WEB_CAPACITY_MEMORY:-}
+      ORBIT_WEB_CAPACITY_STORAGE: ${ORBIT_WEB_CAPACITY_STORAGE:-}
+      ORBIT_WEB_CAPACITY_RESERVE_CPU: ${ORBIT_WEB_CAPACITY_RESERVE_CPU:-}
+      ORBIT_WEB_CAPACITY_RESERVE_MEMORY: ${ORBIT_WEB_CAPACITY_RESERVE_MEMORY:-}
+      ORBIT_WEB_CAPACITY_RESERVE_STORAGE: ${ORBIT_WEB_CAPACITY_RESERVE_STORAGE:-}
+      ORBIT_WEB_MODEL_PLANE_CLAUDE_CPU: ${ORBIT_WEB_MODEL_PLANE_CLAUDE_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_CLAUDE_MEMORY: ${ORBIT_WEB_MODEL_PLANE_CLAUDE_MEMORY:-}
+      ORBIT_WEB_MODEL_PLANE_CODEX_CPU: ${ORBIT_WEB_MODEL_PLANE_CODEX_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_CODEX_MEMORY: ${ORBIT_WEB_MODEL_PLANE_CODEX_MEMORY:-}
+      ORBIT_WEB_MODEL_PLANE_AGY_CPU: ${ORBIT_WEB_MODEL_PLANE_AGY_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_AGY_MEMORY: ${ORBIT_WEB_MODEL_PLANE_AGY_MEMORY:-}
+      ORBIT_WEB_CONTROL_PLANE_LIMITS: "orbit-web:${ORBIT_WEB_CPUS:-1.0}:${ORBIT_WEB_MEMORY:-2g},orbit-agent:${ORBIT_WEB_AGENT_CPUS:-1.0}:${ORBIT_WEB_AGENT_MEMORY:-2g},postgres:${ORBIT_WEB_POSTGRES_CPUS:-0.5}:${ORBIT_WEB_POSTGRES_MEMORY:-768m},allocator:${ORBIT_WEB_ALLOCATOR_CPUS:-0.25}:${ORBIT_WEB_ALLOCATOR_MEMORY:-256m}"
+    secrets:
+      - orbit-allocator
     depends_on:
       postgres:
         condition: service_healthy
+      orbit-allocator:
+        condition: service_started
     networks:
       - default
       - agent
       - db
+      - control
+      - sandbox
+      - model
+    cpus: ${ORBIT_WEB_CPUS:-1.0}
+    mem_limit: ${ORBIT_WEB_MEMORY:-2g}
+    pids_limit: ${ORBIT_WEB_PIDS:-2048}
     stop_grace_period: 20s
 
   orbit-agent:
@@ -122,7 +170,71 @@ services:
     depends_on:
       orbit-web:
         condition: service_healthy
+    cpus: ${ORBIT_WEB_AGENT_CPUS:-1.0}
+    mem_limit: ${ORBIT_WEB_AGENT_MEMORY:-2g}
+    pids_limit: ${ORBIT_WEB_AGENT_PIDS:-2048}
     stop_grace_period: 20s
+
+  orbit-allocator:
+    <<: *hardened
+    command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/allocator/main.js"]
+    # Root with no capability: the socket is root's, and that is the whole of what it needs.
+    user: "0:0"
+    environment:
+      <<: *employees
+      ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
+      ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
+      ORBIT_WEB_DATA_VOLUME: orbit-web-governed_orbit-web-data
+      ORBIT_WEB_WORKFORCE_VOLUME: orbit-web-governed-workforce
+      ORBIT_WEB_WORKFORCE_STORE_VOLUME: orbit-web-governed-workforce-store
+      ORBIT_WEB_WORKFORCE_POOL_SIZE: ${ORBIT_WEB_WORKFORCE_POOL_SIZE:-20g}
+      ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE: ${ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE:-1}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - orbit-web-allocator:/var/lib/orbit-allocator
+    secrets:
+      - orbit-allocator
+    networks:
+      - control
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:7171/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    cpus: ${ORBIT_WEB_ALLOCATOR_CPUS:-0.25}
+    mem_limit: ${ORBIT_WEB_ALLOCATOR_MEMORY:-256m}
+    pids_limit: ${ORBIT_WEB_ALLOCATOR_PIDS:-256}
+    stop_grace_period: 20s
+
+  orbit-connect:
+    profiles: ["tools"]
+    image: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
+    command: ["node", "/opt/orbit-web/apps/api/dist/cli/connect.js"]
+    user: "10001:10001"
+    stdin_open: true
+    tty: true
+    volumes:
+      - { type: volume, source: orbit-web-data, target: /data/connections, volume: { subpath: connections } }
+    environment:
+      ORBIT_WEB_CONNECTIONS_DIR: /data/connections
+      HTTPS_PROXY: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
+      https_proxy: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
+    networks:
+      - model
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+      - /home/orbit:size=64m,uid=10001,gid=10001,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   # The database's network: internal, joined by the control plane and the database alone -- never by the agent.
@@ -133,7 +245,22 @@ networks:
     ipam:
       config:
         - subnet: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
+  # Orbit Web and the allocator, alone.
+  control:
+    internal: true
+  # The employees' tool planes and model planes (named: the allocator attaches each attempt by name).
+  sandbox:
+    name: orbit-web-governed-sandbox
+    internal: true
+  model:
+    name: orbit-web-governed-model
+    internal: true
+
+secrets:
+  orbit-allocator:
+    file: ./allocator.secret
 
 volumes:
   orbit-web-data:
   orbit-web-postgres:
+  orbit-web-allocator:

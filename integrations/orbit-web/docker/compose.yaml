@@ -2,23 +2,48 @@
 #
 #   cd integrations/orbit-web/docker && docker compose up -d --build
 #
-# Two services:
+# Three services, and one more to run by hand:
 #
-#   postgres   PostgreSQL 17 with pgvector: every record Orbit Web keeps (accounts, chats, research, governance). On a
-#              network of its own that only Orbit Web joins; never published on this machine.
-#   orbit-web  the API and the web app. It migrates the database at start (and refuses to start without it).
+#   postgres         PostgreSQL 17 with pgvector: every record Orbit Web keeps (accounts, chats, research, governance,
+#                    the office). On a network of its own that only Orbit Web joins; never published on this machine.
+#   orbit-web        the API and the web app. It migrates the database at start (and refuses to start without it). It
+#                    also serves, on the employees' internal networks, the egress proxy (a tool plane's only way out)
+#                    and the tool endpoint (the model plane's bridge).
+#   orbit-allocator  the ONLY holder of the Docker socket (ADR 0067): for each attempt of an AI employee it makes two
+#                    containers -- the model plane (the AI CLI with its connection's login) and the tool plane (the
+#                    employee's own shell, holding no credential) -- from fixed images, a fixed mount list and the
+#                    employee's limits, and it keeps the employees' storage areas with their quotas. It answers
+#                    Orbit Web alone, on the private `control` network, to requests signed with a shared secret; it
+#                    publishes no port and takes no path, image, mount or privilege from a request.
+#   orbit-connect    (profile `tools`) a connection's sign-in in YOUR terminal, with the unmodified official CLI:
+#                    docker compose run --rm orbit-connect claude <connectionId>
 #
-# The database role Orbit Web uses is created by docker/postgres/init/10-orbit.sh the first time the database volume is
-# made: a login, never a superuser; pgvector is enabled there by the server's superuser. Set your own passwords in a
-# `.env` file beside this one (URL-safe characters) BEFORE the first start:
+# Before the first start, beside this file:
 #
-#   ORBIT_WEB_DB_PASSWORD=...           Orbit Web's role
-#   ORBIT_WEB_POSTGRES_PASSWORD=...     the server's superuser (used by the init script only)
+#   .env              ORBIT_WEB_DB_PASSWORD=... and ORBIT_WEB_POSTGRES_PASSWORD=... (URL-safe characters)
+#   allocator.secret  the allocator's shared secret, read by Orbit Web (uid 10001) and the allocator (root):
+#                       umask 027 && openssl rand -hex 32 > allocator.secret && sudo chown 0:10001 allocator.secret
 #
-# Everything a person creates lives in the two named volumes, so `docker compose restart` and `docker compose up -d
-# --build` keep it. `docker compose down -v` deletes it. A volume of an earlier Orbit Web (SQLite) is not read: nothing
-# is imported from it, and nothing of it is deleted.
+# and the employees' images (the allocator never pulls or builds one), from the repository root:
+#
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation    -t ghcr.io/cuongngoht/orbit-web-workstation:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target model-plane    -t ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target storage-helper -t ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0 .
+#
+# The control plane runs within fixed limits (ORBIT_WEB_CPUS / _MEMORY / _PIDS, the same for POSTGRES and ALLOCATOR):
+# what the host has beyond them, less a reserve for the OS, is what employees may use (Settings → Compute & storage).
+#
+# What a person creates lives in named volumes, so `docker compose restart` and `docker compose up -d --build` keep it,
+# and `docker compose down -v` deletes the ones below. The employees' storage (orbit-web-workforce and, for a pool,
+# orbit-web-workforce-store and its loop device) is made by the allocator itself: remove it with
+#   docker compose run --rm --entrypoint node orbit-allocator /opt/orbit-web/apps/api/dist/allocator/main.js destroy-storage --confirm=orbit-web-workforce
 name: orbit-web
+
+x-employees: &employees
+  ORBIT_WEB_SANDBOX_PREFIX: orbit-web
+  ORBIT_WEB_SANDBOX_NETWORK: orbit-web-sandbox
+  ORBIT_WEB_MODEL_NETWORK: orbit-web-model
+  ORBIT_WEB_ALLOCATOR_SECRET_FILE: /run/secrets/orbit-allocator
 
 services:
   postgres:
@@ -52,6 +77,9 @@ services:
       - SETUID
     security_opt:
       - no-new-privileges:true
+    cpus: ${ORBIT_WEB_POSTGRES_CPUS:-0.5}
+    mem_limit: ${ORBIT_WEB_POSTGRES_MEMORY:-768m}
+    pids_limit: ${ORBIT_WEB_POSTGRES_PIDS:-256}
     restart: unless-stopped
     stop_grace_period: 30s
 
@@ -68,27 +96,144 @@ services:
     volumes:
       - orbit-web-data:/data
     environment:
+      <<: *employees
       ORBIT_WEB_DATABASE_URL: postgres://orbit:${ORBIT_WEB_DB_PASSWORD:-orbit-local}@postgres:5432/orbit
       # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+      # AI employees: every attempt in its own two containers, made by the allocator.
+      ORBIT_WEB_SANDBOX: container
+      ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171
+      ORBIT_WEB_ACCEPT_SOFT_STORAGE: ${ORBIT_WEB_ACCEPT_SOFT_STORAGE:-0}
+      ORBIT_WEB_CAPACITY_CPU: ${ORBIT_WEB_CAPACITY_CPU:-}
+      ORBIT_WEB_CAPACITY_MEMORY: ${ORBIT_WEB_CAPACITY_MEMORY:-}
+      ORBIT_WEB_CAPACITY_STORAGE: ${ORBIT_WEB_CAPACITY_STORAGE:-}
+      ORBIT_WEB_CAPACITY_RESERVE_CPU: ${ORBIT_WEB_CAPACITY_RESERVE_CPU:-}
+      ORBIT_WEB_CAPACITY_RESERVE_MEMORY: ${ORBIT_WEB_CAPACITY_RESERVE_MEMORY:-}
+      ORBIT_WEB_CAPACITY_RESERVE_STORAGE: ${ORBIT_WEB_CAPACITY_RESERVE_STORAGE:-}
+      ORBIT_WEB_MODEL_PLANE_CLAUDE_CPU: ${ORBIT_WEB_MODEL_PLANE_CLAUDE_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_CLAUDE_MEMORY: ${ORBIT_WEB_MODEL_PLANE_CLAUDE_MEMORY:-}
+      ORBIT_WEB_MODEL_PLANE_CODEX_CPU: ${ORBIT_WEB_MODEL_PLANE_CODEX_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_CODEX_MEMORY: ${ORBIT_WEB_MODEL_PLANE_CODEX_MEMORY:-}
+      ORBIT_WEB_MODEL_PLANE_AGY_CPU: ${ORBIT_WEB_MODEL_PLANE_AGY_CPU:-}
+      ORBIT_WEB_MODEL_PLANE_AGY_MEMORY: ${ORBIT_WEB_MODEL_PLANE_AGY_MEMORY:-}
+      # The control plane's own limits (below): what employees may use is what the host has beyond them.
+      ORBIT_WEB_CONTROL_PLANE_LIMITS: "orbit-web:${ORBIT_WEB_CPUS:-1.0}:${ORBIT_WEB_MEMORY:-2g},postgres:${ORBIT_WEB_POSTGRES_CPUS:-0.5}:${ORBIT_WEB_POSTGRES_MEMORY:-768m},allocator:${ORBIT_WEB_ALLOCATOR_CPUS:-0.25}:${ORBIT_WEB_ALLOCATOR_MEMORY:-256m}"
+    secrets:
+      - orbit-allocator
     depends_on:
       postgres:
         condition: service_healthy
+      orbit-allocator:
+        condition: service_started
     networks:
       - default
       - db
+      - control
+      - sandbox
+      - model
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    cpus: ${ORBIT_WEB_CPUS:-1.0}
+    mem_limit: ${ORBIT_WEB_MEMORY:-2g}
+    pids_limit: ${ORBIT_WEB_PIDS:-2048}
     restart: unless-stopped
     stop_grace_period: 20s
+
+  orbit-allocator:
+    image: ghcr.io/cuongngoht/orbit-web:0.8.0
+    container_name: orbit-web-allocator
+    command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/allocator/main.js"]
+    # Root with no capability: the socket is root's, and that is the whole of what it needs.
+    user: "0:0"
+    environment:
+      <<: *employees
+      ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
+      ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
+      # Orbit Web's data volume (its connections room holds each connection's home): this project's own.
+      ORBIT_WEB_DATA_VOLUME: orbit-web_orbit-web-data
+      ORBIT_WEB_WORKFORCE_VOLUME: orbit-web-workforce
+      ORBIT_WEB_WORKFORCE_STORE_VOLUME: orbit-web-workforce-store
+      # A loop-backed pool for the employees' areas (when this host's kernel enforces its quotas), preallocated.
+      ORBIT_WEB_WORKFORCE_POOL_SIZE: ${ORBIT_WEB_WORKFORCE_POOL_SIZE:-20g}
+      ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE: ${ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE:-1}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - orbit-web-allocator:/var/lib/orbit-allocator
+    secrets:
+      - orbit-allocator
+    networks:
+      - control
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:7171/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    cpus: ${ORBIT_WEB_ALLOCATOR_CPUS:-0.25}
+    mem_limit: ${ORBIT_WEB_ALLOCATOR_MEMORY:-256m}
+    pids_limit: ${ORBIT_WEB_ALLOCATOR_PIDS:-256}
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  # A connection's sign-in, in the operator's terminal, with the unmodified official CLI: the URL and the code never
+  # pass through Orbit Web. The model-plane image, the connections room only, and the model network (its way out is
+  # Orbit Web's model-plane egress, which reaches the providers' hosts alone).
+  orbit-connect:
+    profiles: ["tools"]
+    image: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
+    command: ["node", "/opt/orbit-web/apps/api/dist/cli/connect.js"]
+    user: "10001:10001"
+    stdin_open: true
+    tty: true
+    volumes:
+      - { type: volume, source: orbit-web-data, target: /data/connections, volume: { subpath: connections } }
+    environment:
+      ORBIT_WEB_CONNECTIONS_DIR: /data/connections
+      HTTPS_PROXY: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
+      https_proxy: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
+    networks:
+      - model
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+      - /home/orbit:size=64m,uid=10001,gid=10001,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   # The database's network: internal (no way out), joined by Orbit Web and the database alone.
   db:
     internal: true
+  # Orbit Web and the allocator, alone.
+  control:
+    internal: true
+  # The employees' tool planes (their only way out: Orbit Web's egress proxy) and model planes. Named, because the
+  # allocator attaches each attempt's containers by name; internal, because nothing else may route out of them.
+  sandbox:
+    name: orbit-web-sandbox
+    internal: true
+  model:
+    name: orbit-web-model
+    internal: true
+
+secrets:
+  orbit-allocator:
+    file: ./allocator.secret
 
 volumes:
   orbit-web-data:
   orbit-web-postgres:
+  orbit-web-allocator:

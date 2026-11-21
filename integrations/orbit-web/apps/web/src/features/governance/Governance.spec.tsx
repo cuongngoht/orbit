@@ -8,7 +8,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import {
   ACCOUNT_ID,
   approval,
-  browserSession,
+  authSession,
   CSRF,
   DRAFT_DIGEST,
   draftView,
@@ -43,7 +43,7 @@ const policyOverview = (draft: RevisionView) => ({ effective: revisionView(), re
 
 const nonGets = (api: ReturnType<typeof fakeApi>) => api.calls.filter((c) => c.method !== "GET").map((c) => `${c.method} ${c.path}`);
 
-beforeEach(() => rememberSession(browserSession()));
+beforeEach(() => rememberSession(authSession()));
 afterEach(() => rememberSession(null));
 
 describe("the account's governance", () => {
@@ -262,8 +262,8 @@ describe("the account's governance", () => {
   });
 
   test("a refusal from the API is said as it is", async () => {
-    fakeApi().on("GET", "/api/governance/overview", () => withStatus(401, { error: { code: "claude_sign_in_required", message: "Sign in with Claude to continue." } }));
+    fakeApi().on("GET", "/api/governance/overview", () => withStatus(401, { error: { code: "sign_in_required", message: "Sign in to Orbit to continue." } }));
     renderLive(<GovernanceView page="overview" item={null} go={vi.fn()} account={ACCOUNT} />);
-    expect(await screen.findByText("Sign in with Claude to continue.")).toBeInTheDocument();
+    expect(await screen.findByText("Sign in to Orbit to continue.")).toBeInTheDocument();
   });
 });

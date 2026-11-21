@@ -7,12 +7,13 @@ import { Badge, Button, MessageBar, MessageBarBody, OverlayDrawer, Spinner, Tab,
 import { ArrowDown16Regular, Dismiss20Regular, DocumentBulletList20Regular, Info20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import { ACCEPTS_MESSAGES, chatImagePath, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { SessionStatusBadge } from "../../components/StatusBadge";
 import { SourceMark } from "../../components/SourceMark";
 import { useResource } from "../../hooks/useResource";
 import { useSessionStream } from "../../hooks/useSessionStream";
 import { useViewport } from "../../hooks/useViewport";
-import { errorText, get, send } from "../../services/api";
+import { get, send } from "../../services/api";
 import { uploadImage } from "../../services/images";
 import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
@@ -144,7 +145,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
   const { state, connected } = useSessionStream(sessionId);
   const detail = useResource<SessionDetail>(() => get(`/api/sessions/${sessionId}`), [sessionId]);
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [sending, setSending] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -174,7 +175,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
     try {
       await work();
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     }
   };
   const update = async (change: UpdateSessionRequest) => {
@@ -333,13 +334,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             onStop={() => void attempt(() => send("POST", `/api/sessions/${sessionId}/stop`))}
             commandsPath={`/api/sessions/${sessionId}/commands`}
             commandsVersion={status === "preparing" ? 0 : 1}
-            above={
-              error && (
-                <MessageBar intent="error">
-                  <MessageBarBody>{error}</MessageBarBody>
-                </MessageBar>
-              )
-            }
+            above={error !== null && <ApiErrorBar error={error} />}
             left={
               <>
                 <span className={mergeClasses(s.chip, isMobile && s.chipMobile)} title={session.repository ?? "No repository"}>

@@ -9,13 +9,13 @@ import { AccessPage } from "./AccessPage";
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 describe("the access token, asked for first by an Orbit Web reachable from the internet", () => {
-  test("two steps, said as two: the token here, then Continue with Claude -- shown, waiting", async () => {
+  test("two steps, said as two: the token here, then Orbit's own sign-in -- shown, waiting", async () => {
     const api = fakeApi().on("POST", "/api/access", () => undefined);
     const granted = vi.fn();
     renderUi(<AccessPage onGranted={granted} />);
     expect(screen.getByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
     expect(screen.getByText("Enter this Orbit Web's access token")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Continue with Claude" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/Access token/), TOKEN);
     await userEvent.click(screen.getByRole("button", { name: "Continue" }));

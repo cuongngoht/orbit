@@ -1,13 +1,15 @@
-// SETTINGS, over whatever page is open: on the left a search and the sections -- Account, Appearance, Code, Connectors,
-// Skills, Plugins, System -- and on the right the one chosen. Which one is open is the URL's (`?settings=<section>`), so
+// SETTINGS, over whatever page is open: on the left a search and the sections -- Account, Appearance, Code, AI
+// Connections, Compute & storage, Connectors, Claude connectors, Skills, Plugins, System -- and on the right the one chosen. Which one is open is the URL's (`?settings=<section>`), so
 // a reload or a link comes back to it. The connectors' status is read here, and again whenever the app stream says a
 // connector changed (or reopens, since it replays nothing).
 import { Button, Dialog, DialogSurface, DialogTitle, SearchBox, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import {
   Apps20Regular,
   ArrowLeft20Regular,
+  BrainCircuit20Regular,
   ChevronRight16Regular,
   Code20Regular,
+  DataUsage20Regular,
   Dismiss20Regular,
   Lightbulb20Regular,
   PaintBrush20Regular,
@@ -16,7 +18,7 @@ import {
   PuzzlePiece20Regular,
   Server20Regular,
 } from "@fluentui/react-icons";
-import type { ClaudeStatus, ConnectorName, SetupStatus, Settings } from "@orbit-web/contracts";
+import type { AuthStatus, AuthUser, ConnectorName, SetupStatus, Settings } from "@orbit-web/contracts";
 import { useCallback, useState, type ReactElement } from "react";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
@@ -24,8 +26,10 @@ import { useViewport } from "../../hooks/useViewport";
 import { get } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
 import type { SignOut } from "../auth/useSignOut";
+import { AiConnectionsSection } from "../connections/AiConnectionsSection";
+import { ComputeStorageSection } from "../resources/ComputeStorageSection";
 import { AccessLinkCard } from "./AccessLinkCard";
-import { ClaudeAccountCard } from "./ClaudeAccountCard";
+import { AccountSection } from "./AccountSection";
 import { ClaudeConnectorsSection } from "./ClaudeConnectorsSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { PluginsSection, SkillsSection } from "./CustomizeSections";
@@ -177,9 +181,11 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: "account", label: "Account", icon: <Person20Regular />, about: "The Claude account Orbit Web is signed in with, and its access link.", words: "claude sign out email plan access link token" },
+  { id: "account", label: "Account", icon: <Person20Regular />, about: "You and your Orbit account: your profile, the company, the password, your sessions and the access link.", words: "profile name email company time zone locale password sign out sessions access link token" },
   { id: "appearance", label: "Appearance", icon: <PaintBrush20Regular />, about: "How Orbit Web looks.", words: "theme dark light system" },
   { id: "code", label: "Code", icon: <Code20Regular />, about: "How a new chat runs, and what a repository brings to it.", words: "model effort mode autonomous plan skills plugins web tools budget" },
+  { id: "ai-connections", label: "AI Connections", icon: <BrainCircuit20Regular />, about: "Claude Code, OpenAI Codex and Google Antigravity: whether each is installed, how it signs in, and your connections to it.", words: "claude codex antigravity agy cli api key subscription model effort plugin connect disconnect" },
+  { id: "compute", label: "Compute & storage", icon: <DataUsage20Regular />, about: "What your employees may use: the host's capacity, your budget, what is reserved and what is stored.", words: "cpu memory storage budget capacity quota resources reserved" },
   { id: "connectors", label: "Connectors", icon: <PlugConnected20Regular />, about: "Connect Orbit Web to your repositories on GitHub and Azure DevOps.", words: "github azure devops sign in cli repository" },
   { id: "claude-connectors", label: "Claude connectors", icon: <Apps20Regular />, about: "What Claude may use as your Claude account -- its claude.ai connectors and the plugins' servers -- in chats and in research.", words: "connectors claude.ai mcp docs gmail drive slack research chat artifact" },
   { id: "skills", label: "Skills", icon: <Lightbulb20Regular />, about: "The skills, commands and agents Claude Code is given: Orbit's own, and each project's.", words: "commands agents project orbit" },
@@ -193,7 +199,9 @@ export interface SettingsDialogProps {
   section: SettingsSection;
   // The connector to open in Connectors, when a page sent the person here to connect one.
   connector?: ConnectorName | null;
-  claude: ClaudeStatus;
+  // The sign-in this browser holds, and how a change of it (a profile, a password) reaches the page.
+  auth: AuthStatus & { user: AuthUser };
+  onAuth: (s: AuthStatus) => void;
   signOut: SignOut;
   settings: Settings | null;
   onSettings: (s: Settings) => void;
@@ -216,10 +224,12 @@ function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: Set
   if (p.section === "account")
     return (
       <>
-        <ClaudeAccountCard status={p.claude} signOut={p.signOut} />
+        <AccountSection auth={p.auth} onAuth={p.onAuth} signOut={p.signOut} />
         <AccessLinkCard />
       </>
     );
+  if (p.section === "ai-connections") return <AiConnectionsSection />;
+  if (p.section === "compute") return <ComputeStorageSection />;
   if (p.section === "connectors") return <ConnectorsSection status={status} onChanged={reloadStatus} initial={p.connector ?? null} />;
   if (p.section === "claude-connectors") return <ClaudeConnectorsSection />;
   if (p.section === "skills") return <SkillsSection />;

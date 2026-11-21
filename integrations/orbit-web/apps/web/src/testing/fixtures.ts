@@ -3,9 +3,11 @@ import { defaultAccountPolicy, type AuditEvent, type Rule } from "@orbit-web/gov
 import {
   ORBIT_WEB_VERSION,
   type ApprovalView,
+  type AuthAccount,
+  type AuthSession,
+  type AuthStatus,
+  type AuthUser,
   type AzureStatus,
-  type AccountView,
-  type BrowserSession,
   type ClaudeStatus,
   type ConnectionState,
   type GitHubStatus,
@@ -22,9 +24,11 @@ import {
   type RevisionView,
   type SessionDetail,
   type SessionSummary,
+  type SessionView,
   type Settings,
   type SetupStatus,
   type SourcesStatus,
+  type TrialMode,
 } from "@orbit-web/contracts";
 
 // GET /api/settings, as a fresh Orbit Web answers it.
@@ -96,42 +100,52 @@ export const idleFlow = (): LoginSnapshot => ({ state: "idle", url: null, code: 
 
 const ok = { ok: true, detail: null };
 
+// The Orbit account (its OrbitId) every record of these tests belongs to.
 export const ACCOUNT_ID = "0b6f1f0e-9c1e-4a5e-8a8b-1f2a3b4c5d6e";
+export const USER_ID = "7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
 
 // This browser session's CSRF token: every change carries it.
 export const CSRF = "c".repeat(64);
 
 // This browser's session, as the API says it.
-export const browserSession = (over: Partial<BrowserSession> = {}): BrowserSession => ({ accountId: ACCOUNT_ID, displayName: "", email: "octo@example.com", csrfToken: CSRF, expiresAt: "2026-12-01T00:00:00.000Z", ...over });
+export const authSession = (over: Partial<AuthSession> = {}): AuthSession => ({ orbitId: ACCOUNT_ID, userId: USER_ID, csrfToken: CSRF, expiresAt: "2026-12-01T00:00:00.000Z", ...over });
 
-// The Claude sign-in, as GET /api/claude/status says it: by default this browser is signed in to a Claude account.
-export function claudeStatus(over: Partial<ClaudeStatus> = {}): ClaudeStatus {
-  return { state: "connected", runtime: "connected", method: "claude.ai", account: { email: "octo@example.com", organization: "Octo Org", plan: "max" }, session: browserSession(), detail: null, flow: idleFlow(), ...over };
+// The user signed in: the first administrator, Ann Owner.
+export const authUser = (over: Partial<AuthUser> = {}): AuthUser => ({ id: USER_ID, username: "admin", fullName: "Ann Owner", email: "ann@example.com", emailVerified: false, role: "owner", mustChangePassword: false, lastLoginAt: "2026-11-20T08:00:00.000Z", ...over });
+
+// The Orbit account, as GET /api/account says it.
+export const authAccount = (over: Partial<AuthAccount> = {}): AuthAccount => ({ orbitId: ACCOUNT_ID, displayName: "Octo", companyName: "Octo & Co", contactEmail: null, timezone: "Asia/Ho_Chi_Minh", locale: "en", createdAt: "2026-11-19T00:00:00.000Z", version: 3, ...over });
+
+export const NO_TRIAL: TrialMode = { enabled: false, username: null, password: null };
+export const TRIAL: TrialMode = { enabled: true, username: "admin", password: "123456" };
+
+// GET /api/auth/status: by default this browser is signed in.
+export function authStatus(over: Partial<AuthStatus> = {}): AuthStatus {
+  return { state: "signed_in", session: authSession(), user: authUser(), account: authAccount(), trial: NO_TRIAL, ...over };
 }
 
-// GET /api/account: the account of this browser's session, and the browsers signed in to it.
-export const accountView = (over: Partial<AccountView> = {}): AccountView => ({
-  id: ACCOUNT_ID,
-  displayName: "",
-  email: "octo@example.com",
-  organization: "Octo Org",
-  plan: "max",
-  createdAt: "2026-11-19T00:00:00.000Z",
-  sessions: [{ id: "s-1", current: true, createdAt: "2026-11-19T00:00:00.000Z", lastSeenAt: "2026-11-19T00:00:00.000Z", expiresAt: "2026-11-26T00:00:00.000Z", userAgent: "Firefox" }],
-  ...over,
-});
+// A browser with no session (the installation has its first administrator).
+export const signedOut = (over: Partial<AuthStatus> = {}): AuthStatus => authStatus({ state: "signed_out", session: null, user: null, account: null, ...over });
 
-// A browser with no session: the CLI signed out (by default), or signed in already (`runtime: "connected"`).
-export const signedOutClaude = (over: Partial<ClaudeStatus> = {}): ClaudeStatus => claudeStatus({ state: "not_connected", runtime: "not_connected", method: null, account: null, session: null, ...over });
+// A new installation: nobody can sign in before the first administrator is set up.
+export const setupRequired = (over: Partial<AuthStatus> = {}): AuthStatus => authStatus({ state: "setup_required", session: null, user: null, account: null, ...over });
 
-// GET /api/setup/status, which answers only once Orbit Web is signed in to Claude: so Claude is signed in by default.
+// GET /api/auth/sessions: this browser, and another.
+export const sessionViews = (): SessionView[] => [
+  { id: "s-1", current: true, createdAt: "2026-11-19T00:00:00.000Z", lastSeenAt: "2026-11-20T00:00:00.000Z", expiresAt: "2026-11-26T00:00:00.000Z", userAgent: "Firefox" },
+  { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" },
+];
+
+// The Claude CLI's status as Settings → System reads it (part of GET /api/setup/status).
+const claudeCli = (): ClaudeStatus => ({ state: "connected", runtime: "connected", method: "claude.ai", account: null, session: null, detail: null, flow: idleFlow() });
+
+// GET /api/setup/status: the system's checks (the Claude CLI among them), and the GitHub and Azure connectors.
 export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<GitHubStatus> = {}, azure: Partial<AzureStatus> = {}): SetupStatus {
-  const c: ClaudeStatus = claudeStatus(claude);
   const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...github };
   const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
     versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", python: "3.15.2", node: "24.11.0" },
-    claude: c,
+    claude: { ...claudeCli(), ...claude },
     github: g,
     azure: a,
     health: {
@@ -208,7 +222,7 @@ export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {
 
 // ---- governance -------------------------------------------------------------------------------------------------------
 //
-// One account, one owner: the browser signed in to the Claude account governs it. Records name the owner as
+// One account, one owner: the user signed in to the Orbit account governs it. Records name the owner as
 // `owner:<account>`, an agent as `agent:<id>`, Orbit Web itself as `system:<what>`.
 
 export const OWNER = `owner:${ACCOUNT_ID}`;
@@ -220,7 +234,7 @@ export const RESEARCH_WORKSPACE_ID = "4f8e2a1c-7b3d-4e5f-9a0b-1c2d3e4f5a6b";
 // GET /api/governance/overview, for an account with one chat, one research workspace and its default policy in effect.
 export function governanceOverview(over: Partial<GovernanceOverview> = {}): GovernanceOverview {
   return {
-    account: { id: ACCOUNT_ID, displayName: "", email: "octo@example.com" },
+    account: { id: ACCOUNT_ID, displayName: "", email: "ann@example.com" },
     deployment: "single",
     effective: { id: "rev-1", revision: 1, digest: POLICY_DIGEST, publishedAt: "2026-11-20T09:00:00.000Z", source: "default" },
     counts: { workspaces: 1, researchWorkspaces: 1, runningRuns: 0, pendingApprovals: 1, openFindings: 0, draftRevisions: 0, overrides: 0 },

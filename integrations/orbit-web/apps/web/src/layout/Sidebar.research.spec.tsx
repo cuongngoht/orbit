@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
 import { fakeApi } from "../testing/fakeApi";
-import { claudeStatus, sessionSummary } from "../testing/fixtures";
+import { authAccount, authUser, sessionSummary } from "../testing/fixtures";
 import { renderUi } from "../testing/render";
 import { RESEARCH_ID, researchSummary } from "../testing/researchFixtures";
 import { Sidebar, type SidebarProps } from "./Sidebar";
@@ -16,7 +16,8 @@ function show(over: Partial<SidebarProps> = {}) {
     loading: false,
     selected: null,
     collapsed: false,
-    account: claudeStatus().account,
+    user: authUser(),
+    account: authAccount(),
     signingOut: false,
     onToggle: vi.fn(),
     onNew: vi.fn(),

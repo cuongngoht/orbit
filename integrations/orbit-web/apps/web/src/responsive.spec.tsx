@@ -18,7 +18,7 @@ import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
 import { AccessPage } from "./pages/AccessPage";
 import { fakeApi } from "./testing/fakeApi";
-import { ACCOUNT_ID, SESSION_ID, claudeStatus, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
+import { ACCOUNT_ID, SESSION_ID, authStatus, authUser, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, sessionViews, settings, setupStatus, sources } from "./testing/fixtures";
 import { researchDetail, workspaceSummary, WORKSPACE_ID } from "./testing/researchFixtures";
 import { renderLive, renderUi } from "./testing/render";
 
@@ -60,7 +60,7 @@ const tabletViewport = () =>
 
 function signedInApi() {
   return fakeApi()
-    .on("GET", "/api/claude/status", () => claudeStatus())
+    .on("GET", "/api/auth/status", () => authStatus())
     .on("GET", "/api/settings", () => settings())
     .on("GET", "/api/sessions", () => [sessionSummary()])
     .on("GET", "/api/sources", () => sources())
@@ -176,17 +176,19 @@ describe("responsive mobile-first layout", () => {
     };
     fakeApi()
       .on("GET", "/api/setup/status", () => setupStatus({}, { state: "connected", account: { login: "octo", name: "Octo" } }))
-      .on("GET", "/api/customizations", () => customizations);
+      .on("GET", "/api/customizations", () => customizations)
+      .on("GET", "/api/auth/sessions", () => sessionViews());
 
     const onSection = vi.fn();
-    const signOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
+    const signOut = { signOut: vi.fn(async () => undefined), signOutEverywhere: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
     function Harness() {
       const [section, setSection] = useState<SettingsSection>("account");
       return (
         <SettingsDialog
           section={section}
           connector={null}
-          claude={claudeStatus()}
+          auth={{ ...authStatus(), user: authUser() }}
+          onAuth={() => undefined}
           signOut={signOut}
           settings={settings()}
           onSettings={() => undefined}

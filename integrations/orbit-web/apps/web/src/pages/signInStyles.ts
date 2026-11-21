@@ -1,0 +1,45 @@
+// The look every page before the workspace shares (sign in, first administrator, a new password): centred on the app's
+// own surface, one card, the version at the foot.
+import { makeStyles, tokens } from "@fluentui/react-components";
+
+export const useSignInStyles = makeStyles({
+  root: { minHeight: "100dvh", display: "flex", flexDirection: "column", backgroundColor: tokens.colorNeutralBackground2 },
+  page: {
+    flexGrow: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "28px",
+    paddingTop: "48px",
+    paddingRight: "16px",
+    paddingBottom: "48px",
+    paddingLeft: "16px",
+    "@media (max-width: 639px)": { gap: "20px", paddingTop: "20px", paddingBottom: "max(24px, env(safe-area-inset-bottom))" },
+    boxSizing: "border-box",
+    minWidth: 0,
+  },
+  panel: { width: "100%", maxWidth: "460px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", textAlign: "center" },
+  logo: { width: "56px", height: "56px", marginBottom: "4px" },
+  heading: { margin: 0, fontSize: "clamp(24px, 6vw, 30px)", lineHeight: "1.25", fontWeight: tokens.fontWeightSemibold, letterSpacing: "-0.01em", color: tokens.colorNeutralForeground1 },
+  lead: { color: tokens.colorNeutralForeground2, maxWidth: "420px" },
+  card: {
+    width: "100%",
+    maxWidth: "460px",
+    boxSizing: "border-box",
+    paddingTop: "24px",
+    paddingRight: "24px",
+    paddingBottom: "24px",
+    paddingLeft: "24px",
+    "@media (max-width: 639px)": { paddingTop: "18px", paddingRight: "16px", paddingBottom: "18px", paddingLeft: "16px" },
+    borderRadius: "16px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: tokens.shadow4,
+  },
+  form: { display: "flex", flexDirection: "column", gap: "14px", textAlign: "left" },
+  wide: { width: "100%", "@media (max-width: 639px), (pointer: coarse)": { minHeight: "44px" } },
+  hint: { color: tokens.colorNeutralForeground3 },
+  code: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, wordBreak: "break-all" },
+  foot: { color: tokens.colorNeutralForeground3 },
+});

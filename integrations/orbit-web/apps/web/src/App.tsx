@@ -1,25 +1,29 @@
-// Orbit Web: the sign-in page until THIS browser finished a sign-in with a Claude account -- the Claude sign-in IS Orbit
-// Web's sign-in, a browser's own, and the API refuses everything else until then -- then the account's workspace, as in Claude Code: the sidebar (new session, search,
-// the chats and research sessions, the account) and beside it a new session, an open chat or an open research session,
-// with Settings over any of them. No connector is needed to start: a chat runs with a repository or without one. In token mode
-// the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its one
-// read-only chat and asks the API for nothing else.
+// Orbit Web: Orbit's own sign-in until THIS browser holds a session of an Orbit user -- a username and a password, never
+// an AI provider's sign-in -- then the account's workspace: the sidebar (new session, search, the office, governance,
+// the chats and research sessions, the person signed in) and beside it a new session, an open chat or research session,
+// the office or the governance console, with Settings over any of them. Nothing needs an AI connection to open: a chat,
+// a research question or an employee's work that needs one says where to connect it (Settings → AI Connections). In
+// token mode the access token is asked for before anything -- but for a share link (`#/share/<token>`), which opens its
+// one read-only chat and asks the API for nothing else.
 import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, OverlayDrawer, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
-import { CLAUDE_SIGN_IN_REQUIRED, type ClaudeStatus, type ConnectorName, type SessionSummary, type Settings } from "@orbit-web/contracts";
+import { PASSWORD_CHANGE_REQUIRED, SIGN_IN_REQUIRED, type AuthStatus, type ConnectorName, type SessionSummary, type Settings } from "@orbit-web/contracts";
 import { useCallback, useEffect, useState } from "react";
-import { useSignOut } from "./features/auth/useSignOut";
+import { TrialBar } from "./features/auth/TrialBar";
+import { useSignOut, type SignOut } from "./features/auth/useSignOut";
 import { ChatScreen } from "./features/chat/ChatScreen";
 import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
+import { OfficeView } from "./features/office/OfficeView";
 import { ResearchPage } from "./features/research/ResearchPage";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
-import { useHashRoute, type GovernancePage } from "./hooks/useHashRoute";
+import { useHashRoute, type GovernancePage, type OfficePage } from "./hooks/useHashRoute";
 import { useResearchSessions, useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
 import { useViewport, useVisualViewport } from "./hooks/useViewport";
 import { Sidebar } from "./layout/Sidebar";
 import { AccessPage } from "./pages/AccessPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
 import { SignInPage } from "./pages/SignInPage";
 import { rememberSession } from "./services/account";
@@ -79,9 +83,18 @@ function useCollapsed(): [boolean, () => void] {
   return [collapsed, useCallback(() => setCollapsed((c) => !c), [])];
 }
 
+interface WorkspaceProps {
+  auth: AuthStatus & { user: NonNullable<AuthStatus["user"]> };
+  settings: Resource<Settings>;
+  // The sign-in as the API answered a change of it (a new password, a profile).
+  onAuth: (s: AuthStatus) => void;
+  reloadAuth: () => void;
+  signOut: SignOut;
+}
+
 // Everything a person can reach once signed in. Mounted only then, so nothing here asks the API before the sign-in,
 // and leaving it (signing out) closes every stream it opened.
-function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: ClaudeStatus; settings: Resource<Settings>; reloadClaude: () => void; onSignedOut: (s: ClaudeStatus) => void }) {
+function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspaceProps) {
   const s = useStyles();
   const { isMobile, isCompact, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -96,20 +109,22 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   const sessions = useSessions();
   const researchSessions = useResearchSessions();
   const sources = useSources();
-  const signOut = useSignOut(onSignedOut);
   const [collapsed, toggle] = useCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
   // The connector a page sent the person to Settings to connect, opened there.
   const [connector, setConnector] = useState<ConnectorName | null>(null);
   const selected = route.view.view === "chat" || route.view.view === "research" ? route.view.sessionId : null;
   const governance = route.view.view === "governance" ? route.view : null;
+  const office = route.view.view === "office" ? route.view : null;
   const goGovernance = useCallback((page: GovernancePage, item: string | null = null) => open({ view: "governance", page, item }), [open]);
+  const goOffice = useCallback((page: OfficePage, item: string | null = null, tab: string | null = null) => open({ view: "office", page, item, tab }), [open]);
 
-  // The sign-in ended elsewhere (a terminal, an expiry): the API says so, and the sign-in is read again.
-  const lost = [sessions.errorCode, sources.errorCode, settings.errorCode].includes(CLAUDE_SIGN_IN_REQUIRED);
+  // The session ended elsewhere (a sign-out everywhere, an expiry), or its password must change first: the API says so,
+  // and the sign-in is read again.
+  const lost = [sessions.errorCode, sources.errorCode, settings.errorCode].some((c) => c === SIGN_IN_REQUIRED || c === PASSWORD_CHANGE_REQUIRED);
   useEffect(() => {
-    if (lost) reloadClaude();
-  }, [lost, reloadClaude]);
+    if (lost) reloadAuth();
+  }, [lost, reloadAuth]);
 
   // The open chat was deleted (here or in another tab): back to a new session.
   const { remove } = sessions;
@@ -139,44 +154,37 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
     setConnector(source);
     openSettings("connectors");
   };
+  const closeDrawer = (then: () => void) => () => {
+    setDrawerOpen(false);
+    then();
+  };
 
   const sidebarProps = {
     sessions: sessions.sessions,
     research: researchSessions.sessions,
     loading: sessions.loading,
     selected,
-    account: claude.account,
+    user: auth.user,
+    account: auth.account,
     signingOut: signOut.busy,
-    onNew: () => {
-      setDrawerOpen(false);
-      open({ view: "new" });
-    },
+    onNew: closeDrawer(() => open({ view: "new" })),
     onOpen: (id: string) => {
       setDrawerOpen(false);
       open({ view: researchSessions.sessions.some((r) => r.id === id) ? "research" : "chat", sessionId: id });
     },
-    onCustomize: () => {
-      setDrawerOpen(false);
-      openSettings("skills");
-    },
-    onSettings: () => {
-      setDrawerOpen(false);
-      openSettings("account");
-    },
+    onCustomize: closeDrawer(() => openSettings("skills")),
+    onSettings: closeDrawer(() => openSettings("account")),
+    office: office !== null,
+    onOffice: closeDrawer(() => goOffice("overview")),
     governance: governance !== null,
-    onGovernance: () => {
-      setDrawerOpen(false);
-      goGovernance("overview");
-    },
-    onSignOut: () => {
-      setDrawerOpen(false);
-      void signOut.signOut();
-    },
+    onGovernance: closeDrawer(() => goGovernance("overview")),
+    onSignOut: closeDrawer(() => void signOut.signOut()),
     onRenamed: sessions.upsert,
     onDeleted: removed,
     onResearchRenamed: researchSessions.upsert,
     onResearchDeleted: removedResearch,
   };
+  const onOpenNav = isCompact ? () => setDrawerOpen(true) : undefined;
 
   return (
     <div className={mergeClasses(s.shell, touch && s.shellTouch)}>
@@ -190,6 +198,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
         </OverlayDrawer>
       )}
       <main className={s.main}>
+        <TrialBar trial={auth.trial} onChangePassword={() => openSettings("account")} />
         {signOut.error && route.settings === null && (
           <MessageBar intent="error">
             <MessageBarBody>{signOut.error}</MessageBarBody>
@@ -197,8 +206,16 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
           </MessageBar>
         )}
         <div className={s.view}>
-          {governance !== null ? (
-            <GovernanceView page={governance.page} item={governance.item} go={goGovernance} account={claude.session && { displayName: claude.session.displayName, email: claude.session.email }} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
+          {office !== null ? (
+            <OfficeView page={office.page} item={office.item} tab={office.tab} go={goOffice} account={auth.account} onOpenNav={onOpenNav} />
+          ) : governance !== null ? (
+            <GovernanceView
+              page={governance.page}
+              item={governance.item}
+              go={goGovernance}
+              account={{ displayName: auth.account?.companyName || auth.account?.displayName || auth.user.fullName, email: auth.user.email ?? `@${auth.user.username}` }}
+              onOpenNav={onOpenNav}
+            />
           ) : selected === null ? (
             <NewSession
               settings={settings.data}
@@ -209,14 +226,14 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
                 open({ view: "research", sessionId: session.id });
               }}
               onConnect={connect}
-              onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined}
-              account={claude.account}
+              onOpenNav={onOpenNav}
+              userName={auth.user.fullName}
               onOpenAccount={isCompact ? () => openSettings("account") : undefined}
             />
           ) : route.view.view === "research" ? (
-            <ResearchPage key={selected} sessionId={selected} onUpdated={researchSessions.upsert} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
+            <ResearchPage key={selected} sessionId={selected} onUpdated={researchSessions.upsert} onOpenNav={onOpenNav} />
           ) : (
-            <ChatScreen key={selected} sessionId={selected} onUpdated={sessions.upsert} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
+            <ChatScreen key={selected} sessionId={selected} onUpdated={sessions.upsert} onOpenNav={onOpenNav} />
           )}
         </div>
       </main>
@@ -224,7 +241,8 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
         <SettingsDialog
           section={route.settings}
           connector={connector}
-          claude={claude}
+          auth={auth}
+          onAuth={onAuth}
           signOut={signOut}
           settings={settings.data}
           onSettings={settings.set}
@@ -239,31 +257,36 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   );
 }
 
-// What opens: the access token (token mode), the Claude sign-in, or the workspace. Nothing else decides it.
-function Gate({ claude, settings }: { claude: Resource<ClaudeStatus>; settings: Resource<Settings> }) {
+// What opens: the access token (token mode), Orbit's sign-in (or the first administrator's setup), a new password the
+// user must choose first, or the workspace. Nothing else decides it, and none of it starts an AI provider's sign-in.
+function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resource<Settings> }) {
   const s = useStyles();
-  const { reload: reloadClaude } = claude;
-  const reload = useCallback(() => void reloadClaude(), [reloadClaude]);
-  if (claude.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={reload} />;
-  if (claude.data === null) {
-    if (claude.loading) return <Spinner className={s.center} label="Checking this Orbit Web…" />;
+  const { reload: reloadAuth, set: setAuth } = auth;
+  const reload = useCallback(() => void reloadAuth(), [reloadAuth]);
+  const signOut = useSignOut(reload);
+  if (auth.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={reload} />;
+  if (auth.data === null) {
+    if (auth.loading) return <Spinner className={s.center} label="Checking this Orbit Web…" />;
     return (
       <MessageBar intent="error" className={s.center}>
-        <MessageBarBody>Orbit Web did not answer: {claude.error ?? "no reason given"}</MessageBarBody>
+        <MessageBarBody>Orbit Web did not answer: {auth.error ?? "no reason given"}</MessageBarBody>
         <MessageBarActions>
           <Button onClick={reload}>Try again</Button>
         </MessageBarActions>
       </MessageBar>
     );
   }
-  rememberSession(claude.data.session);
-  if (claude.data.state !== "connected" || claude.data.session === null) return <SignInPage status={claude.data} onChanged={reload} />;
-  // Keyed by the account: another account signing in here starts everything afresh -- no stream, cache or page state of
-  // the account before survives into the next one's.
+  const status = auth.data;
+  rememberSession(status.session);
+  const user = status.user;
+  if (status.state !== "signed_in" || status.session === null || user === null) return <SignInPage status={status} onStatus={setAuth} onReload={reload} />;
+  if (user.mustChangePassword) return <ChangePasswordPage status={status} onChanged={setAuth} signOut={signOut} />;
+  // Keyed by the account and the user: another user signing in here starts everything afresh -- no stream, cache or
+  // page state of the one before survives into the next one's.
   return (
-    <AppEventsProvider key={claude.data.session.accountId}>
+    <AppEventsProvider key={`${status.session.orbitId}:${user.id}`}>
       <ModelCatalogProvider>
-        <Workspace claude={claude.data} settings={settings} reloadClaude={reload} onSignedOut={claude.set} />
+        <Workspace auth={{ ...status, user }} settings={settings} onAuth={setAuth} reloadAuth={reload} signOut={signOut} />
       </ModelCatalogProvider>
     </AppEventsProvider>
   );
@@ -286,9 +309,9 @@ function Shared({ token }: { token: string }) {
 
 function OrbitWeb() {
   const systemDark = useSystemDark();
-  // The sign-in is read again every few seconds: a sign-out from a terminal closes the page here too.
-  const claude = useResource<ClaudeStatus>(() => get("/api/claude/status"), [], 15_000);
-  const signedIn = claude.data?.state === "connected";
+  // The sign-in is read again every few seconds: a sign-out everywhere (or an expiry) closes the page here too.
+  const auth = useResource<AuthStatus>(() => get("/api/auth/status"), [], 15_000);
+  const signedIn = auth.data?.state === "signed_in" && auth.data.user?.mustChangePassword === false;
   const settings = useResource<Settings>(signedIn ? () => get("/api/settings") : null, [signedIn]);
   const dark = isDark((signedIn ? settings.data?.theme : null) ?? "system", systemDark);
   useEffect(() => {
@@ -296,7 +319,7 @@ function OrbitWeb() {
   }, [dark]);
   return (
     <FluentProvider theme={themeOf(dark)} style={{ height: "100%" }}>
-      <Gate claude={claude} settings={settings} />
+      <Gate auth={auth} settings={settings} />
     </FluentProvider>
   );
 }

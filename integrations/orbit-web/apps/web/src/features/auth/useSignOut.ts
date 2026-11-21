@@ -1,31 +1,31 @@
-// SIGNING OUT, two ways: this browser alone (its session ends; the account and its other browsers stay signed in), or
-// the whole account (every browser of it, and the runtime's Claude CLI: `claude auth logout`). The API refuses the second
-// while Claude Code works for the account (or a workspace is being prepared); that refusal is said, and nothing changes.
-import type { ClaudeStatus } from "@orbit-web/contracts";
+// SIGNING OUT of Orbit, two ways: this browser alone (its session ends; the others stay signed in), or every session of
+// the user ("Sign out everywhere"). Neither touches an AI connection: a connected CLI stays connected, because signing in
+// to Orbit and connecting a provider are two different things. Afterwards the page reads its sign-in again.
 import { useCallback, useState } from "react";
+import { rememberSession } from "../../services/account";
 import { errorText, send } from "../../services/api";
 
 export interface SignOut {
   // This browser only.
   signOut: () => Promise<void>;
-  // The account: every browser, and the Claude CLI.
-  signOutAccount: () => Promise<void>;
+  // Every session of this user, this one included.
+  signOutEverywhere: () => Promise<void>;
   busy: boolean;
   error: string | null;
   clear: () => void;
 }
 
-export function useSignOut(onSignedOut: (status: ClaudeStatus) => void): SignOut {
+export function useSignOut(onSignedOut: () => void): SignOut {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = useCallback(
-    async (method: "DELETE" | "POST", path: string) => {
+    async (path: string) => {
       setBusy(true);
       setError(null);
       try {
-        const status = await send<ClaudeStatus>(method, path);
-        if (status.detail !== null && status.runtime === "connected" && method === "POST") setError(status.detail);
-        onSignedOut(status);
+        await send<void>("POST", path);
+        rememberSession(null);
+        onSignedOut();
       } catch (err) {
         setError(errorText(err));
       } finally {
@@ -34,7 +34,7 @@ export function useSignOut(onSignedOut: (status: ClaudeStatus) => void): SignOut
     },
     [onSignedOut],
   );
-  const signOut = useCallback(() => run("DELETE", "/api/claude/session"), [run]);
-  const signOutAccount = useCallback(() => run("POST", "/api/claude/logout"), [run]);
-  return { signOut, signOutAccount, busy, error, clear: () => setError(null) };
+  const signOut = useCallback(() => run("/api/auth/logout"), [run]);
+  const signOutEverywhere = useCallback(() => run("/api/auth/logout-all"), [run]);
+  return { signOut, signOutEverywhere, busy, error, clear: useCallback(() => setError(null), []) };
 }

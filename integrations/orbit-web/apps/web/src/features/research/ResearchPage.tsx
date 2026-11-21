@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SessionStatusBadge } from "../../components/StatusBadge";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
-import { errorText } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { ModelEffortPicker } from "../composer/RunPickers";
 import { PeopleAccess } from "../share/PeopleAccess";
@@ -164,7 +163,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   const [findingDraft, setFindingDraft] = useState<FindingDraft | null>(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   // The session (its citations and selection) is read again when a run ends or citations are recorded. Its selection is
   // the one read until this page changes it.
@@ -229,7 +228,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     try {
       setSelection((await research.select(sessionId, unique)).selection);
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     }
   };
   const ask = async (text: string) => {
@@ -238,7 +237,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     try {
       await research.ask(sessionId, text);
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     } finally {
       setBusy(false);
     }
@@ -250,7 +249,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       onUpdated(summary);
       void reloadDetail();
     } catch (err) {
-      setError(errorText(err));
+      setError(err);
     }
   };
   const firstLine = (text: string) => (text.split("\n").find((l) => l.trim() !== "")?.replace(/^#+\s*/, "").slice(0, 80) ?? "Research note").trim();
@@ -332,7 +331,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       busy={busy}
       error={error}
       onAsk={(text) => void ask(text)}
-      onStop={() => void research.stop(sessionId).catch((err: unknown) => setError(errorText(err)))}
+      onStop={() => void research.stop(sessionId).catch((err: unknown) => setError(err))}
       onShowCitations={(id) => {
         setChosen(id);
         openEvidence("citations");

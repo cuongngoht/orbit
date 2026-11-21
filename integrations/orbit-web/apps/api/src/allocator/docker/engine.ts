@@ -61,6 +61,16 @@ export interface VolumeInspect {
   UsageData?: { Size: number; RefCount: number } | null;
 }
 
+export interface NetworkInspect {
+  Id: string;
+  Name: string;
+  Internal: boolean;
+  Labels: Record<string, string> | null;
+  // Keyed by container id.
+  Containers: Record<string, { Name: string; IPv4Address: string }> | null;
+  IPAM: { Config: { Subnet?: string; Gateway?: string }[] | null };
+}
+
 export interface ExecRun {
   stdin: Buffer | null;
   // The allocator stops waiting after this (the program itself is held to its own limit inside the container).
@@ -318,19 +328,41 @@ export class DockerEngine {
 
   // ---- networks ----------------------------------------------------------------------------------------------------
 
-  async networkInspect(name: string): Promise<{ Id: string; Name: string; Internal: boolean; Containers: Record<string, { Name: string; IPv4Address: string }> | null; IPAM: { Config: { Subnet?: string; Gateway?: string }[] | null } } | null> {
+  async networkInspect(name: string): Promise<NetworkInspect | null> {
     const r = await this.send("GET", await this.api(`/networks/${encodeURIComponent(name)}`));
     if (r.status === 404) return null;
     if (r.status !== 200) throw new DockerError(r.status, message(r.body), `inspect network ${name}`);
-    return JSON.parse(r.body.toString("utf8")) as never;
+    return JSON.parse(r.body.toString("utf8")) as NetworkInspect;
   }
 
-  async networkCreate(body: { Name: string; Internal: boolean; Labels?: Record<string, string> }): Promise<string> {
-    const r = await this.json<{ Id: string }>("POST", "/networks/create", `create network ${body.Name}`, [201], { Driver: "bridge", CheckDuplicate: true, ...body });
-    return r.Id;
+  // The network's id; `null` when one of that name already exists (409).
+  async networkCreate(body: { Name: string; Internal: boolean; Labels?: Record<string, string>; IPAM?: { Config: { Subnet: string }[] } }): Promise<string | null> {
+    const r = await this.send("POST", await this.api("/networks/create"), { Driver: "bridge", CheckDuplicate: true, ...body });
+    if (r.status === 409) return null;
+    if (r.status !== 201) throw new DockerError(r.status, message(r.body), `create network ${body.Name}`);
+    return (JSON.parse(r.body.toString("utf8")) as { Id: string }).Id;
   }
 
-  async networkRemove(name: string): Promise<void> {
-    await this.call("DELETE", `/networks/${encodeURIComponent(name)}`, `remove network ${name}`, [204, 404]);
+  async networkList(labels: Record<string, string>): Promise<{ Id: string; Name: string; Internal: boolean; Labels: Record<string, string> | null; IPAM: { Config: { Subnet?: string }[] | null } }[]> {
+    const filters = { label: Object.entries(labels).map(([k, v]) => `${k}=${v}`) };
+    return this.json("GET", `/networks?filters=${encodeURIComponent(JSON.stringify(filters))}`, "list networks");
+  }
+
+  // Connected (or already so): "connected" | "already".
+  async networkConnect(network: string, container: string, aliases: string[]): Promise<"connected" | "already"> {
+    const r = await this.send("POST", await this.api(`/networks/${encodeURIComponent(network)}/connect`), { Container: container, EndpointConfig: { Aliases: aliases } });
+    if (r.status === 200) return "connected";
+    if (r.status === 403 && /already exists|already attached/i.test(message(r.body))) return "already";
+    throw new DockerError(r.status, message(r.body), `connect ${container} to ${network}`);
+  }
+
+  async networkDisconnect(network: string, container: string): Promise<void> {
+    const r = await this.send("POST", await this.api(`/networks/${encodeURIComponent(network)}/disconnect`), { Container: container, Force: true });
+    if (r.status !== 200 && r.status !== 404 && !(r.status === 403 && /not connected/i.test(message(r.body)))) throw new DockerError(r.status, message(r.body), `disconnect ${container} from ${network}`);
+  }
+
+  async networkRemove(name: string): Promise<"removed" | "not_found"> {
+    const r = await this.call("DELETE", `/networks/${encodeURIComponent(name)}`, `remove network ${name}`, [204, 404]);
+    return r.status === 204 ? "removed" : "not_found";
   }
 }

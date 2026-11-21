@@ -45,8 +45,7 @@ x-hardened: &hardened
 
 x-employees: &employees
   ORBIT_WEB_SANDBOX_PREFIX: orbit-web-governed
-  ORBIT_WEB_SANDBOX_NETWORK: orbit-web-governed-sandbox
-  ORBIT_WEB_MODEL_NETWORK: orbit-web-governed-model
+  ORBIT_WEB_SANDBOX_HOST: orbit-web
   ORBIT_WEB_ALLOCATOR_SECRET_FILE: /run/secrets/orbit-allocator
 
 services:
@@ -133,7 +132,6 @@ services:
       - agent
       - db
       - control
-      - sandbox
       - model
     cpus: ${ORBIT_WEB_CPUS:-1.0}
     mem_limit: ${ORBIT_WEB_MEMORY:-2g}
@@ -187,7 +185,10 @@ services:
       ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.0}
       ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
       ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
-      ORBIT_WEB_DATA_VOLUME: orbit-web-governed_orbit-web-data
+      ORBIT_WEB_DATA_VOLUME: ${COMPOSE_PROJECT_NAME}_orbit-web-data
+      # This project's Orbit Web container: connected to every attempt's two internal networks, their only other member.
+      ORBIT_WEB_CONTROL_CONTAINER: ${COMPOSE_PROJECT_NAME}-orbit-web-1
+      ORBIT_WEB_ATTEMPT_SUBNETS: ${ORBIT_WEB_ATTEMPT_SUBNETS:-}
       ORBIT_WEB_WORKFORCE_VOLUME: orbit-web-governed-workforce
       ORBIT_WEB_WORKFORCE_STORE_VOLUME: orbit-web-governed-workforce-store
       ORBIT_WEB_WORKFORCE_POOL_SIZE: ${ORBIT_WEB_WORKFORCE_POOL_SIZE:-20g}
@@ -248,12 +249,8 @@ networks:
   # Orbit Web and the allocator, alone.
   control:
     internal: true
-  # The employees' tool planes and model planes (named: the allocator attaches each attempt by name).
-  sandbox:
-    name: orbit-web-governed-sandbox
-    internal: true
+  # A connection's sign-in and the model-plane egress, alone; each attempt has networks of its own (see compose.yaml).
   model:
-    name: orbit-web-governed-model
     internal: true
 
 secrets:

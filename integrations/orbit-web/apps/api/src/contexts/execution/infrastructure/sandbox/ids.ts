@@ -49,6 +49,24 @@ export const planeNames = (prefix: string, dispatchKey: string): PlaneNames => {
   return { tool: `${prefix}-tp-${h}`, model: `${prefix}-mp-${h}` };
 };
 
+// Each plane's own internal network: its container and Orbit Web's are its only members, so no attempt -- of this
+// account or another -- can reach a port another attempt listens on, and no model plane another's runner.
+export const attemptNetworks = (prefix: string, dispatchKey: string): PlaneNames => {
+  const h = attemptHash(dispatchKey);
+  return { tool: `${prefix}-tn-${h}`, model: `${prefix}-mn-${h}` };
+};
+
+// The /28 networks the given IPv4 ranges hold, in order ("10.0.0.0/27": 10.0.0.0/28, then 10.0.0.16/28).
+export function* subnetBlocks(ranges: readonly string[], bits = 28): Generator<string> {
+  for (const r of ranges) {
+    const [ip = "", len = "32"] = r.split("/");
+    const base = ip.split(".").reduce((n, o) => n * 256 + Number(o), 0);
+    const size = 2 ** (32 - Number(len));
+    const start = base - (base % size);
+    for (let a = start; a < start + size; a += 2 ** (32 - bits)) yield `${[24, 16, 8, 0].map((sh) => Math.floor(a / 2 ** sh) % 256).join(".")}/${bits}`;
+  }
+}
+
 // The token the model plane's runner asks for before it starts anything: one per attempt, derived from the secret Orbit
 // Web and the allocator share, so neither has to store it and one attempt's token opens no other attempt's runner.
 export const runnerToken = (secret: string, dispatchKey: string): string => createHmac("sha256", secret).update(`orbit-web model-plane runner\n${dispatchKey}`, "utf8").digest("hex");
@@ -67,7 +85,7 @@ export const LABELS = {
   prefix: "orbit-web.prefix",
 } as const;
 
-export type ContainerRole = "tool-plane" | "model-plane" | "storage-helper" | "storage-worker" | "probe";
+export type ContainerRole = "tool-plane" | "model-plane" | "tool-network" | "model-network" | "storage-helper" | "storage-worker" | "probe";
 
 export interface AttemptLabelInput extends EmployeeIds {
   dispatchKey: string;
@@ -76,7 +94,7 @@ export interface AttemptLabelInput extends EmployeeIds {
   fence: number;
 }
 
-export function attemptLabels(prefix: string, a: AttemptLabelInput, role: "tool-plane" | "model-plane"): Record<string, string> {
+export function attemptLabels(prefix: string, a: AttemptLabelInput, role: "tool-plane" | "model-plane" | "tool-network" | "model-network"): Record<string, string> {
   return {
     [LABELS.managed]: "1",
     [LABELS.prefix]: prefix,

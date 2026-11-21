@@ -16,7 +16,7 @@ import type { AttemptHandle, AttemptSpec, HostCapabilities } from "../../src/con
 import { AllocatorClient } from "../../src/contexts/execution/infrastructure/sandbox/allocator-client.js";
 import { AllocatorError } from "../../src/contexts/execution/infrastructure/sandbox/allocator-protocol.js";
 import type { ContainerSandboxProvider } from "../../src/contexts/execution/infrastructure/sandbox/container-provider.js";
-import { runnerToken } from "../../src/contexts/execution/infrastructure/sandbox/ids.js";
+import { attemptNetworks, runnerToken } from "../../src/contexts/execution/infrastructure/sandbox/ids.js";
 import { RunnerProcessPort } from "../../src/infra/process/runner-port.js";
 import { createLab, dockerUnavailable, ensureImages, type Lab } from "./harness.js";
 
@@ -112,7 +112,7 @@ describe("an employee's attempt in real containers", { skip: skip ?? false, time
     const storageFails = caps.storage.perArea === "HARD_ENFORCED" ? [] : ["storage_enforcement"];
     assert.deepEqual(failed, storageFails);
     assert.equal(e.attestation.shell, storageFails.length === 0);
-    for (const name of ["tool_plane_limits_applied", "tool_plane_limits_observed", "model_plane_limits_observed", "tool_plane_mounts", "tool_plane_mount_roots", "model_plane_mounts", "no_managed_settings", "credential_canary", "sibling_desk_canary", "no_docker_socket", "direct_egress", "public_dns", "no_database", "no_model_plane", "tmp_quota"]) assert.ok(e.attestation.checks.some((c) => c.name === name && c.ok), name);
+    for (const name of ["attempt_networks", "tool_plane_limits_applied", "tool_plane_limits_observed", "model_plane_limits_observed", "tool_plane_mounts", "tool_plane_mount_roots", "model_plane_mounts", "no_managed_settings", "credential_canary", "sibling_desk_canary", "no_docker_socket", "direct_egress", "public_dns", "no_database", "no_model_plane", "tmp_quota"]) assert.ok(e.attestation.checks.some((c) => c.name === name && c.ok), name);
     assert.deepEqual(e.applied && [e.applied.cpuMillis, e.applied.memoryMiB, e.applied.pidsLimit], [1000, 512, 128]);
     assert.deepEqual(e.observed && [e.observed.cpuQuota, e.observed.memoryLimit, e.observed.pidsMax], ["100000/100000", String(512 * MiB), "128"]);
   });
@@ -134,7 +134,7 @@ describe("an employee's attempt in real containers", { skip: skip ?? false, time
       const v = await port.run("claude", ["--version"], { cwd: handle.modelPlaneCwd, env: { HOME: handle.modelPlaneCwd, LANG: "C.UTF-8", NO_COLOR: "1", CLAUDE_CONFIG_DIR: `${handle.modelPlaneHome}/claude` }, timeoutMs: 60_000 });
       assert.match(v.stdout, /Claude Code/, `${v.stdout} ${v.stderr} ${v.spawnError ?? ""}`);
     }
-    const ip = (await lab.engine.containerInspect(handle.modelPlane as string))?.NetworkSettings.Networks?.[lab.config.names.modelNetwork]?.IPAddress as string;
+    const ip = (await lab.engine.containerInspect(handle.modelPlane as string))?.NetworkSettings.Networks?.[attemptNetworks(lab.prefix, "run-a:1").model]?.IPAddress as string;
     const other = await new RunnerProcessPort(ip, 7070, runnerToken(lab.secret, "run-b:1")).run("node", ["-e", "process.stdout.write('ran')"], { cwd: "/workdir", env: {}, timeoutMs: 10_000 });
     assert.deepEqual([other.stdout, other.spawnError], ["", "ERUNNERLOST"]);
   });
@@ -264,6 +264,44 @@ print(len(pids), err)
     }
   });
 
+  test("two attempts cannot reach each other's ports or runners -- each plane has a network of its own -- yet both reach the proxy", async (t: TestContext) => {
+    const specB = spec(idsB(), "run-b:3", "asg-b3");
+    await provider.prepareWorkspace(idsB(), "asg-b3", 256);
+    const hb = await timed("start B (isolation)", () => provider.startAttempt(specB));
+    const ipOf = async (container: string, network: string) => (await lab.engine.containerInspect(container))?.NetworkSettings.Networks?.[network]?.IPAddress ?? "";
+    const netsA = attemptNetworks(lab.prefix, handle.dispatchKey);
+    const netsB = attemptNetworks(lab.prefix, hb.dispatchKey);
+    const toolA = await ipOf(handle.toolPlane, netsA.tool);
+    const modelA = await ipOf(handle.modelPlane as string, netsA.model);
+    t.diagnostic(`A: tool plane ${toolA} on ${netsA.tool}, model plane ${modelA} on ${netsA.model}; B on ${netsB.tool} and ${netsB.model}`);
+    // A listens; it answers itself.
+    const listen = await run(lab, provider, handle, "setsid node -e \"require('net').createServer(s=>s.end('A-listens')).listen(8000,'0.0.0.0')\" >/dev/null 2>&1 & sleep 1; node -e \"require('net').connect(8000,'127.0.0.1').on('data',d=>process.stdout.write(String(d)))\"");
+    assert.equal(listen.stdout, "A-listens");
+    const probe = (host: string, port: number) => `node -e "const s=require('net').connect(${port},'${host}');s.setTimeout(3000,()=>{console.log('TIMEOUT');s.destroy()});s.on('connect',()=>{console.log('CONNECTED');s.destroy()});s.on('error',e=>console.log(e.code))"`;
+    // B's tool plane cannot reach A's listening port; B's model plane cannot reach A's runner.
+    const fromB = await run(lab, provider, hb, probe(toolA, 8000));
+    assert.doesNotMatch(fromB.stdout, /CONNECTED/, fromB.stdout);
+    const fromModelB = await provider.modelPlane(hb).run("node", ["-e", `const s=require('net').connect(7070,'${modelA}');s.setTimeout(3000,()=>{console.log('TIMEOUT');s.destroy()});s.on('connect',()=>{console.log('CONNECTED');s.destroy()});s.on('error',e=>console.log(e.code))`], { cwd: "/workdir", env: {}, timeoutMs: 15_000 });
+    assert.doesNotMatch(fromModelB.stdout, /CONNECTED/, fromModelB.stdout);
+    t.diagnostic(`B -> A's port 8000: ${fromB.stdout.trim()}; B's model plane -> A's runner: ${fromModelB.stdout.trim()}`);
+    // Both still reach the proxy (Orbit Web's container, on each of their networks) -- tool planes and model planes alike.
+    for (const h of [handle, hb]) assert.equal((await run(lab, provider, h, "curl -sS -m 10 http://origin.test/both")).stdout, "origin-ok /both");
+    for (const h of [handle, hb]) assert.match((await provider.modelPlane(h).run("node", ["-e", "const s=require('net').connect(3128,'egress');s.on('connect',()=>{console.log('CONNECTED');s.destroy()});s.on('error',e=>console.log(e.code))"], { cwd: "/workdir", env: {}, timeoutMs: 15_000 })).stdout, /CONNECTED/);
+    // Each network: its plane and the proxy, nothing else.
+    const control = await lab.engine.containerInspect(`${lab.prefix}-proxy`);
+    for (const [net, own] of [[netsB.tool, hb.toolPlane], [netsB.model, hb.modelPlane as string]] as const) assert.deepEqual(Object.keys((await lab.engine.networkInspect(net))?.Containers ?? {}).sort(), [own, control?.Id ?? ""].sort());
+    // A crash right after the networks were made, before the containers: recovery finds what is left, and removes it.
+    await lab.engine.containerRemove(hb.toolPlane, true);
+    await lab.engine.containerRemove(hb.modelPlane as string, true);
+    const left = await provider.find(hb.dispatchKey);
+    assert.ok(left !== null, "networks without their containers are still found");
+    assert.deepEqual([left.handle.toolPlane, left.handle.modelPlane, left.toolPlaneRunning], ["", null, false]);
+    assert.equal((await provider.remove(left.handle)).gone, true);
+    assert.deepEqual([await lab.engine.networkInspect(netsB.tool), await lab.engine.networkInspect(netsB.model)], [null, null]);
+    assert.equal(await provider.find(hb.dispatchKey), null);
+    assert.equal((await provider.removeWorkspace(idsB(), "asg-b3")).gone, true);
+  });
+
   test("publish: refused on a stale desk version; the same assignment's retry gets its answer again", async () => {
     const stale = await provider.publishWorkspace(idsA(), "asg-other", 0);
     assert.deepEqual([stale.published, stale.deskVersion], [false, 1]);
@@ -288,6 +326,8 @@ print(len(pids), err)
     assert.equal(await lab.engine.containerInspect(handle.toolPlane), null);
     assert.equal(await lab.engine.containerInspect(handle.modelPlane as string), null);
     assert.equal(await reborn.find(handle.dispatchKey), null);
+    const nets = attemptNetworks(lab.prefix, handle.dispatchKey);
+    assert.deepEqual([await lab.engine.networkInspect(nets.tool), await lab.engine.networkInspect(nets.model)], [null, null], "the attempt's networks went with it");
   });
 
   test("the workspace is removed (read back), and removing it again answers gone", async () => {

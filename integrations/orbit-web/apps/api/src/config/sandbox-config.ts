@@ -14,8 +14,13 @@
 //   ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE   the model plane's image (target `model-plane`)
 //   ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER the storage helper's image (target `storage-helper`)
 //   ORBIT_WEB_SANDBOX_PREFIX              the prefix of every container and volume the allocator names
-//   ORBIT_WEB_SANDBOX_NETWORK             the tool planes' internal network (its only way out: Orbit's egress proxy)
-//   ORBIT_WEB_MODEL_NETWORK               the model planes' internal network
+//   ORBIT_WEB_CONTROL_CONTAINER           Orbit Web's container (default orbit-web; "none": no container to connect):
+//                                         the allocator connects it to every attempt's own two internal networks, the
+//                                         only other member of each -- the egress proxies and the tool endpoint
+//   ORBIT_WEB_SANDBOX_HOST                the name an attempt reaches Orbit Web by on those networks (default orbit-web)
+//   ORBIT_WEB_ATTEMPT_SUBNETS             IPv4 ranges (CIDR, comma-separated) the attempts' networks are cut from, /28
+//                                         each; unset: the container runtime's own address pools (a few dozen networks
+//                                         on a default Docker -- two per running attempt)
 //   ORBIT_WEB_DATA_VOLUME                 Orbit Web's data volume, whose connections room holds each connection's home
 //   ORBIT_WEB_WORKFORCE_VOLUME / _STORE_VOLUME  the workforce areas, and (pool mechanisms) the pool's image file
 //   ORBIT_WEB_WORKFORCE_POOL_SIZE         the size of a loop-backed pool (default 20g), preallocated unless
@@ -51,7 +56,10 @@ export interface SandboxConfig {
   // The allocator's side.
   allocatorServer: { bind: string; port: number; secretFile: string; dockerSocket: string; stateDir: string };
   images: { workstation: string; modelPlane: string; storageHelper: string };
-  names: { prefix: string; sandboxNetwork: string; modelNetwork: string; dataVolume: string; workforceVolume: string; workforceStoreVolume: string };
+  names: { prefix: string; dataVolume: string; workforceVolume: string; workforceStoreVolume: string };
+  // Each attempt's two networks hold its plane and Orbit Web's container (under `alias`), nothing else.
+  control: { container: string | null; alias: string };
+  attemptSubnets: string[];
   pool: { sizeMiB: number; preallocate: boolean };
   acceptSoftStorage: boolean;
   // The operator's figures, used instead of what the runtime reports (null: detected).
@@ -159,6 +167,24 @@ const image = (raw: string | undefined, fallback: string, name: string): string 
   return v;
 };
 
+const hostName = (raw: string | undefined, fallback: string, name: string): string => {
+  const v = given(raw) ? raw.trim() : fallback;
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,61}[A-Za-z0-9])?$/.test(v)) throw new SandboxConfigError(`${name} must be a host name`);
+  return v;
+};
+
+// "10.231.0.0/16,172.16.0.0/20": IPv4 ranges at least a /28 wide, each cut into /28 networks.
+export function parseSubnets(raw: string | undefined): string[] {
+  if (!given(raw)) return [];
+  return raw.split(",").map((c) => {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(c.trim());
+    const octets = m === null ? [] : m.slice(1, 5).map(Number);
+    const bits = m === null ? NaN : Number(m[5]);
+    if (m === null || octets.some((o) => o > 255) || !(bits >= 8 && bits <= 28)) throw new SandboxConfigError("ORBIT_WEB_ATTEMPT_SUBNETS must be IPv4 ranges from /8 to /28, comma-separated");
+    return c.trim();
+  });
+}
+
 function allocatorUrl(raw: string): string {
   let u: URL;
   try {
@@ -216,12 +242,15 @@ export function loadSandboxConfig(env: Env): SandboxConfig {
     },
     names: {
       prefix,
-      sandboxNetwork: dockerName(env.ORBIT_WEB_SANDBOX_NETWORK, `${prefix}-sandbox`, "ORBIT_WEB_SANDBOX_NETWORK"),
-      modelNetwork: dockerName(env.ORBIT_WEB_MODEL_NETWORK, `${prefix}-model`, "ORBIT_WEB_MODEL_NETWORK"),
       dataVolume: dockerName(env.ORBIT_WEB_DATA_VOLUME, "orbit-web_orbit-web-data", "ORBIT_WEB_DATA_VOLUME"),
       workforceVolume: dockerName(env.ORBIT_WEB_WORKFORCE_VOLUME, `${prefix}-workforce`, "ORBIT_WEB_WORKFORCE_VOLUME"),
       workforceStoreVolume: dockerName(env.ORBIT_WEB_WORKFORCE_STORE_VOLUME, `${prefix}-workforce-store`, "ORBIT_WEB_WORKFORCE_STORE_VOLUME"),
     },
+    control: {
+      container: env.ORBIT_WEB_CONTROL_CONTAINER?.trim() === "none" ? null : dockerName(env.ORBIT_WEB_CONTROL_CONTAINER, "orbit-web", "ORBIT_WEB_CONTROL_CONTAINER"),
+      alias: hostName(env.ORBIT_WEB_SANDBOX_HOST, "orbit-web", "ORBIT_WEB_SANDBOX_HOST"),
+    },
+    attemptSubnets: parseSubnets(env.ORBIT_WEB_ATTEMPT_SUBNETS),
     pool: {
       sizeMiB: given(env.ORBIT_WEB_WORKFORCE_POOL_SIZE) ? parseMiB(env.ORBIT_WEB_WORKFORCE_POOL_SIZE, "ORBIT_WEB_WORKFORCE_POOL_SIZE") : 20 * 1024,
       preallocate: env.ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE !== "0",

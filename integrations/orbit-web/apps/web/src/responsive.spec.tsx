@@ -17,8 +17,10 @@ import { NewResearchSession } from "./features/research/NewResearchSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
 import { AccessPage } from "./pages/AccessPage";
+import { OfficeView } from "./features/office/OfficeView";
 import { fakeApi } from "./testing/fakeApi";
-import { ACCOUNT_ID, SESSION_ID, authStatus, authUser, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, sessionViews, settings, setupStatus, sources } from "./testing/fixtures";
+import { EMP_ANA, connectionsView, employeeDetail, roster } from "./testing/officeFixtures";
+import { ACCOUNT_ID, SESSION_ID, authAccount, authStatus, authUser, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, sessionViews, settings, setupStatus, sources } from "./testing/fixtures";
 import { researchDetail, workspaceSummary, WORKSPACE_ID } from "./testing/researchFixtures";
 import { renderLive, renderUi } from "./testing/render";
 
@@ -373,5 +375,31 @@ describe("responsive mobile-first layout", () => {
     expect(css).toContain(".fui-Input__input");
     expect(css).toContain(".fui-Textarea__textarea");
     expect(css).toContain("font-size: 16px !important;");
+  });
+
+  test("the office on a phone: the filters in a menu, and an employee or a mission as its own screen with Back", async () => {
+    mobileViewport();
+    fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail());
+    const go = vi.fn();
+    const view = renderLive(<OfficeView page="overview" item={null} tab={null} go={go} account={authAccount()} />);
+    expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Office" })).toBeInTheDocument();
+    // The pickers wait in a sheet behind one button, beside the search.
+    expect(screen.queryByRole("combobox", { name: "Department" })).toBeNull();
+    expect(screen.getByRole("searchbox", { name: "Search employees" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    expect(await screen.findByRole("combobox", { name: "Department" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    view.unmount();
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab={null} go={go} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Back" }));
+    expect(go).toHaveBeenCalledWith("overview");
+    // On a phone a detail screen gives the office's tabs' room to the record.
+    expect(screen.queryByRole("navigation", { name: "Office" })).toBeNull();
+    expect(screen.getByRole("tablist", { name: "Employee" })).toBeInTheDocument();
   });
 });

@@ -63,13 +63,19 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
       <Field label="Office name">
         <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
       </Field>
-      <Field label="Start with example departments" hint="Untick any you do not want; you can add, rename and archive departments later.">
+      <div role="group" aria-label="Start with example departments" className={o.stack}>
+        <Text weight="semibold" size={300}>
+          Start with example departments
+        </Text>
         <div className={o.row}>
           {EXAMPLES.map((d) => (
             <Checkbox key={d} label={d} checked={examples[d] === true} onChange={(_, c) => setExamples((x) => ({ ...x, [d]: c.checked === true }))} />
           ))}
         </div>
-      </Field>
+        <Text size={200} className={o.muted}>
+          Untick any you do not want; you can add, rename and archive departments later.
+        </Text>
+      </div>
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>

@@ -8,7 +8,7 @@ import { ASSIGNMENT_STATE_TEXT, DELIVERY_STATE_TEXT, type AssignmentView, type D
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { sizeText } from "../resources/format";
-import { office, useOfficeRead, type AssignmentCommand } from "./api";
+import { isNotServed, office, useOfficeRead, type AssignmentCommand } from "./api";
 import { AsOf, ProblemBar, RUN_STATE_TEXT, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
 import { RunDetails } from "./RunDetails";
 
@@ -145,7 +145,7 @@ function Delivery({ d, onDone }: { d: DeliveryView; onDone: () => void }) {
           aria-label={`Settle the delivery to ${d.recipient.address}`}
           onSubmit={(e) => {
             e.preventDefault();
-            void act.run(() => office.resolveDelivery(d.id, { outcome, reason: reason.trim() })).then((ok) => ok && onDone());
+            void act.run(() => office.resolveDelivery(d.id, { outcome, reason: reason.trim() }).catch((err: unknown) => Promise.reject(isNotServed(err) ? new Error("Deliveries are not served by this Orbit Web yet: nothing was recorded.") : err))).then((ok) => ok && onDone());
           }}
         >
           <RadioGroup value={outcome} onChange={(_, v) => setOutcome(v.value as "delivered" | "resend")}>

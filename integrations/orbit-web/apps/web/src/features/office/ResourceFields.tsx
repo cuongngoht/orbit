@@ -2,7 +2,7 @@
 // custom values, each a number field beside a slider -- CPU, memory, desk storage, scratch storage, the dependency cache --
 // and the process and time limits. What a value breaks is said beside it: the account's per-employee limits (the API
 // refuses past them) and the bounds every profile keeps. Beside the fields, the account's budget as it stands now.
-import { Field, Input, MessageBar, MessageBarBody, Slider, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Input, MessageBar, MessageBarBody, Slider, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { RESOURCE_BOUNDS, ceilingProblems, checkResourceProfile, type PerEmployeeCeiling, type ResourcePreset, type ResourceProfile, type ResourceSummary, type RuntimeKind } from "@orbit-web/contracts";
 import { useState } from "react";
 import { cpuText, fromGiB, fromVcpu, sizeText, toGiB, toVcpu } from "../resources/format";
@@ -31,6 +31,7 @@ const useStyles = makeStyles({
   },
   presetOn: { ...shorthands.borderColor(tokens.colorBrandStroke1), backgroundColor: tokens.colorSubtleBackgroundSelected },
   fields: { display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 },
+  field: { display: "flex", flexDirection: "column", gap: "4px", minWidth: 0 },
   pair: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 110px", gap: "10px", alignItems: "end", "@media (max-width: 479px)": { gridTemplateColumns: "minmax(0, 1fr)" } },
   slider: { width: "100%", minWidth: 0 },
   aside: { display: "flex", flexDirection: "column", gap: "8px", paddingTop: "12px", paddingRight: "14px", paddingBottom: "12px", paddingLeft: "14px", borderRadius: "12px", backgroundColor: tokens.colorNeutralBackground2, alignSelf: "start", minWidth: 0 },
@@ -188,12 +189,18 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
           const step = spec.unit === "vCPU" ? 0.25 : spec.unit === "GiB" ? 0.25 : 1;
           const label = `${spec.label} (${spec.unit})`;
           return (
-            <Field key={spec.key} label={label} hint={spec.hint}>
+            <div key={spec.key} className={s.field} role="group" aria-label={spec.label}>
+              <Text weight="semibold" size={300}>
+                {label}
+              </Text>
               <div className={s.pair}>
                 {spec.slider ? <Slider className={s.slider} aria-label={`${spec.label} slider`} min={min} max={sliderMax(spec, ceiling, value[spec.key])} step={step} value={field} onChange={(_, d) => set(spec, d.value)} /> : <span />}
                 <NumberInput label={label} value={field} onValue={(v) => set(spec, v)} min={min} max={toField(spec, b.max)} step={step} />
               </div>
-            </Field>
+              <Text size={200} className={o.muted}>
+                {spec.hint}
+              </Text>
+            </div>
           );
         })}
         {problems.length > 0 && (

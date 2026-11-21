@@ -35,7 +35,7 @@ import type {
 } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource, type Resource } from "../../hooks/useResource";
-import { get, idempotent, ifMatch, send } from "../../services/api";
+import { ApiError, get, idempotent, ifMatch, send } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
 
 export interface RosterQuery {
@@ -91,6 +91,15 @@ export const office = {
   occurrences: (scheduleId: string) => get<OccurrenceView[]>(`/api/schedules/${id(scheduleId)}/occurrences`),
   resolveDelivery: (deliveryId: string, body: ResolveDeliveryRequest) => send<DeliveryView>("POST", `/api/deliveries/${id(deliveryId)}/resolve`, body),
   artifactHref: (artifactId: string) => `/api/artifacts/${id(artifactId)}/content`,
+};
+
+// A route this Orbit Web does not serve (yet): schedules and deliveries come after the rest of the office, and until then
+// their routes answer 404 -- said as such by the page, never a crash and never "nothing scheduled".
+export const NOT_SERVED = "not_served" as const;
+export const isNotServed = (err: unknown): boolean => err instanceof ApiError && err.status === 404;
+export const unlessNotServed = (err: unknown): typeof NOT_SERVED => {
+  if (isNotServed(err)) return NOT_SERVED;
+  throw err;
 };
 
 // A read of the office, read again when the office says one of `areas` changed (or the mission it shows), and whenever

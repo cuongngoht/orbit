@@ -26,7 +26,7 @@ import { browserTimeZone, TimeZoneSelect } from "../../components/TimeZoneSelect
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { errorText } from "../../services/api";
-import { office, useOfficeRead } from "./api";
+import { NOT_SERVED, office, unlessNotServed, useOfficeRead } from "./api";
 import { AsOf, ProblemBar, useAction, useOfficeStyles } from "./parts";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
@@ -56,8 +56,9 @@ const deliveryText = (o: OccurrenceView): string => (o.delivery === "none" ? "No
 
 function Occurrences({ schedule, go }: { schedule: ScheduleView; go: Go }) {
   const o = useOfficeStyles();
-  const list = useOfficeRead<OccurrenceView[]>(() => office.occurrences(schedule.id), [schedule.id], ["schedules", "missions"]);
+  const list = useOfficeRead<OccurrenceView[] | typeof NOT_SERVED>(() => office.occurrences(schedule.id).catch(unlessNotServed), [schedule.id], ["schedules", "missions"]);
   if (list.data === null) return list.error ? <Text className={o.danger}>{list.error}</Text> : <Spinner size="tiny" label="Reading its occurrences…" />;
+  if (list.data === NOT_SERVED) return <Text className={o.muted}>Its occurrences are not available on this Orbit Web yet.</Text>;
   if (list.data.length === 0) return <Text className={o.muted}>No period has come yet.</Text>;
   return (
     <ul className={o.list} aria-label={`Occurrences of ${schedule.name}`}>
@@ -353,8 +354,16 @@ function NewSchedule({ account, onCreated, onCancel }: { account: AuthAccount | 
 
 export function SchedulePage({ go, account }: { go: Go; account: AuthAccount | null }) {
   const o = useOfficeStyles();
-  const list = useOfficeRead<ScheduleView[]>(() => office.schedules(), [], ["schedules"]);
+  const list = useOfficeRead<ScheduleView[] | typeof NOT_SERVED>(() => office.schedules().catch(unlessNotServed), [], ["schedules"]);
   const [creating, setCreating] = useState(false);
+  if (list.data === NOT_SERVED)
+    return (
+      <div className={o.page}>
+        <MessageBar intent="info" layout="multiline">
+          <MessageBarBody>Schedules are not available on this Orbit Web yet: it does not serve them. Work you assign by hand is not affected.</MessageBarBody>
+        </MessageBar>
+      </div>
+    );
   return (
     <div className={o.page}>
       <div className={o.between}>

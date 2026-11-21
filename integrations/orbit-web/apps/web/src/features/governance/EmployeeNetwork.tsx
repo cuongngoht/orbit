@@ -109,7 +109,7 @@ export function EmployeeNetworkSection({ value, editable, onChange }: { value: E
     onChange({ ...current, ...(Object.keys(limits).length > 0 ? { limits } : { limits: undefined }) });
   };
   return (
-    <Card title="Employee network access" description="What an employee's sandbox may reach on the internet. Chats and research keep their own rules.">
+    <Card label="Employee network access" title="Employee network access" description="What an employee's sandbox may reach on the internet. Chats and research keep their own rules.">
       {value === null && (
         <Text size={200} className={p.muted}>
           This revision does not say, so employee runs use Autonomous.{editable ? " Changing it here adds it to the draft." : ""}

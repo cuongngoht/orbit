@@ -155,10 +155,16 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
               <Field label="Goal" required hint="What you want done, as you would tell a colleague.">
                 <Textarea value={goal} resize="vertical" rows={4} onChange={(_, d) => setGoal(d.value)} />
               </Field>
-              <Field label="Deliverables" hint="Files it must hand in (a plain file name each).">
+              <div role="group" aria-label="Deliverables" className={o.stack}>
+                <Text weight="semibold" size={300}>
+                  Deliverables
+                </Text>
+                <Text size={200} className={o.muted}>
+                  Files it must hand in (a plain file name each).
+                </Text>
                 <div className={o.stack}>
                   {deliverables.length > 0 && (
-                    <ul className={o.list} aria-label="Deliverables">
+                    <ul className={o.list} aria-label="Deliverables to hand in">
                       {deliverables.map((d) => (
                         <li key={d.name} className={s.deliverable}>
                           <Text>{d.name}</Text>
@@ -178,7 +184,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     </Button>
                   </div>
                 </div>
-              </Field>
+              </div>
               <Field label="Acceptance criteria" hint="Optional, one per line: what makes the result acceptable.">
                 <Textarea value={criteria} resize="vertical" rows={3} onChange={(_, d) => setCriteria(d.value)} />
               </Field>

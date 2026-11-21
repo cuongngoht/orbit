@@ -7,7 +7,7 @@ import { takeAccessLink } from "./services/accessLink";
 import { fakeApi, withStatus, type FakeApi } from "./testing/fakeApi";
 import { FakeEventSource } from "./testing/fakeEventSource";
 import { pushApp } from "./testing/events";
-import { SESSION_ID, accountView, claudeStatus, idleFlow, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
+import { SESSION_ID, accountView, claudeStatus, governanceOverview, idleFlow, sessionDetail, sessionSummary, settings, setupStatus, signedOutClaude, sources } from "./testing/fixtures";
 
 const refused = (status: number, code: string, message: string) => withStatus(status, { error: { code, message } });
 
@@ -226,5 +226,18 @@ describe("signed in: the workspace, as in Claude Code", () => {
     unmount();
     render(<App />);
     expect(await screen.findByRole("button", { name: "Open the sidebar" })).toBeInTheDocument();
+  });
+
+  test("Governance opens with the sign-in itself: the account's own console, its header naming the account, with no second sign-in", async () => {
+    const api = signedIn().on("GET", "/api/governance/overview", () => governanceOverview());
+    render(<App />);
+    const sidebar = await screen.findByRole("navigation", { name: "Orbit" });
+    await userEvent.click(within(sidebar).getByRole("button", { name: "Governance" }));
+    expect(await screen.findByText("Policy in effect")).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/governance/overview");
+    expect(screen.getByText("Governance · Overview")).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).getAllByText("octo@example.com").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText(/password/i)).toBeNull();
+    expect(api.calls.filter((c) => c.path.startsWith("/api/governance")).map((c) => `${c.method} ${c.path}`)).toEqual(["GET /api/governance/overview"]);
   });
 });

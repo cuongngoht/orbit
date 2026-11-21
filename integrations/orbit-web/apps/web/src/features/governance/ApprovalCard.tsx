@@ -1,17 +1,16 @@
-// ONE PROTECTED ACTION waiting for -- or decided by -- a person: exactly what it is (the action's bound parameters and
-// their fingerprint), what it would change (read from Orbit Web's own copy of the repository, never the agent's
-// workspace), and the decision. Approving binds the fingerprint shown here; for a push, Orbit Web then pushes at once.
+// ONE PROTECTED ACTION waiting for -- or decided by -- the account's owner: exactly what it is (the action's bound
+// parameters and their fingerprint), what it would change (read from Orbit Web's own copy of the repository, never the
+// agent's workspace), and the decision, which is the owner's alone (an agent never decides one). Approving binds the
+// fingerprint shown here; for a push, Orbit Web then pushes at once.
 import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, tokens } from "@fluentui/react-components";
 import type { ApprovalView } from "@orbit-web/contracts";
 import { useState } from "react";
 import { errorText, send } from "../../services/api";
-import { useOperator } from "../../services/operator";
-import { Card, Word, useParts, when } from "./parts";
+import { Card, ErrorBar, Word, byWhom, useParts, when } from "./parts";
 
 // `inline`: the card is already the confirmation (a chat's Push dialog), so approving asks nothing more.
 export function ApprovalCard({ approval, onChanged, inline = false }: { approval: ApprovalView; onChanged: (a: ApprovalView) => void; inline?: boolean }) {
   const s = useParts();
-  const { can } = useOperator();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +34,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
           {approval.summary} <Word value={approval.state} />
         </>
       }
-      description={`${approval.action} · asked ${when(approval.requestedAt)} by ${approval.requestedBy}${approval.state === "pending" ? ` · waits until ${when(approval.expiresAt)}` : approval.decidedAt ? ` · decided ${when(approval.decidedAt)}` : ""}`}
+      description={`${approval.action} · asked ${when(approval.requestedAt)} by ${byWhom(approval.requestedBy)}${approval.state === "pending" ? ` · waits until ${when(approval.expiresAt)}` : approval.decidedAt ? ` · decided ${when(approval.decidedAt)}` : ""}`}
     >
       <div className={s.inset}>
         <table aria-label="What exactly is approved" style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -82,12 +81,8 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
           <MessageBarBody>{approval.outcome}</MessageBarBody>
         </MessageBar>
       )}
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
-      {can("approvals.decide") && approval.state === "pending" && (
+      <ErrorBar text={error} />
+      {approval.state === "pending" && (
         <div className={s.row}>
           <Button appearance="primary" disabled={busy} onClick={() => (inline ? act("grant", { fingerprint: approval.fingerprint }) : setConfirm(true))}>
             {inline ? (approval.action === "repository.push" ? (busy ? "Pushing…" : "Approve and push") : "Approve") : "Approve…"}
@@ -97,7 +92,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
           </Button>
         </div>
       )}
-      {can("approvals.decide") && approval.state === "granted" && (
+      {approval.state === "granted" && (
         <div>
           <Button disabled={busy} onClick={() => act("execute")}>
             Carry it out

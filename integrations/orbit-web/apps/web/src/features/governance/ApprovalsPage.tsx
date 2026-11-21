@@ -1,5 +1,6 @@
-// APPROVALS: the protected actions an agent or a person asked for, waiting for an operator who may decide them -- and
-// what became of the decided ones. A push is carried out by Orbit Web the moment it is approved.
+// APPROVALS: the protected actions your account's agents (or you) asked for, waiting for you to decide them -- you
+// alone, the account's owner -- and what became of the decided ones. A push is carried out by Orbit Web the moment it is
+// approved.
 import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
 import type { ApprovalList } from "@orbit-web/contracts";
 import { useState } from "react";

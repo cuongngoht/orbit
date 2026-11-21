@@ -1,6 +1,6 @@
 // What every page of the Governance console shares: a card, a page header, the badges that say a state in words, and
 // the way a time, a digest or a principal is written.
-import { Badge, Text, makeStyles, mergeClasses, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
+import { Badge, MessageBar, MessageBarBody, Text, makeStyles, mergeClasses, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
 import { ChevronDown16Regular, ChevronRight16Regular } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
 
@@ -378,11 +378,9 @@ const TONES: Record<string, Tone> = {
   deny: "danger",
   DRAFT: "subtle",
   VALIDATED: "informative",
-  PENDING_APPROVAL: "warning",
-  APPROVED: "brand",
   PUBLISHED: "success",
   SUPERSEDED: "subtle",
-  REJECTED: "danger",
+  DISCARDED: "subtle",
   pending: "warning",
   granted: "brand",
   rejected: "danger",
@@ -404,20 +402,17 @@ const TONES: Record<string, Tone> = {
   attested: "success",
   not_proven: "warning",
   failed: "danger",
-  GOVERNED_WORKSPACE: "brand",
-  LEGACY_ORBIT: "subtle",
   boundary: "success",
   control: "brand",
   runtime: "warning",
   none: "subtle",
+  overridden: "brand",
+  deleted: "subtle",
 };
 
 const LABELS: Record<string, string> = {
   require_approval: "requires approval",
-  PENDING_APPROVAL: "pending approval",
   not_proven: "not proven",
-  GOVERNED_WORKSPACE: "governed",
-  LEGACY_ORBIT: "legacy",
 };
 
 // A word of governance, said as a badge whose colour says how much it allows or how bad it is.
@@ -433,8 +428,31 @@ export const when = (iso: string | null | undefined): string => (iso ? new Date(
 
 export const short = (hex: string | null | undefined, n = 12): string => (hex ? hex.slice(0, n) : "—");
 
-// How a record names who did something: an operator's id is shown as their username when it is known.
-export function who(id: string | null | undefined, names: ReadonlyMap<string, string>): string {
-  if (!id) return "—";
-  return names.get(id) ?? id;
+// How a record names who did something (`owner:<account>`, `agent:<id>`, `system:<what>`), said for the account's owner
+// reading it: the owner is "you", Orbit Web's own work is Orbit Web's, an agent is named by its id.
+export function byWhom(label: string | null | undefined): string {
+  if (!label) return "—";
+  if (label.startsWith("owner:")) return "you";
+  if (label.startsWith("system:")) return "Orbit Web";
+  if (label.startsWith("agent:")) return `an agent (${short(label.slice("agent:".length), 16)})`;
+  if (label === "anonymous" || label === "agent-network") return "nobody verified";
+  return label;
+}
+
+// Who a record or a decision says acted, by its principal type: the owner (a person), one of the account's agents,
+// Orbit Web itself, or somebody nobody verified.
+export function principalOf(type: string, id: string, agentId: string | null): string {
+  if (type === "human") return "you";
+  if (type === "agent") return `agent ${short(agentId ?? id, 16)}`;
+  if (type === "system" || type === "service") return `Orbit Web (${id})`;
+  return "nobody verified";
+}
+
+export function ErrorBar({ text }: { text: string | null }) {
+  if (text === null) return null;
+  return (
+    <MessageBar intent="error">
+      <MessageBarBody>{text}</MessageBarBody>
+    </MessageBar>
+  );
 }

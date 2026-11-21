@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, SetupStatus } from "@orbit-web/contracts";
+import type { AccountView, Customizations, SetupStatus } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { fakeApi, type FakeApi } from "../../testing/fakeApi";
@@ -29,13 +29,15 @@ const CUSTOMIZATIONS: Customizations = {
   ],
 };
 
-function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "github" | "azure"; api?: FakeApi } = {}) {
+// The fake API answers the last route registered for a path: the account this dialog reads is given here, not registered
+// beside it.
+function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "github" | "azure"; api?: FakeApi; account?: AccountView } = {}) {
   let status = o.status ?? setupStatus();
   const api = (o.api ?? fakeApi())
     .on("GET", "/api/setup/status", () => status)
     .on("GET", "/api/customizations", () => CUSTOMIZATIONS)
     .on("PATCH", "/api/settings", (body) => settings(body as object))
-    .on("GET", "/api/account", () => accountView());
+    .on("GET", "/api/account", () => o.account ?? accountView());
   const signOut: SignOut = { signOut: vi.fn(async () => undefined), signOutAccount: vi.fn(async () => undefined), busy: false, error: null, clear: vi.fn() };
   const p: SettingsDialogProps = { section, connector: o.connector ?? null, claude: claudeStatus(), signOut, settings: settings(), onSettings: vi.fn(), onSection: vi.fn(), onClose: vi.fn() };
   renderLive(<SettingsDialog {...p} />);
@@ -74,10 +76,10 @@ describe("Settings: the sections, over the page", () => {
 
   test("Account: the account this browser is signed in to, its business name, its browsers, and the two ways out", async () => {
     const api = fakeApi()
-      .on("GET", "/api/account", () => accountView({ displayName: "Octo & Co", sessions: [...accountView().sessions, { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" }] }))
       .on("PUT", "/api/account", (body) => accountView(body as object))
       .on("DELETE", "/api/account/sessions/s-2", () => undefined);
-    const { signOut } = show("account", { api });
+    const signedIn = accountView({ displayName: "Octo & Co", sessions: [...accountView().sessions, { id: "s-2", current: false, createdAt: "2026-11-18T00:00:00.000Z", lastSeenAt: "2026-11-18T00:00:00.000Z", expiresAt: "2026-11-25T00:00:00.000Z", userAgent: "Safari on a phone" }] });
+    const { signOut } = show("account", { api, account: signedIn });
     const account = await screen.findByLabelText("Account");
     expect(await within(account).findByText("Octo & Co")).toBeInTheDocument();
     expect(account.textContent).toContain("octo@example.com");
@@ -126,6 +128,17 @@ describe("Settings: the sections, over the page", () => {
     const system = await screen.findByLabelText("System Status");
     expect(system.textContent).toContain("Everything is in place.");
     expect(system.textContent).toContain("0.6.0");
+    // The database, as PostgreSQL answers about itself -- never its address, its user or a connection string.
+    expect(system.textContent).toContain("PostgreSQL 17.6 · schema 3 · pgvector 0.8.1");
+    expect(system.textContent).not.toMatch(/postgres(ql)?:\/\//i);
+  });
+
+  test("System: a database that does not answer, or whose schema or pgvector is missing, is said so", async () => {
+    const status = setupStatus();
+    show("system", { status: { ...status, health: { ...status.health, status: "degraded", database: { ok: false, detail: "PostgreSQL does not answer.", server: null, schema: 2, latestSchema: 3, pgvector: null } } } });
+    const system = await screen.findByLabelText("System Status");
+    expect(system.textContent).toContain("Something here is not usable.");
+    expect(system.textContent).toContain("PostgreSQL does not answer. (PostgreSQL · schema 2 of 3 · pgvector not enabled)");
   });
 });
 

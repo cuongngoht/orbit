@@ -1,20 +1,19 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, GovernanceOverview, RevisionSummary } from "@orbit-web/contracts";
-import { defaultConstitution } from "@orbit-web/governance-core";
+import type { Customizations, RevisionSummary } from "@orbit-web/contracts";
+import { defaultAccountPolicy } from "@orbit-web/governance-core";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { ChatScreen } from "./features/chat/ChatScreen";
-import { ConstitutionPage } from "./features/governance/ConstitutionPage";
-import { ConstitutionTable } from "./features/governance/ConstitutionTable";
 import { GovernanceView } from "./features/governance/GovernanceView";
+import { PolicyPage } from "./features/governance/PolicyPage";
+import { PolicyTable } from "./features/governance/PolicyTable";
 import { NewSession } from "./features/newSession/NewSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
-import { resetOperatorStore } from "./services/operator";
 import { fakeApi } from "./testing/fakeApi";
-import { ORG, SESSION_ID, claudeStatus, governanceState, inventory, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
+import { ACCOUNT_ID, SESSION_ID, claudeStatus, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
 import { renderLive, renderUi } from "./testing/render";
 
 const originalMatchMedia = window.matchMedia;
@@ -217,20 +216,11 @@ describe("responsive mobile-first layout", () => {
 
   test("governance overview KPI cards jump straight to the right page and use pill navigation on mobile", async () => {
     mobileViewport();
-    resetOperatorStore();
-    const overview: GovernanceOverview = {
-      organization: ORG,
-      effective: null,
-      counts: { operators: 2, agents: 1, governedWorkspaces: 1, pendingApprovals: 3, openFindings: 0, revisionsInReview: 1 },
-      isolation: { deployment: "single", state: "not_proven", checkedAt: null, checks: [], detail: "Single container." },
-      audit: { count: 4, head: "h".repeat(64), lastVerification: null },
-    };
-    fakeApi()
-      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
-      .on("GET", "/api/governance/overview", () => overview);
+    const overview = governanceOverview({ counts: { workspaces: 2, researchWorkspaces: 1, runningRuns: 1, pendingApprovals: 3, openFindings: 0, draftRevisions: 1, overrides: 0 } });
+    fakeApi().on("GET", "/api/governance/overview", () => overview);
 
     const go = vi.fn();
-    renderLive(<GovernanceView page="overview" item={null} go={go} onOpenNav={() => undefined} />);
+    renderLive(<GovernanceView page="overview" item={null} go={go} account={{ displayName: "", email: "octo@example.com" }} onOpenNav={() => undefined} />);
 
     const kpi = await screen.findByRole("button", { name: /Approvals waiting/ });
     expect(kpi.textContent).toContain("3");
@@ -239,40 +229,38 @@ describe("responsive mobile-first layout", () => {
 
     const nav = screen.getByRole("navigation", { name: "Governance" });
     expect(within(nav).getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    // On a phone the account governed is said under the title.
+    expect(screen.getByText("octo@example.com")).toBeInTheDocument();
   });
 
-  test("mobile ConstitutionTable uses stacked cards while keeping action checkboxes intact", async () => {
+  test("mobile PolicyTable uses stacked cards while keeping action checkboxes intact", async () => {
     mobileViewport();
     const onChange = vi.fn();
-    renderUi(<ConstitutionTable document={defaultConstitution(ORG.id)} editable onChange={onChange} />);
+    renderUi(<PolicyTable document={defaultAccountPolicy(ACCOUNT_ID, "governed")} editable onChange={onChange} />);
 
     expect(screen.queryByRole("table", { name: "What may happen" })).toBeNull();
     const webAllowed = screen.getByRole("checkbox", { name: "Allowed: tool.web" }) as HTMLInputElement;
     expect(webAllowed.checked).toBe(false);
-    expect(screen.getByRole("checkbox", { name: "A person approves first: repository.push" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "You approve first: repository.push" })).toBeInTheDocument();
 
     await userEvent.click(webAllowed);
     expect(onChange).toHaveBeenCalled();
   });
 
-  test("mobile ConstitutionPage uses stacked Revisions cards and routes to selected revision", async () => {
+  test("mobile PolicyPage uses stacked Revisions cards and routes to selected revision", async () => {
     mobileViewport();
-    resetOperatorStore();
     const revisions: RevisionSummary[] = [
-      { id: "rev-2", revision: null, state: "PENDING_APPROVAL", digest: "e".repeat(64), name: "next", risk: "high", source: "copy", basedOn: "rev-1", createdAt: "2026-11-20T10:00:00.000Z", createdBy: "op-1", updatedAt: "2026-11-20T10:05:00.000Z", publishedAt: null },
-      { id: "rev-1", revision: 1, state: "PUBLISHED", digest: "d".repeat(64), name: "default", risk: "low", source: "default", basedOn: null, createdAt: "2026-11-20T09:00:00.000Z", createdBy: "op-1", updatedAt: "2026-11-20T09:05:00.000Z", publishedAt: "2026-11-20T09:05:00.000Z" },
+      revisionSummary({ id: "rev-2", revision: null, state: "VALIDATED", digest: "e".repeat(64), name: "next", risk: "high", source: "copy", basedOn: "rev-1", createdBy: `owner:${ACCOUNT_ID}`, updatedAt: "2026-11-20T10:05:00.000Z", publishedAt: null, publishedBy: null }),
+      revisionSummary(),
     ];
-    fakeApi()
-      .on("GET", "/api/operator/state", () => governanceState("organization_owner"))
-      .on("GET", "/api/governance/constitution", () => ({ effective: null, revisions }))
-      .on("GET", "/api/governance/operators", () => ({ operators: [] }));
+    fakeApi().on("GET", "/api/governance/policy", () => ({ effective: null, revisions }));
 
     const go = vi.fn();
-    renderLive(<ConstitutionPage item={null} go={go} />);
+    renderLive(<PolicyPage item={null} go={go} />);
 
-    expect(await screen.findByText("pending approval")).toBeInTheDocument();
+    expect(await screen.findByText("validated")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Revisions" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "next" }));
-    expect(go).toHaveBeenCalledWith("constitution", "rev-2");
+    expect(go).toHaveBeenCalledWith("policy", "rev-2");
   });
 });

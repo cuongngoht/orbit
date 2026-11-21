@@ -1,15 +1,15 @@
 // PUSH BRANCH, in an open chat's header -- for a chat whose repository came from GitHub or Azure DevOps. Orbit Web
 // pushes the chat's working branch itself, with the source's own sign-in (GitHub CLI's, or the Azure CLI's): at once
-// where the Constitution simply allows it, otherwise after a person approves exactly that push -- the commit, the
-// branch, the remote, where the remote's branch stood. Claude Code never holds the sign-in for it. Pushing is a protected action and Orbit Web's API is reachable from the agent's shell
-// too, so it is asked for by an operator signed in to governance -- never by whoever reaches the page.
-import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Text, Tooltip, makeStyles } from "@fluentui/react-components";
+// where the account's policy simply allows it, otherwise after the account's owner approves exactly that push -- the
+// commit, the branch, the remote, where the remote's branch stood. Claude Code never holds the sign-in for it. Pushing
+// is a protected action of the chat's own account: its owner asks for it and approves it, here; somebody the chat was
+// shared with reads and talks in it, but does not push it.
+import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, Tooltip, makeStyles } from "@fluentui/react-components";
 import { ArrowUpload20Regular } from "@fluentui/react-icons";
 import type { AgentPushResult, ApprovalList, ApprovalView, SessionDetail } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
-import { useOperator } from "../../services/operator";
 import { ApprovalCard } from "../governance/ApprovalCard";
 import { Word, when } from "../governance/parts";
 
@@ -24,22 +24,18 @@ const sourceName = (source: SessionDetail["source"]): string => (source === "azu
 
 function PushBody({ session }: { session: SessionDetail }) {
   const s = useStyles();
-  const operator = useOperator();
+  const owner = session.access === "owner";
   const [approval, setApproval] = useState<ApprovalView | null>(null);
-  // What a push the Constitution simply allows came to: it was made at once, and no approval exists for it.
+  // What a push the account's policy simply allows came to: it was made at once, and no approval exists for it.
   const [pushed, setPushed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const earlier = useResource<ApprovalList>(operator.state?.session ? () => get(`/api/sessions/${session.id}/pushes`) : null, [session.id, operator.state?.session?.operator.id, approval?.state]);
+  const earlier = useResource<ApprovalList>(owner ? () => get(`/api/sessions/${session.id}/pushes`) : null, [session.id, owner, approval?.state]);
 
-  if (!operator.loaded) return <Spinner label="Reading who is signed in…" />;
-  if (!operator.state?.session) {
+  if (!owner) {
     return (
       <MessageBar intent="info">
-        <MessageBarBody>
-          Pushing is a protected action, made by Orbit Web after an operator approves it -- so it is asked for by an operator signed in to governance. <a href="#/governance/overview">Open Governance</a> to sign in
-          {operator.state && !operator.state.initialized ? " (or enrol its first owner)" : ""}.
-        </MessageBarBody>
+        <MessageBarBody>Only the account that owns this chat{session.owner ? ` (${session.owner})` : ""} pushes it: it was shared with you to read and talk in.</MessageBarBody>
       </MessageBar>
     );
   }
@@ -54,8 +50,7 @@ function PushBody({ session }: { session: SessionDetail }) {
   return (
     <div className={s.body}>
       <Text>
-        Push <b>{session.workBranch}</b> to <b>{session.repository}</b> ({sourceName(session.source)}). Orbit Web reads the branch's commit from this chat's workspace and works out exactly what the push is. Where the Constitution simply allows it, Orbit Web pushes it at once; otherwise it asks for its approval
-        {operator.can("approvals.decide") ? ": you approve it here, and Orbit Web pushes it with the source's sign-in." : ", and an operator who may approve pushes decides it (Governance → Approvals)."}
+        Push <b>{session.workBranch}</b> to <b>{session.repository}</b> ({sourceName(session.source)}). Orbit Web reads the branch's commit from this chat's workspace and works out exactly what the push is. Where your policy simply allows it, Orbit Web pushes it at once; otherwise you approve exactly that push here, and Orbit Web pushes it with the source's sign-in.
       </Text>
       {approval === null && pushed === null && (
         <div>

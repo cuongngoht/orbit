@@ -1,44 +1,41 @@
-// THE GOVERNANCE CONSOLE: the company Constitution, who administers it, which agents work under it and where, what was
-// decided, what waits for a person, the audit record, findings and reports. Every page reads the API; a control a
-// person's roles do not allow is not shown -- and the API refuses it anyway, whatever a page shows.
-import { Avatar, Badge, Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+// THE GOVERNANCE CONSOLE of the account this browser is signed in to: its policy and the overrides that narrow it, its
+// chats and research workspaces, what was decided, what waits for its owner, the audit record, findings and reports.
+// It opens with the sign-in itself -- there is no second sign-in, no operator and no role: the person whose browser
+// finished the Claude sign-in owns the account and governs it, and nobody else's. Every page reads the API, which holds
+// every route to this browser's session whatever a page shows.
+import { Avatar, Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import {
   Board16Regular,
-  Bot16Regular,
+  BookOpen16Regular,
+  Chat16Regular,
   CheckmarkCircle16Regular,
   DocumentCheckmark16Regular,
   DocumentText16Regular,
   History16Regular,
   Navigation20Regular,
-  People16Regular,
   Scales16Regular,
   ShieldKeyhole20Regular,
-  SignOut20Regular,
   Warning16Regular,
 } from "@fluentui/react-icons";
-import { useState, type ReactElement, type ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { GOVERNANCE_PAGES, type GovernancePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
-import { errorText, send } from "../../services/api";
-import { refreshOperator, useOperator } from "../../services/operator";
-import { AgentsPage } from "./AgentsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { AuditPage } from "./AuditPage";
-import { ConstitutionPage } from "./ConstitutionPage";
 import { DecisionsPage } from "./DecisionsPage";
 import { FindingsPage } from "./FindingsPage";
-import { BootstrapForm, SignInForm } from "./OperatorGate";
-import { OperatorsPage } from "./OperatorsPage";
 import { OverviewPage } from "./OverviewPage";
+import { PolicyPage } from "./PolicyPage";
 import { ReportsPage } from "./ReportsPage";
+import { ResourcesPage } from "./ResourcesPage";
 
 const TITLES: Record<GovernancePage, string> = {
   overview: "Overview",
-  constitution: "Company Constitution",
-  operators: "Users & roles",
-  agents: "Agents & workspaces",
-  decisions: "Policy decisions",
+  policy: "Policy",
+  workspaces: "Workspaces",
+  research: "Research",
   approvals: "Approvals",
+  decisions: "Decisions",
   audit: "Audit timeline",
   findings: "Security findings",
   reports: "Daily reports",
@@ -46,15 +43,21 @@ const TITLES: Record<GovernancePage, string> = {
 
 const ICONS: Record<GovernancePage, ReactElement> = {
   overview: <Board16Regular />,
-  constitution: <DocumentCheckmark16Regular />,
-  operators: <People16Regular />,
-  agents: <Bot16Regular />,
-  decisions: <Scales16Regular />,
+  policy: <DocumentCheckmark16Regular />,
+  workspaces: <Chat16Regular />,
+  research: <BookOpen16Regular />,
   approvals: <CheckmarkCircle16Regular />,
+  decisions: <Scales16Regular />,
   audit: <History16Regular />,
   findings: <Warning16Regular />,
   reports: <DocumentText16Regular />,
 };
+
+// The account governed here, as this browser's session names it.
+export interface GovernedAccount {
+  displayName: string;
+  email: string;
+}
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, backgroundColor: tokens.colorNeutralBackground1 },
@@ -96,8 +99,7 @@ const useStyles = makeStyles({
     flexShrink: 0,
   },
   title: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" },
-  orgLine: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", color: tokens.colorNeutralForeground3 },
-  operatorPill: {
+  accountPill: {
     display: "inline-flex",
     alignItems: "center",
     gap: "6px",
@@ -108,11 +110,11 @@ const useStyles = makeStyles({
     paddingLeft: "4px",
     borderRadius: "9999px",
     backgroundColor: tokens.colorNeutralBackground2,
-    maxWidth: "240px",
+    maxWidth: "260px",
     overflow: "hidden",
+    flexShrink: 0,
   },
-  operatorText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  signOutBtn: { borderRadius: "9999px", flexShrink: 0 },
+  accountText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   subnavBar: {
     backgroundColor: tokens.colorNeutralBackground1,
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
@@ -178,13 +180,13 @@ const useStyles = makeStyles({
     },
   },
   touch: { minWidth: "44px", minHeight: "44px", flexShrink: 0 },
-  muted: { color: tokens.colorNeutralForeground3 },
+  muted: { color: tokens.colorNeutralForeground3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
 
 function Page({ page, item, go }: { page: GovernancePage; item: string | null; go: (page: GovernancePage, item?: string | null) => void }): ReactNode {
-  if (page === "constitution") return <ConstitutionPage item={item} go={go} />;
-  if (page === "operators") return <OperatorsPage />;
-  if (page === "agents") return <AgentsPage />;
+  if (page === "policy") return <PolicyPage item={item} go={go} />;
+  if (page === "workspaces") return <ResourcesPage kind="workspace" item={item} go={go} />;
+  if (page === "research") return <ResourcesPage kind="research_workspace" item={item} go={go} />;
   if (page === "decisions") return <DecisionsPage go={go} />;
   if (page === "approvals") return <ApprovalsPage item={item} />;
   if (page === "audit") return <AuditPage item={item} />;
@@ -193,96 +195,53 @@ function Page({ page, item, go }: { page: GovernancePage; item: string | null; g
   return <OverviewPage go={go} />;
 }
 
-export function GovernanceView({ page, item, go, onOpenNav }: { page: GovernancePage; item: string | null; go: (page: GovernancePage, item?: string | null) => void; onOpenNav?: () => void }) {
+export function GovernanceView({
+  page,
+  item,
+  go,
+  account = null,
+  onOpenNav,
+}: {
+  page: GovernancePage;
+  item: string | null;
+  go: (page: GovernancePage, item?: string | null) => void;
+  account?: GovernedAccount | null;
+  onOpenNav?: () => void;
+}) {
   const s = useStyles();
   const { isMobile } = useViewport();
-  const operator = useOperator();
-  const [signOutError, setSignOutError] = useState<string | null>(null);
-  const state = operator.state;
-  const session = state?.session ?? null;
-
-  const signOut = () => {
-    setSignOutError(null);
-    void send("POST", "/api/operator/logout")
-      .catch((err: unknown) => setSignOutError(errorText(err)))
-      .finally(() => void refreshOperator());
-  };
-
-  const header = (
-    <header className={s.top}>
-      <div className={s.topInner}>
-        {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
-        {!isMobile && (
-          <span className={s.emblem} aria-hidden>
-            <ShieldKeyhole20Regular />
-          </span>
-        )}
-        <div className={s.title}>
-          <Text weight="semibold" size={isMobile ? 400 : 500}>
-            Governance{session ? ` · ${TITLES[page]}` : ""}
-          </Text>
-          {state?.organization && (
-            <div className={s.orgLine}>
-              <Text size={200} className={s.muted}>
-                {state.organization.name}
-              </Text>
-              <Badge appearance="tint" color={state.deployment === "governed" ? "brand" : "subtle"} size="small" style={{ borderRadius: "9999px" }}>
-                {state.deployment === "governed" ? "governed deployment" : "single-container deployment"}
-              </Badge>
-            </div>
-          )}
-        </div>
-        {session && (
-          <>
-            {!isMobile && (
-              <div className={s.operatorPill} title={`${session.operator.displayName} (${session.operator.roles.join(", ").replace(/_/g, " ") || "no role"})`}>
-                <Avatar name={session.operator.displayName} size={20} />
-                <Text size={200} className={s.operatorText}>
-                  {session.operator.displayName} ({session.operator.roles.join(", ").replace(/_/g, " ") || "no role"})
-                </Text>
-              </div>
-            )}
-            <Button className={isMobile ? s.touch : s.signOutBtn} appearance="subtle" icon={<SignOut20Regular />} aria-label="Sign out" onClick={signOut}>
-              {!isMobile && "Sign out"}
-            </Button>
-          </>
-        )}
-      </div>
-    </header>
-  );
-
-  if (!operator.loaded) {
-    return (
-      <div className={s.root}>
-        {header}
-        <Spinner style={{ marginTop: 48 }} label="Reading governance…" />
-      </div>
-    );
-  }
-  if (state === null) {
-    return (
-      <div className={s.root}>
-        {header}
-        <div className={s.content}>
-          <MessageBar intent="error">
-            <MessageBarBody>{operator.error ?? "Governance could not be read."}</MessageBarBody>
-          </MessageBar>
-        </div>
-      </div>
-    );
-  }
-  if (!state.initialized || session === null) {
-    return (
-      <div className={s.root}>
-        {header}
-        <div className={s.content}>{!state.initialized ? <BootstrapForm /> : <SignInForm organization={state.organization?.name ?? null} />}</div>
-      </div>
-    );
-  }
+  const name = account ? account.displayName || account.email : null;
 
   return (
     <div className={s.root}>
-      {header}
+      <header className={s.top}>
+        <div className={s.topInner}>
+          {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+          {!isMobile && (
+            <span className={s.emblem} aria-hidden>
+              <ShieldKeyhole20Regular />
+            </span>
+          )}
+          <div className={s.title}>
+            <Text weight="semibold" size={isMobile ? 400 : 500}>
+              Governance · {TITLES[page]}
+            </Text>
+            {name !== null && isMobile && (
+              <Text size={200} className={s.muted}>
+                {name}
+              </Text>
+            )}
+          </div>
+          {name !== null && !isMobile && (
+            <div className={s.accountPill} title={`The account you govern: ${name}${account?.displayName ? ` (${account.email})` : ""}`}>
+              <Avatar name={name} size={20} />
+              <Text size={200} className={s.accountText}>
+                {name}
+              </Text>
+            </div>
+          )}
+        </div>
+      </header>
       <div className={s.subnavBar}>
         <nav className={mergeClasses(s.subnav, isMobile && "orbit-hscroll orbit-hscroll-fade")} aria-label="Governance">
           {GOVERNANCE_PAGES.map((p) => (
@@ -301,12 +260,7 @@ export function GovernanceView({ page, item, go, onOpenNav }: { page: Governance
         </nav>
       </div>
       <div className={s.content}>
-        {signOutError && (
-          <MessageBar intent="error" style={{ marginBottom: 16 }}>
-            <MessageBarBody>{signOutError}</MessageBarBody>
-          </MessageBar>
-        )}
-        <Page page={page} item={item} go={go} />
+        <Page key={page} page={page} item={item} go={go} />
       </div>
     </div>
   );

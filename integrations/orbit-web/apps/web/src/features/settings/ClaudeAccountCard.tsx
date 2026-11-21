@@ -5,7 +5,7 @@
 import { Avatar, Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Dismiss16Regular, SignOut20Regular } from "@fluentui/react-icons";
 import type { AccountView, ClaudeStatus } from "@orbit-web/contracts";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ConnectionBadge } from "../../components/StatusBadge";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
@@ -30,13 +30,35 @@ const useStyles = makeStyles({
 
 const when = (iso: string): string => new Date(iso).toLocaleString();
 
+// The business name as it is saved (null while the account is read): the field starts from it, and starts again from
+// it whenever the saved name changes (the card keys it by that name).
+function BusinessName({ saved, saving, onSave }: { saved: string | null; saving: boolean; onSave: (name: string) => void }) {
+  const s = useStyles();
+  const [name, setName] = useState(saved ?? "");
+  return (
+    <form
+      className={s.row}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(name);
+      }}
+    >
+      <Field className={s.grow} label="Business name" hint="Shown for this account. Optional: change it whenever you like.">
+        <Input value={name} maxLength={120} onChange={(_, d) => setName(d.value)} placeholder="Your company or team" />
+      </Field>
+      <Button className={s.button} type="submit" disabled={saving || saved === null || name.trim() === saved}>
+        Save
+      </Button>
+    </form>
+  );
+}
+
 export function ClaudeAccountCard({ status, signOut }: { status: ClaudeStatus | null; signOut: SignOut }) {
   const s = useStyles();
   const account = useResource<AccountView>(() => get("/api/account"), []);
-  const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => setName(account.data?.displayName ?? ""), [account.data?.displayName]);
+  const saved = account.data === null ? null : account.data.displayName;
   const email = account.data?.email ?? status?.account?.email ?? "a Claude account";
   const line = accountLine(status?.account ?? null);
 
@@ -54,7 +76,7 @@ export function ClaudeAccountCard({ status, signOut }: { status: ClaudeStatus | 
   };
 
   return (
-    <section className={s.root} aria-label="Account">
+    <section className={s.root} aria-label="Claude account">
       <div className={s.who}>
         <Avatar name={account.data?.displayName || email} size={40} />
         <div className={s.identity}>
@@ -68,20 +90,7 @@ export function ClaudeAccountCard({ status, signOut }: { status: ClaudeStatus | 
         {status ? <ConnectionBadge state={status.state} /> : <Spinner size="tiny" />}
       </div>
 
-      <form
-        className={s.row}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void act(() => send("PUT", "/api/account", { displayName: name }));
-        }}
-      >
-        <Field className={s.grow} label="Business name" hint="Shown for this account. Optional: change it whenever you like.">
-          <Input value={name} maxLength={120} onChange={(_, d) => setName(d.value)} placeholder="Your company or team" />
-        </Field>
-        <Button className={s.button} type="submit" disabled={saving || account.data === null || name.trim() === (account.data?.displayName ?? "")}>
-          Save
-        </Button>
-      </form>
+      <BusinessName key={saved === null ? "reading" : `saved:${saved}`} saved={saved} saving={saving} onSave={(name) => void act(() => send("PUT", "/api/account", { displayName: name }))} />
 
       <div>
         <Text weight="semibold">Signed-in browsers</Text>

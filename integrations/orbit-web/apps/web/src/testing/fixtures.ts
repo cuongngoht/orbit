@@ -1,19 +1,25 @@
 // What the API answers, for the web app's tests.
-import type { Permission } from "@orbit-web/governance-core";
+import { defaultAccountPolicy, type AuditEvent, type Rule } from "@orbit-web/governance-core";
 import {
   ORBIT_WEB_VERSION,
   type ApprovalView,
-  type GovernanceState,
   type AzureStatus,
   type AccountView,
   type BrowserSession,
   type ClaudeStatus,
   type ConnectionState,
   type GitHubStatus,
+  type GovernanceOverview,
   type LoginSnapshot,
   type OrbitPanel,
+  type OverrideView,
   type ProjectInventory,
   type Repository,
+  type ResourceGovernanceSummary,
+  type ResourceGovernanceView,
+  type ResourceKind,
+  type RevisionSummary,
+  type RevisionView,
   type SessionDetail,
   type SessionSummary,
   type Settings,
@@ -92,8 +98,11 @@ const ok = { ok: true, detail: null };
 
 export const ACCOUNT_ID = "0b6f1f0e-9c1e-4a5e-8a8b-1f2a3b4c5d6e";
 
+// This browser session's CSRF token: every change carries it.
+export const CSRF = "c".repeat(64);
+
 // This browser's session, as the API says it.
-export const browserSession = (over: Partial<BrowserSession> = {}): BrowserSession => ({ accountId: ACCOUNT_ID, displayName: "", email: "octo@example.com", csrfToken: "c".repeat(64), expiresAt: "2026-12-01T00:00:00.000Z", ...over });
+export const browserSession = (over: Partial<BrowserSession> = {}): BrowserSession => ({ accountId: ACCOUNT_ID, displayName: "", email: "octo@example.com", csrfToken: CSRF, expiresAt: "2026-12-01T00:00:00.000Z", ...over });
 
 // The Claude sign-in, as GET /api/claude/status says it: by default this browser is signed in to a Claude account.
 export function claudeStatus(over: Partial<ClaudeStatus> = {}): ClaudeStatus {
@@ -125,7 +134,18 @@ export function setupStatus(claude: Partial<ClaudeStatus> = {}, github: Partial<
     claude: c,
     github: g,
     azure: a,
-    health: { status: "ok", api: ok, claude: { ok: true, detail: "2.1.328" }, gh: { ok: true, detail: "2.89.0" }, git: ok, az: { ok: true, detail: "2.91.0" }, python: { ok: true, detail: "3.15.2" }, orbitPlugin: { ok: true, detail: "0.6.0" }, storage: ok },
+    health: {
+      status: "ok",
+      api: ok,
+      claude: { ok: true, detail: "2.1.328" },
+      gh: { ok: true, detail: "2.89.0" },
+      git: ok,
+      az: { ok: true, detail: "2.91.0" },
+      python: { ok: true, detail: "3.15.2" },
+      orbitPlugin: { ok: true, detail: "0.6.0" },
+      storage: ok,
+      database: { ok: true, detail: null, server: "17.6", schema: 3, latestSchema: 3, pgvector: "0.8.1" },
+    },
   };
 }
 
@@ -187,24 +207,139 @@ export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {
 }
 
 // ---- governance -------------------------------------------------------------------------------------------------------
+//
+// One account, one owner: the browser signed in to the Claude account governs it. Records name the owner as
+// `owner:<account>`, an agent as `agent:<id>`, Orbit Web itself as `system:<what>`.
 
-export const ORG = { id: "org-0123456789ab", name: "Acme" };
+export const OWNER = `owner:${ACCOUNT_ID}`;
+export const POLICY_DIGEST = "d".repeat(64);
+export const DRAFT_DIGEST = "e".repeat(64);
+export const WORKSPACE_ID = SESSION_ID;
+export const RESEARCH_WORKSPACE_ID = "4f8e2a1c-7b3d-4e5f-9a0b-1c2d3e4f5a6b";
 
-const OWNER_PERMISSIONS = ["governance.read", "audit.read", "audit.verify", "reports.read", "reports.generate", "findings.read", "findings.manage", "constitution.edit", "constitution.approve", "constitution.publish", "operators.read", "operators.manage", "roles.manage", "agents.manage", "workspaces.govern", "approvals.read", "approvals.decide", "settings.privileged.write"];
-const AUDITOR_PERMISSIONS = ["governance.read", "audit.read", "audit.verify", "reports.read", "reports.generate", "findings.read", "operators.read", "approvals.read"];
-
-export const CSRF = "c".repeat(64);
-
-export function governanceState(role: "none" | "uninitialized" | "organization_owner" | "auditor" = "organization_owner"): GovernanceState {
-  if (role === "uninitialized") return { initialized: false, organization: null, bootstrapOpen: true, session: null, deployment: "single" };
-  if (role === "none") return { initialized: true, organization: ORG, bootstrapOpen: false, session: null, deployment: "single" };
-  const permissions = (role === "auditor" ? AUDITOR_PERMISSIONS : OWNER_PERMISSIONS) as Permission[];
+// GET /api/governance/overview, for an account with one chat, one research workspace and its default policy in effect.
+export function governanceOverview(over: Partial<GovernanceOverview> = {}): GovernanceOverview {
   return {
-    initialized: true,
-    organization: ORG,
-    bootstrapOpen: false,
+    account: { id: ACCOUNT_ID, displayName: "", email: "octo@example.com" },
     deployment: "single",
-    session: { operator: { id: "op-1", username: role === "auditor" ? "audrey" : "owner", displayName: role === "auditor" ? "Audrey" : "Olivia", status: "active", roles: [role], createdAt: "2026-11-20T00:00:00.000Z" }, permissions, csrfToken: CSRF, expiresAt: "2026-11-21T00:00:00.000Z" },
+    effective: { id: "rev-1", revision: 1, digest: POLICY_DIGEST, publishedAt: "2026-11-20T09:00:00.000Z", source: "default" },
+    counts: { workspaces: 1, researchWorkspaces: 1, runningRuns: 0, pendingApprovals: 1, openFindings: 0, draftRevisions: 0, overrides: 0 },
+    isolation: { deployment: "single", state: "not_proven", checkedAt: null, checks: [], detail: "Claude Code runs in this container, as this container's user: its isolation from Orbit Web cannot be proven here." },
+    audit: { count: 12, head: "a1".repeat(32), lastVerification: null },
+    ...over,
+  };
+}
+
+// One revision of the account's policy, as the revisions list says it: by default the default policy, in effect.
+export function revisionSummary(over: Partial<RevisionSummary> = {}): RevisionSummary {
+  return {
+    id: "rev-1",
+    revision: 1,
+    state: "PUBLISHED",
+    digest: POLICY_DIGEST,
+    name: "default",
+    risk: null,
+    source: "default",
+    basedOn: null,
+    createdAt: "2026-11-20T09:00:00.000Z",
+    createdBy: "system:provisioning",
+    updatedAt: "2026-11-20T09:00:00.000Z",
+    confirmedBy: null,
+    confirmedAt: null,
+    publishedAt: "2026-11-20T09:00:00.000Z",
+    publishedBy: "system:provisioning",
+    ...over,
+  };
+}
+
+// One revision with its document (by default the governed deployment's default policy), as GET /revisions/:id says it.
+export function revisionView(over: Partial<RevisionView> = {}): RevisionView {
+  return {
+    ...revisionSummary(),
+    document: defaultAccountPolicy(ACCOUNT_ID, "governed"),
+    errors: [],
+    warnings: [],
+    impact: null,
+    base: null,
+    authors: ["system:provisioning"],
+    history: [],
+    ...over,
+  };
+}
+
+// A draft of the owner's, compared with the revision in effect (`rev-1`).
+export function draftView(over: Partial<RevisionView> = {}): RevisionView {
+  return revisionView({ id: "rev-2", revision: null, state: "DRAFT", digest: DRAFT_DIGEST, name: "next", source: "copy", basedOn: "rev-1", createdBy: OWNER, updatedAt: "2026-11-20T10:05:00.000Z", publishedAt: null, publishedBy: null, base: "rev-1", authors: [OWNER], ...over });
+}
+
+// An override's view, of the rules given.
+export function overrideView(rules: Rule[], over: Partial<OverrideView> = {}): OverrideView {
+  const kind = over.kind ?? "workspace";
+  const resourceId = over.resourceId ?? WORKSPACE_ID;
+  return {
+    kind,
+    resourceId,
+    override: { apiVersion: "orbit.governance/v2", kind: "PolicyOverride", metadata: { accountId: ACCOUNT_ID, level: kind, target: resourceId, name: "override for Fix sum" }, rules },
+    digest: "b".repeat(64),
+    setAt: "2026-11-20T11:00:00.000Z",
+    setBy: OWNER,
+    warnings: rules.filter((r) => r.effect === "allow").map((r) => ({ ruleId: r.id, code: "OVERLAY_CANNOT_WIDEN" as const, message: "An override only narrows: an allow rule in it changes nothing." })),
+    ...over,
+  };
+}
+
+// A chat or research workspace of the account, as governance lists it.
+export function resourceSummary(kind: ResourceKind = "workspace", over: Partial<ResourceGovernanceSummary> = {}): ResourceGovernanceSummary {
+  return {
+    kind,
+    id: kind === "workspace" ? WORKSPACE_ID : RESEARCH_WORKSPACE_ID,
+    title: kind === "workspace" ? "Fix sum" : "Market study",
+    createdAt: "2026-11-19T00:00:00.000Z",
+    deletedAt: null,
+    overridden: false,
+    runningRuns: 0,
+    pendingApprovals: 0,
+    ...over,
+  };
+}
+
+// One audit record of the account.
+export function auditEvent(over: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    schemaVersion: 2,
+    eventId: "evt-1",
+    eventType: "policy.decision",
+    occurredAt: "2026-11-20T10:00:00.000Z",
+    recordedAt: "2026-11-20T10:00:00.000Z",
+    accountId: ACCOUNT_ID,
+    principalId: "agt-1",
+    principalType: "agent",
+    agentId: "agt-1",
+    workspaceId: WORKSPACE_ID,
+    runId: "run-1",
+    correlationId: "cor-1",
+    causationId: null,
+    policyRevision: "rev-1",
+    decisionId: "dec-1",
+    outcome: "allow",
+    reasonCodes: ["RULE_MATCHED"],
+    evidenceRefs: [],
+    data: { action: "repository.write", resource: "", environment: "development" },
+    seq: 7,
+    previousHash: "f0".repeat(32),
+    hash: "f1".repeat(32),
+    ...over,
+  };
+}
+
+// One chat or research workspace as governance shows it: the policy it inherits, its override, what runs, its activity.
+export function resourceView(kind: ResourceKind = "workspace", over: Partial<ResourceGovernanceView> = {}): ResourceGovernanceView {
+  return {
+    ...resourceSummary(kind),
+    policy: { revisionId: "rev-1", revision: 1, digest: POLICY_DIGEST },
+    override: null,
+    activity: [auditEvent()],
+    ...over,
   };
 }
 
@@ -221,6 +356,7 @@ export function approval(over: Partial<ApprovalView> = {}): ApprovalView {
     summary: "Push aaaaaaaaaaaa to orbit-web/0b6c2f5e of octo/sum-fixture (GitHub): 1 commit(s), 1 file(s)",
     requestedAt: "2026-11-20T10:00:00.000Z",
     requestedBy: "agent:agt-1",
+    requestedByType: "agent",
     agentId: "agt-1",
     workspaceId: SESSION_ID,
     runId: "run-1",

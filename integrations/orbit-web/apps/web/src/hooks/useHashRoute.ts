@@ -7,7 +7,9 @@ export const SETTINGS_SECTIONS = ["account", "appearance", "code", "connectors",
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
-export const GOVERNANCE_PAGES = ["overview", "constitution", "operators", "agents", "decisions", "approvals", "audit", "findings", "reports"] as const;
+// The pages of the account's governance: `workspaces` (its chats) and `research` (its research workspaces) open one of
+// them as `#/governance/workspaces/<id>`, `policy` opens a revision as `#/governance/policy/<id>`.
+export const GOVERNANCE_PAGES = ["overview", "policy", "workspaces", "research", "approvals", "decisions", "audit", "findings", "reports"] as const;
 
 export type GovernancePage = (typeof GOVERNANCE_PAGES)[number];
 

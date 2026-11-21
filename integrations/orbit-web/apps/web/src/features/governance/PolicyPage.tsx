@@ -1,10 +1,12 @@
-// THE COMPANY CONSTITUTION: its revisions and their lifecycle -- draft, validated, pending approval, approved,
-// published, superseded -- each move one permission's, on the content the person read (its digest). What publishing a
-// revision would change is worked out by the API from the two policies and shown before anybody approves or publishes
-// it; a high-risk change is approved by somebody who wrote none of it. A rollback is a copy of an earlier revision,
-// published anew.
+// THE ACCOUNT'S POLICY: its revisions and their lifecycle -- draft, validated, published, superseded, discarded. The owner
+// edits a draft in the table, validates it, reviews what publishing it would change against the revision in effect
+// (worked out by the API from the two policies: what it loosens and what it narrows, its risk and why), and confirms the
+// publication of exactly that content (its digest) against exactly that base, at the risk read. One person confirms;
+// nobody else is asked, and an agent never confirms anything -- it may hand in a draft, which waits here like any other.
+// A rollback is a copy of an earlier revision, taken through the whole lifecycle again.
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogBody,
@@ -29,19 +31,26 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { LockClosed16Regular } from "@fluentui/react-icons";
-import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type Constitution, type Impact } from "@orbit-web/governance-core";
-import type { ConstitutionOverview, OperatorList, RevisionView, SimulateResult } from "@orbit-web/contracts";
-import { useMemo, useState } from "react";
+import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type AccountPolicy, type Impact, type ImpactCell, type RiskLevel } from "@orbit-web/governance-core";
+import type { PolicyOverview, RevisionSource, RevisionSummary, RevisionView, SimulateResult } from "@orbit-web/contracts";
+import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText, get, send } from "../../services/api";
-import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { ConstitutionTable } from "./ConstitutionTable";
-import { Card, CleanSelect, Word, short, useParts, when, who } from "./parts";
+import { PolicyTable } from "./PolicyTable";
+import { Card, CleanSelect, ErrorBar, Word, byWhom, short, useParts, when } from "./parts";
 
-const EDITABLE = new Set(["DRAFT", "VALIDATED", "REJECTED"]);
+// The states in which a revision is still a draft: it may be edited, validated, discarded -- and, validated, published.
+const OPEN = new Set(["DRAFT", "VALIDATED"]);
+
+const SOURCES: Record<RevisionSource, string> = {
+  owner: "written by you",
+  agent: "handed in by an agent",
+  default: "the default policy",
+  copy: "a copy",
+};
 
 const useStyles = makeStyles({
   colRev: { width: "76px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" },
@@ -99,6 +108,8 @@ const useStyles = makeStyles({
   historyList: { display: "flex", flexDirection: "column", gap: "8px", listStyleType: "none", paddingLeft: 0, marginTop: 0, marginBottom: 0 },
   historyItem: { display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" },
   historyDot: { width: "7px", height: "7px", borderRadius: "9999px", backgroundColor: tokens.colorBrandForeground1, flexShrink: 0, alignSelf: "center" },
+  reviewSurface: { width: "min(760px, 96vw)", maxWidth: "min(760px, 96vw)" },
+  reviewBody: { display: "flex", flexDirection: "column", gap: "12px" },
   simGrid: {
     display: "grid",
     gridTemplateColumns: "124px minmax(180px, 1.15fr) minmax(210px, 1.35fr) 144px auto",
@@ -134,25 +145,69 @@ const useStyles = makeStyles({
   },
 });
 
-// The document as the table can show it: a Constitution the shared rules accept, or why it is not one.
-function tableable(value: unknown): { document: Constitution | null; problem: string | null } {
+// The document as the table can show it: a policy the shared rules accept, or why it is not one.
+function tableable(value: unknown): { document: AccountPolicy | null; problem: string | null } {
   const checked = checkConstitution(value);
   return checked.ok ? { document: checked.value, problem: null } : { document: null, problem: checked.errors.join("; ") };
 }
 
+// How a revision is named where another names it: its number once published, otherwise its name and id.
+function revisionName(id: string | null, revisions: readonly RevisionSummary[]): string {
+  if (id === null) return "nothing: no policy is in effect, so it is compared with the deployment's default policy";
+  const r = revisions.find((x) => x.id === id);
+  if (r === undefined) return `revision ${short(id, 13)}`;
+  return r.revision !== null ? `revision ${r.revision}${r.publishedAt ? `, published ${when(r.publishedAt)}` : ""}` : `${r.name} (${short(r.id, 13)})`;
+}
+
+function Cells({ label, cells }: { label: string; cells: ImpactCell[] }) {
+  const s = useParts();
+  if (cells.length === 0) return null;
+  return (
+    <div className={s.tableWrap}>
+      <Table size="small" aria-label={label}>
+        <TableHeader>
+          <TableRow>
+            <TableHeaderCell>Action</TableHeaderCell>
+            <TableHeaderCell>For</TableHeaderCell>
+            <TableHeaderCell>Resource</TableHeaderCell>
+            <TableHeaderCell>Where</TableHeaderCell>
+            <TableHeaderCell>From → to</TableHeaderCell>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {cells.map((c) => (
+            <TableRow key={`${c.action}|${c.principalType}|${c.resource}|${c.environments.join(",")}|${c.before}|${c.after}`}>
+              <TableCell className={s.mono}>{c.action}</TableCell>
+              <TableCell>{c.principalType === "human" ? "you" : `${c.principalType}s`}</TableCell>
+              <TableCell className={s.mono}>{c.resource === "*" ? "any other" : c.resource}</TableCell>
+              <TableCell>{c.environments.length === ENVIRONMENTS.length ? "anywhere" : c.environments.join(", ")}</TableCell>
+              <TableCell>
+                <Word value={c.before} /> → <Word value={c.after} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+// What publishing a revision would change, as the API worked it out from the two policies.
 function ImpactView({ impact }: { impact: Impact }) {
   const s = useParts();
   return (
     <div className={s.page} aria-label="What publishing it changes">
       <div className={s.row}>
-        <Text weight="semibold">Security impact</Text>
+        <Text weight="semibold">What it changes</Text>
         <Word value={impact.risk} label={`${impact.risk} risk`} />
       </div>
       {impact.reasons.length === 0 ? (
-        <Text className={s.muted}>It loosens nothing against the revision in effect{impact.narrowed.length > 0 ? `, and narrows ${impact.narrowed.length} answer(s)` : ""}.</Text>
+        <Text className={s.muted}>
+          It loosens nothing against the revision in effect{impact.narrowed.length > 0 ? `, and narrows ${impact.narrowed.length} answer(s)` : ""}.
+        </Text>
       ) : (
         <div className={s.inset}>
-          <ul className={s.list}>
+          <ul className={s.list} aria-label="Why it carries this risk">
             {impact.reasons.map((r) => (
               <li key={r}>
                 <Text>{r}</Text>
@@ -162,33 +217,19 @@ function ImpactView({ impact }: { impact: Impact }) {
         </div>
       )}
       {impact.widened.length > 0 && (
-        <div className={s.tableWrap}>
-          <Table size="small" aria-label="What it loosens">
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Action</TableHeaderCell>
-                <TableHeaderCell>For</TableHeaderCell>
-                <TableHeaderCell>Resource</TableHeaderCell>
-                <TableHeaderCell>From → to</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {impact.widened.map((c) => (
-                <TableRow key={`${c.action}|${c.principalType}|${c.resource}|${c.before}|${c.after}`}>
-                  <TableCell className={s.mono}>{c.action}</TableCell>
-                  <TableCell>{c.principalType}</TableCell>
-                  <TableCell className={s.mono}>{c.resource === "*" ? "any other" : c.resource}</TableCell>
-                  <TableCell>
-                    <Word value={c.before} /> → <Word value={c.after} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <Text weight="semibold" size={300}>
+          It loosens
+        </Text>
       )}
+      <Cells label="What it loosens" cells={impact.widened} />
+      {impact.narrowed.length > 0 && (
+        <Text weight="semibold" size={300}>
+          It narrows
+        </Text>
+      )}
+      <Cells label="What it narrows" cells={impact.narrowed} />
       {impact.obligations.length > 0 && (
-        <ul className={s.list}>
+        <ul className={s.list} aria-label="Obligations it changes">
           {impact.obligations.map((o) => (
             <li key={o.field}>
               <Text>
@@ -207,6 +248,60 @@ function ImpactView({ impact }: { impact: Impact }) {
   );
 }
 
+// THE OWNER'S CONFIRMATION: what publishing would change, the base it was compared with, and -- above a low risk -- an
+// explicit acknowledgement of the risk the API worked out. What is sent names exactly what was read.
+function ReviewDialog({ revision, revisions, onClose, onPublished }: { revision: RevisionView; revisions: readonly RevisionSummary[]; onClose: () => void; onPublished: (r: RevisionView) => void }) {
+  const s = useParts();
+  const styles = useStyles();
+  // A change whose impact could not be worked out is confirmed as the API treats it: a high-risk one.
+  const risk: RiskLevel = revision.impact?.risk ?? "high";
+  const needsAcknowledgement = risk !== "low";
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirm = () => {
+    setBusy(true);
+    setError(null);
+    void send<RevisionView>("POST", `/api/governance/revisions/${encodeURIComponent(revision.id)}/publish`, { digest: revision.digest, base: revision.base, acknowledgedRisk: risk })
+      .then(onPublished)
+      .catch((err: unknown) => setError(errorText(err)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
+      <DialogSurface className={styles.reviewSurface}>
+        <DialogBody>
+          <DialogTitle>Review changes</DialogTitle>
+          <DialogContent className={styles.reviewBody}>
+            <Text block>Publishing makes exactly this content your policy in effect at once, for every chat and research workspace of your account and every decision. You confirm it yourself: nobody else is asked.</Text>
+            <div className={s.inset}>
+              <Text size={200}>
+                Content: <span className={s.codeChip}>{revision.digest}</span>
+              </Text>
+              <Text size={200}>Compared with: {revisionName(revision.base, revisions)}</Text>
+            </div>
+            {revision.impact ? (
+              <ImpactView impact={revision.impact} />
+            ) : (
+              <MessageBar intent="warning">
+                <MessageBarBody>What it would change could not be worked out: it is confirmed as a high-risk change.</MessageBarBody>
+              </MessageBar>
+            )}
+            {needsAcknowledgement && <Checkbox checked={acknowledged} onChange={(_, d) => setAcknowledged(d.checked === true)} label={`I have read what it changes and accept its ${risk} risk`} />}
+            <ErrorBar text={error} />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button appearance="primary" disabled={busy || (needsAcknowledgement && !acknowledged)} onClick={confirm}>
+              {busy ? "Publishing…" : "Confirm and publish"}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
 function Simulation({ revisionId }: { revisionId: string | null }) {
   const s = useParts();
   const styles = useStyles();
@@ -218,7 +313,7 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const ask = () => {
     setError(null);
-    void send<SimulateResult>("POST", "/api/governance/simulate", { request: { principalType, action, resource, environment, workspaceId: null, agentId: null, projectId: null }, ...(revisionId ? { revisionId } : {}) })
+    void send<SimulateResult>("POST", "/api/governance/simulate", { request: { principalType, action, resource, environment, workspaceId: null, researchWorkspaceId: null }, ...(revisionId ? { revisionId } : {}) })
       .then(setResult)
       .catch((err: unknown) => setError(errorText(err)));
   };
@@ -226,7 +321,7 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
     <Card title="Simulate a decision" description="Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.">
       <div className={styles.simGrid}>
         <Field label="Who" className={styles.simField}>
-          {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p }))} />}
+          {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p === "human" ? "you" : p }))} />}
         </Field>
         <Field label="Action" className={styles.simField}>
           {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={action} onChange={setAction} options={ACTION_KINDS.map((a) => ({ value: a, label: a }))} />}
@@ -243,11 +338,7 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
           </Button>
         </div>
       </div>
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
+      <ErrorBar text={error} />
       {result && (
         <div className={s.inset} aria-label="Simulated decision">
           <div className={s.row}>
@@ -264,28 +355,29 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
   );
 }
 
-function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView; names: ReadonlyMap<string, string>; onChanged: (r: RevisionView) => void }) {
+function RevisionDetail({ revision, revisions, onChanged }: { revision: RevisionView; revisions: readonly RevisionSummary[]; onChanged: (r: RevisionView) => void }) {
   const s = useParts();
   const styles = useStyles();
-  const { can } = useOperator();
   const [shown, setShown] = useState(() => tableable(revision.document));
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<"publish" | "approve" | null>(null);
-  const editable = EDITABLE.has(revision.state) && can("constitution.edit") && shown.document !== null;
-  const act = (path: string, body?: unknown, method: "POST" | "PUT" = "POST") => {
+  const [reviewing, setReviewing] = useState(false);
+  const open = OPEN.has(revision.state);
+  const editable = open && shown.document !== null;
+  const path = `/api/governance/revisions/${encodeURIComponent(revision.id)}`;
+  const act = (method: "POST" | "PUT", to: string, body?: unknown) => {
     setBusy(true);
     setError(null);
-    void send<RevisionView>(method, path, body)
-      .then(onChanged)
+    void send<RevisionView>(method, to, body)
+      .then((r) => {
+        setDirty(false);
+        onChanged(r);
+      })
       .catch((err: unknown) => setError(errorText(err)))
-      .finally(() => {
-        setBusy(false);
-        setConfirm(null);
-      });
+      .finally(() => setBusy(false));
   };
-  const save = () => act(`/api/governance/revisions/${revision.id}`, { document: shown.document, expectedDigest: revision.digest }, "PUT");
-  const base = `/api/governance/revisions/${revision.id}`;
+  const authors = [...new Set(revision.authors.map(byWhom))];
   return (
     <Card
       title={
@@ -295,15 +387,21 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
       }
       description={
         <>
-          Digest <span className={s.codeChip}>{short(revision.digest, 16)}</span> · from {revision.source}
-          {revision.basedOn ? ` (${short(revision.basedOn, 13)})` : ""} · written by {revision.authors.map((a) => who(a, names)).join(", ")}
+          Digest <span className={s.codeChip}>{short(revision.digest, 16)}</span> · {SOURCES[revision.source]}
+          {revision.basedOn ? ` (from ${short(revision.basedOn, 13)})` : ""} · by {authors.join(", ")}
+          {revision.publishedAt ? ` · published ${when(revision.publishedAt)} by ${byWhom(revision.publishedBy)}` : ""}
         </>
       }
     >
-      {!editable && shown.document !== null && (
+      {revision.source === "agent" && open && (
+        <MessageBar intent="info">
+          <MessageBarBody>An agent handed in this draft. Nothing in it is in effect: read it, and only you can validate, confirm and publish it.</MessageBarBody>
+        </MessageBar>
+      )}
+      {!open && shown.document !== null && (
         <div className={styles.readOnlyRow}>
           <LockClosed16Regular aria-hidden />
-          <Text size={200}>{can("constitution.edit") ? "Read-only — choose or start a draft above to edit." : "Read-only revision."}</Text>
+          <Text size={200}>Read only: a {revision.state === "DISCARDED" ? "discarded" : "published"} revision never changes. Start a new draft to change your policy.</Text>
         </div>
       )}
       {revision.errors.length > 0 && (
@@ -320,55 +418,48 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
         </div>
       ))}
       {shown.document !== null ? (
-        <ConstitutionTable document={shown.document} editable={editable} onChange={(next) => setShown({ document: next, problem: null })} />
+        <PolicyTable
+          document={shown.document}
+          editable={editable}
+          onChange={(next) => {
+            setShown({ document: next, problem: null });
+            setDirty(true);
+          }}
+        />
       ) : (
         <MessageBar intent="warning">
-          <MessageBarBody>This revision cannot be shown: {shown.problem}. Start a new draft from the one in effect.</MessageBarBody>
+          <MessageBarBody>This revision cannot be shown: {shown.problem}. Start a new draft from the policy in effect.</MessageBarBody>
         </MessageBar>
       )}
-      <div className={s.row}>
-        {editable && (
-          <Button onClick={save} disabled={busy}>
-            Save draft
-          </Button>
-        )}
-        {revision.state === "DRAFT" && can("constitution.edit") && (
-          <Button onClick={() => act(`${base}/validate`)} disabled={busy}>
-            Validate
-          </Button>
-        )}
-        {revision.state === "VALIDATED" && can("constitution.edit") && (
-          <Button appearance="primary" onClick={() => act(`${base}/request-approval`)} disabled={busy}>
-            Request approval
-          </Button>
-        )}
-        {revision.state === "PENDING_APPROVAL" && can("constitution.approve") && (
-          <>
-            <Button appearance="primary" onClick={() => setConfirm("approve")} disabled={busy}>
-              Approve…
+      {open && (
+        <div className={s.row}>
+          {editable && (
+            <Button onClick={() => act("PUT", path, { document: shown.document, expectedDigest: revision.digest })} disabled={busy || !dirty}>
+              Save draft
             </Button>
-            <Button onClick={() => act(`${base}/reject`, { digest: revision.digest })} disabled={busy}>
-              Reject
+          )}
+          {revision.state === "DRAFT" && (
+            <Button onClick={() => act("POST", `${path}/validate`)} disabled={busy || dirty}>
+              Validate
             </Button>
-          </>
-        )}
-        {revision.state === "APPROVED" && can("constitution.publish") && (
-          <Button appearance="primary" onClick={() => setConfirm("publish")} disabled={busy}>
-            Publish…
+          )}
+          {revision.state === "VALIDATED" && (
+            <Button appearance="primary" onClick={() => setReviewing(true)} disabled={busy || dirty}>
+              Review changes…
+            </Button>
+          )}
+          <Button appearance="subtle" onClick={() => act("POST", `${path}/discard`, { digest: revision.digest })} disabled={busy}>
+            Discard
           </Button>
-        )}
-        {(revision.state === "PENDING_APPROVAL" || revision.state === "APPROVED") && can("constitution.edit") && (
-          <Button onClick={() => act(`${base}/withdraw`)} disabled={busy}>
-            Withdraw to draft
-          </Button>
-        )}
-      </div>
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
+          {dirty && (
+            <Text size={200} className={s.muted}>
+              Save the draft before you validate or publish it.
+            </Text>
+          )}
+        </div>
       )}
-      {revision.impact && <ImpactView impact={revision.impact} />}
+      <ErrorBar text={error} />
+      {open && revision.impact && <ImpactView impact={revision.impact} />}
       {revision.history.length > 0 && (
         <div className={s.inset}>
           <Text weight="semibold" size={300}>
@@ -382,7 +473,7 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
                   {h.what}
                 </Text>
                 <Text size={200} className={s.muted}>
-                  by {who(h.by, names)} · {when(h.at)}
+                  by {byWhom(h.by)} · {when(h.at)}
                 </Text>
                 {h.digest && <span className={s.codeChip}>{short(h.digest)}</span>}
               </li>
@@ -390,84 +481,90 @@ function RevisionDetail({ revision, names, onChanged }: { revision: RevisionView
           </ul>
         </div>
       )}
-      <Dialog open={confirm !== null} onOpenChange={(_, d) => !d.open && setConfirm(null)}>
-        <DialogSurface>
-          <DialogBody>
-            <DialogTitle>{confirm === "publish" ? "Publish this revision?" : "Approve this revision?"}</DialogTitle>
-            <DialogContent>
-              <Text block>
-                {confirm === "publish" ? "It becomes the Constitution in effect at once, for every governed workspace and every decision." : "You approve exactly this content:"} digest{" "}
-                <span className={s.mono}>{revision.digest}</span>.
-              </Text>
-              {revision.impact && <ImpactView impact={revision.impact} />}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setConfirm(null)}>Cancel</Button>
-              <Button appearance="primary" disabled={busy} onClick={() => act(`${base}/${confirm === "publish" ? "publish" : "approve"}`, { digest: revision.digest })}>
-                {confirm === "publish" ? "Publish" : "Approve"}
-              </Button>
-            </DialogActions>
-          </DialogBody>
-        </DialogSurface>
-      </Dialog>
+      {reviewing && (
+        <ReviewDialog
+          revision={revision}
+          revisions={revisions}
+          onClose={() => setReviewing(false)}
+          onPublished={(r) => {
+            setReviewing(false);
+            onChanged(r);
+          }}
+        />
+      )}
     </Card>
   );
 }
 
-export function ConstitutionPage({ item, go }: { item: string | null; go: (page: GovernancePage, item?: string | null) => void }) {
+function RevisionAction({ r, draft }: { r: RevisionSummary; draft: (body: object) => void }) {
+  if (r.state === "SUPERSEDED")
+    return (
+      <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
+        Roll back to this
+      </Button>
+    );
+  if (r.state === "DISCARDED")
+    return (
+      <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
+        Start again from this
+      </Button>
+    );
+  return null;
+}
+
+export function PolicyPage({ item, go }: { item: string | null; go: (page: GovernancePage, item?: string | null) => void }) {
   const s = useParts();
   const styles = useStyles();
   const { isMobile } = useViewport();
-  const { can } = useOperator();
-  const overview = useResource<ConstitutionOverview>(() => get("/api/governance/constitution"), []);
-  const operators = useResource<OperatorList>(can("operators.read") ? () => get("/api/governance/operators") : null, []);
+  const overview = useResource<PolicyOverview>(() => get("/api/governance/policy"), []);
   const selected = useResource<RevisionView>(item ? () => get(`/api/governance/revisions/${encodeURIComponent(item)}`) : null, [item]);
   const [error, setError] = useState<string | null>(null);
   useAppEvent("governance.changed", (e) => {
-    if (e.data.area !== "constitution" && e.data.area !== "overlays") return;
+    if (e.data.area !== "policy") return;
     void overview.reload();
     if (item) void selected.reload();
   });
-  const names = useMemo(() => new Map((operators.data?.operators ?? []).map((o) => [o.id, o.username])), [operators.data]);
   const draft = (body: object) => {
     setError(null);
     void send<RevisionView>("POST", "/api/governance/revisions", body)
-      .then((r) => go("constitution", r.id))
+      .then((r) => go("policy", r.id))
       .catch((err: unknown) => setError(errorText(err)));
   };
 
-  if (overview.data === null) return overview.error ? <MessageBar intent="error"><MessageBarBody>{overview.error}</MessageBarBody></MessageBar> : <Spinner label="Reading the Constitution…" />;
+  if (overview.data === null)
+    return overview.error ? (
+      <MessageBar intent="error">
+        <MessageBarBody>{overview.error}</MessageBarBody>
+      </MessageBar>
+    ) : (
+      <Spinner label="Reading your policy…" />
+    );
   const o = overview.data;
   const activeId = item ?? o.effective?.id ?? null;
   return (
     <div className={s.page}>
       <Card
         title="Revisions"
+        description="Your account's policy: a draft is validated, reviewed and confirmed by you before it is in effect."
         actions={
-          can("constitution.edit") && (
-            <Button appearance="primary" shape="circular" onClick={() => draft({})}>
-              {o.effective ? "New draft from the one in effect" : "Start from the default Constitution"}
-            </Button>
-          )
+          <Button appearance="primary" shape="circular" onClick={() => draft({})}>
+            {o.effective ? "New draft from the policy in effect" : "Start from the default policy"}
+          </Button>
         }
       >
         {o.effective === null && (
           <MessageBar intent="warning">
-            <MessageBarBody>Nothing is published yet. Start from the default Constitution, read it, and take it through validation, approval and publication.</MessageBarBody>
+            <MessageBarBody>No policy is in effect: nothing a run asks is allowed until you publish one.</MessageBarBody>
           </MessageBar>
         )}
-        {error && (
-          <MessageBar intent="error">
-            <MessageBarBody>{error}</MessageBarBody>
-          </MessageBar>
-        )}
+        <ErrorBar text={error} />
         {isMobile ? (
           <div className={styles.revList} aria-label="Revisions">
             {o.revisions.map((r) => (
               <div key={r.id} className={mergeClasses(styles.revCard, r.id === activeId && styles.revCardActive)} aria-current={r.id === activeId ? "true" : undefined}>
                 <div className={styles.revTop}>
                   <div className={s.row}>
-                    <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("constitution", r.id)}>
+                    <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("policy", r.id)}>
                       {r.name}
                     </Button>
                     <Text size={200} className={s.muted}>
@@ -483,11 +580,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
                   <Text size={200} className={s.muted}>
                     {when(r.updatedAt)}
                   </Text>
-                  {r.state === "SUPERSEDED" && can("constitution.edit") && (
-                    <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
-                      Roll back to this
-                    </Button>
-                  )}
+                  <RevisionAction r={r} draft={draft} />
                 </div>
               </div>
             ))}
@@ -510,7 +603,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
                   <TableRow key={r.id} className={r.id === activeId ? styles.rowSelected : undefined} aria-selected={r.id === activeId}>
                     <TableCell className={styles.colRev}>{r.revision ?? "—"}</TableCell>
                     <TableCell>
-                      <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("constitution", r.id)}>
+                      <Button className={styles.nameBtn} appearance="transparent" onClick={() => go("policy", r.id)}>
                         {r.name}
                       </Button>
                     </TableCell>
@@ -520,11 +613,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
                     <TableCell className={styles.colNowrap}>{r.risk ? <Word value={r.risk} /> : "—"}</TableCell>
                     <TableCell className={styles.colUpdated}>{when(r.updatedAt)}</TableCell>
                     <TableCell className={styles.colActions}>
-                      {r.state === "SUPERSEDED" && can("constitution.edit") && (
-                        <Button size="small" shape="circular" onClick={() => draft({ from: r.id })}>
-                          Roll back to this
-                        </Button>
-                      )}
+                      <RevisionAction r={r} draft={draft} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -537,7 +626,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
         <RevisionDetail
           key={`${selected.data.id}:${selected.data.digest}:${selected.data.state}`}
           revision={selected.data}
-          names={names}
+          revisions={o.revisions}
           onChanged={(r) => {
             selected.set(r);
             void overview.reload();
@@ -549,7 +638,7 @@ export function ConstitutionPage({ item, go }: { item: string | null; go: (page:
           <MessageBarBody>{selected.error}</MessageBarBody>
         </MessageBar>
       )}
-      {!item && o.effective && <RevisionDetail key={o.effective.id} revision={o.effective} names={names} onChanged={() => void overview.reload()} />}
+      {!item && o.effective && <RevisionDetail key={`${o.effective.id}:${o.effective.digest}`} revision={o.effective} revisions={o.revisions} onChanged={() => void overview.reload()} />}
       <Simulation revisionId={item} />
     </div>
   );

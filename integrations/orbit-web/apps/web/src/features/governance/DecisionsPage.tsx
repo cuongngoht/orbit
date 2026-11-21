@@ -1,6 +1,6 @@
-// POLICY DECISIONS: every decision the Constitution made, newest first -- who asked (a person, an agent, nobody
-// verified), for what, under which revision, what it answered and why, and where it is held (boundary, control,
-// runtime). Each is an audit record: its id opens it in the audit timeline.
+// POLICY DECISIONS: every decision your account's policy made, newest first -- who asked (you, one of your agents,
+// nobody verified), for what, under which revision and override, what it answered and why, and where it is held
+// (boundary, control, runtime). Each is an audit record: its id opens it in the audit timeline.
 import { Button, MessageBar, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
 import type { DecisionList } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -8,7 +8,7 @@ import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { get } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, Word, short, useParts, when } from "./parts";
+import { Card, Word, principalOf, short, useParts, when } from "./parts";
 
 const VERDICTS = [
   { value: "", label: "All verdicts" },
@@ -74,9 +74,7 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
                   <TableRow key={d.eventId}>
                     <TableCell>{when(d.at)}</TableCell>
                     <TableCell>
-                      <Text size={200}>
-                        {d.principalType} {d.agentId ? short(d.agentId, 16) : short(d.principalId, 16)}
-                      </Text>
+                      <Text size={200}>{principalOf(d.principalType, d.principalId, d.agentId)}</Text>
                     </TableCell>
                     <TableCell>
                       <Text className={s.mono}>{d.action}</Text>

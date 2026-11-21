@@ -182,7 +182,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
         )}
         <div className={s.view}>
           {governance !== null ? (
-            <GovernanceView page={governance.page} item={governance.item} go={goGovernance} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
+            <GovernanceView page={governance.page} item={governance.item} go={goGovernance} account={claude.session && { displayName: claude.session.displayName, email: claude.session.email }} onOpenNav={isCompact ? () => setDrawerOpen(true) : undefined} />
           ) : selected === null ? (
             <NewSession
               settings={settings.data}

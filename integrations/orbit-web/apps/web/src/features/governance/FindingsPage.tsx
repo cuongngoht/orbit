@@ -8,13 +8,11 @@ import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
-import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, Word, short, useParts, when } from "./parts";
+import { Card, ErrorBar, Word, short, useParts, when } from "./parts";
 
 function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePage, item?: string | null) => void; onChanged: () => void }) {
   const s = useParts();
-  const { can } = useOperator();
   const [error, setError] = useState<string | null>(null);
   const resolve = (resolution: string) => {
     setError(null);
@@ -36,30 +34,24 @@ function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePa
         ))}
         {f.evidenceIds.length > 12 && <Text size={200}>+{f.evidenceIds.length - 12} more</Text>}
       </div>
-      {can("findings.manage") && (
-        <div className={s.row}>
-          {f.resolution !== "resolved" && (
-            <Button size="small" onClick={() => resolve("resolved")}>
-              Resolved
-            </Button>
-          )}
-          {f.resolution !== "accepted" && (
-            <Button size="small" onClick={() => resolve("accepted")}>
-              Accept the risk
-            </Button>
-          )}
-          {f.resolution !== "open" && (
-            <Button size="small" onClick={() => resolve("open")}>
-              Open again
-            </Button>
-          )}
-        </div>
-      )}
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
+      <div className={s.row}>
+        {f.resolution !== "resolved" && (
+          <Button size="small" onClick={() => resolve("resolved")}>
+            Resolved
+          </Button>
+        )}
+        {f.resolution !== "accepted" && (
+          <Button size="small" onClick={() => resolve("accepted")}>
+            Accept the risk
+          </Button>
+        )}
+        {f.resolution !== "open" && (
+          <Button size="small" onClick={() => resolve("open")}>
+            Open again
+          </Button>
+        )}
+      </div>
+      <ErrorBar text={error} />
     </Card>
   );
 }

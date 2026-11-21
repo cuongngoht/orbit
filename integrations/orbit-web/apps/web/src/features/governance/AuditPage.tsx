@@ -1,15 +1,15 @@
-// THE AUDIT TIMELINE: every governance record, newest first, each with everything it says -- who (a person, an agent,
-// nobody verified, Orbit Web itself), the workspace, the run, the revision and decision it stands on, why, and its place
-// in the hash chain. Read only: no page and no route changes or removes a record.
+// THE AUDIT TIMELINE: every record of the account's governance, newest first, each with everything it says -- who (you,
+// one of your agents, nobody verified, Orbit Web itself), the chat or research workspace, the run, the revision and
+// decision it stands on, why, and its place in the account's hash chain. Read only: no page and no route changes or
+// removes a record.
 import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
 import { AUDIT_EVENTS, type AuditEvent } from "@orbit-web/governance-core";
 import type { AuditPage as Page, ChainVerification } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
-import { useOperator } from "../../services/operator";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, CleanSelect, Word, short, useParts, when } from "./parts";
+import { Card, CleanSelect, ErrorBar, Word, principalOf, short, useParts, when } from "./parts";
 
 const EVENT_TYPE_OPTIONS = [
   { value: "", label: "every record" },
@@ -38,7 +38,7 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
           </Button>
         </div>
         <Text size={200}>
-          {event.principalType} {short(event.agentId ?? event.principalId, 24)}
+          {principalOf(event.principalType, event.principalId, event.agentId)}
           {event.workspaceId ? ` · workspace ${short(event.workspaceId, 8)}` : ""}
           {event.reasonCodes.length > 0 ? ` · ${event.reasonCodes.join(", ")}` : ""}
         </Text>
@@ -50,7 +50,6 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
 
 export function AuditPage({ item }: { item: string | null }) {
   const s = useParts();
-  const { can } = useOperator();
   const [type, setType] = useState("");
   const [before, setBefore] = useState<number | null>(null);
   const [verification, setVerification] = useState<ChainVerification | null>(null);
@@ -82,22 +81,16 @@ export function AuditPage({ item }: { item: string | null }) {
             setType(value);
           }}
         />
-        {can("audit.verify") && (
-          <Button shape="circular" disabled={verifying} onClick={verify}>
-            {verifying ? "Verifying…" : "Verify the chain"}
-          </Button>
-        )}
+        <Button shape="circular" disabled={verifying} onClick={verify}>
+          {verifying ? "Verifying…" : "Verify the chain"}
+        </Button>
       </div>
       {verification && (
         <MessageBar intent={verification.ok ? "success" : "error"}>
           <MessageBarBody>{verification.ok ? `The chain holds: ${verification.count} record(s), head ${short(verification.head, 16)}.` : `The chain does NOT hold at record ${verification.brokenAt} (${verification.problem}).`}</MessageBarBody>
         </MessageBar>
       )}
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
+      <ErrorBar text={error} />
       {item && one.data && (
         <ul className={s.list} aria-label="The record asked for">
           <Record event={one.data} open />

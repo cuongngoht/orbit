@@ -17,7 +17,7 @@ import { useModelCatalog } from "../../services/models/ModelCatalog";
 import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
-  root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0 },
+  root: { display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", height: "100%", minHeight: 0, overflow: "hidden" },
   top: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", minHeight: "52px", paddingTop: "10px", paddingRight: "16px", paddingBottom: "10px", paddingLeft: "16px", color: tokens.colorNeutralForeground2 },
   topMobile: { paddingTop: "max(8px, env(safe-area-inset-top))", paddingRight: "10px", paddingBottom: "6px", paddingLeft: "8px" },
   topLeft: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0 },
@@ -68,7 +68,7 @@ const useStyles = makeStyles({
   kindSelected: { border: `1px solid ${tokens.colorBrandStroke1}`, backgroundColor: tokens.colorSubtleBackgroundSelected },
   kindText: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 },
   kindIcon: { flexShrink: 0, color: tokens.colorBrandForeground1, marginTop: "2px" },
-  bottomMobile: { paddingTop: "4px", paddingRight: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", paddingLeft: "12px", flexShrink: 0 },
+  bottomMobile: { paddingTop: "4px", paddingRight: "12px", paddingBottom: "max(10px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))", paddingLeft: "12px", flexShrink: 0 },
 });
 
 export type SessionKind = "coding" | "research";

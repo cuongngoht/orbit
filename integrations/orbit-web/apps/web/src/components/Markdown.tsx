@@ -9,15 +9,21 @@ import { CodeBlock } from "./CodeBlock";
 
 const useStyles = makeStyles({
   root: {
+    minWidth: 0,
+    maxWidth: "100%",
     fontSize: "15px",
     lineHeight: "1.65",
     overflowWrap: "anywhere",
     "& p": { margin: "0 0 12px 0" },
     "& p:last-child": { marginBottom: "0" },
     "& h1, & h2, & h3": { letterSpacing: "-0.015em", lineHeight: "1.3", margin: "18px 0 8px 0" },
+    "& h1": { fontSize: "1.35em" },
+    "& h2": { fontSize: "1.2em" },
+    "& h3": { fontSize: "1.07em" },
     "& h1:first-child, & h2:first-child, & h3:first-child": { marginTop: "0" },
     "& ul, & ol": { margin: "0 0 12px 0", paddingLeft: "22px" },
     "& li": { marginBottom: "4px" },
+    "& img": { maxWidth: "100%", height: "auto" },
     "& blockquote": {
       margin: "8px 0 12px 0",
       paddingLeft: "12px",
@@ -76,6 +82,7 @@ const useStyles = makeStyles({
     width: "100%",
     maxWidth: "100%",
     overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
     marginTop: "10px",
     marginBottom: "12px",
     borderRadius: "12px",

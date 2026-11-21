@@ -5,6 +5,8 @@ import { highlighted } from "./highlight";
 
 const useStyles = makeStyles({
   wrap: {
+    width: "100%",
+    minWidth: 0,
     maxWidth: "100%",
     marginTop: "6px",
     marginBottom: "8px",
@@ -39,6 +41,7 @@ const useStyles = makeStyles({
     paddingBottom: "12px",
     paddingLeft: "14px",
     overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
     fontFamily: tokens.fontFamilyMonospace,
     fontSize: "13px",
     lineHeight: "1.55",

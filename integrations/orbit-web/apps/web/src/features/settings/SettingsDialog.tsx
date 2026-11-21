@@ -37,8 +37,8 @@ const useStyles = makeStyles({
   surfaceMobile: {
     width: "100vw",
     maxWidth: "100vw",
-    height: "100dvh",
-    maxHeight: "100dvh",
+    height: "var(--orbit-app-height, 100dvh)",
+    maxHeight: "var(--orbit-app-height, 100dvh)",
     marginTop: 0,
     marginRight: 0,
     marginBottom: 0,

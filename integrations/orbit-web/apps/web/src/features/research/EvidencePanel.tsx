@@ -29,7 +29,7 @@ import { placeOf, when } from "./labels";
 import { SourcePreview, type PreviewTarget } from "./SourcePreview";
 
 const useStyles = makeStyles({
-  root: { display: "flex", flexDirection: "column", minHeight: 0, height: "100%", backgroundColor: tokens.colorNeutralBackground1 },
+  root: { display: "flex", flexDirection: "column", minWidth: 0, maxWidth: "100%", minHeight: 0, height: "100%", overflow: "hidden", backgroundColor: tokens.colorNeutralBackground1 },
   drawerBar: {
     display: "flex",
     alignItems: "center",
@@ -85,11 +85,13 @@ const useStyles = makeStyles({
   },
   body: {
     flexGrow: 1,
+    minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
+    overflowX: "hidden",
     paddingTop: "12px",
     paddingRight: "12px",
-    paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+    paddingBottom: "max(16px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))",
     paddingLeft: "12px",
     display: "flex",
     flexDirection: "column",

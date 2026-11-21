@@ -17,7 +17,7 @@ import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { useHashRoute, type GovernancePage } from "./hooks/useHashRoute";
 import { useResearchSessions, useSessions, useSources } from "./hooks/useLive";
 import { useResource, type Resource } from "./hooks/useResource";
-import { useViewport } from "./hooks/useViewport";
+import { useViewport, useVisualViewport } from "./hooks/useViewport";
 import { Sidebar } from "./layout/Sidebar";
 import { AccessPage } from "./pages/AccessPage";
 import { SharedChatPage, sharedTokenOf } from "./pages/SharedChatPage";
@@ -31,12 +31,20 @@ import { isDark, themeOf, useSystemDark } from "./themes/theme";
 const useStyles = makeStyles({
   shell: {
     display: "flex",
-    height: "100dvh",
+    width: "100%",
+    maxWidth: "100%",
+    height: "var(--orbit-app-height, 100dvh)",
     overflow: "hidden",
     paddingLeft: "env(safe-area-inset-left)",
     paddingRight: "env(safe-area-inset-right)",
     backgroundColor: tokens.colorNeutralBackground1,
     color: tokens.colorNeutralForeground1,
+  },
+  shellTouch: {
+    position: "fixed",
+    top: "var(--orbit-app-top, 0px)",
+    left: 0,
+    right: 0,
   },
   side: { width: "272px", flexShrink: 0, height: "100%" },
   sideCollapsed: { width: "56px" },
@@ -53,8 +61,8 @@ const useStyles = makeStyles({
     paddingLeft: 0,
     backgroundColor: tokens.colorNeutralBackground2,
   },
-  main: { flexGrow: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column" },
-  view: { flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
+  main: { flexGrow: 1, minWidth: 0, maxWidth: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" },
+  view: { flexGrow: 1, minWidth: 0, maxWidth: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" },
   center: { padding: "48px" },
 });
 
@@ -75,7 +83,15 @@ function useCollapsed(): [boolean, () => void] {
 // and leaving it (signing out) closes every stream it opened.
 function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: ClaudeStatus; settings: Resource<Settings>; reloadClaude: () => void; onSignedOut: (s: ClaudeStatus) => void }) {
   const s = useStyles();
-  const { isCompact } = useViewport();
+  const { isMobile, isCompact, isCoarse } = useViewport();
+  const touch = isMobile || isCoarse;
+  useVisualViewport(touch);
+  useEffect(() => {
+    document.documentElement.dataset.orbitShell = "fixed";
+    return () => {
+      delete document.documentElement.dataset.orbitShell;
+    };
+  }, []);
   const { route, open, openSettings, closeSettings } = useHashRoute();
   const sessions = useSessions();
   const researchSessions = useResearchSessions();
@@ -163,7 +179,7 @@ function Workspace({ claude, settings, reloadClaude, onSignedOut }: { claude: Cl
   };
 
   return (
-    <div className={s.shell}>
+    <div className={mergeClasses(s.shell, touch && s.shellTouch)}>
       {!isCompact ? (
         <div className={mergeClasses(s.side, collapsed && s.sideCollapsed)}>
           <Sidebar {...sidebarProps} collapsed={collapsed} onToggle={toggle} />

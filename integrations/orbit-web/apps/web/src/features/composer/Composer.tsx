@@ -14,11 +14,14 @@ import { useViewport } from "../../hooks/useViewport";
 import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
 const useStyles = makeStyles({
-  wrap: { width: "100%", maxWidth: "820px", marginTop: 0, marginRight: "auto", marginBottom: 0, marginLeft: "auto", display: "flex", flexDirection: "column", gap: "8px" },
-  anchor: { position: "relative" },
+  wrap: { width: "100%", minWidth: 0, maxWidth: "min(820px, 100%)", marginTop: 0, marginRight: "auto", marginBottom: 0, marginLeft: "auto", display: "flex", flexDirection: "column", gap: "8px" },
+  anchor: { position: "relative", minWidth: 0, maxWidth: "100%" },
   card: {
     display: "flex",
     flexDirection: "column",
+    minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
     borderRadius: "22px",
     backgroundColor: "var(--orbit-card-bg)",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
@@ -50,6 +53,9 @@ const useStyles = makeStyles({
     maxHeight: "40vh",
     "::placeholder": { color: tokens.colorNeutralForeground4 },
   },
+  inputTouch: {
+    fontSize: "16px",
+  },
   inputMobile: {
     fontSize: "16px",
     paddingTop: "12px",
@@ -69,6 +75,7 @@ const useStyles = makeStyles({
     minWidth: 0,
   },
   footerMobile: {
+    alignItems: "center",
     paddingTop: "2px",
     paddingRight: "8px",
     paddingBottom: "8px",
@@ -215,7 +222,7 @@ export function Composer(p: ComposerProps) {
           <AttachmentStrip items={images.items} notice={images.notice} onRemove={images.remove} />
           <textarea
             ref={input}
-            className={mergeClasses(s.input, isMobile && s.inputMobile)}
+            className={mergeClasses(s.input, touchSized && s.inputTouch, isMobile && s.inputMobile)}
             rows={rowsOf(text, isMobile)}
             placeholder={p.placeholder}
             aria-label="Message"

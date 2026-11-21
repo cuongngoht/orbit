@@ -6,10 +6,19 @@
 
 html {
   color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html[data-theme="dark"] {
   color-scheme: dark;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 html,
@@ -21,6 +30,14 @@ body,
   overscroll-behavior: none;
 }
 
+html[data-orbit-shell="fixed"],
+html[data-orbit-shell="fixed"] body,
+html[data-orbit-shell="fixed"] #root {
+  overflow: hidden;
+  height: 100%;
+  height: 100dvh;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -29,12 +46,21 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Prevent iOS Safari automatic zoom when focusing form fields on small viewports. */
-@media (max-width: 639px) {
-  input,
+button,
+a,
+[role="button"],
+[role="tab"] {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS Safari automatic zoom when focusing form fields on small or touch viewports. */
+@media (max-width: 639px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
   textarea,
-  select {
-    font-size: 16px;
+  select,
+  .fui-Input__input,
+  .fui-Textarea__textarea {
+    font-size: 16px !important;
   }
 }
 

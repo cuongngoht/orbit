@@ -24,7 +24,7 @@ import type { PreviewTarget } from "./SourcePreview";
 import { useResearchStream } from "./useResearchStream";
 
 const useStyles = makeStyles({
-  root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0, backgroundColor: tokens.colorNeutralBackground1 },
+  root: { display: "flex", flexDirection: "column", width: "100%", maxWidth: "100%", height: "100%", minHeight: 0, minWidth: 0, overflow: "hidden", backgroundColor: tokens.colorNeutralBackground1 },
   top: {
     display: "flex",
     alignItems: "center",
@@ -41,7 +41,7 @@ const useStyles = makeStyles({
     flexShrink: 0,
     minWidth: 0,
   },
-  topMobile: { paddingTop: "max(6px, env(safe-area-inset-top))", paddingLeft: "8px", paddingRight: "8px", gap: "6px" },
+  topMobile: { minHeight: "52px", paddingTop: "max(6px, env(safe-area-inset-top))", paddingBottom: "6px", paddingLeft: "8px", paddingRight: "8px", gap: "6px" },
   brandEmblem: {
     width: "32px",
     height: "32px",
@@ -84,6 +84,8 @@ const useStyles = makeStyles({
   },
   mobileTabsWrap: {
     flexShrink: 0,
+    minWidth: 0,
+    maxWidth: "100%",
     paddingTop: "8px",
     paddingRight: "12px",
     paddingBottom: "8px",
@@ -121,7 +123,7 @@ const useStyles = makeStyles({
       fontWeight: tokens.fontWeightSemibold,
     },
   },
-  single: { flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
+  single: { flexGrow: 1, minHeight: 0, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", flexDirection: "column" },
   center: { marginTop: "48px" },
   shareSurface: {
     borderRadius: "20px",
@@ -352,9 +354,11 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     <div className={s.root}>
       <header className={mergeClasses(s.top, isMobile && s.topMobile)}>
         {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
-        <span className={s.brandEmblem} aria-hidden>
-          <BookOpen20Regular />
-        </span>
+        {!isMobile && (
+          <span className={s.brandEmblem} aria-hidden>
+            <BookOpen20Regular />
+          </span>
+        )}
         <div className={s.titles}>
           <Text weight="semibold" className={s.title}>
             {session.title}

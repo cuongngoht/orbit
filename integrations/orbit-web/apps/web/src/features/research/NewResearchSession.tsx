@@ -6,6 +6,7 @@ import { ShieldCheckmark16Regular } from "@fluentui/react-icons";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchSessionDetail, type ResearchWorkspaceSummary, type Settings } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useViewport } from "../../hooks/useViewport";
 import { errorText } from "../../services/api";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
 import { ModelEffortPicker } from "../composer/RunPickers";
@@ -46,6 +47,7 @@ const useStyles = makeStyles({
 
 export function NewResearchSession({ settings, onCreated }: { settings: Settings | null; onCreated: (session: ResearchSessionDetail) => void }) {
   const s = useStyles();
+  const { isMobile, isCoarse } = useViewport();
   const workspaces = useResource<ResearchWorkspaceSummary[]>(() => research.workspaces(), []);
   const catalog = useModelCatalog();
   const [mode, setMode] = useState<"new" | "existing">("new");
@@ -87,14 +89,14 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
       }}
     >
       <div className={s.card}>
-        <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout="horizontal" aria-label="Research workspace">
+        <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout={isMobile ? "vertical" : "horizontal"} aria-label="Research workspace">
           <Radio value="new" label="Create a new research workspace" />
           <Radio value="existing" label="Use an existing one" disabled={list.length === 0} />
         </RadioGroup>
         {mode === "new" ? (
           <>
             <Field className={s.field} label="Workspace name" required>
-              <Input className={s.control} value={name} onChange={(_, d) => setName(d.value)} placeholder="AI Governance Research" maxLength={RESEARCH_LIMITS.nameLength} autoFocus />
+              <Input className={s.control} value={name} onChange={(_, d) => setName(d.value)} placeholder="AI Governance Research" maxLength={RESEARCH_LIMITS.nameLength} autoFocus={!isMobile && !isCoarse} />
             </Field>
             <Field className={s.field} label="Description (optional)">
               <Input className={s.control} value={description} onChange={(_, d) => setDescription(d.value)} maxLength={RESEARCH_LIMITS.descriptionLength} />

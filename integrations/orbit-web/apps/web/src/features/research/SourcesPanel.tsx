@@ -43,8 +43,11 @@ const useStyles = makeStyles({
   root: {
     display: "flex",
     flexDirection: "column",
+    minWidth: 0,
+    maxWidth: "100%",
     minHeight: 0,
     height: "100%",
+    overflow: "hidden",
     backgroundColor: tokens.colorNeutralBackground1,
   },
   head: {
@@ -248,7 +251,7 @@ const useStyles = makeStyles({
     alignItems: "flex-start",
     paddingTop: "10px",
     paddingRight: "14px",
-    paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+    paddingBottom: "max(12px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))",
     paddingLeft: "14px",
     backgroundColor: "var(--orbit-tool-bg)",
     ...shorthands.borderTop("1px", "solid", tokens.colorNeutralStroke2),
@@ -345,7 +348,7 @@ export function SourcesPanel(p: SourcesPanelProps) {
       </div>
       {(searching || sources.length > 0 || error !== null || p.error !== null) && (
         <div className={s.tools}>
-          {searching && <SearchBox className={s.searchBox} size="small" autoFocus placeholder="Search sources" aria-label="Search sources" value={query} onChange={(_, d) => setQuery(d.value)} />}
+          {searching && <SearchBox className={s.searchBox} size={isMobile ? "medium" : "small"} autoFocus placeholder="Search sources" aria-label="Search sources" value={query} onChange={(_, d) => setQuery(d.value)} />}
           {sources.length > 0 && (
             <div className={s.selectAll}>
               <Checkbox

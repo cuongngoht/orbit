@@ -12,10 +12,10 @@ import { Composer } from "../composer/Composer";
 import type { LiveMessage, ResearchState } from "./researchReducer";
 
 const useStyles = makeStyles({
-  root: { display: "flex", flexDirection: "column", minHeight: 0, height: "100%", minWidth: 0 },
-  scrollWrap: { position: "relative", flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
-  scroll: { flexGrow: 1, overflowY: "auto", paddingTop: "16px", paddingRight: "20px", paddingBottom: "38px", paddingLeft: "20px", overflowAnchor: "auto" },
-  scrollMobile: { paddingRight: "12px", paddingLeft: "12px" },
+  root: { display: "flex", flexDirection: "column", width: "100%", maxWidth: "100%", minHeight: 0, height: "100%", minWidth: 0, overflow: "hidden" },
+  scrollWrap: { position: "relative", flexGrow: 1, minHeight: 0, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", flexDirection: "column" },
+  scroll: { flexGrow: 1, minWidth: 0, overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch", paddingTop: "16px", paddingRight: "20px", paddingBottom: "38px", paddingLeft: "20px", overflowAnchor: "auto" },
+  scrollMobile: { paddingTop: "12px", paddingRight: "16px", paddingBottom: "48px", paddingLeft: "16px" },
   scrollFade: {
     position: "absolute",
     left: 0,
@@ -201,8 +201,8 @@ const useStyles = makeStyles({
   draftText: { color: tokens.colorNeutralForeground1, lineHeight: "1.45", overflowWrap: "anywhere" },
   draftBtn: { flexShrink: 0, borderRadius: "10px", minHeight: "34px" },
   draftBtnTouch: { minHeight: "40px" },
-  bottom: { paddingTop: "2px", paddingRight: "20px", paddingBottom: "18px", paddingLeft: "20px", flexShrink: 0 },
-  bottomMobile: { paddingRight: "12px", paddingLeft: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))" },
+  bottom: { paddingTop: "2px", paddingRight: "20px", paddingBottom: "18px", paddingLeft: "20px", flexShrink: 0, minWidth: 0, maxWidth: "100%" },
+  bottomMobile: { paddingRight: "12px", paddingLeft: "12px", paddingBottom: "max(10px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))" },
   using: {
     display: "inline-flex",
     alignItems: "center",

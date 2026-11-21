@@ -1,22 +1,30 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Customizations, RevisionSummary } from "@orbit-web/contracts";
 import { defaultAccountPolicy } from "@orbit-web/governance-core";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { useState } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { ChatScreen } from "./features/chat/ChatScreen";
+import { Composer } from "./features/composer/Composer";
 import { GovernanceView } from "./features/governance/GovernanceView";
 import { PolicyPage } from "./features/governance/PolicyPage";
 import { PolicyTable } from "./features/governance/PolicyTable";
 import { NewSession } from "./features/newSession/NewSession";
+import { NewResearchSession } from "./features/research/NewResearchSession";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import type { SettingsSection } from "./hooks/useHashRoute";
+import { AccessPage } from "./pages/AccessPage";
 import { fakeApi } from "./testing/fakeApi";
 import { ACCOUNT_ID, SESSION_ID, claudeStatus, governanceOverview, inventory, revisionSummary, sessionDetail, sessionSummary, settings, setupStatus, sources } from "./testing/fixtures";
+import { researchDetail, workspaceSummary, WORKSPACE_ID } from "./testing/researchFixtures";
 import { renderLive, renderUi } from "./testing/render";
 
 const originalMatchMedia = window.matchMedia;
+const originalVisualViewport = window.visualViewport;
+const originalInnerHeight = window.innerHeight;
 
 function mockViewport(queries: Record<string, boolean>) {
   Object.defineProperty(window, "matchMedia", {
@@ -62,6 +70,12 @@ function signedInApi() {
 
 afterEach(() => {
   Object.defineProperty(window, "matchMedia", { writable: true, value: originalMatchMedia });
+  Object.defineProperty(window, "visualViewport", { configurable: true, writable: true, value: originalVisualViewport });
+  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: originalInnerHeight });
+  document.documentElement.style.removeProperty("--orbit-app-height");
+  document.documentElement.style.removeProperty("--orbit-app-top");
+  document.documentElement.style.removeProperty("--orbit-safe-bottom");
+  delete document.documentElement.dataset.orbitShell;
   window.location.hash = "";
   window.localStorage.clear();
 });
@@ -262,5 +276,100 @@ describe("responsive mobile-first layout", () => {
     expect(screen.queryByRole("table", { name: "Revisions" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "next" }));
     expect(go).toHaveBeenCalledWith("policy", "rev-2");
+  });
+
+  test("mobile Workspace syncs visualViewport CSS vars across keyboard open, pinch-zoom, and unmount", async () => {
+    mobileViewport();
+    signedInApi();
+    const listeners = new Map<string, Set<() => void>>();
+    const vv = {
+      height: 874,
+      offsetTop: 0,
+      scale: 1,
+      addEventListener: (type: string, fn: () => void) => {
+        const set = listeners.get(type) ?? new Set<() => void>();
+        set.add(fn);
+        listeners.set(type, set);
+      },
+      removeEventListener: (type: string, fn: () => void) => {
+        listeners.get(type)?.delete(fn);
+      },
+    };
+    const emit = (type: string) => {
+      act(() => {
+        for (const fn of listeners.get(type) ?? []) fn();
+      });
+    };
+    Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: 874 });
+    Object.defineProperty(window, "visualViewport", { configurable: true, writable: true, value: vv });
+
+    const view = render(<App />);
+    expect(await screen.findByRole("heading", { name: "What should Orbit work on?" })).toBeInTheDocument();
+    const rootStyle = document.documentElement.style;
+    expect(document.documentElement.dataset.orbitShell).toBe("fixed");
+    expect(rootStyle.getPropertyValue("--orbit-app-height")).toBe("874px");
+    expect(rootStyle.getPropertyValue("--orbit-app-top")).toBe("0px");
+    expect(rootStyle.getPropertyValue("--orbit-safe-bottom")).toBe("");
+
+    vv.height = 520;
+    vv.offsetTop = 24;
+    emit("resize");
+    expect(rootStyle.getPropertyValue("--orbit-app-height")).toBe("520px");
+    expect(rootStyle.getPropertyValue("--orbit-app-top")).toBe("24px");
+    expect(rootStyle.getPropertyValue("--orbit-safe-bottom")).toBe("0px");
+
+    vv.scale = 1.15;
+    emit("resize");
+    expect(rootStyle.getPropertyValue("--orbit-app-height")).toBe("");
+    expect(rootStyle.getPropertyValue("--orbit-app-top")).toBe("");
+    expect(rootStyle.getPropertyValue("--orbit-safe-bottom")).toBe("");
+
+    view.unmount();
+    expect(document.documentElement.dataset.orbitShell).toBeUndefined();
+    expect(rootStyle.getPropertyValue("--orbit-app-height")).toBe("");
+  });
+
+  test("mobile NewResearchSession and AccessPage avoid autoFocus keyboard pop and submit cleanly", async () => {
+    mobileViewport();
+    const onGranted = vi.fn();
+    const accessView = renderUi(<AccessPage onGranted={onGranted} />);
+    expect(screen.getByLabelText(/Access token/)).not.toHaveFocus();
+    accessView.unmount();
+
+    const api = fakeApi()
+      .on("GET", "/api/research/workspaces", () => [])
+      .on("POST", "/api/research/workspaces", () => workspaceSummary())
+      .on("POST", `/api/research/workspaces/${WORKSPACE_ID}/sessions`, () => researchDetail());
+    const onCreated = vi.fn();
+    renderUi(<NewResearchSession settings={settings()} onCreated={onCreated} />);
+
+    const nameInput = screen.getByRole("textbox", { name: /Workspace name/ });
+    expect(nameInput).not.toHaveFocus();
+    await userEvent.type(nameInput, "Coffee Research");
+    await userEvent.click(screen.getByRole("button", { name: "Start research" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(api.calls.find((c) => c.method === "POST" && c.path === "/api/research/workspaces")?.body).toEqual({ name: "Coffee Research", description: "" });
+  });
+
+  test("coarse landscape keeps touch input sizing and global.css enforces 16px on Fluent inputs", async () => {
+    mockViewport({ "(max-width: 639px)": false, "(max-width: 1023px)": true, "(max-width: 1279px)": true, "(pointer: coarse)": true });
+    const onSend = vi.fn();
+    renderUi(<Composer placeholder="Reply" canSend running={false} onSend={onSend} />);
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(box, "Line 1{Enter}Line 2");
+    expect(box).toHaveValue("Line 1\nLine 2");
+    expect(onSend).not.toHaveBeenCalled();
+
+    const cssPath = [
+      resolve(process.cwd(), "src/themes/global.css"),
+      resolve(process.cwd(), "apps/web/src/themes/global.css"),
+      resolve(process.cwd(), "integrations/orbit-web/apps/web/src/themes/global.css"),
+    ].find((p) => existsSync(p));
+    expect(cssPath).toBeDefined();
+    const css = readFileSync(cssPath as string, "utf8");
+    expect(css).toContain("@media (max-width: 639px), (pointer: coarse)");
+    expect(css).toContain(".fui-Input__input");
+    expect(css).toContain(".fui-Textarea__textarea");
+    expect(css).toContain("font-size: 16px !important;");
   });
 });

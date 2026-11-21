@@ -1,6 +1,6 @@
 // Responsive viewport and pointer queries, backed by matchMedia via useSyncExternalStore so tests under jsdom
 // default cleanly to desktop (all max-width and coarse-pointer queries match false unless mocked).
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 const SERVER_DEFAULT = false;
 
@@ -50,4 +50,71 @@ export function useViewport(): Viewport {
     isCoarse,
     isWide,
   };
+}
+
+const APP_HEIGHT_VAR = "--orbit-app-height";
+const APP_TOP_VAR = "--orbit-app-top";
+const SAFE_BOTTOM_VAR = "--orbit-safe-bottom";
+const KEYBOARD_THRESHOLD_PX = 120;
+const PINCH_SCALE_THRESHOLD = 1.02;
+
+function clearVisualViewportVars(style: CSSStyleDeclaration): void {
+  style.removeProperty(APP_HEIGHT_VAR);
+  style.removeProperty(APP_TOP_VAR);
+  style.removeProperty(SAFE_BOTTOM_VAR);
+}
+
+// Keep the fixed shell aligned with window.visualViewport on touch/iOS browsers so opening the software
+// keyboard shrinks the visible container instead of scrolling the header and tab bar out of sight.
+export function useVisualViewport(enabled: boolean): void {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rootStyle = document.documentElement.style;
+    const vv = window.visualViewport;
+    if (!enabled || !vv) {
+      clearVisualViewportVars(rootStyle);
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const sync = () => {
+      if (vv.scale > PINCH_SCALE_THRESHOLD) {
+        clearVisualViewportVars(rootStyle);
+        return;
+      }
+      rootStyle.setProperty(APP_HEIGHT_VAR, `${Math.round(vv.height)}px`);
+      rootStyle.setProperty(APP_TOP_VAR, `${Math.max(0, Math.round(vv.offsetTop))}px`);
+      const keyboardOpen = window.innerHeight - vv.height > KEYBOARD_THRESHOLD_PX;
+      if (keyboardOpen) rootStyle.setProperty(SAFE_BOTTOM_VAR, "0px");
+      else rootStyle.removeProperty(SAFE_BOTTOM_VAR);
+    };
+
+    const onFocusOut = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        const tag = document.activeElement?.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+          if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+          sync();
+        }
+      }, 100);
+    };
+
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    window.addEventListener("orientationchange", sync);
+    window.addEventListener("focusout", onFocusOut);
+
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+      window.removeEventListener("orientationchange", sync);
+      window.removeEventListener("focusout", onFocusOut);
+      clearVisualViewportVars(rootStyle);
+    };
+  }, [enabled]);
 }

@@ -25,12 +25,15 @@ import { ShareButton } from "../share/ShareDialog";
 import { Timeline } from "./Timeline";
 
 const useStyles = makeStyles({
-  root: { display: "flex", height: "100%", minHeight: 0 },
-  main: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" },
+  root: { display: "flex", width: "100%", maxWidth: "100%", height: "100%", minHeight: 0, overflow: "hidden" },
+  main: { flexGrow: 1, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", flexDirection: "column" },
   top: {
     display: "flex",
     alignItems: "center",
     gap: "10px",
+    minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
     paddingTop: "8px",
     paddingRight: "16px",
     paddingBottom: "8px",
@@ -55,9 +58,9 @@ const useStyles = makeStyles({
   actions: { display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 },
   title: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   titleMobile: { fontSize: "15px", letterSpacing: "-0.01em" },
-  scrollWrap: { position: "relative", flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
-  scroll: { flexGrow: 1, overflowY: "auto", paddingTop: "12px", paddingRight: "20px", paddingBottom: "38px", paddingLeft: "20px" },
-  scrollMobile: { paddingTop: "10px", paddingRight: "12px", paddingBottom: "38px", paddingLeft: "12px" },
+  scrollWrap: { position: "relative", flexGrow: 1, minHeight: 0, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", flexDirection: "column" },
+  scroll: { flexGrow: 1, minWidth: 0, overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch", paddingTop: "12px", paddingRight: "20px", paddingBottom: "38px", paddingLeft: "20px" },
+  scrollMobile: { paddingTop: "10px", paddingRight: "16px", paddingBottom: "48px", paddingLeft: "16px" },
   scrollFade: {
     position: "absolute",
     left: 0,
@@ -82,8 +85,8 @@ const useStyles = makeStyles({
     "@media (pointer: coarse)": { minHeight: "40px" },
   },
   inner: { width: "100%", maxWidth: "820px", minWidth: 0, marginTop: 0, marginRight: "auto", marginBottom: 0, marginLeft: "auto" },
-  bottom: { paddingTop: "2px", paddingRight: "20px", paddingBottom: "18px", paddingLeft: "20px", flexShrink: 0 },
-  bottomMobile: { paddingTop: "2px", paddingRight: "12px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", paddingLeft: "12px" },
+  bottom: { paddingTop: "2px", paddingRight: "20px", paddingBottom: "18px", paddingLeft: "20px", flexShrink: 0, minWidth: 0, maxWidth: "100%" },
+  bottomMobile: { paddingTop: "2px", paddingRight: "12px", paddingBottom: "max(10px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))", paddingLeft: "12px" },
   chip: { display: "inline-flex", alignItems: "center", gap: "6px", minHeight: "30px", borderRadius: "9999px", paddingTop: "2px", paddingRight: "8px", paddingBottom: "2px", paddingLeft: "8px", fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground2, maxWidth: "200px", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
   chipMobile: {
     minHeight: "34px",

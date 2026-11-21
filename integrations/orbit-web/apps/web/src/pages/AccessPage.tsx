@@ -5,6 +5,7 @@ import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeSt
 import { ClipboardPaste16Regular, Eye16Regular, EyeOff16Regular } from "@fluentui/react-icons";
 import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
+import { useViewport } from "../hooks/useViewport";
 import { accessLinkToken, forgetAccessLink, onAccessLink } from "../services/accessLink";
 import { errorText, send } from "../services/api";
 
@@ -59,6 +60,7 @@ const tokenIn = (text: string): string => /#access=([A-Za-z0-9._~-]{16,512})/.ex
 
 export function AccessPage({ onGranted }: { onGranted: () => void }) {
   const s = useStyles();
+  const { isMobile, isCoarse } = useViewport();
   const [fromLink] = useState(accessLinkToken);
   const [token, setToken] = useState("");
   const [shown, setShown] = useState(false);
@@ -139,7 +141,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
               value={token}
               onChange={(_, d) => setToken(d.value)}
               autoComplete="current-password"
-              autoFocus
+              autoFocus={!isMobile && !isCoarse}
               contentAfter={
                 <>
                   <Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? "Hide the token" : "Show the token"} onClick={() => setShown(!shown)} />

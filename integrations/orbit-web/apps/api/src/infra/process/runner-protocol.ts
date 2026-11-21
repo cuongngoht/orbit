@@ -40,7 +40,14 @@ export interface AttestFrame {
   dnsName: string;
 }
 
-export type ClientFrame = SpawnFrame | AttestFrame | { op: "in"; d: string } | { op: "eof" } | { op: "kill"; signal: RunnerSignal };
+// The first frame on a connection to a runner that was started with a token (an employee attempt's model plane): until
+// it names that token, the runner does nothing else on the connection.
+export interface AuthFrame {
+  op: "auth";
+  token: string;
+}
+
+export type ClientFrame = SpawnFrame | AttestFrame | AuthFrame | { op: "in"; d: string } | { op: "eof" } | { op: "kill"; signal: RunnerSignal };
 
 export type RunnerFrame =
   | { t: "started"; pid: number | null }
@@ -67,6 +74,7 @@ export function clientFrame(line: string): ClientFrame | null {
   if (typeof v !== "object" || v === null) return null;
   const f = v as Record<string, unknown>;
   if (f.op === "spawn") return typeof f.file === "string" && f.file.length > 0 && isStrings(f.args) && typeof f.cwd === "string" && isEnv(f.env) ? { op: "spawn", file: f.file, args: f.args, cwd: f.cwd, env: f.env, binary: f.binary === true } : null;
+  if (f.op === "auth") return typeof f.token === "string" && f.token.length > 0 && f.token.length <= 512 ? { op: "auth", token: f.token } : null;
   if (f.op === "in") return typeof f.d === "string" ? { op: "in", d: f.d } : null;
   if (f.op === "eof") return { op: "eof" };
   if (f.op === "kill") return (RUNNER_SIGNALS as readonly unknown[]).includes(f.signal) ? { op: "kill", signal: f.signal as RunnerSignal } : null;

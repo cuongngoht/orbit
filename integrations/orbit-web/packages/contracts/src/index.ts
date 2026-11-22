@@ -28,3 +28,4 @@ export const CSRF_HEADER = "x-orbit-csrf";
 // connection of the `subscription` method is signed in with (ai-connections.ts).
 export const CLAUDE_ACCOUNT_METHOD = "claude.ai";
 export * from "./updates.js";
+export * from "./employee-access.js";

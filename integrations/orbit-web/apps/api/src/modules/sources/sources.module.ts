@@ -6,7 +6,7 @@
 //   GET /api/repositories?source=<s>[&refresh=1]         a source's repositories (cached a few minutes)
 //   GET /api/repositories/branches?source=<s>&id=<id>    a listed repository's branches, the default first
 import { Controller, Get, Inject, Injectable, Module, Query } from "@nestjs/common";
-import { isRepositorySource, type BranchList, type RepositoryList, type RepositoryRef, type RepositorySource, type SourcesStatus } from "@orbit-web/contracts";
+import { isRepositorySource, type BranchList, type Repository, type RepositoryList, type RepositoryRef, type RepositorySource, type SourcesStatus } from "@orbit-web/contracts";
 import { badRequest } from "../../common/errors.js";
 import type { RunResult } from "../../infra/process/process.port.js";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
@@ -41,6 +41,13 @@ export class SourcesService {
 
   branches(source: RepositorySource, id: string): Promise<BranchList> {
     return source === "github" ? this.github.branches(id) : this.azure.branches(id);
+  }
+
+  // A repository as the source lists it now (its clone URL stays here), or a refusal: one it does not list.
+  async authorized(source: RepositorySource, id: string): Promise<Repository> {
+    if (source === "github") return this.github.authorized(id);
+    const { cloneUrl: _kept, ...repo } = await this.azure.authorized(id);
+    return repo;
   }
 
   // The repository a chat asked for, if the source lists it, and the branch to start from: the one asked for if the

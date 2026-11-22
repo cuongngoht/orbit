@@ -686,6 +686,17 @@ names itself once (`Idempotency-Key`), so sending it twice gives one mission.
   must report exactly those tools, servers and plugins: anything else stops the attempt before it acts
   (`isolation_not_established`), and it is never retried with more.
 
+**Access to the account's connectors.** An employee may use the GitHub and Azure DevOps sign-ins of *Settings →
+Connectors* -- the installation's, shared -- once a person lets it, on the employee's **Access** tab: each connector off
+until turned on, then for **every repository** that sign-in reaches or **only the ones chosen** (an Azure DevOps
+project's work items and wiki come with a chosen repository's project). Its tools then include, for Azure DevOps, *read a
+work item* (by its URL, with its description, acceptance criteria, comments and attachments' names), *find work items*
+(WIQL), *read a wiki page* and *read a file*; for GitHub, *read an issue*, *read a pull request* and *read a file*. Orbit
+Web makes each ask itself, with the installation's sign-in (`az rest`, `gh api`), on its own side: **the sign-in never
+enters the employee's sandbox**, and nothing is written (reading only). Each ask is held to what was granted, decided by
+the account's policy (`tool.connector`, the repository or project its resource) and recorded; its answer is fenced as
+data the employee must not take instructions from, and cut to 256 KiB. Turned off, the next ask is refused.
+
 **Resources.** An attempt reserves its CPU and memory (its limits plus its model plane's) when it is admitted, and gives
 them back only once its containers are gone. With no room now -- in the account's budget or on this host -- its work
 **waits for resources** and starts by itself; one that can never fit as configured is **unschedulable**, said with the

@@ -12,6 +12,7 @@ import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
 import { office, useOfficeRead } from "./api";
 import { AssignDialog } from "./AssignDialog";
+import { AccessTab } from "./EmployeeAccessTab";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { usableForEmployees } from "./HireWizard";
 import { AsOf, Callout, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
@@ -21,9 +22,9 @@ import { RunDetails } from "./RunDetails";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
-export const EMPLOYEE_TABS = ["profile", "work", "resources", "employment"] as const;
+export const EMPLOYEE_TABS = ["profile", "work", "access", "resources", "employment"] as const;
 type EmployeeTab = (typeof EMPLOYEE_TABS)[number];
-const TAB_TEXT: Record<EmployeeTab, string> = { profile: "Profile", work: "Work", resources: "Sandbox & resources", employment: "Employment" };
+const TAB_TEXT: Record<EmployeeTab, string> = { profile: "Profile", work: "Work", access: "Access", resources: "Sandbox & resources", employment: "Employment" };
 
 const EMPLOYMENT_TEXT: Record<Employment, string> = { candidate: "Candidate", probation: "On probation", active: "Active", suspended: "Suspended", archived: "Archived", deleted: "Desk deleted" };
 
@@ -601,6 +602,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
       </div>
       {current === "profile" && <ProfileTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {current === "work" && <WorkTab e={e} go={go} />}
+      {current === "access" && <AccessTab e={e} />}
       {current === "resources" && <ResourcesTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {current === "employment" && <EmploymentTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {assigning && <AssignDialog employees={[e]} employeeId={e.id} onClose={() => setAssigning(false)} onOpenMission={(m) => go("mission", m)} />}

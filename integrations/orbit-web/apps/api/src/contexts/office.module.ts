@@ -12,7 +12,10 @@ import { APP_CONFIG } from "../core/tokens.js";
 import { CredentialStore } from "../infra/connections/credentials.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { ConnectionsModule } from "../modules/connections/connections.module.js";
+import { ConnectorBroker } from "../modules/employee-access/connector-broker.js";
+import { EmployeeAccessModule } from "../modules/employee-access/employee-access.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
+import { CONNECTOR_TOOLS } from "./execution/application/connector-tools.port.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
 import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.port.js";
 import { SANDBOX_PROVIDER } from "./execution/application/sandbox.port.js";
@@ -107,10 +110,11 @@ export class OfficeModule {
     const defaults: Provider[] = [
       ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useFactory: (config: AppConfig, research: ResearchInputs, process: ProcessPort) => sandboxProviderOf(config, (p) => research.read(p), process), inject: [APP_CONFIG, ResearchInputs, AGENT_PROCESS_PORT] }]),
       ...(bound.has(CONNECTION_SECRETS) ? [] : [{ provide: CONNECTION_SECRETS, useExisting: CredentialStore }]),
+      ...(bound.has(CONNECTOR_TOOLS) ? [] : [{ provide: CONNECTOR_TOOLS, useExisting: ConnectorBroker }]),
     ];
     return {
       module: OfficeModule,
-      imports: [GovernanceModule, ConnectionsModule],
+      imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
       providers: [...PROVIDERS, ...defaults, ...bindings],
       controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
       exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs],

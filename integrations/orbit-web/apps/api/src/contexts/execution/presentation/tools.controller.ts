@@ -44,7 +44,7 @@ export class ToolsController {
     if (!isRecord(body) || typeof body.name !== "string" || body.name.length > 64) return { text: "A tool call names a tool.", isError: true };
     const args = isRecord(body.arguments) ? body.arguments : {};
     try {
-      return await this.tools.call(runId, body.name, args);
+      return await this.tools.call(runId, body.name, args, this.principals.context(req));
     } catch (err) {
       if (err instanceof DomainError) return { text: err.message, isError: true };
       throw err;

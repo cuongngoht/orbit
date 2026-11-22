@@ -6,6 +6,9 @@
 //
 // Handing in (`submit_handoff`): the files in /output are staged into the account's immutable artifact store (bytes,
 // then their hash verified, then the row), then Work records the handoff -- once per submission key.
+//
+// The account's connectors (GitHub, Azure DevOps) the employee was let use add their tools (CONNECTOR_TOOLS): Orbit Web
+// asks them with its own sign-in, never the sandbox.
 import { Inject, Injectable, Optional } from "@nestjs/common";
 import { isDeliverableName } from "@orbit-web/contracts";
 import { createHash } from "node:crypto";
@@ -13,6 +16,8 @@ import { conflictWith, invalid, refused } from "../../shared/domain.js";
 import { systemActor } from "../../shared/application/commands.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
+import type { GovernanceContext } from "../../../modules/auth/principal.js";
+import { CONNECTOR_TOOLS, type ConnectorTools } from "./connector-tools.port.js";
 import { ResearchInputs, type ClaimInput } from "./research-inputs.js";
 import { RUN_OUTCOMES, type RunOutcomes, type StagedArtifact } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type SandboxProvider } from "./sandbox.port.js";
@@ -97,24 +102,31 @@ export class ToolsService {
     @Inject(RUN_OUTCOMES) private readonly outcomes: RunOutcomes,
     @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
+    @Optional() @Inject(CONNECTOR_TOOLS) private readonly connectors: ConnectorTools | null = null,
   ) {}
 
-  // The tools of this run: everyone's, and a team's where it applies.
+  // The tools of this run: everyone's, a team's where it applies, and the connectors' the employee was let use.
   async list(runId: string): Promise<ToolSpec[]> {
     const run = await this.runs.byId(runId);
     if (run === null) return TOOLS;
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null) return TOOLS;
-    return [...TOOLS, ...(ctx.team.canDelegate ? [DELEGATE] : []), ...(ctx.team.units.length > 0 ? [REVIEW_UNIT] : [])];
+    const connectors = this.connectors === null ? [] : await this.connectors.tools(run.orbitId, run.employeeId);
+    return [...TOOLS, ...(ctx.team.canDelegate ? [DELEGATE] : []), ...(ctx.team.units.length > 0 ? [REVIEW_UNIT] : []), ...connectors];
   }
 
-  async call(runId: string, name: string, args: Record<string, unknown>): Promise<ToolAnswer> {
+  // `governance`: the run's own context (its token's), which a connector's ask is decided as.
+  async call(runId: string, name: string, args: Record<string, unknown>, governance: GovernanceContext | null = null): Promise<ToolAnswer> {
     const run = await this.runs.byId(runId);
     if (run === null || run.state !== "running" || run.handle === null) throw refused("run_not_running", "This run is not running.");
     if (this.provider === null) throw refused("no_sandbox", "No sandbox provider is configured.");
     const cur = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (cur === null || !cur.current) throw refused("attempt_replaced", "This attempt was replaced or stopped: its tools are closed.");
     const h = run.handle;
+    if (this.connectors?.owns(name) === true) {
+      if (governance === null) throw refused("no_context", "A connector's tool is asked only through the tool door.");
+      return this.connectors.call(governance, run.orbitId, run.employeeId, name, args);
+    }
     // /team exists only in a mission that has a team room.
     for (const k of ["path", "cwd"]) {
       const v = args[k];

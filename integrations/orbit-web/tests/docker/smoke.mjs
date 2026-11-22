@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // THE DOCKER SMOKE TEST: the real image, started the way a person starts it -- beside a real PostgreSQL with pgvector
 // (the pinned image of docker/compose.yaml, initialised by docker/postgres/init) -- checked from outside. No credential
-// is used: it proves the image builds and starts, migrates the database (pgvector enabled, Orbit Web's role no
-// superuser), refuses to start at all when the database cannot be reached (no fallback), serves the web app and the API,
-// holds the four programs and a loadable Orbit plugin, runs as a non-root user, opens on the Claude sign-in when nobody
-// signed in -- every other route refused -- and keeps its state (Settings, a browser's session, and a research
-// workspace with a source it read and indexed in the container's own worker) across a restart and across re-creating
-// the container. That last part needs a browser signed in, so the Claude CLI's account is stood in for there
-// (claude-signed-in.mjs; a real one needs a person) -- the browser's sign-in itself is Orbit Web's real one -- and
-// those checks say so.
+// of any AI provider is used: it proves the image builds and starts, migrates the database (pgvector enabled, Orbit
+// Web's role no superuser, the reserved system account there), refuses to start at all when the database cannot be
+// reached (no fallback), serves the web app and the API, holds the four programs and a loadable Orbit plugin, runs as a
+// non-root user, opens on Orbit Web's own sign-in when nobody is set up -- every other route refused -- sets the first
+// administrator up with the one-time code its terminal prints (used once), signs a browser in with a password, and keeps
+// its state (Settings, the browser's session, and a research workspace with a source it read and indexed in the
+// container's own worker) across a restart and across re-creating the container. Then the trial: refused at start where
+// another machine could reach it, and on this machine `admin` / `123456` signs in.
 //
 //   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep]
 import { spawnSync } from "node:child_process";
@@ -30,6 +30,8 @@ const network = `orbit-web-smoke-${suffix}`;
 const database = `orbit-web-smoke-db-${suffix}`;
 const DB_IMAGE = "pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf";
 const DB_PASSWORD = randomBytes(12).toString("hex");
+const PG_PASSWORD = randomBytes(12).toString("hex");
+const PASSWORD = `Smoke-${randomBytes(9).toString("base64url")}-pw`;
 const DATABASE_URL = `postgres://orbit:${DB_PASSWORD}@${database}:5432/orbit`;
 const results = [];
 
@@ -101,7 +103,7 @@ const exec = (...args) => docker(["exec", name, ...args]);
 // pgvector), on a network of its own the API's container joins.
 async function startDatabase() {
   docker(["network", "create", network]);
-  const run = docker(["run", "-d", "--name", database, "--network", network, "-e", "POSTGRES_USER=postgres", "-e", `POSTGRES_PASSWORD=${randomBytes(12).toString("hex")}`, "-e", "POSTGRES_DB=postgres", "-e", `ORBIT_DB_PASSWORD=${DB_PASSWORD}`, "-v", `${join(WEB, "docker", "postgres", "init")}:/docker-entrypoint-initdb.d:ro`, DB_IMAGE]);
+  const run = docker(["run", "-d", "--name", database, "--network", network, "-e", "POSTGRES_USER=postgres", "-e", `POSTGRES_PASSWORD=${PG_PASSWORD}`, "-e", "POSTGRES_DB=postgres", "-e", `ORBIT_DB_PASSWORD=${DB_PASSWORD}`, "-v", `${join(WEB, "docker", "postgres", "init")}:/docker-entrypoint-initdb.d:ro`, DB_IMAGE]);
   if (run.status !== 0) return { ok: false, detail: run.stderr.trim() };
   for (let i = 0; i < 90; i += 1) {
     if (docker(["exec", database, "pg_isready", "-h", "127.0.0.1", "-U", "orbit", "-d", "orbit", "-q"]).status === 0) return { ok: true, detail: DB_IMAGE.split("@")[0] };
@@ -111,12 +113,13 @@ async function startDatabase() {
 }
 
 const sql = (query) => docker(["exec", "-e", `PGPASSWORD=${DB_PASSWORD}`, database, "psql", "-h", "127.0.0.1", "-U", "orbit", "-d", "orbit", "-tAc", query]);
+// As the database's superuser: a second, empty database for the trial (pgvector enabled in it, Orbit Web's role its owner).
+const superSql = (db, query) => docker(["exec", "-e", `PGPASSWORD=${PG_PASSWORD}`, database, "psql", "-h", "127.0.0.1", "-U", "postgres", "-d", db, "-tAc", query]);
 
-// `signedIn`: the Claude CLI's account is stood in for (mounted read-only and named by ORBIT_WEB_CLAUDE_BIN).
-// `databaseUrl`: where the API's database is (another one: what a broken configuration does).
-function start(port, { signedIn = false, databaseUrl = DATABASE_URL, as = name } = {}) {
-  const standIn = signedIn ? ["-v", `${join(WEB, "tests", "docker", "claude-signed-in.mjs")}:/smoke/claude-signed-in.mjs:ro`, "-e", "ORBIT_WEB_CLAUDE_BIN=/smoke/claude-signed-in.mjs"] : [];
-  return docker(["run", "-d", "--name", as, "--hostname", "orbit-web", "--network", network, "-p", `127.0.0.1:${port}:3000`, "-v", `${volume}:/data`, "-e", `ORBIT_WEB_DATABASE_URL=${databaseUrl}`, ...standIn, "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
+// `databaseUrl`: where the API's database is (another one: what a broken configuration does). `env`: more of its
+// environment (the trial's). `data`: its data volume.
+function start(port, { databaseUrl = DATABASE_URL, as = name, env = [], data = volume } = {}) {
+  return docker(["run", "-d", "--name", as, "--hostname", "orbit-web", "--network", network, "-p", `127.0.0.1:${port}:3000`, "-v", `${data}:/data`, "-e", `ORBIT_WEB_DATABASE_URL=${databaseUrl}`, ...env.flatMap((e) => ["-e", e]), "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", image]);
 }
 
 // A browser: the cookies the API sets, and what a page sends with a change (the header, and its session's CSRF token).
@@ -144,26 +147,21 @@ async function web(port, path, init = {}) {
   return { status: res.status, headers: res.headers, body, text };
 }
 
-// ORBIT WEB'S OWN BROWSER SIGN-IN, as a page goes through it: start the flow, send the code, exchange it for a session.
-async function signIn(port) {
-  const started = await web(port, "/api/claude/login", { method: "POST", body: "{}" });
-  if (started.status !== 202) return { ok: false, detail: `start: HTTP ${started.status}` };
-  let flow = started.body;
-  for (let i = 0; i < 30 && flow.state !== "awaiting_user"; i += 1) {
-    await sleep(500);
-    flow = (await web(port, "/api/claude/status")).body.flow;
-  }
-  await web(port, "/api/claude/login/code", { method: "POST", body: JSON.stringify({ code: "smoke-code#smoke" }) });
-  for (let i = 0; i < 30 && flow.state !== "connected"; i += 1) {
-    await sleep(500);
-    flow = (await web(port, "/api/claude/status")).body.flow;
-  }
-  const claimed = await web(port, "/api/claude/session", { method: "POST", body: "{}" });
-  browser.csrf = claimed.body?.session?.csrfToken ?? "";
-  return { ok: claimed.status === 200 && browser.csrf !== "", detail: `flow ${flow.state}, session HTTP ${claimed.status}` };
+// THE FIRST ADMINISTRATOR, as a person sets it up: the one-time code from the container's terminal, then the page's setup.
+function setupCode(as = name) {
+  const r = docker(["exec", as, "node", "/opt/orbit-web/apps/api/dist/cli/governance.js", "owner", "setup-code"]);
+  const code = (r.stdout.match(/^ {4}(\S+)$/m) ?? [])[1] ?? null;
+  return { ok: r.status === 0 && code !== null, code, detail: r.status === 0 ? "printed once" : (r.stderr || r.stdout).trim().slice(0, 200) };
 }
 
-const SIGN_IN_REQUIRED = "claude_sign_in_required";
+const SETUP = (code) => ({ code, username: "admin", password: PASSWORD, fullName: "Smoke Admin", companyName: "Smoke Co", timezone: "Asia/Ho_Chi_Minh" });
+
+function signedIn(r) {
+  browser.csrf = r.body?.session?.csrfToken ?? "";
+  return r.status === 200 && r.body?.state === "signed_in" && browser.csrf !== "";
+}
+
+const SIGN_IN_REQUIRED = "sign_in_required";
 
 const succeeded = (r) => r.status >= 200 && r.status < 300;
 const RESEARCH_TEXT = "Smoke test notes. Orbit Web keeps research sources on its own data volume; a restart keeps them.";
@@ -267,7 +265,7 @@ async function main() {
   // image was built from (a deploy under umask 077 once shipped a package.json only root could read: a crash loop).
   const unreadable = exec("sh", "-c", "find /opt/orbit-web /opt/orbit \\( -name node_modules -prune \\) -o ! -readable -print | head -5");
   check("   that user can read everything Orbit Web and the plugin ship", unreadable.status === 0 && unreadable.stdout.trim() === "", unreadable.stdout.trim().replace(/\n/g, ", ") || unreadable.stderr.trim().slice(0, 200));
-  const perms = exec("stat", "-c", "%a %U", "/data/claude", "/data/github", "/data/azure", "/data/app", "/data/research");
+  const perms = exec("stat", "-c", "%a %U", "/data/connections", "/data/github", "/data/azure", "/data/app", "/data/research", "/data/control", "/data/control/credentials");
   check("   the persistent directories are private to that user", perms.stdout.trim().split("\n").every((l) => l.startsWith("700 ")), perms.stdout.trim().replace(/\n/g, ", "));
   // What Claude Code runs as: it creates, edits, renames and deletes in a chat's workspace, and cannot write the
   // image's programs or the plugin (whatever its permission rules then allow is Claude Code's to decide).
@@ -276,35 +274,33 @@ async function main() {
   const helper = exec("sh", "-c", 'test -x /opt/orbit-web/docker/git-credential-azure-cli.mjs && printf "protocol=https\\nhost=github.com\\n\\n" | /opt/orbit-web/docker/git-credential-azure-cli.mjs get; echo "exit=$?"');
   check("   the Azure Repos credential helper is there, and answers nothing for another host", helper.stdout.trim() === "exit=0", (helper.stdout + helper.stderr).trim().slice(0, 200));
 
-  const terminal = exec("claude", "auth", "status", "--json");
-  const where = (() => {
-    try {
-      return JSON.parse(terminal.stdout).configDirectory ?? null;
-    } catch {
-      return null;
-    }
-  })();
-  check("   a terminal sign-in (docker exec ... claude auth login) lands where Orbit Web reads it", where === "/data/claude", `claude in the container keeps its sign-in in ${where}`);
-  const claude = await http(port, "/api/claude/status");
-  check("11. missing authentication opens on the Claude sign-in", claude.status === 200 && claude.body.state === "not_connected" && claude.body.account === null, `claude ${claude.body.state}`);
+  const unset = exec("sh", "-c", 'printf %s "${CLAUDE_CONFIG_DIR:-unset}"');
+  check("   no Claude login is the image's: CLAUDE_CONFIG_DIR is not set (each Claude process is one AI connection's)", unset.stdout === "unset", unset.stdout);
+  const connect = exec("node", "/opt/orbit-web/apps/api/dist/cli/connect.js");
+  check("   the terminal sign-in of a connection is there (connect.js), and needs a connection's id", connect.status === 2 && /usage: connect\.js <connectionId>/.test(`${connect.stdout}${connect.stderr}`), `exit ${connect.status}`);
+  const status = await http(port, "/api/auth/status");
+  check("11. nobody set up: the page opens on Orbit Web's own setup", status.status === 200 && status.body.state === "setup_required" && status.body.session === null && status.body.trial?.enabled === false, `state ${status.body.state}`);
   const gated = await Promise.all(["/api/setup/status", "/api/settings", "/api/github/status", "/api/sessions"].map(async (path) => [path, await http(port, path)]));
   check("   ...and every other route waits for it", gated.every(([, r]) => r.status === 401 && r.body.error?.code === SIGN_IN_REQUIRED), gated.map(([path, r]) => `${path} ${r.status}`).join(", "));
   check("   a foreign Host header is refused", (await rawStatus(port, "/api/health", "attacker.example")) === 421);
   const naked = await http(port, "/api/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: '{"theme":"dark"}' });
   check("   a change without the Orbit Web header is refused", naked.status === 403);
 
-  // From here a browser must be signed in: the same volume, a new container whose Claude CLI account is stood in for.
-  docker(["rm", "-f", name]);
-  start(port, { signedIn: true });
-  await healthy(port);
-  const unsigned = await web(port, "/api/setup/status");
-  check("   the CLI signed in does not sign a browser in", unsigned.status === 401 && unsigned.body.error?.code === SIGN_IN_REQUIRED, `HTTP ${unsigned.status}`);
-  const session = await signIn(port);
-  check("   Orbit Web's browser sign-in (its nonce, the code, the exchange; the CLI's account a STAND-IN) gives this browser a session", session.ok, session.detail);
+  // The first administrator: a code the container's terminal prints, used once.
+  const wrong = await web(port, "/api/auth/setup", { method: "POST", body: JSON.stringify(SETUP("not-the-code-0000")) });
+  check("   a made-up setup code is refused", wrong.status >= 400 && wrong.status < 500 && Object.keys(browser.cookies).length === 0, `HTTP ${wrong.status}`);
+  const code = setupCode();
+  check("   the server's terminal prints a one-time setup code (governance.js owner setup-code)", code.ok, code.detail);
+  const setUp = await web(port, "/api/auth/setup", { method: "POST", body: JSON.stringify(SETUP(code.code)) });
+  check("   with it the first administrator is set up, and this browser signed in", signedIn(setUp), `HTTP ${setUp.status} ${setUp.body?.state ?? setUp.text.slice(0, 160)}`);
+  const again = await http(port, "/api/auth/setup", { method: "POST", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ ...SETUP(code.code), username: "intruder" }) });
+  check("   ...and the code is used: a second setup with it is refused", again.status >= 400 && again.status < 500, `HTTP ${again.status}`);
+  const accounts = sql("SELECT kind || ':' || count(*) FROM app.accounts GROUP BY kind ORDER BY kind");
+  check("   one customer account was made, beside the reserved system account", accounts.stdout.trim().split("\n").join(",") === "customer:1,system:1", accounts.stdout.trim().replace(/\n/g, ",") || accounts.stderr.trim().slice(0, 120));
+  const hashed = sql("SELECT password_hash LIKE 'scrypt$%' AND password_hash NOT LIKE '%" + PASSWORD + "%' FROM app.users WHERE username = 'admin'");
+  check("   the password is kept as a scrypt hash, never as itself", hashed.stdout.trim() === "t", hashed.stdout.trim() || hashed.stderr.trim().slice(0, 120));
   const setup = await web(port, "/api/setup/status");
-  check("   ...which opens the API for the account", setup.status === 200 && setup.body.claude?.account?.email === "smoke@example.com", `HTTP ${setup.status}`);
-  const accounts = sql("SELECT count(*) FROM app.accounts");
-  check("   the account was made by that sign-in, nothing registered", accounts.stdout.trim() === "1", accounts.stdout.trim() || accounts.stderr.trim().slice(0, 120));
+  check("   the session opens the API", setup.status === 200, `HTTP ${setup.status}`);
   check("   ...which reads the build info", /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
   const change = await web(port, "/api/settings", { method: "PATCH", body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
   check("9. state is written to the volume", change.status === 200 && change.body.defaultModel === "opus");
@@ -319,7 +315,7 @@ async function main() {
   const researchAfterRestart = await researchKept(port, research);
   check("   ...and the research workspace with its source, still ready", researchAfterRestart.ok, researchAfterRestart.detail);
   docker(["rm", "-f", name]);
-  start(port, { signedIn: true });
+  start(port);
   await healthy(port);
   const afterRecreate = await web(port, "/api/settings");
   check("   a new container on the same volume keeps it too", afterRecreate.body.defaultModel === "opus", JSON.stringify(afterRecreate.body));
@@ -327,6 +323,40 @@ async function main() {
   check("   ...research included", researchAfterRecreate.ok, researchAfterRecreate.detail);
   const objects = exec("sh", "-c", 'find "/data/research/workspaces/$1/objects" -type f | wc -l', "sh", research.workspace ?? "none");
   check("   the source's bytes are in /data/research, kept by their hash", objects.status === 0 && Number(objects.stdout.trim()) >= 1, `${objects.stdout.trim() || objects.stderr.trim().slice(0, 200)} file(s)`);
+  const out = await web(port, "/api/auth/logout", { method: "POST", body: "{}" });
+  const closed = await web(port, "/api/settings");
+  check("   signing out ends this browser's session", out.status === 200 && closed.status === 401, `logout HTTP ${out.status}, then HTTP ${closed.status}`);
+  const bad = await web(port, "/api/auth/login", { method: "POST", body: JSON.stringify({ username: "admin", password: "not-the-password" }) });
+  const login = await web(port, "/api/auth/login", { method: "POST", body: JSON.stringify({ username: "admin", password: PASSWORD }) });
+  check("   a wrong password is refused, the right one signs the browser in again", bad.status === 401 && signedIn(login), `HTTP ${bad.status}, then HTTP ${login.status}`);
+  docker(["rm", "-f", name]);
+
+  // The trial: its password is public, so it starts only where nobody else can reach it.
+  const trialPort = await freePort();
+  const exposed = `${name}-trial-exposed`;
+  start(trialPort, { as: exposed, data: `${volume}-trial`, env: ["ORBIT_WEB_TRIAL=1", "ORBIT_WEB_ALLOWED_HOSTS=orbit.example.com", `ORBIT_WEB_ACCESS_TOKEN=${randomBytes(16).toString("hex")}`] });
+  let ended = "";
+  for (let i = 0; i < 60 && !ended.startsWith("exited"); i += 1) {
+    await sleep(1000);
+    ended = docker(["inspect", "--format", "{{.State.Status}} {{.State.ExitCode}}", exposed]).stdout.trim();
+  }
+  const exposedLogs = docker(["logs", exposed]);
+  docker(["rm", "-f", exposed]);
+  check("12. a trial another machine could reach refuses to start, saying why", ended.startsWith("exited") && !ended.endsWith(" 0") && /ORBIT_WEB_TRIAL=1 refused/.test(`${exposedLogs.stdout}${exposedLogs.stderr}`), `${ended}; ${(`${exposedLogs.stdout}${exposedLogs.stderr}`.match(/[^\n]*ORBIT_WEB_TRIAL[^\n]*/) ?? [""])[0].slice(0, 200)}`);
+  const made = superSql("postgres", "CREATE DATABASE orbit_trial OWNER orbit");
+  const vector = superSql("orbit_trial", "CREATE EXTENSION IF NOT EXISTS vector");
+  const trial = `${name}-trial`;
+  start(trialPort, { as: trial, data: `${volume}-trial`, databaseUrl: `postgres://orbit:${DB_PASSWORD}@${database}:5432/orbit_trial`, env: ["ORBIT_WEB_TRIAL=1"] });
+  let trialUp = false;
+  for (let i = 0; i < 90 && !trialUp; i += 1) {
+    await sleep(1000);
+    trialUp = docker(["inspect", "--format", "{{.State.Health.Status}}", trial]).stdout.trim() === "healthy";
+  }
+  const trialStatus = await http(trialPort, "/api/auth/status");
+  check("   on this machine alone the trial starts on an empty database, and says its login", made.status === 0 && vector.status === 0 && trialUp && trialStatus.body?.trial?.enabled === true && trialStatus.body.trial.username === "admin" && trialStatus.body.trial.password === "123456", `healthy ${trialUp}, trial ${JSON.stringify(trialStatus.body?.trial ?? null)}`);
+  const trialLogin = await http(trialPort, "/api/auth/login", { method: "POST", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ username: "admin", password: "123456" }) });
+  check("   ...and admin / 123456 signs in", trialLogin.status === 200 && trialLogin.body?.state === "signed_in", `HTTP ${trialLogin.status}`);
+  docker(["rm", "-f", trial]);
 
   if (!flag("keep")) cleanUp();
   const failed = results.filter((r) => !r.ok);
@@ -335,9 +365,9 @@ async function main() {
 }
 
 function cleanUp() {
-  docker(["rm", "-f", name]);
+  docker(["rm", "-f", name, `${name}-trial`, `${name}-trial-exposed`]);
   docker(["rm", "-f", "-v", database]);
-  docker(["volume", "rm", volume]);
+  docker(["volume", "rm", volume, `${volume}-trial`]);
   docker(["network", "rm", network]);
 }
 

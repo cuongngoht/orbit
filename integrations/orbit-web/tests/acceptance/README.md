@@ -15,45 +15,51 @@ own Claude and GitHub accounts. Only these use a model; every other test of Orbi
 
 ```bash
 node scripts/build-image.mjs --tag=orbit-web:0.8.0 [--ca-file=<proxy CA>]
-# at a terminal: the run prints Orbit Web's sign-in URL; a person opens it and pastes the code the page shows
-node tests/acceptance/real-run.mjs --budget=2 [--claude-volume=orbit-web-acceptance-claude] [--image=orbit-web:0.8.0] [--ca-file=<pem>] [--out=<dir>] [--keep]
+# with your own Claude Console API key in a variable of this shell (never printed, never in the evidence):
+node tests/acceptance/real-run.mjs --api-key-env=ANTHROPIC_API_KEY --budget=2 [--image=orbit-web:0.8.0] [--ca-file=<pem>] [--out=<dir>] [--keep]
+# or, at a terminal, with your Claude subscription -- Claude Code's own sign-in runs in this terminal:
+node tests/acceptance/real-run.mjs --budget=2
 ```
 
 Orbit Web keeps its records in PostgreSQL: the run starts the pinned `pgvector/pgvector` image beside the container, on
 a network of its own (the role made by the compose files' init script), and removes both at the end.
 
-The Claude account is Orbit Web's own sign-in, finished in a BROWSER (ADR 0061, ADR 0066): no credential variable signs
-anything in, and a Claude CLI that is signed in already makes nobody the owner. So the run goes through Orbit Web's
-browser sign-in itself -- it starts the flow, prints the URL, takes the code a person pastes at the terminal, and
-exchanges the finished flow for its browser session; without a terminal it stops BLOCKED at that step. A volume named by
-`--claude-volume` keeps the Claude CLI's own files between runs (mounted at `/data/claude`, never removed); the browser
-sign-in is asked every run all the same. The evidence names the sign-in's method and plan, never the account's
-address. Each Claude Code turn is capped with `--max-budget-usd` (`--budget`, default $2). GitHub is
-stood in for by `fake-gh.mjs`, mounted read-only and named by `ORBIT_WEB_GH_BIN`: it answers the few gh commands Orbit
-Web runs about the fixture repository, so the run exercises the real Orbit Web, the real Claude Code with the real
-Orbit plugin, real git and real Orbit -- without a GitHub account. It is not in the image.
+Signing in is Orbit Web's own (ADR 0067): the run sets the first administrator up with the one-time code the container's
+terminal prints, then connects Claude Code for that account -- with the API key named by `--api-key-env`, or, without
+one, as a subscription signed in by Claude Code's own `auth login` in this terminal (`docker exec -it … connect.js
+<id>`), the URL and the code the CLI's and the person's. Without either it stops BLOCKED at that step. The evidence
+names how Claude Code was connected, never the identity. Each Claude Code turn is capped with `--max-budget-usd`
+(`--budget`, default $2). GitHub is stood in for by `fake-gh.mjs`, mounted read-only and named by `ORBIT_WEB_GH_BIN`: it
+answers the few gh commands Orbit Web runs about the fixture repository, so the run exercises the real Orbit Web, the
+real Claude Code with the real Orbit plugin, real git and real Orbit -- without a GitHub account. It is not in the
+image.
 
-Every step below is reported as **PASS**, **FAIL**, **BLOCKED** (it needs a person: the Claude browser sign-in without a
+Every step below is reported as **PASS**, **FAIL**, **BLOCKED** (it needs a person: a subscription's sign-in without a
 terminal, and GitHub's device flow) or **STAND-IN** (GitHub's repository listing served by the fixture). The run writes
 `REPORT.md`, `evidence.json` and both turns' event streams to `--out`. The last recorded run is in
-[results/0.7.0](results/0.7.0/REPORT.md) (0.7.0, before PostgreSQL and the browser session).
+[results/0.7.0](results/0.7.0/REPORT.md) (0.7.0, before PostgreSQL and Orbit Web's own accounts); 0.8.0's has not been
+run (no Claude account was available to the session that built it).
 
 ## Manual run (21 steps, then the optional ones)
 
-Needs: Docker, a Claude account, a GitHub account with the fixture repository. Expected time: 10 minutes (20 with the
-optional steps).
+Needs: Docker, a Claude account (a subscription, or a Console API key), a GitHub account with the fixture repository.
+Expected time: 10 minutes (20 with the optional steps).
 
-1. **Start Orbit Web**: `cd integrations/orbit-web/docker`, write the two database passwords into `.env` (README,
-   *Run*), `docker compose up -d --build`; `docker compose ps` says `postgres` and `orbit-web` healthy, and
+1. **Start Orbit Web**: `cd integrations/orbit-web/docker`, write the two database passwords into `.env`, make
+   `allocator.secret` and build the employees' three images (README, *Run it*), `docker compose up -d --build`;
+   `docker compose ps` says `postgres`, `orbit-web` and `orbit-allocator` running (the first two healthy), and
    `curl -s localhost:3000/api/health` says the database ok with pgvector.
-2. **Open the application**: http://localhost:3000 shows *Sign in to Orbit Web* and nothing else: no sidebar, no
-   chats; `curl -s localhost:3000/api/sessions` answers 401 `claude_sign_in_required`.
-3. **Sign in with your Claude account**: *Continue with Claude* → open the link shown → sign in → paste the code the
-   page gives you → *Submit code*. The workspace opens at once on *What should Orbit work on?* with the composer at the
-   bottom, and your address and plan sit at the bottom of the sidebar (from `claude auth status`). A terminal sign-in
-   (`docker exec -it orbit-web claude auth login --claudeai`) signs the CLI in, never a browser: the page still asks
-   this browser to finish its own sign-in. Settings → System shows the Claude CLI, GitHub CLI, git, the Azure CLI and
-   the Orbit plugin with versions, storage ok, and PostgreSQL with its schema and pgvector versions.
+2. **Open the application**: http://localhost:3000 shows *Set up Orbit Web* and nothing else: no sidebar, no chats;
+   `curl -s localhost:3000/api/sessions` answers 401 `sign_in_required`.
+3. **Set up, sign in, connect Claude Code**: `docker compose exec orbit-web node
+   /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code` prints a one-time code; on the page, the code, a
+   username (`admin`), a password of at least 12 characters, your full name, a company name and a time zone → the
+   workspace opens, your full name at the bottom of the sidebar. Using the same code again is refused. Then Settings →
+   **AI Connections** → *Claude Code* → add a connection: *Subscription* shows one command -- run it in a terminal
+   (`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <id>`), sign in with Claude Code's
+   own flow there, and *Re-check*: the card says *Connected*, your identity, Claude Code's version and the models read
+   from your account; or *API key*, pasted once, the same. Settings → System shows the Claude CLI, GitHub CLI, git, the
+   Azure CLI and the Orbit plugin with versions, storage ok, and PostgreSQL with its schema and pgvector versions.
 4. **Connect GitHub**: the composer's repository picker (*No repository*) → *GitHub* tab → *Connect GitHub* opens
    Settings → Connectors on GitHub; *Connect GitHub* shows https://github.com/login/device, a one-time code, and
    *Waiting for authorization…*.
@@ -84,11 +90,11 @@ optional steps).
     PostgreSQL), and the chat, its messages, its status (*Completed*) and its changes are all there.
 20. **Continue**: send `In one sentence, what did you change and why?`; the chat shows *Continuing Claude Code …* and
     answers about the earlier fix (the same Claude conversation, resumed).
-21. **Sign out** from the account menu at the bottom of the sidebar: this browser's page returns to *Sign in to Orbit
-    Web* at once, and the API answers 401 to it again. Settings → Account → *Sign the account out everywhere* ends every
-    browser's session and signs the Claude CLI out; while a chat is running it is refused and says to stop it first.
+21. **Sign out** from the account menu at the bottom of the sidebar: this browser's page returns to the sign-in at once,
+    and the API answers 401 to it again; signing in with the username and password opens it again. Settings → Account
+    → *Sign out everywhere* ends every browser's session.
 
-Optional (signed in to Claude again):
+Optional (signed in again):
 
 22. **A chat without a repository**: *New session*, leave *No repository*, ask `Write hello.mjs that prints hello, and
     run it.` The workspace steps say *Creating an empty workspace…*; Claude writes and runs the file; *Changes* lists
@@ -119,5 +125,54 @@ Optional (signed in to Claude again):
     denied: Bash*). Turn on *Let Claude Code use this Azure sign-in*, ask again: it answers with your account.
 30. **Sign out** of Azure DevOps in its detail: `az account show` in the container says to run `az login`.
 
-Report each step PASS or FAIL with what you saw. Then *Disconnect* GitHub, sign out of Azure DevOps and of Claude if
-you are done.
+Report each step PASS or FAIL with what you saw. Then *Disconnect* GitHub, sign out of Azure DevOps and disconnect the
+Claude Code connection if you are done.
+
+## The Office, by hand (0.8.0, A03-A19 natively)
+
+Needs what the manual run needs, a host whose Docker the allocator can drive, and about 30 minutes. Each step is what
+the deterministic suites prove with a scripted CLI in a fake sandbox, done here with the real CLI in real containers --
+the native rows of the 0.8.0 acceptance report, which no session without a Claude account could run.
+
+1. **Set up the office**: Office → *Set up the office*; create a department *Finance*.
+2. **Hire**: *Hire employee* (enabled only once a connection is connected with its models read from your account) →
+   name *Ana*, department *Finance*, role *Analyst* → Claude Code, *Sonnet 5.5*, *Medium* → the *Lightweight* preset,
+   the account's budget beside it → *Review & hire* (the network disclosure is there). Ana's sandbox says
+   *Provisioning*, then *Ready*; `docker volume ls` shows no new volume per employee (the areas are in the allocator's
+   `orbit-web-workforce`), and `docker ps` shows no container for Ana while she is idle.
+3. **Give work**: *Assign work* to Ana: goal `Write report.md: the sum of 1,200,000 and 800,000 VND, with the working.`,
+   deliverable `report.md`, criterion `The total is right`, *Start now*. *Started*. While it runs, `docker ps` shows the
+   attempt's two containers (`…-tool-…` and `…-model-…`); `docker inspect` of the tool plane shows no capability, a
+   read-only root, Ana's limits and no mount of `/data/connections`.
+4. **The attempt in its sandbox**: the mission's *Last run* says the model, effort and resources as asked, resolved and
+   observed; its network log lists what the tool plane reached. From the tool plane (`docker exec <tool plane> sh -c
+   'ls /data /run/secrets 2>&1; curl -sS -m 5 http://169.254.169.254/ ; curl -sS -m 5 https://example.com -o /dev/null
+   -w "%{http_code}"'`): no Orbit Web data, no secret, the metadata address refused, a public site reached (Autonomous).
+5. **Hand in and revise**: when Ana hands in, *Needs me* has the review; open it: the summary, `report.md` (its hash),
+   its claims. *Request revision* `Show the working line by line.` → a new attempt by Ana; hand-in revision 2.
+6. **Accept**: *Accept…* revision 2 → the mission completes, Ana is free. Give Ana a second piece of work: its workspace
+   starts from her desk (her earlier `report.md` and anything in her toolbox are there).
+7. **Busy and queued**: while Ana works, *Assign work* to her with *Start now*: refused, nothing created, the dialog says
+   what she holds; *Queue it*: queued, and it starts by itself once the first is accepted.
+8. **Pause, cancel, a question**: pause a running attempt (its containers go), resume it (a new attempt), cancel it
+   (Ana free). Give work that says `Ask me which quarter before you start.`: the work waits on your answer in *Needs me*;
+   answer it, and the next attempt has it.
+9. **Restricted network**: Governance → Policy → *Employee network access* → *Restricted*, allow `example.com`, publish
+   (a high-risk change the other way). A running attempt's next connection to another public host is refused and listed
+   in its network log; `example.com` still answers.
+10. **Resources**: Settings → Compute & storage shows the host's capacity and how it was obtained, the budget, what is
+    reserved now and what is waiting. Lower the account's memory budget below Ana's profile: her next work is
+    *unschedulable* with the numbers in *Needs me*; restore it: it starts by itself.
+11. **A research mission**: add a PDF to a research workspace; assign work with that source pinned; the attempt reads it
+    under `/input`, and a claim it hands in is *supported* only with a quote the PDF holds.
+12. **A team**: hire *Mai* as a *Team lead* and *Bao*; give Mai `Split this: Bao collects the numbers into
+    /team/data.csv, then you write the summary.` -- the plan gives Bao a part, the *Team room* tab lists who changed what,
+    Mai reviews Bao's part and hands the integrated result to you.
+13. **Recurring work**: *Schedule* → a monthly schedule for Ana at 09:00 in your time zone; *Preview* lists its next
+    runs; its first occurrence makes one mission, delivered to *Needs me* when accepted.
+14. **Disconnect**: while Ana works, *Disconnect* the Claude Code connection: the attempt stops, the work is blocked
+    saying the connection was disconnected, and a retry starts nothing until it is connected again.
+15. **Restart**: `docker compose restart` during an attempt: after the restart the attempt is interrupted (never run
+    twice), its containers are gone (`docker ps`), its resources released, and *Retry* starts a new one.
+
+Report each step PASS or FAIL with what you saw, and say BLOCKED for a step you could not do and why.

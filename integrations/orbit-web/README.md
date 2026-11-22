@@ -372,7 +372,8 @@ approved (chats, employees), and only for the plugin's exact digest you saw -- a
 *Re-check* asks the CLI now; *Disconnect* runs the CLI's own logout and removes the home's login (work running on it
 stops and is reconciled); a connection an employee runs on cannot be removed.
 
-Chats and research questions run on the account's **default Claude Code connection**. An employee runs on a CLI only
+Research questions run on the account's **default Claude Code connection**; a chat runs on that one too unless it is
+started on another connection of the account -- Claude Code or **OpenAI Codex** ([Use it](#use-it)). An employee runs on a CLI only
 where its installed version was observed to switch every built-in tool off and take Orbit Web's tools instead (the
 *tool-plane split*). Claude Code does: its `--help` lists the flags, and the CLI's own first line is checked on every
 run. **OpenAI Codex** does when its binary is SEEN doing it: Orbit Web stands in for the model provider for one turn on
@@ -402,7 +403,14 @@ governed deployment a run reaches no connector. A connector acts as your account
 ## Use it
 
 A chat runs on your account's default Claude Code connection: connect one first ([AI connections](#ai-connections));
-until then the composer says so, with a link. No source connector is needed. **New session** offers two kinds: **Chat /
+until then the composer says so, with a link. With another connection connected (an **OpenAI Codex** one, say), the new
+chat's composer offers *AI connection*: the chat runs on the one chosen for its whole life, with that connection's own
+models and efforts. A chat on Codex runs `codex exec --json` in the chat's workspace, in that connection's own home,
+inside Codex's own sandbox -- *Autonomous* may write in the workspace (its commands have no network), *Plan* only reads;
+what the account's policy does not allow it does not have (no execution: no shell) -- with no configuration of
+anybody's, no MCP server (Claude's connectors and the Orbit plugin are Claude Code's) and none of Codex's apps, plugins,
+hooks, browser or desktop tools; each message resumes the thread the first one started, and its images are files beside
+the workspace it is named. No source connector is needed. **New session** offers two kinds: **Chat /
 Coding** (the default, below) and **[Research](#research)**. The **[Office](#the-office-ai-employees)** has its own entry in
 the sidebar.
 
@@ -1039,7 +1047,9 @@ For one person, on their own machine, by default:
   among it) and use them. The environment scrub, the deny rules, auto mode's classifier, `--setting-sources user` and the
   private directories are **defence in depth, not isolation**, and nothing calls it isolated because records carry an
   account; a policy that requires isolation refuses runs here. With GitHub's switch on, Claude Code pushes and opens pull
-  requests as you by design.
+  requests as you by design. A chat on **OpenAI Codex** has no deny rule by path at all: its sandbox keeps its commands'
+  writes in the workspace and their network off, but they read what this container's user can read -- the connection's
+  own Codex login included.
 - **The governed deployment** (`docker/compose.governed.yaml`) holds at the container: the database (and its
   network), the sign-ins and the control plane's room are not in the agent's container, and its only way out is the
   proxy (the security lab,

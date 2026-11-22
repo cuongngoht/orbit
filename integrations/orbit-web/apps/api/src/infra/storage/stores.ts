@@ -68,6 +68,9 @@ export interface SessionRecord {
   effort: EffortChoice;
   mode: ModeChoice;
   workspacePath: string;
+  // The CLI the chat runs on, and the account's connection it names (null: the default Claude Code connection).
+  runtime: "claude" | "codex";
+  connectionId: string | null;
   claudeSessionId: string;
   turns: number;
   status: SessionStatus;
@@ -93,6 +96,8 @@ const sessionOf = (r: Row): SessionRecord => ({
   effort: str(r.effort) as EffortChoice,
   mode: str(r.mode) as ModeChoice,
   workspacePath: str(r.workspace_path),
+  runtime: str(r.runtime) === "codex" ? "codex" : "claude",
+  connectionId: strOrNull(r.connection_id),
   claudeSessionId: str(r.claude_session_id),
   turns: num(r.turns),
   status: str(r.status) as SessionStatus,
@@ -105,7 +110,7 @@ const sessionOf = (r: Row): SessionRecord => ({
 
 export type NewSession = Pick<
   SessionRecord,
-  "id" | "accountId" | "ownerEmail" | "title" | "source" | "repository" | "repositoryId" | "branch" | "model" | "effort" | "mode" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt"
+  "id" | "accountId" | "ownerEmail" | "title" | "source" | "repository" | "repositoryId" | "branch" | "model" | "effort" | "mode" | "workspacePath" | "claudeSessionId" | "status" | "pendingPrompt" | "runtime" | "connectionId"
 >;
 
 // Who is asking for records: an account, and the email its identity is shared by.
@@ -138,8 +143,8 @@ export class SessionStore {
   async create(s: NewSession): Promise<SessionRecord> {
     const now = new Date().toISOString();
     const row = await this.db.one(
-      "INSERT INTO sessions (id, account_id, owner_email, title, source, repository, repository_id, branch, model, effort, mode, workspace_path, claude_session_id, status, pending_prompt, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16) RETURNING *",
-      [s.id, s.accountId, s.ownerEmail, s.title, s.source, s.repository, s.repositoryId, s.branch, s.model, s.effort, s.mode, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, now],
+      "INSERT INTO sessions (id, account_id, owner_email, title, source, repository, repository_id, branch, model, effort, mode, workspace_path, claude_session_id, status, pending_prompt, created_at, updated_at, runtime, connection_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, $17, $18) RETURNING *",
+      [s.id, s.accountId, s.ownerEmail, s.title, s.source, s.repository, s.repositoryId, s.branch, s.model, s.effort, s.mode, s.workspacePath, s.claudeSessionId, s.status, s.pendingPrompt, now, s.runtime, s.connectionId],
     );
     return sessionOf(row as Row);
   }

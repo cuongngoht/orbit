@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { sessionStream } from "../../testing/events";
 import { SESSION_ID, inventory, sessionDetail, sessionSummary } from "../../testing/fixtures";
+import { CONN_CODEX, connection, connectionsView } from "../../testing/officeFixtures";
 import { renderUi } from "../../testing/render";
 import { ChatScreen } from "./ChatScreen";
 
@@ -83,6 +84,17 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     expect(shown).toHaveAttribute("src", `/api/sessions/${SESSION_ID}/images/${IMAGE.id}`);
     expect(shown.closest("a")).toHaveAttribute("target", "_blank");
     expect(screen.getByText("why is this red?", { selector: "div" })).toBeInTheDocument();
+  });
+
+  test("a chat on OpenAI Codex offers its connection's own models, and says Codex started", async () => {
+    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", plugins: null, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null } });
+    const a = fakeApi().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }));
+    const { push } = open(sessionDetail({ runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.1-sol" }), a);
+    await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
+    expect((await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""))).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
+    await userEvent.keyboard("{Escape}");
+    push("session.started", started({ runtime: "codex", claudeSessionId: "th_1", claudeCodeVersion: null, model: "gpt-6.1-sol", requestedModel: "gpt-6.1-sol", plugins: [], orbitLoaded: false, orbitVersion: null }));
+    expect(await screen.findByText(/Started OpenAI Codex · gpt-6\.1-sol/)).toBeInTheDocument();
   });
 
   test("a changed model, effort or mode is the chat's from its next message", async () => {

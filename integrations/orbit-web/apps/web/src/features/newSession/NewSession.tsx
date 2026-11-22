@@ -6,7 +6,7 @@ import { Avatar, Button, Text, Title2, makeStyles, mergeClasses, tokens } from "
 import { BookOpen20Regular, Code20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import type { ResearchSessionDetail } from "@orbit-web/contracts";
 import { NewResearchSession } from "../research/NewResearchSession";
-import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, modelOf, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
+import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, RUNTIME_LABELS, effortFor, modelOf, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
@@ -14,7 +14,8 @@ import { send } from "../../services/api";
 import { uploadImage } from "../../services/images";
 import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
-import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { catalogOfConnection, ModelCatalogOverride, useModelCatalog } from "../../services/models/ModelCatalog";
+import { useConnections } from "../connections/AiConnectionsSection";
 import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
@@ -140,14 +141,30 @@ export function NewSession({
   const [mode, setMode] = useState<ModeChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const catalog = useModelCatalog();
+  // Which connection the chat runs on: the account's default Claude Code one unless a person names another (a Claude
+  // Code or OpenAI Codex connection of the account's, connected, with models to choose from).
+  const [connectionId, setConnectionId] = useState<string | null>(null);
+  const connections = useConnections();
+  const chatConnections = (connections.data?.connections ?? []).filter((c) => (c.runtime === "claude" || c.runtime === "codex") && c.auth === "connected" && c.catalog.models.length > 0);
+  const defaultClaude = chatConnections.find((c) => c.runtime === "claude" && c.isDefault) ?? null;
+  const chosen = chatConnections.find((c) => c.id === connectionId) ?? null;
+  const named = chosen !== null && chosen.id !== defaultClaude?.id ? chosen : null;
+  const accountCatalog = useModelCatalog();
+  const catalog = named === null ? accountCatalog : catalogOfConnection(named);
   // Settings' default model, unless this account cannot use it: then the one its CLI recommends.
   const preferred = settings?.defaultModel ?? DEFAULT_MODEL;
   const usable = catalog.source !== "account" || modelOf(catalog, preferred) !== null ? preferred : catalog.recommended;
+  const runModel = model ?? usable;
+  const preferredEffort = settings?.defaultEffort ?? DEFAULT_EFFORT;
   const run = {
-    model: model ?? usable,
-    effort: effort ?? settings?.defaultEffort ?? DEFAULT_EFFORT,
+    model: runModel,
+    effort: effort ?? (named === null ? preferredEffort : (effortFor(modelOf(catalog, runModel), preferredEffort) ?? preferredEffort)),
     mode: mode ?? settings?.defaultMode ?? DEFAULT_MODE,
+  };
+  const chooseConnection = (id: string) => {
+    setConnectionId(id);
+    setModel(null);
+    setEffort(null);
   };
   // A model auto mode is not available with plans only.
   const chooseModel = (m: ModelChoice) => {
@@ -160,7 +177,7 @@ export function NewSession({
     setError(null);
     try {
       const repository = choice ? { source: choice.source, id: choice.repository.id } : null;
-      const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...run, ...(prompt.trim().length > 0 ? { prompt } : {}), ...(images.length > 0 ? { images } : {}) });
+      const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...(named !== null ? { connectionId: named.id } : {}), ...run, ...(prompt.trim().length > 0 ? { prompt } : {}), ...(images.length > 0 ? { images } : {}) });
       onCreated(created);
     } catch (err) {
       setError(err);
@@ -195,10 +212,19 @@ export function NewSession({
         </>
       }
       right={
-        <>
+        <ModelCatalogOverride catalog={catalog}>
+          {chatConnections.some((c) => c.id !== defaultClaude?.id) && (
+            <select aria-label="AI connection" title="The CLI this chat runs on, for its whole life" value={chosen?.id ?? defaultClaude?.id ?? ""} onChange={(e) => chooseConnection(e.target.value)}>
+              {chatConnections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {`${RUNTIME_LABELS[c.runtime]} — ${c.label}`}
+                </option>
+              ))}
+            </select>
+          )}
           <ModelEffortPicker model={run.model} effort={run.effort} onModel={chooseModel} onEffort={setEffort} />
           <ModePicker mode={run.mode} onMode={setMode} autoMode={autoModeWith(catalog, run.model)} />
-        </>
+        </ModelCatalogOverride>
       }
     />
   );

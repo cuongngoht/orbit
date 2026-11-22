@@ -112,7 +112,7 @@ function RunStart({ item }: { item: RunStartItem }) {
   return (
     <div className={s.line}>
       <Text size={200} className={s.meta}>
-        {d.resumed ? "Continuing" : "Started"} Claude Code {d.claudeCodeVersion ?? "?"} · {d.model ?? d.requestedModel}
+        {d.resumed ? "Continuing" : "Started"} {d.runtime === "codex" ? "OpenAI Codex" : `Claude Code ${d.claudeCodeVersion ?? "?"}`} · {d.model ?? d.requestedModel}
         {/* A run of an earlier Orbit Web named no effort or mode. */}
         {d.requestedEffort ? ` · ${effortLabel(d.requestedEffort)} effort` : ""}
         {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}

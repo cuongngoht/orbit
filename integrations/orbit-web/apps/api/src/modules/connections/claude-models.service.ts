@@ -5,9 +5,11 @@
 // CLI could not be asked (or there is no connected connection), the fallback list is shown, labelled, and a choice is
 // held to its shape alone: the CLI then refuses what the account cannot use, with its own error.
 import { Inject, Injectable } from "@nestjs/common";
-import { catalogRefusals, effortFor, FALLBACK_CATALOG, modelOf, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice } from "@orbit-web/contracts";
+import { catalogRefusals, effortFor, FALLBACK_CATALOG, modelOf, RUNTIME_LABELS, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice } from "@orbit-web/contracts";
+import { HttpStatus } from "@nestjs/common";
+import type { ConnectionRecord } from "../../infra/connections/stores.js";
 import { accountAudience, EventBus } from "../../core/events/event-bus.js";
-import { badRequest } from "../../common/errors.js";
+import { ApiError, badRequest } from "../../common/errors.js";
 import { RunConnections } from "./run-connections.js";
 
 const fallback = (detail: string): ModelCatalog => ({ ...FALLBACK_CATALOG, detail });
@@ -40,11 +42,26 @@ export class ClaudeModelsService {
     this.bus.publishApp("claude.models", { catalog: await this.catalog(accountId) }, accountAudience(accountId));
   }
 
+  // The catalog a chat on `connection` is held to: the account's default Claude Code catalog when it names none; else
+  // what that connection's own CLI last said -- a fallback list when it could not be asked (labelled; the CLI decides),
+  // and for a connection whose CLI never listed its models, nothing to choose from (409, Re-check it).
+  async catalogFor(accountId: string, connection: ConnectionRecord | null): Promise<ModelCatalog> {
+    if (connection === null) return this.catalog(accountId);
+    const c = connection.catalog;
+    if (c.models.length > 0 && (c.source === "account" || c.source === "fallback")) return { source: c.source, models: c.models, recommended: c.recommended ?? (c.models[0] as { id: string }).id, detail: c.source === "fallback" ? `${RUNTIME_LABELS[connection.runtime]} could not be asked which models this connection may use: its fallback list is shown, and the CLI decides.` : null };
+    if (connection.runtime === "claude") return fallback(`The Claude Code connection "${connection.label}" gave no model list: the default list is shown.`);
+    throw new ApiError(HttpStatus.CONFLICT, "connection_models_unknown", `${RUNTIME_LABELS[connection.runtime]} "${connection.label}" has not said which models it may use: Re-check it in Settings → AI Connections.`);
+  }
+
   // What a change leaves of a run's model, effort and mode, held to the account's catalog. An effort the change did not
   // name moves to one the (new) model takes; a model the account cannot use, an effort named that the model does not
   // take, or Autonomous with a model auto mode is not available with, is a 400 naming why.
   async settle(accountId: string, current: RunChoice, change: Partial<RunChoice>): Promise<RunChoice> {
-    const catalog = await this.catalog(accountId);
+    return this.settleWith(await this.catalog(accountId), current, change);
+  }
+
+  // The same, held to a catalog given (a chat's own connection's: catalogFor).
+  settleWith(catalog: ModelCatalog, current: RunChoice, change: Partial<RunChoice>): RunChoice {
     const model = change.model ?? current.model;
     const option = modelOf(catalog, model);
     const effort = change.effort ?? effortFor(option, current.effort) ?? current.effort;

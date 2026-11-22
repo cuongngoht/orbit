@@ -15,16 +15,16 @@
 // the gateway, and in the governed deployment the proxy) and says what the policy lets the runtime do -- the web tools,
 // commands, which of the connectors its owner checked for chats. Nothing starts undecided.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import { ACCEPTS_MESSAGES, effortFor, modelOf, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, effortFor, modelOf, RUNTIME_LABELS, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
-import { createWriteStream, mkdirSync, type WriteStream } from "node:fs";
-import { join } from "node:path";
+import { createWriteStream, mkdirSync, writeFileSync, type WriteStream } from "node:fs";
+import { dirname, join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { conflict, notFound } from "../../common/errors.js";
 import { Db } from "../../infra/db/db.js";
-import { claudeEnv } from "../../infra/process/env.js";
+import { claudeEnv, codexEnv } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
@@ -40,7 +40,8 @@ import { AutoModeService } from "./auto-mode.js";
 import { SettingsService } from "../settings/settings.module.js";
 import { claudeArgs } from "./claude-args.js";
 import { decideOutcome, lostConversation } from "./outcome.js";
-import { StreamMapper, type MappedEvent } from "./stream-mapper.js";
+import { StreamMapper, type InitInfo, type MappedEvent, type ResultInfo } from "./stream-mapper.js";
+import { codexChatArgs, CodexStreamMapper } from "./codex-chat.js";
 import { Transcript } from "./transcript.js";
 
 const STDERR_LIMIT = 16 * 1024;
@@ -48,11 +49,19 @@ const RUN_LOG_LIMIT = 20 * 1024 * 1024;
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+// What reads a run's stream into the chat's events: Claude Code's (StreamMapper) or OpenAI Codex's (CodexStreamMapper).
+interface ChatMapper {
+  init: InitInfo | null;
+  result: ResultInfo | null;
+  push(event: unknown): MappedEvent[];
+  finish(): MappedEvent[];
+}
+
 interface ActiveRun {
   runId: string;
   session: SessionRecord;
   handle: ProcessHandle;
-  mapper: StreamMapper;
+  mapper: ChatMapper;
   splitter: LineSplitter;
   stoppedBy: "user_stop" | "server_restart" | null;
   stderr: string;
@@ -67,10 +76,12 @@ interface ActiveRun {
   ending: Promise<void> | null;
 }
 
-// What Claude Code is given on stdin: a prompt's own text, or one stream-json user message (a message with images).
+// What the CLI is given on stdin: a prompt's own text, or (Claude Code) one stream-json user message with the images;
+// OpenAI Codex takes the images as files it is named (`-i`).
 interface RunInput {
   streamJson: boolean;
   data: string;
+  images?: string[];
 }
 
 @Injectable()
@@ -155,10 +166,10 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is changing; send your message once it has.");
     if (session.status === "preparing") throw conflict("workspace_not_ready", "The workspace is still being prepared.");
     if (!ACCEPTS_MESSAGES.includes(session.status)) throw conflict("workspace_failed", "This session's workspace could not be prepared; start a new chat.");
-    // The chat's account must have a connected Claude Code connection: its runs are that connection's.
-    await this.connections.require(session.accountId);
-    const input = this.inputOf(text, images);
+    // The chat's connection (the one it named, or the account's default Claude Code one) must be connected.
+    await this.connections.requireChat(session.accountId, session.connectionId);
     const runId = randomUUID();
+    const input = session.runtime === "codex" ? this.codexInputOf(session, runId, text, images) : this.inputOf(text, images);
     const messageId = randomUUID();
     // From here the session counts as running: a second message waits for this one. The message and the status are kept
     // together, before the answer, so whoever reads the session after it was accepted sees it running -- until the run
@@ -192,6 +203,20 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
 ` };
   }
 
+  // OpenAI Codex: the words on stdin, each image a file beside the workspace (never in the repository's tree) it is
+  // named with `-i`. Read now and whole; an image gone refuses the message.
+  private codexInputOf(session: SessionRecord, runId: string, text: string, images: readonly ImageRef[]): RunInput {
+    if (images.length === 0) return { streamJson: false, data: text };
+    const dir = join(dirname(session.workspacePath), "codex-images");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const paths = images.map((i, n) => {
+      const path = join(dir, `${runId}-${n + 1}.${i.mediaType.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "img"}`);
+      writeFileSync(path, this.readImage(i.id), { mode: 0o600 });
+      return path;
+    });
+    return { streamJson: false, data: text, images: paths };
+  }
+
   private readImage(id: string): Buffer {
     try {
       return this.imageFiles.read(id);
@@ -204,12 +229,13 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   // -- it never starts undecided.
   private async governed(session: SessionRecord, input: RunInput, runId: string, startedBy: Principal): Promise<void> {
     try {
-      // The account's Claude Code connection, as it is now (it may have been disconnected since the message came).
-      const connection = await this.connections.ready(session.accountId);
-      if (connection === null) return await this.refuse(session, runId, "This account's Claude Code connection is not connected, so the run did not start: check it in Settings → AI Connections.");
+      // The chat's connection, as it is now (it may have been disconnected since the message came).
+      const connection = await this.connections.readyChat(session.accountId, session.connectionId);
+      if (connection === null) return await this.refuse(session, runId, `This chat's ${RUNTIME_LABELS[session.runtime]} connection is not connected, so the run did not start: check it in Settings → AI Connections.`);
       let decided: { plan: RunPlan; connectors: RunConnectors };
       try {
-        const connectors = await this.connectors.forRun(session.accountId, connection.connection.id);
+        // Claude's connectors are Claude Code's: a chat on another CLI reaches none.
+        const connectors = connection.connection.runtime === "claude" ? await this.connectors.forRun(session.accountId, connection.connection.id) : { known: [], chat: [], research: [] };
         const prepared = await this.governance.prepare(session, runId, { mode: session.mode, startedBy, connectors: connectors.chat });
         if (!prepared.ok) return await this.refuse(session, runId, prepared.message);
         decided = { plan: prepared.plan, connectors };
@@ -276,6 +302,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   private async start(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connectors: RunConnectors, connection: RunConnection): Promise<void> {
+    if (connection.connection.runtime === "codex") return this.startCodex(session, input, runId, plan, connection);
     const resume = session.turns > 0;
     // The chat's own account's preferences: whose switches hand Claude Code a sign-in.
     const prefs = await this.settings.get(session.accountId);
@@ -319,6 +346,24 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, connection.configDir, { azure, github }), ...connection.secretEnv, ...plan.env } });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
+    this.attach(session, input, runId, plan, handle, mapper);
+  }
+
+  // A chat on OpenAI Codex: `codex exec --json` in the workspace, in the connection's own CODEX_HOME, resuming the thread
+  // its first run named (codex-chat.ts). The effort is the chat's, where its model takes one.
+  private async startCodex(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connection: RunConnection): Promise<void> {
+    const resume = session.turns > 0;
+    const prefs = await this.settings.get(session.accountId);
+    const option = modelOf(await this.models.catalogFor(session.accountId, connection.connection), session.model);
+    const effort = option !== null && option.efforts.length === 0 ? null : session.effort;
+    const args = codexChatArgs({ model: session.model, effort, mode: session.mode, webTools: prefs.webTools && plan.webTools, execute: plan.execute, note: plan.note, threadId: resume ? session.claudeSessionId : null, images: input.images ?? [] });
+    await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
+    const handle = this.process.spawn(this.config.binaries.codex, args, { cwd: session.workspacePath, env: { ...codexEnv(this.config, connection.configDir), ...plan.env } });
+    this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }));
+  }
+
+  // A started CLI made the session's run: its stream read into the chat's events, its end recorded once, the input given.
+  private attach(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, handle: ProcessHandle, mapper: ChatMapper): void {
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,
@@ -390,7 +435,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     // Every event of the stream is published before the outcome is.
     await run.queue;
     try {
-      const outcome = decideOutcome({ stoppedBy: run.stoppedBy, exit, result: run.mapper.result, stderrTail: tail(run.stderr, 6) });
+      const outcome = decideOutcome({ stoppedBy: run.stoppedBy, exit, result: run.mapper.result, stderrTail: tail(run.stderr, 6), cli: RUNTIME_LABELS[run.session.runtime] });
       await this.bus.publishSession(run.session.id, outcome.type, outcome.data as never, run.runId);
       await this.runs.finish(run.runId, outcome.status, { exitCode: exit.code, signal: exit.signal, costUsd: run.mapper.result?.costUsd ?? null });
       await this.recordTurn(run, outcome.type === "session.failed" ? outcome.data.message : "");
@@ -414,7 +459,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (!current) return;
     if (lostConversation(failure) || lostConversation(run.stderr)) {
       await this.sessions.update(current.id, { claudeSessionId: randomUUID(), turns: 0 });
-      await this.bus.publishSession(current.id, "run.notice", { kind: "info", message: "Claude Code could not find the earlier conversation to resume, so the next message starts a new Claude conversation in the same workspace." }, run.runId);
+      await this.bus.publishSession(current.id, "run.notice", { kind: "info", message: `${RUNTIME_LABELS[current.runtime]} could not find the earlier conversation to resume, so the next message starts a new conversation in the same workspace.` }, run.runId);
       return;
     }
     if (init === null) return;

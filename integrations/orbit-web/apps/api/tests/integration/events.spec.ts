@@ -34,7 +34,7 @@ after(async () => {
 
 async function chat(): Promise<{ id: string; journal: EventStore; bus: EventBus }> {
   const id = randomUUID();
-  await new SessionStore(db).create({ id, accountId, ownerEmail: "octo@example.com", title: "t", source: null, repository: null, repositoryId: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", workspacePath: "/w", claudeSessionId: "c", status: "preparing", pendingPrompt: null });
+  await new SessionStore(db).create({ id, accountId, ownerEmail: "octo@example.com", title: "t", source: null, repository: null, repositoryId: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", workspacePath: "/w", runtime: "claude", connectionId: null, claudeSessionId: "c", status: "preparing", pendingPrompt: null });
   const journal = new EventStore(db);
   return { id, journal, bus: new EventBus(db, journal) };
 }

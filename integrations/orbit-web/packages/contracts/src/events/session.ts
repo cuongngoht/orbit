@@ -61,6 +61,8 @@ export interface PluginInfo {
 
 // The CLI's own init line, as it said it, and what Orbit Web asked of it.
 export interface SessionStartedData {
+  // The CLI the run is (absent: Claude Code, as every run before OpenAI Codex chats was).
+  runtime?: "claude" | "codex";
   claudeSessionId: string;
   claudeCodeVersion: string | null;
   model: string | null;

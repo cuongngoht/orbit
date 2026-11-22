@@ -18,3 +18,17 @@ export function ModelCatalogProvider({ children }: { children: ReactNode }) {
 }
 
 export const useModelCatalog = (): ModelCatalog => useContext(Context);
+
+// The pickers inside hold to ANOTHER catalog: a chat on a connection it names (OpenAI Codex, say) offers that
+// connection's own models.
+export function ModelCatalogOverride({ catalog, children }: { catalog: ModelCatalog; children: ReactNode }) {
+  return <Context.Provider value={catalog}>{children}</Context.Provider>;
+}
+
+// A connection's own catalog, as the pickers read one: read from the account, or its CLI's labelled fallback.
+export const catalogOfConnection = (c: { catalog: { source: "account" | "fallback" | "none"; models: ModelCatalog["models"]; recommended: string | null } }): ModelCatalog => ({
+  source: c.catalog.source === "account" ? "account" : "fallback",
+  models: c.catalog.models,
+  recommended: c.catalog.recommended ?? c.catalog.models[0]?.id ?? "",
+  detail: c.catalog.source === "account" ? null : "This connection's CLI could not be asked which models it may use: its fallback list is shown, and the CLI decides.",
+});

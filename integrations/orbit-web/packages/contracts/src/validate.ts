@@ -110,17 +110,21 @@ const unknownFields = (body: Record<string, unknown>, allowed: readonly string[]
 
 const checked = <T>(errors: string[], value: () => T): Checked<T> => (errors.length > 0 ? { ok: false, errors } : { ok: true, value: value() });
 
+const CONNECTION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 // Which models and efforts an account may use is its catalog's (the API holds a choice to it); here, their shape.
-const MODELS_SAID = "model must be a model the Claude CLI names (an alias such as sonnet, or a model id)";
-const EFFORTS_SAID = "effort must be an effort level the Claude CLI names (such as low, medium or high)";
+const MODELS_SAID = "model must be a model the connection's CLI names (an alias such as sonnet, or a model id)";
+const EFFORTS_SAID = "effort must be an effort level the connection's CLI names (such as low, medium or high)";
 const MODES_SAID = `mode must be one of ${MODE_CHOICES.join(", ")}`;
 const REPOSITORY_SAID = `repository must be { source: ${REPOSITORY_SOURCES.join(" | ")}, id } (GitHub owner/name, Azure DevOps organization/<repository id>)`;
 
 // A chat with a repository (and, optionally, its branch: the default one otherwise), or with none at all.
 export function checkCreateSession(body: unknown): Checked<CreateSessionRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["repository", "branch", "model", "effort", "mode", "title", "prompt", "images"]);
+  const errors = unknownFields(body, ["repository", "branch", "connectionId", "model", "effort", "mode", "title", "prompt", "images"]);
   const images = imageIdsProblem(body.images);
+  const connectionId = body.connectionId ?? null;
+  if (connectionId !== null && (typeof connectionId !== "string" || !CONNECTION_ID.test(connectionId))) errors.push("connectionId must be the id of one of this account's AI connections");
   if (images !== null) errors.push(images);
   const repository = body.repository ?? null;
   const branch = body.branch ?? null;
@@ -135,6 +139,7 @@ export function checkCreateSession(body: unknown): Checked<CreateSessionRequest>
   return checked(errors, () => ({
     repository: repository === null ? null : { source: (repository as RepositoryRef).source as RepositorySource, id: (repository as RepositoryRef).id },
     branch: branch as string | null,
+    ...(connectionId !== null ? { connectionId: connectionId as string } : {}),
     model: body.model as ModelChoice,
     ...(body.effort !== undefined ? { effort: body.effort as EffortChoice } : {}),
     ...(body.mode !== undefined ? { mode: body.mode as ModeChoice } : {}),

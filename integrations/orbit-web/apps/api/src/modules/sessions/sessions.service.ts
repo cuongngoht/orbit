@@ -39,6 +39,8 @@ export const summaryOf = (s: SessionRecord, access: AccessLevel = "owner"): Sess
   repository: s.repository,
   branch: s.branch,
   workBranch: s.workBranch,
+  runtime: s.runtime,
+  connectionId: s.connectionId,
   model: s.model,
   effort: s.effort,
   mode: s.mode,
@@ -122,14 +124,17 @@ export class SessionsService {
   async create(body: unknown): Promise<SessionSummary> {
     const req = accepted(checkCreateSession(body));
     const who = viewer();
-    // A chat runs on the account's own Claude Code connection: none connected, no chat (409, nothing made).
-    await this.connections.require(who.accountId);
+    // A chat runs on the connection it names (the account's own Claude Code or OpenAI Codex), or on the account's
+    // default Claude Code connection: none connected, no chat (409, nothing made).
+    const connectionId = req.connectionId ?? null;
+    const on = await this.connections.requireChat(who.accountId, connectionId);
     // The first message's images: the creator's own uploads, unsent -- held before anything is made.
     const imageIds = req.images ?? [];
     await this.images.owned(imageIds, who, null);
     const prefs = await this.settings.get(who.accountId);
     // The model, effort and mode, held to what this account may use.
-    const run = await this.models.settle(who.accountId, { model: req.model, effort: prefs.defaultEffort, mode: prefs.defaultMode }, { ...(req.effort ? { effort: req.effort } : {}), ...(req.mode ? { mode: req.mode } : {}) });
+    const catalog = await this.models.catalogFor(who.accountId, connectionId === null ? null : on.connection);
+    const run = this.models.settleWith(catalog, { model: req.model, effort: prefs.defaultEffort, mode: prefs.defaultMode }, { ...(req.effort ? { effort: req.effort } : {}), ...(req.mode ? { mode: req.mode } : {}) });
     const origin = req.repository ? await this.sources.open(req.repository, req.branch ?? null) : null;
     const id = randomUUID();
     const session = await this.db.tx(async () => {
@@ -146,6 +151,8 @@ export class SessionsService {
         effort: run.effort,
         mode: run.mode ?? prefs.defaultMode,
         workspacePath: this.workspaces.pathFor(id),
+        runtime: on.connection.runtime === "codex" ? "codex" : "claude",
+        connectionId,
         claudeSessionId: randomUUID(),
         status: "preparing",
         pendingPrompt: req.prompt ?? (imageIds.length > 0 ? "" : null),
@@ -166,7 +173,9 @@ export class SessionsService {
     const who = viewer();
     const change = accepted(checkUpdateSession(body));
     const runChanged = change.model !== undefined || change.effort !== undefined || change.mode !== undefined;
-    const run = runChanged ? await this.models.settle(who.accountId, { model: s.model, effort: s.effort, mode: s.mode }, change) : null;
+    // Held to the chat's own connection's catalog (the account's default Claude Code one when it names none).
+    const named = runChanged && s.connectionId !== null ? await this.connections.chatConnectionOf(s.accountId, s.connectionId) : null;
+    const run = runChanged ? this.models.settleWith(await this.models.catalogFor(who.accountId, named), { model: s.model, effort: s.effort, mode: s.mode }, change) : null;
     const updated = await this.db.tx(async () => {
       const next = await this.sessions.update(id, { ...change, ...(run !== null ? { model: run.model, effort: run.effort, mode: run.mode ?? s.mode } : {}) });
       if (change.title !== undefined) await this.resources.retitle("workspace", next.accountId, next.id, next.title);

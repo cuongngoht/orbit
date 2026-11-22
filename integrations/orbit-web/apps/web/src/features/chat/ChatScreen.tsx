@@ -17,7 +17,8 @@ import { get, send } from "../../services/api";
 import { uploadImage } from "../../services/images";
 import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
-import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { catalogOfConnection, ModelCatalogOverride, useModelCatalog } from "../../services/models/ModelCatalog";
+import { useConnections } from "../connections/AiConnectionsSection";
 import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
@@ -152,7 +153,11 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
   const status = state.status ?? detail.data?.status ?? "preparing";
   const running = status === "running";
   const drawerInspector = isCompact || isNarrowDesktop;
-  const catalog = useModelCatalog();
+  // A chat on a connection it named (OpenAI Codex, say) offers that connection's own models; else the account's.
+  const accountCatalog = useModelCatalog();
+  const connections = useConnections();
+  const named = detail.data?.connectionId ? ((connections.data?.connections ?? []).find((c) => c.id === detail.data?.connectionId) ?? null) : null;
+  const catalog = named !== null ? catalogOfConnection(named) : accountCatalog;
 
   // The header (title, preferences, status, working branch) is read again whenever the chat's status changes, or its
   // working branch moved (in this tab or another).
@@ -356,7 +361,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               </>
             }
             right={
-              <>
+              <ModelCatalogOverride catalog={catalog}>
                 <ModelEffortPicker
                   model={session.model}
                   effort={session.effort}
@@ -364,7 +369,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
                   onEffort={(effort) => void attempt(() => update({ effort }))}
                 />
                 <ModePicker mode={session.mode} onMode={(mode) => void attempt(() => update({ mode }))} autoMode={autoModeWith(catalog, session.model)} />
-              </>
+              </ModelCatalogOverride>
             }
           />
         </div>

@@ -170,6 +170,8 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
   return {
     id: SESSION_ID,
     title: "Fix sum",
+    runtime: "claude",
+    connectionId: null,
     source: "github",
     repository: "octo/sum-fixture",
     branch: "main",
@@ -194,8 +196,8 @@ export function sessionDetail(over: Partial<SessionDetail> = {}): SessionDetail 
 
 // A chat as the sidebar lists it (the detail without its messages).
 export function sessionSummary(over: Partial<SessionSummary> = {}): SessionSummary {
-  const { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt } = sessionDetail(over);
-  return { id, title, source, repository, branch, workBranch, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt };
+  const { id, title, source, repository, branch, workBranch, runtime, connectionId, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt } = sessionDetail(over);
+  return { id, title, source, repository, branch, workBranch, runtime, connectionId, model, effort, mode, status, statusReason, access, owner, createdAt, updatedAt };
 }
 
 export function orbitPanel(over: Partial<OrbitPanel> = {}): OrbitPanel {

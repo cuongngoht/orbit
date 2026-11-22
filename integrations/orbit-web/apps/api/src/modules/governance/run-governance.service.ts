@@ -156,7 +156,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
         isolation: checked.isolation,
         revision: checked.revision,
       };
-      await this.started(actx, plan, o.mode, binding.startedBy);
+      await this.started(actx, plan, o.mode, binding.startedBy, session.runtime);
       return { ok: true, plan };
     });
   }
@@ -308,7 +308,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     return { ...gateway, ...egressProxyEnv(g.agentControlHost, g.proxyPort, "run", token), ENABLE_CLAUDEAI_MCP_SERVERS: "false" };
   }
 
-  private async started(ctx: GovernanceContext, plan: RunPlan, mode: string, startedBy: string): Promise<void> {
-    await this.audit.record(ctx, { type: "run.started", outcome: "started", workspaceId: plan.binding.resourceId, data: { scope: plan.scope, runtime: "claude-code", runtimeVersion: this.runtimeVersion, mode, isolation: plan.isolation, startedBy } });
+  private async started(ctx: GovernanceContext, plan: RunPlan, mode: string, startedBy: string, runtime: RuntimeKind = "claude"): Promise<void> {
+    await this.audit.record(ctx, { type: "run.started", outcome: "started", workspaceId: plan.binding.resourceId, data: { scope: plan.scope, runtime: AUDIT_RUNTIME[runtime], runtimeVersion: runtime === "claude" ? this.runtimeVersion : ((await this.toolchain.get()).versions[runtime] ?? null), mode, isolation: plan.isolation, startedBy } });
   }
 }

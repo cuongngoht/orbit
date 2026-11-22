@@ -4,6 +4,7 @@ import type { RepositoryList, Settings, SourcesStatus } from "@orbit-web/contrac
 import { describe, expect, test, vi } from "vitest";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { AZURE_REPOSITORY_ID, SESSION_ID, azureRepository, githubRepository, sessionSummary, settings, sources } from "../../testing/fixtures";
+import { CONN_CODEX, capabilities, connection, connectionsView } from "../../testing/officeFixtures";
 import { renderUi } from "../../testing/render";
 import { NewSession } from "./NewSession";
 
@@ -48,6 +49,29 @@ describe("a new session: the composer always at the bottom, and the draft in its
     await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Explain how the CLI parses flags{Enter}");
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: SESSION_ID })));
     expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Explain how the CLI parses flags" });
+  });
+
+  test("a chat may run on the account's OpenAI Codex connection: its own models, and the chat names it", async () => {
+    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null }, capabilities: capabilities({ toolPlaneSplit: "unknown" }) });
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }));
+    show();
+    const runsOn = await screen.findByRole("combobox", { name: "AI connection" });
+    expect(within(runsOn).getAllByRole("option").map((o) => o.textContent)).toEqual(["Claude Code — Claude subscription", "OpenAI Codex — ChatGPT"]);
+    await userEvent.selectOptions(runsOn, CONN_CODEX);
+    await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
+    const models = (await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""));
+    expect(models).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hello Codex{Enter}");
+    await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, connectionId: CONN_CODEX, model: "gpt-6.1-sol", effort: "medium", mode: "autonomous", prompt: "Hello Codex" }));
+  });
+
+  test("on the default Claude Code connection the chat names none: what it sends is as it was", async () => {
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection()] }));
+    show();
+    expect(screen.queryByRole("combobox", { name: "AI connection" })).toBeNull();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hi{Enter}");
+    await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Hi" }));
   });
 
   test("typing / lists Orbit's skills, and the chosen repository's as an earlier chat read them", async () => {

@@ -168,6 +168,10 @@ CREATE TABLE app.sessions (
   effort text NOT NULL,
   mode text NOT NULL,
   workspace_path text NOT NULL,
+  -- The CLI the chat runs on and the account's connection it names (null: the default Claude Code connection).
+  runtime text NOT NULL DEFAULT 'claude' CHECK (runtime IN ('claude', 'codex')),
+  connection_id uuid,
+  -- The CLI's own session: Claude Code's session id, or OpenAI Codex's thread id once its first run named it.
   claude_session_id text NOT NULL,
   turns integer NOT NULL DEFAULT 0,
   status text NOT NULL,

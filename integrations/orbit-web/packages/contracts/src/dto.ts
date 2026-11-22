@@ -3,7 +3,7 @@ import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
 import type { AnySessionEvent } from "./events/envelope.js";
 import type { ImageRef } from "./images.js";
-import type { RuntimeInstallation } from "./ai-connections.js";
+import type { RuntimeInstallation, RuntimeKind } from "./ai-connections.js";
 
 export interface ApiErrorBody {
   error: {
@@ -194,6 +194,10 @@ export interface SessionSummary {
   repository: string | null;
   branch: string | null;
   workBranch: string | null;
+  // The CLI the chat runs on, and the account's connection to it it names (null: the account's default Claude Code
+  // connection, whichever that is when a message is sent).
+  runtime: RuntimeKind;
+  connectionId: string | null;
   model: ModelChoice;
   effort: EffortChoice;
   mode: ModeChoice;
@@ -229,6 +233,9 @@ export interface SessionDetail extends SessionSummary {
 export interface CreateSessionRequest {
   repository?: RepositoryRef | null;
   branch?: string | null;
+  // The account's connection the chat runs on (Claude Code or OpenAI Codex), its model one of that connection's own
+  // catalog. Absent: the account's default Claude Code connection. Fixed for the chat's life.
+  connectionId?: string | null;
   model: ModelChoice;
   effort?: EffortChoice;
   mode?: ModeChoice;

@@ -37,7 +37,7 @@ const AZURE_TOOLS: ToolSpec[] = [
   },
   { name: "azure_devops_query", description: "Find work items with a WIQL query in an Azure DevOps project you were let use: their ids, types, titles and states (at most 200).", inputSchema: obj({ organization: str("The organization"), project: str("The project"), wiql: str("The query, e.g. SELECT [System.Id] FROM WorkItems WHERE [System.State] = 'Active'") }, ["organization", "project", "wiql"]) },
   { name: "azure_devops_wiki_page", description: "Read a page of an Azure DevOps project's wiki, in a project you were let use.", inputSchema: obj({ organization: str("The organization"), project: str("The project"), wiki: str("The wiki's name or id"), path: str("The page's path, e.g. /Requirements/Export") }, ["organization", "project", "wiki", "path"]) },
-  { name: "azure_devops_file", description: "Read a file of an Azure DevOps repository you were let use (at a branch; the default one when none).", inputSchema: obj({ organization: str("The organization"), project: str("The project"), repository: str("The repository's name"), path: str("The file, e.g. /docs/spec.md"), branch: str("A branch (optional)") }, ["organization", "project", "repository", "path"]) },
+  { name: "azure_devops_file", description: "Read a file, or list a folder, of an Azure DevOps repository you were let use (at a branch; the default one when none).", inputSchema: obj({ organization: str("The organization"), project: str("The project"), repository: str("The repository's name"), path: str("The file, e.g. /docs/spec.md"), branch: str("A branch (optional)") }, ["organization", "project", "repository", "path"]) },
 ];
 
 const TOOLS: Record<AccessConnector, ToolSpec[]> = { github: GITHUB_TOOLS, azure: AZURE_TOOLS };
@@ -214,8 +214,10 @@ export class ConnectorBroker implements ConnectorTools {
     const found = await this.az(`${this.base(org, project)}/_apis/wit/wiql?api-version=7.1`, { query: wiql });
     const ids = (isRecord(found) && Array.isArray(found.workItems) ? found.workItems : []).map((w) => (isRecord(w) ? Number(w.id) : NaN)).filter((n) => Number.isInteger(n)).slice(0, 200);
     if (ids.length === 0) return untrusted(`Azure DevOps query in ${org}/${project}`, "No work item matches.");
-    const items = await this.az(`${this.base(org, project)}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.WorkItemType,System.Title,System.State&api-version=7.1`);
-    const list = isRecord(items) && Array.isArray(items.value) ? items.value.filter(isRecord) : [];
+    const items = await this.az(`${this.base(org, project)}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.WorkItemType,System.Title,System.State,System.TeamProject&api-version=7.1`);
+    // WIQL reaches the whole organization: a work item of another project -- one not granted -- is never said.
+    const own = (w: Json) => isRecord(w.fields) && String(w.fields["System.TeamProject"] ?? "").toLowerCase() === project.toLowerCase();
+    const list = (isRecord(items) && Array.isArray(items.value) ? items.value.filter(isRecord) : []).filter(own);
     const rows = list.map((w) => {
       const f = isRecord(w.fields) ? w.fields : {};
       return `${String(w.id)} · ${String(f["System.WorkItemType"] ?? "")} · ${String(f["System.State"] ?? "")} · ${String(f["System.Title"] ?? "")}`;
@@ -223,15 +225,30 @@ export class ConnectorBroker implements ConnectorTools {
     return untrusted(`Azure DevOps query in ${org}/${project}`, rows.join("\n"));
   }
 
+  // A wiki named by id or name is first held to the project granted: Azure DevOps may answer another project's wiki
+  // under this project's address, and that one is never read.
   private async wiki(org: string, project: string, wiki: string, path: string): Promise<string> {
+    const [meta, own] = await Promise.all([this.az(`${this.base(org, project)}/_apis/wiki/wikis/${enc(wiki)}?api-version=7.1`), this.az(`https://dev.azure.com/${enc(org)}/_apis/projects/${enc(project)}?api-version=7.1`)]);
+    const wikiProject = isRecord(meta) ? String(meta.projectId ?? "") : "";
+    const projectId = isRecord(own) ? String(own.id ?? "") : "";
+    if (wikiProject === "" || wikiProject.toLowerCase() !== projectId.toLowerCase()) return refuse(`The wiki ${wiki} is not a wiki of ${org}/${project}.`);
     const page = await this.az(`${this.base(org, project)}/_apis/wiki/wikis/${enc(wiki)}/pages?path=${enc(path)}&includeContent=true&api-version=7.1`);
     const content = isRecord(page) && typeof page.content === "string" ? page.content : "";
     return untrusted(`Azure DevOps wiki ${org}/${project} ${wiki}${path}`, content || "(the page is empty)");
   }
 
+  // A folder is listed (one level); a file is read.
   private async azureFile(org: string, project: string, repo: string, path: string, branch: string | null): Promise<string> {
     const version = branch === null ? "" : `&versionDescriptor.version=${enc(branch)}&versionDescriptor.versionType=branch`;
-    const item = await this.az(`${this.base(org, project)}/_apis/git/repositories/${enc(repo)}/items?path=${enc(`/${path}`)}&includeContent=true${version}&$format=json&api-version=7.1`);
+    const items = `${this.base(org, project)}/_apis/git/repositories/${enc(repo)}/items?path=${enc(`/${path}`)}`;
+    const level = await this.az(`${items}&recursionLevel=OneLevel${version}&$format=json&api-version=7.1`);
+    const entries = isRecord(level) && Array.isArray(level.value) ? level.value.filter(isRecord) : [];
+    const self = entries.find((e) => String(e.path ?? "").replace(/\/+$/, "") === `/${path}`.replace(/\/+$/, ""));
+    if (self?.isFolder === true) {
+      const inside = entries.filter((e) => e !== self).map((e) => `${e.isFolder === true ? "d" : "-"} ${String(e.path ?? "")}`);
+      return untrusted(`Azure DevOps ${org}/${project}/${repo}/${path} (a folder)`, inside.join("\n") || "(empty)");
+    }
+    const item = await this.az(`${items}&includeContent=true${version}&$format=json&api-version=7.1`);
     const content = isRecord(item) && typeof item.content === "string" ? item.content : null;
     if (content === null) return refuse(`${org}/${project}/${repo}/${path} is not a file Azure DevOps gave the text of.`);
     return untrusted(`Azure DevOps ${org}/${project}/${repo}/${path}`, content);

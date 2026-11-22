@@ -32,6 +32,16 @@ describe("an employee uses the account's connectors", () => {
     h = await startHarness({ overrides: [[SANDBOX_PROVIDER, sandbox]], env: FAST });
     azureSignedIn(h.fake)
       .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wit/workitems/42?`), { run: { stdout: JSON.stringify({ id: 42, fields: { "System.WorkItemType": "User Story", "System.Title": "Export the monthly report", "System.State": "Active", "System.TeamProject": AZURE.project, "System.Description": "<p>Users export the report as CSV.</p>" } }) } })
+      .on(azRest(`/_apis/git/repositories/${AZURE.name}/items?path=%2Fdocs&recursionLevel=OneLevel`), { run: { stdout: JSON.stringify({ count: 2, value: [{ path: "/docs", isFolder: true }, { path: "/docs/spec.md", isFolder: false }] }) } })
+      .on(azRest(`/_apis/git/repositories/${AZURE.name}/items?path=%2Fdocs%2Fspec.md&recursionLevel=OneLevel`), { run: { stdout: JSON.stringify({ count: 1, value: [{ path: "/docs/spec.md", isFolder: false }] }) } })
+      .on(azRest(`/_apis/git/repositories/${AZURE.name}/items?path=%2Fdocs%2Fspec.md&includeContent=true`), { run: { stdout: JSON.stringify({ path: "/docs/spec.md", content: "# Export\nCSV and PDF.\n" }) } })
+      .on(azRest(`https://dev.azure.com/${AZURE.organization}/_apis/projects/${AZURE.project}?`), { run: { stdout: JSON.stringify({ id: "p-fiber", name: AZURE.project }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wiki/wikis/Fiber.wiki?`), { run: { stdout: JSON.stringify({ id: "w-1", name: "Fiber.wiki", projectId: "p-fiber" }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wiki/wikis/Other.wiki?`), { run: { stdout: JSON.stringify({ id: "w-2", name: "Other.wiki", projectId: "p-other" }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wiki/wikis/Fiber.wiki/pages?path=%2FRequirements`), { run: { stdout: JSON.stringify({ path: "/Requirements", content: "Reports export as CSV." }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wiki/wikis/Other.wiki/pages?path=%2FSecret`), { run: { stdout: JSON.stringify({ path: "/Secret", content: "Another project's secret." }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wit/wiql`), { run: { stdout: JSON.stringify({ workItems: [{ id: 42 }, { id: 99 }] }) } })
+      .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wit/workitems?ids=42,99`), { run: { stdout: JSON.stringify({ value: [{ id: 42, fields: { "System.WorkItemType": "User Story", "System.Title": "Export the monthly report", "System.State": "Active", "System.TeamProject": AZURE.project } }, { id: 99, fields: { "System.WorkItemType": "Bug", "System.Title": "Secret of another project", "System.State": "New", "System.TeamProject": "Other" } }] }) } })
       .on(azRest(`/${AZURE.organization}/${AZURE.project}/_apis/wit/workItems/42/comments`), { run: { stdout: JSON.stringify({ comments: [{ text: "<p>PDF too, please.</p>", createdBy: { displayName: "Lan" }, createdDate: "2026-11-20T10:00:00Z" }] }) } });
     b = h.owner as Browser;
     assert.equal((await b.send("POST", "/api/office/setup", { name: "Connector office" })).status, 200);
@@ -45,6 +55,11 @@ describe("an employee uses the account's connectors", () => {
         answers.granted = await t.call("azure_devops_work_item", { url: WORK_ITEM_URL });
         answers.otherProject = await t.call("azure_devops_work_item", { url: `https://dev.azure.com/${AZURE.organization}/Other/_workitems/edit/1` });
         answers.github = await t.call("github_issue", { repository: "octo/app", number: 1 });
+        answers.wiki = await t.call("azure_devops_wiki_page", { organization: AZURE.organization, project: AZURE.project, wiki: "Fiber.wiki", path: "/Requirements" });
+        answers.otherWiki = await t.call("azure_devops_wiki_page", { organization: AZURE.organization, project: AZURE.project, wiki: "Other.wiki", path: "/Secret" });
+        answers.query = await t.call("azure_devops_query", { organization: AZURE.organization, project: AZURE.project, wiql: "SELECT [System.Id] FROM WorkItems" });
+        answers.folder = await t.call("azure_devops_file", { organization: AZURE.organization, project: AZURE.project, repository: AZURE.name, path: "/docs" });
+        answers.document = await t.call("azure_devops_file", { organization: AZURE.organization, project: AZURE.project, repository: AZURE.name, path: "/docs/spec.md" });
         seen.push({ tools: listed.tools.map((x) => x.name), answers });
         await t.call("write_file", { path: "/output/summary.md", content: "Read.\n" });
         await t.call("submit_handoff", { summary: "Read the work item." });
@@ -104,6 +119,16 @@ describe("an employee uses the account's connectors", () => {
     assert.equal(s.answers.otherProject?.isError, true);
     assert.match(s.answers.otherProject?.text ?? "", /not among the repositories .* let use|not granted/i);
     assert.equal(s.answers.github?.isError, true);
+    // A query in a granted project says nothing of another project's work items, whatever the WIQL selected.
+    assert.match(s.answers.query?.text ?? "", /42 · User Story · Active · Export the monthly report/);
+    assert.equal((s.answers.query?.text ?? "").includes("Secret of another project"), false, s.answers.query?.text);
+    // A wiki page of the granted project is read; another project's wiki, named under this project's address, is not.
+    assert.match(s.answers.wiki?.text ?? "", /Reports export as CSV\./);
+    assert.equal(s.answers.otherWiki?.isError, true, s.answers.otherWiki?.text);
+    assert.equal((s.answers.otherWiki?.text ?? "").includes("secret"), false);
+    // A granted repository's documents: a folder listed, a file read.
+    assert.match(s.answers.folder?.text ?? "", /- \/docs\/spec\.md/);
+    assert.match(s.answers.document?.text ?? "", /# Export\nCSV and PDF\./);
     // Orbit Web asked Azure DevOps with its own sign-in, on the control plane; the model plane was given nothing of it.
     const asked = h.fake.callsOf(program("az", "rest")).filter((c: Call) => c.args.some((a) => a.includes("/_apis/wit/")));
     assert.ok(asked.length >= 2);

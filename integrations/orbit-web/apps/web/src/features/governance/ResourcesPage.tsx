@@ -3,7 +3,8 @@
 // workspace (make an action wait for the owner's approval, or deny it) and never widen it: an allow in an override
 // changes nothing. A deleted one stays listed: what concerned it stays on record, and nothing runs there to narrow.
 import { Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-import { ArrowLeft16Regular, BookOpen16Regular, Chat16Regular, DocumentCheckmark16Regular, History16Regular, ShieldTask16Regular } from "@fluentui/react-icons";
+import { ArrowLeft16Regular, ChevronRight16Regular, ShieldTask16Regular } from "@fluentui/react-icons";
+import { AuditChainIcon, PolicyIcon, ResearchIcon, WorkspacesIcon } from "../../components/SectionIcons";
 import { ACTIONS, type Rule } from "@orbit-web/governance-core";
 import type { ResourceGovernanceList, ResourceGovernanceSummary, ResourceGovernanceView, ResourceKind } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -13,7 +14,7 @@ import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { limitOf } from "./PolicyTable";
 import { overrideRowsOf, withOverrideRows, type Narrowing, type OverrideRow } from "./overrideRows";
-import { Card, CleanSelect, ErrorBar, Stat, Word, byWhom, principalOf, short, useParts, when } from "./parts";
+import { Card, CleanSelect, EmptyState, ErrorBar, Stat, Word, byWhom, principalOf, short, useParts, when } from "./parts";
 
 const GROUPS: Record<ResourceKind, { page: GovernancePage; path: string; title: string; one: string; all: string; empty: string; about: string }> = {
   workspace: {
@@ -54,12 +55,19 @@ const useStyles = makeStyles({
     justifyContent: "space-between",
     gap: "10px",
     flexWrap: "wrap",
-    paddingTop: "10px",
-    paddingBottom: "10px",
+    paddingTop: "12px",
+    paddingBottom: "12px",
     paddingLeft: "14px",
     paddingRight: "14px",
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    transitionProperty: "background-color, border-color",
+    transitionDuration: "140ms",
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      ...shorthands.borderColor(tokens.colorNeutralStroke1Hover),
+    },
     minWidth: 0,
   },
   titleBtn: {
@@ -108,7 +116,7 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
   useAppEvent("governance.changed", (e) => (e.data.area === "resources" || e.data.area === "overrides") && void list.reload());
   useAppEvent("approval.changed", () => void list.reload());
   return (
-    <Card title={group.title} icon={kind === "workspace" ? <Chat16Regular /> : <BookOpen16Regular />} description={group.about}>
+    <Card title={group.title} icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />} tone={kind === "workspace" ? "brand" : "teal"} description={group.about}>
       {list.data === null ? (
         list.error ? (
           <ErrorBar text={list.error} />
@@ -116,9 +124,12 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
           <Spinner />
         )
       ) : list.data.resources.length === 0 ? (
-        <div className={s.empty}>
-          <Text>{group.empty}</Text>
-        </div>
+        <EmptyState
+          icon={kind === "workspace" ? <WorkspacesIcon size={22} /> : <ResearchIcon size={22} />}
+          tone={kind === "workspace" ? "brand" : "teal"}
+          title={group.empty}
+          body={kind === "workspace" ? "Chats you start will appear here with per-workspace policy overrides." : "Research workspaces you create will appear here with per-workspace policy overrides."}
+        />
       ) : (
         <ul className={styles.rowList} aria-label={group.title}>
           {list.data.resources.map((r) => (
@@ -128,11 +139,14 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
                   {r.title || short(r.id, 13)}
                 </Button>
                 <Text size={200} className={s.muted}>
-                  created {when(r.createdAt)}
+                  Created {when(r.createdAt)}
                   {r.deletedAt !== null ? ` · deleted ${when(r.deletedAt)}` : ""}
                 </Text>
               </div>
-              <Counts r={r} />
+              <div className={s.row}>
+                <Counts r={r} />
+                <ChevronRight16Regular aria-hidden className={s.muted} />
+              </div>
             </li>
           ))}
         </ul>
@@ -232,7 +246,7 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
                   {r.principalType ? ` · for ${r.principalType === "human" ? "you" : `${r.principalType}s`}` : ""}
                   {r.environment ? ` · in ${r.environment}` : ""}
                   {r.resource ? ` · on ${r.resource}` : ""} · <Word value={r.effect} />
-                  {r.effect === "allow" ? " -- changes nothing" : ""}
+                  {r.effect === "allow" ? " — changes nothing" : ""}
                 </Text>
               </li>
             ))}
@@ -280,7 +294,7 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
   return (
     <div className={s.page}>
       {back}
-      <Card title={<>{r.title || short(r.id, 13)} {r.deletedAt !== null && <Word value="deleted" />}</>} icon={kind === "workspace" ? <Chat16Regular /> : <BookOpen16Regular />} description={`A ${group.one} of your account · created ${when(r.createdAt)}${r.deletedAt !== null ? ` · deleted ${when(r.deletedAt)}` : ""}`}>
+      <Card title={<>{r.title || short(r.id, 13)} {r.deletedAt !== null && <Word value="deleted" />}</>} icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />} tone={kind === "workspace" ? "brand" : "teal"} description={`A ${group.one} of your account · created ${when(r.createdAt)}${r.deletedAt !== null ? ` · deleted ${when(r.deletedAt)}` : ""}`}>
         <div className={s.grid}>
           <Stat label="Runs running" value={r.runningRuns} />
           <Stat label="Approvals waiting" value={r.pendingApprovals} tone={r.pendingApprovals > 0 ? "warning" : "neutral"} onClick={() => go("approvals")} />
@@ -288,7 +302,8 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
       </Card>
       <Card
         title="Policy it inherits"
-        icon={<DocumentCheckmark16Regular />}
+        icon={<PolicyIcon size={18} />}
+        tone="brand"
         actions={
           r.policy ? (
             <Button size="small" shape="circular" onClick={() => go("policy", r.policy?.revisionId ?? null)}>
@@ -308,11 +323,9 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
         )}
       </Card>
       <OverrideEditor key={`${r.override?.digest ?? "none"}:${r.deletedAt ?? ""}`} resource={r} onChanged={view.set} onRemoved={() => void view.reload()} />
-      <Card title="Recent activity" icon={<History16Regular />}>
+      <Card title="Recent activity" icon={<AuditChainIcon size={18} />} tone="teal">
         {r.activity.length === 0 ? (
-          <div className={s.empty}>
-            <Text>Nothing on record yet.</Text>
-          </div>
+          <EmptyState icon={<AuditChainIcon size={22} />} tone="teal" title="Nothing on record yet." />
         ) : (
           <ul className={s.list} aria-label="Recent activity">
             {r.activity.map((e) => (

@@ -13,6 +13,9 @@
 //   ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION   the tool plane's image (Dockerfile target `workstation`)
 //   ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE   the model plane's image (target `model-plane`)
 //   ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER the storage helper's image (target `storage-helper`)
+//   ORBIT_WEB_SANDBOX_IMAGE_SESSION       a chat's or research run's own sandbox (the Orbit Web image itself)
+//   ORBIT_WEB_SESSION_SANDBOX_CPU / _MEMORY / _PIDS  one such sandbox's limits (default 1 vCPU, 2g, 1024)
+//   ORBIT_WEB_SESSION_SANDBOX_MAX         how many run at once (default 4): a run beyond waits for one to end
 //   ORBIT_WEB_SANDBOX_PREFIX              the prefix of every container and volume the allocator names
 //   ORBIT_WEB_CONTROL_CONTAINER           Orbit Web's container (default orbit-web; "none": no container to connect):
 //                                         the allocator connects it to every attempt's own two internal networks, the
@@ -55,7 +58,7 @@ export interface SandboxConfig {
   allocator: { url: string; secretFile: string } | null;
   // The allocator's side.
   allocatorServer: { bind: string; port: number; secretFile: string; dockerSocket: string; stateDir: string };
-  images: { workstation: string; modelPlane: string; storageHelper: string };
+  images: { workstation: string; modelPlane: string; storageHelper: string; session: string };
   names: { prefix: string; dataVolume: string; workforceVolume: string; workforceStoreVolume: string };
   // Each attempt's two networks hold its plane and Orbit Web's container (under `alias`), nothing else.
   control: { container: string | null; alias: string };
@@ -69,6 +72,8 @@ export interface SandboxConfig {
     reserve: { cpu: Reserve; memory: Reserve; storage: Reserve };
   };
   modelPlane: Record<RuntimeKind, Amount>;
+  // A chat's or a research session's run in a sandbox of its own: its limits, and how many at once.
+  session: { cpuMillis: number; memoryMiB: number; pids: number; max: number };
 }
 
 // Starting values of one model plane, per runtime: the CLI and its bridge, idle most of the time (it waits on the
@@ -87,7 +92,10 @@ export const DEFAULT_IMAGES = {
   workstation: "ghcr.io/cuongngoht/orbit-web-workstation:0.8.0",
   modelPlane: "ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0",
   storageHelper: "ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0",
+  session: "ghcr.io/cuongngoht/orbit-web:0.8.0",
 } as const;
+
+export const SESSION_DEFAULTS = { cpuMillis: 1000, memoryMiB: 2048, pids: 1024, max: 4 } as const;
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -239,6 +247,7 @@ export function loadSandboxConfig(env: Env): SandboxConfig {
       workstation: image(env.ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION, DEFAULT_IMAGES.workstation, "ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION"),
       modelPlane: image(env.ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE, DEFAULT_IMAGES.modelPlane, "ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE"),
       storageHelper: image(env.ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER, DEFAULT_IMAGES.storageHelper, "ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER"),
+      session: image(env.ORBIT_WEB_SANDBOX_IMAGE_SESSION, DEFAULT_IMAGES.session, "ORBIT_WEB_SANDBOX_IMAGE_SESSION"),
     },
     names: {
       prefix,
@@ -270,5 +279,22 @@ export function loadSandboxConfig(env: Env): SandboxConfig {
       },
     },
     modelPlane: modelPlane(env),
+    session: sessionLimits(env),
+  };
+}
+
+function wholeIn(raw: string | undefined, fallback: number, min: number, max: number, name: string): number {
+  if (!given(raw)) return fallback;
+  const n = Number(raw.trim());
+  if (!Number.isInteger(n) || n < min || n > max) throw new SandboxConfigError(`${name} must be a whole number from ${min} to ${max}`);
+  return n;
+}
+
+function sessionLimits(env: Env): SandboxConfig["session"] {
+  return {
+    cpuMillis: given(env.ORBIT_WEB_SESSION_SANDBOX_CPU) ? parseCpuMillis(env.ORBIT_WEB_SESSION_SANDBOX_CPU, "ORBIT_WEB_SESSION_SANDBOX_CPU") : SESSION_DEFAULTS.cpuMillis,
+    memoryMiB: given(env.ORBIT_WEB_SESSION_SANDBOX_MEMORY) ? parseMiB(env.ORBIT_WEB_SESSION_SANDBOX_MEMORY, "ORBIT_WEB_SESSION_SANDBOX_MEMORY") : SESSION_DEFAULTS.memoryMiB,
+    pids: wholeIn(env.ORBIT_WEB_SESSION_SANDBOX_PIDS, SESSION_DEFAULTS.pids, 64, 65_536, "ORBIT_WEB_SESSION_SANDBOX_PIDS"),
+    max: wholeIn(env.ORBIT_WEB_SESSION_SANDBOX_MAX, SESSION_DEFAULTS.max, 1, 256, "ORBIT_WEB_SESSION_SANDBOX_MAX"),
   };
 }

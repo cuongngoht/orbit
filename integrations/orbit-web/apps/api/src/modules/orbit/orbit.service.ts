@@ -93,11 +93,11 @@ export class OrbitService implements OnModuleInit {
     const checkedAt = new Date().toISOString();
     if (session.baseCommit === null || !existsSync(session.workspacePath)) return emptyPanel("unavailable", "The workspace is not ready yet.", checkedAt);
     const cwd = session.workspacePath;
-    const live = await this.gateway.liveStatus(cwd, session.claudeSessionId);
+    const live = await this.gateway.liveStatus(cwd, session.accountId, session.claudeSessionId);
     const task = parseJson(live.stdout)?.association;
     const taskId = typeof task === "object" && task !== null ? (task as { task?: unknown }).task : null;
     if (!isTaskId(taskId)) return mapOrbitPanel({ live, task: null, context: null, checkedAt });
-    const [shown, context] = await Promise.all([this.gateway.taskShow(cwd, taskId, session.claudeSessionId), this.gateway.engineeringContext(cwd, taskId, session.claudeSessionId)]);
+    const [shown, context] = await Promise.all([this.gateway.taskShow(cwd, session.accountId, taskId, session.claudeSessionId), this.gateway.engineeringContext(cwd, session.accountId, taskId, session.claudeSessionId)]);
     return mapOrbitPanel({ live, task: shown, context, checkedAt });
   }
 

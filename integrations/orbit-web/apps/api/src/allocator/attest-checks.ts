@@ -12,8 +12,10 @@ export interface Check {
 export const check = (name: string, problems: string[], held: string): Check => ({ name, ok: problems.length === 0, detail: problems.length === 0 ? held : problems.join("; ") });
 
 // No privilege, no capability, no way to gain one, a read-only root, the expected user and the one expected network,
-// nothing published, no host namespace, no device, no bind of a host path, and no resolver but the runtime's own.
-export function hardeningProblems(c: ContainerInspect, user: string, network: string): string[] {
+// nothing published, no host namespace, no device, no bind of a host path, and exactly the resolvers expected: an
+// employee's plane none that answers a public name (127.0.0.1), a chat's run -- which reaches the internet by design --
+// the runtime's own (none set).
+export function hardeningProblems(c: ContainerInspect, user: string, network: string, resolvers: readonly string[] = ["127.0.0.1"]): string[] {
   const h = c.HostConfig;
   const problems: string[] = [];
   if (h.Privileged) problems.push("privileged");
@@ -31,7 +33,7 @@ export function hardeningProblems(c: ContainerInspect, user: string, network: st
   if (h.UsernsMode !== "") problems.push(`user namespace ${h.UsernsMode}`);
   if ((h.Binds ?? []).length > 0) problems.push(`host paths bound: ${(h.Binds ?? []).join(", ")}`);
   if ((h.Devices ?? []).length > 0) problems.push("devices passed in");
-  if (JSON.stringify(h.Dns ?? []) !== JSON.stringify(["127.0.0.1"])) problems.push(`resolvers ${JSON.stringify(h.Dns ?? [])} (public names must not resolve)`);
+  if (JSON.stringify(h.Dns ?? []) !== JSON.stringify(resolvers)) problems.push(`resolvers ${JSON.stringify(h.Dns ?? [])}, not ${JSON.stringify(resolvers)}${resolvers.includes("127.0.0.1") ? " (public names must not resolve)" : ""}`);
   return problems;
 }
 

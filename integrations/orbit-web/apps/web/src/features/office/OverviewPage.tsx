@@ -2,11 +2,21 @@
 // holds and how much waits behind it, why it is not ready, a warning about its connection -- filtered by department
 // (or Unassigned), a search and a work label. From here a person assigns work, hires (once an AI CLI is connected) and
 // shapes the departments. An account with no office yet is offered one, with example departments it may skip.
-import { Button, Checkbox, Field, Input, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, Filter20Regular, MoreHorizontal16Regular, PersonAdd20Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { Button, Checkbox, Field, Input, Link, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Add16Regular, Dismiss16Regular, Filter20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
 import { WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
+import {
+  IconBadge,
+  InboxActionIcon,
+  NotReadyIcon,
+  OfficeIcon,
+  QueuedIcon,
+  ReadyIcon,
+  RosterIcon,
+  WorkingIcon,
+} from "../../components/SectionIcons";
 import { settingsHref, type OfficePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
 import { errorText } from "../../services/api";
@@ -15,24 +25,66 @@ import { office, useOfficeRead, type RosterQuery } from "./api";
 import { AssignDialog } from "./AssignDialog";
 import { DepartmentDialog, type DepartmentEdit } from "./DepartmentDialogs";
 import { HireWizard } from "./HireWizard";
-import { AsOf, WorkLabelBadge, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmptyState, useOfficeStyles } from "./parts";
+import { OfficeFloorMap } from "./OfficeFloorMap";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 const useStyles = makeStyles({
-  toolbar: { display: "flex", alignItems: "flex-end", gap: "8px", flexWrap: "wrap", minWidth: 0 },
-  search: { flexGrow: 1, minWidth: "min(100%, 200px)", maxWidth: "360px" },
+  setupWrap: { maxWidth: "600px", width: "100%", marginLeft: "auto", marginRight: "auto", marginTop: "8px" },
+  setupEmblem: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "12px",
+    backgroundColor: tokens.colorBrandBackground2,
+    color: tokens.colorBrandForeground1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exampleTile: {
+    paddingTop: "6px",
+    paddingRight: "12px",
+    paddingBottom: "6px",
+    paddingLeft: "8px",
+    borderRadius: "10px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  statValue: { fontVariantNumeric: "tabular-nums", lineHeight: "1.15" },
+  statReady: { color: tokens.colorPaletteGreenForeground1 },
+  statBusy: { color: tokens.colorBrandForeground1 },
+  statDanger: { color: tokens.colorPaletteRedForeground1 },
+  statWarn: { color: tokens.colorPaletteDarkOrangeForeground1 },
+  statInboxAlert: {
+    backgroundColor: tokens.colorPaletteDarkOrangeBackground1,
+    ...shorthands.borderColor(tokens.colorPaletteDarkOrangeBorder1),
+  },
+  filterBar: {
+    display: "flex",
+    alignItems: "flex-end",
+    gap: "10px",
+    flexWrap: "wrap",
+    minWidth: 0,
+    paddingTop: "12px",
+    paddingRight: "14px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
+    borderRadius: "14px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
+  search: { flexGrow: 1, minWidth: "min(100%, 220px)", maxWidth: "380px" },
   // On a phone: the search takes the row, the Filters button keeps its own width.
   toolbarMobile: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" },
   searchMobile: { width: "100%", minWidth: 0, maxWidth: "100%" },
-  select: { minWidth: "min(100%, 180px)" },
-  name: { paddingLeft: 0, paddingRight: 0, minWidth: 0, justifyContent: "flex-start", fontWeight: 600, textAlign: "left", overflowWrap: "anywhere", height: "auto" },
-  group: { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 },
+  select: { minWidth: "min(100%, 185px)" },
 });
 
 const EXAMPLES = ["Accounting", "Legal", "Sales"] as const;
 
 function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone: () => void }) {
+  const s = useStyles();
   const o = useOfficeStyles();
   const [name, setName] = useState(account?.companyName || "Office");
   const [examples, setExamples] = useState<Record<string, boolean>>({ Accounting: true, Legal: true, Sales: true });
@@ -51,93 +103,57 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
     }
   };
   return (
-    <form
-      className={o.card}
-      aria-label="Set up the office"
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save();
-      }}
-    >
-      <Text weight="semibold" size={500} as="h2">
-        Set up your office
-      </Text>
-      <Text>Your office holds departments and the AI employees you hire into them. Setting it up needs no AI connection; hiring does.</Text>
-      <Field label="Office name">
-        <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
-      </Field>
-      <div role="group" aria-label="Start with example departments" className={o.stack}>
-        <Text weight="semibold" size={300}>
-          Start with example departments
-        </Text>
+    <div className={s.setupWrap}>
+      <form
+        className={o.heroCard}
+        aria-label="Set up the office"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
         <div className={o.row}>
-          {EXAMPLES.map((d) => (
-            <Checkbox key={d} label={d} checked={examples[d] === true} onChange={(_, c) => setExamples((x) => ({ ...x, [d]: c.checked === true }))} />
-          ))}
+          <IconBadge icon={<OfficeIcon size={22} active />} tone="brand" size="lg" />
+          <div className={o.stack}>
+            <Text weight="semibold" size={500} as="h2">
+              Set up your office
+            </Text>
+            <Text size={200} className={o.muted}>
+              Your office holds departments and the AI employees you hire into them. Setting it up needs no AI connection; hiring does.
+            </Text>
+          </div>
         </div>
-        <Text size={200} className={o.muted}>
-          Untick any you do not want; you can add, rename and archive departments later.
-        </Text>
-      </div>
-      {error && (
-        <MessageBar intent="error">
-          <MessageBarBody>{error}</MessageBarBody>
-        </MessageBar>
-      )}
-      <div>
-        <Button appearance="primary" type="submit" disabled={busy}>
-          {busy ? "Setting up…" : "Set up the office"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function Card({ e, go, onAssign }: { e: EmployeeCard; go: Go; onAssign: (id: string) => void }) {
-  const s = useStyles();
-  const o = useOfficeStyles();
-  const restore = useRestoreFocusTarget();
-  return (
-    <article className={o.card} aria-label={e.name}>
-      <div className={o.between}>
-        <Button className={s.name} appearance="transparent" onClick={() => go("employee", e.id)}>
-          {e.name}
-        </Button>
-        <WorkLabelBadge label={e.workLabel} />
-      </div>
-      <Text size={200} className={o.muted}>
-        {e.title}
-        {e.kind === "assistant" ? ` · temporary assistant${e.expiresAt ? ` until ${when(e.expiresAt)}` : ""}` : ""}
-      </Text>
-      {e.holding && (
-        <Text size={200} className={o.wrap}>
-          Holding:{" "}
-          <Link as="button" onClick={() => go("mission", e.holding?.missionId ?? null)}>
-            {e.holding.title}
-          </Link>{" "}
-          since {when(e.holding.since)}
-        </Text>
-      )}
-      {e.queued > 0 && <Text size={200}>{e.queued} queued behind it</Text>}
-      {e.notReadyReason && (
-        <Text size={200} className={o.danger}>
-          Not ready: {e.notReadyReason}
-        </Text>
-      )}
-      {e.connectionWarning && (
-        <Text size={200} className={o.warn}>
-          Connection: {e.connectionWarning}
-        </Text>
-      )}
-      <div className={o.between}>
-        <Text size={200} className={o.muted}>
-          Updated {when(e.updatedAt)}
-        </Text>
-        <Button className={o.touch} size="small" icon={<TaskListLtr20Regular />} disabled={e.employment === "archived"} onClick={() => onAssign(e.id)} aria-label={`Assign work to ${e.name}`} {...restore}>
-          Assign work
-        </Button>
-      </div>
-    </article>
+        <div className={o.divider} />
+        <Field label="Office name">
+          <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
+        </Field>
+        <div role="group" aria-label="Start with example departments" className={o.stack}>
+          <Text weight="semibold" size={300}>
+            Start with example departments
+          </Text>
+          <div className={o.row}>
+            {EXAMPLES.map((d) => (
+              <span key={d} className={s.exampleTile}>
+                <Checkbox label={d} checked={examples[d] === true} onChange={(_, c) => setExamples((x) => ({ ...x, [d]: c.checked === true }))} />
+              </span>
+            ))}
+          </div>
+          <Text size={200} className={o.muted}>
+            Untick any you do not want; you can add, rename and archive departments later.
+          </Text>
+        </div>
+        {error && (
+          <MessageBar intent="error">
+            <MessageBarBody>{error}</MessageBarBody>
+          </MessageBar>
+        )}
+        <div className={o.row}>
+          <Button appearance="primary" type="submit" disabled={busy}>
+            {busy ? "Setting up…" : "Set up the office"}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -156,10 +172,8 @@ function groupsOf(roster: Roster, employees: EmployeeCard[], filter: string): Gr
   return groups.filter((g) => g.department !== null || g.employees.length > 0);
 }
 
-// The cards of one read of the roster, and the pages after it that "Load more" brings.
-function RosterBody({ roster, filter, query, go, onAssign, onEdit }: { roster: Roster; filter: string; query: RosterQuery; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void }) {
-  const s = useStyles();
-  const o = useOfficeStyles();
+// The unified company floor for one read of the roster, and any extra pages brought by "Load more".
+function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void }) {
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -179,44 +193,20 @@ function RosterBody({ roster, filter, query, go, onAssign, onEdit }: { roster: R
     }
   };
   const groups = groupsOf(roster, employees, filter);
+  if (groups.length === 0) {
+    return <EmptyState icon={<RosterIcon size={22} />} tone="brand" title="No departments or employees yet" body="Add a department or hire your first AI employee to organize the office." />;
+  }
   return (
     <>
-      {groups.map((g) => (
-        <section key={g.department?.id ?? "unassigned"} className={s.group} aria-label={g.department?.name ?? "Unassigned"}>
-          <div className={o.between}>
-            <Text as="h3" weight="semibold" size={400}>
-              {g.department?.name ?? "Unassigned"}{" "}
-              <Text size={200} className={o.muted}>
-                ({g.department ? `${g.department.members} ${g.department.members === 1 ? "member" : "members"}` : `${g.employees.length} shown`})
-              </Text>
-            </Text>
-            {g.department && (
-              <Menu>
-                <MenuTrigger disableButtonEnhancement>
-                  <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${g.department.name}`} />
-                </MenuTrigger>
-                <MenuPopover>
-                  <MenuList>
-                    <MenuItem onClick={() => g.department && onEdit({ kind: "rename", department: g.department })}>Rename</MenuItem>
-                    <MenuItem onClick={() => g.department && onEdit({ kind: "archive", department: g.department })}>Archive</MenuItem>
-                  </MenuList>
-                </MenuPopover>
-              </Menu>
-            )}
-          </div>
-          {g.employees.length === 0 ? (
-            <Text size={200} className={o.muted}>
-              No employee here{filter === "all" ? " yet" : " matches"}.
-            </Text>
-          ) : (
-            <div className={o.grid}>
-              {g.employees.map((e) => (
-                <Card key={e.id} e={e} go={go} onAssign={onAssign} />
-              ))}
-            </div>
-          )}
-        </section>
-      ))}
+      <OfficeFloorMap
+        groups={groups}
+        filter={filter}
+        account={account}
+        onAssign={onAssign}
+        onOpenEmployee={(id) => go("employee", id)}
+        onOpenMission={(id) => go("mission", id)}
+        onEditDepartment={onEdit}
+      />
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
@@ -272,6 +262,13 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       </div>
     );
   const live = r.departments.filter((d) => !d.archived);
+  const filtered = department !== "all" || status !== "all" || typed !== "";
+  const clearFilters = () => {
+    setDepartment("all");
+    setStatus("all");
+    setTyped("");
+    setQ("");
+  };
   const pickers = (
     <>
       <Field label="Department" className={s.select}>
@@ -300,53 +297,142 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const c = r.counts;
   return (
     <div className={o.page}>
-      <div className={o.between}>
-        <div className={o.stack}>
-          <Text weight="semibold" size={500} as="h2">
-            {r.office.name}
-          </Text>
-          <Text size={200} className={o.muted}>
-            {c.employees} employees · {c.ready} ready · {c.busy} busy · {c.notReady} not ready · {c.queued} queued ·{" "}
-            <Link as="button" onClick={() => go("inbox")}>
-              {c.inbox} need you
-            </Link>
-          </Text>
-          <AsOf at={r.asOf} />
+      <section className={o.heroCard} aria-label={r.office.name}>
+        <div className={o.between}>
+          <div className={o.stack}>
+            <Text weight="semibold" size={600} as="h2">
+              {r.office.name}
+            </Text>
+            <Text size={200} className={o.muted}>
+              {c.employees} {c.employees === 1 ? "employee" : "employees"} · {c.ready} ready · {c.busy} busy · {c.notReady} not ready · {c.queued} queued ·{" "}
+              <Link as="button" onClick={() => go("inbox")}>
+                {c.inbox} need you
+              </Link>
+            </Text>
+            <AsOf at={r.asOf} />
+          </div>
+          <div className={o.row}>
+            <Button className={o.touch} appearance="primary" icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
+              Hire employee
+            </Button>
+            <Button className={o.touch} icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
+              Assign work
+            </Button>
+            <Button className={o.touch} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
+              New department
+            </Button>
+          </div>
         </div>
-        <div className={o.row}>
-          <Button className={o.touch} appearance="primary" icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
-            Hire employee
-          </Button>
-          <Button className={o.touch} icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
-            Assign work
-          </Button>
-          <Button className={o.touch} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
-            New department
-          </Button>
+        <div className={o.statGrid}>
+          <div className={o.statCard}>
+            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+              <Text size={200} className={o.muted}>
+                Total roster
+              </Text>
+              <IconBadge icon={<RosterIcon size={14} />} tone="brand" size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={s.statValue}>
+              {c.employees}
+            </Text>
+          </div>
+          <div className={o.statCard}>
+            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+              <Text size={200} className={o.muted}>
+                Ready
+              </Text>
+              <IconBadge icon={<ReadyIcon size={14} />} tone={c.ready > 0 ? "success" : "neutral"} size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.ready > 0 && s.statReady)}>
+              {c.ready}
+            </Text>
+          </div>
+          <div className={o.statCard}>
+            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+              <Text size={200} className={o.muted}>
+                Working
+              </Text>
+              <IconBadge icon={<WorkingIcon size={14} />} tone={c.busy > 0 ? "brand" : "neutral"} size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.busy > 0 && s.statBusy)}>
+              {c.busy}
+            </Text>
+          </div>
+          <div className={o.statCard}>
+            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+              <Text size={200} className={o.muted}>
+                Queued
+              </Text>
+              <IconBadge icon={<QueuedIcon size={14} />} tone="neutral" size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={s.statValue}>
+              {c.queued}
+            </Text>
+          </div>
+          <div className={o.statCard}>
+            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+              <Text size={200} className={o.muted}>
+                Not ready
+              </Text>
+              <IconBadge icon={<NotReadyIcon size={14} />} tone={c.notReady > 0 ? "danger" : "neutral"} size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.notReady > 0 && s.statDanger)}>
+              {c.notReady}
+            </Text>
+          </div>
+          <button type="button" className={mergeClasses(o.statCard, o.statCardAction, c.inbox > 0 && s.statInboxAlert)} onClick={() => go("inbox")} aria-label={`Open Needs me (${c.inbox})`}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
+              <Text size={200} className={c.inbox > 0 ? s.statWarn : o.muted}>
+                Needs you
+              </Text>
+              <IconBadge icon={<InboxActionIcon size={14} />} tone={c.inbox > 0 ? "warning" : "neutral"} size="sm" />
+            </div>
+            <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.inbox > 0 && s.statWarn)}>
+              {c.inbox}
+            </Text>
+          </button>
         </div>
-      </div>
+      </section>
       {!canHire && (
-        <Text size={200} role="status">
+        <Callout tone={connections.data === null ? "info" : "warn"} icon={<PlugDisconnected16Regular />} role="status">
           {connections.data === null ? "Checking your AI connections…" : "Connect an AI CLI first: hiring needs one connected CLI whose models were read from your account. "}
           {connections.data !== null && <Link href={settingsHref("ai-connections")}>Open Settings → AI Connections</Link>}
-        </Text>
+        </Callout>
       )}
-      <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile)}>
-        <SearchBox className={mergeClasses(s.search, isMobile && s.searchMobile)} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+      <div className={mergeClasses(s.filterBar, isMobile && s.toolbarMobile)}>
         {isMobile ? (
-          <Button className={o.touch} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
-            Filters{department !== "all" || status !== "all" ? " (on)" : ""}
-          </Button>
+          <>
+            <SearchBox className={mergeClasses(s.search, s.searchMobile)} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+            <Button className={o.touch} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
+              Filters{department !== "all" || status !== "all" ? " (on)" : ""}
+            </Button>
+          </>
         ) : (
-          pickers
+          <>
+            <Field label="Search" className={s.search}>
+              <SearchBox style={{ width: "100%" }} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+            </Field>
+            {pickers}
+            {filtered && (
+              <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={clearFilters}>
+                Clear
+              </Button>
+            )}
+          </>
         )}
       </div>
       {isMobile && (
         <ResponsiveSheet open={filters} onOpenChange={setFilters} title="Filters">
-          <div className="orbit-touch">{pickers}</div>
+          <div className={mergeClasses(o.form, "orbit-touch")}>
+            {pickers}
+            {filtered && (
+              <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={() => { clearFilters(); setFilters(false); }}>
+                Clear filters
+              </Button>
+            )}
+          </div>
         </ResponsiveSheet>
       )}
-      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} />
+      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} />
       {hiring && (
         <HireWizard
           departments={r.departments}

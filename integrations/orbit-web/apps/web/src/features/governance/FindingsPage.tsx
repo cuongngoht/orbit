@@ -3,13 +3,14 @@
 // event), SUSPECTED (they fit it and something else), INCONCLUSIVE (a record that would settle it is missing). A
 // finding says what was attempted; whether it was prevented is the decision's "held by".
 import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
+import { FindingsIcon, ShieldClearIcon } from "../../components/SectionIcons";
 import type { FindingList, FindingView } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, ErrorBar, Word, short, useParts, when } from "./parts";
+import { Card, EmptyState, ErrorBar, Word, plural, short, useParts, when } from "./parts";
 
 function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePage, item?: string | null) => void; onChanged: () => void }) {
   const s = useParts();
@@ -21,10 +22,10 @@ function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePa
       .catch((err: unknown) => setError(errorText(err)));
   };
   return (
-    <Card title={<>{f.title} <Word value={f.status} /> <Word value={f.severity} /> {f.resolution !== "open" && <Word value={f.resolution} />}</>}>
+    <Card icon={<FindingsIcon size={18} />} tone={f.status === "CONFIRMED" ? "danger" : "warning"} title={<>{f.title} <Word value={f.status} /> <Word value={f.severity} /> {f.resolution !== "open" && <Word value={f.resolution} />}</>}>
       <Text>{f.summary}</Text>
       <Text size={200} className={s.muted}>
-        {f.kind} · {f.count} record(s) · {when(f.firstSeen)} – {when(f.lastSeen)}
+        {f.kind} · {plural(f.count, "record")} · {when(f.firstSeen)} – {when(f.lastSeen)}
       </Text>
       <div className={s.row}>
         {f.evidenceIds.slice(0, 12).map((id) => (
@@ -69,9 +70,19 @@ export function FindingsPage({ go }: { go: (page: GovernancePage, item?: string 
         </MessageBar>
       )}
       {list.data.findings.length === 0 && (
-        <div className={s.empty}>
-          <Text>No finding: nothing in the record fits a rule.</Text>
-        </div>
+        <Card
+          title="Security findings"
+          icon={<FindingsIcon size={18} />}
+          tone="danger"
+          description="Deterministic checks run directly over your account's audit record, without any model reading your records."
+        >
+          <EmptyState
+            icon={<ShieldClearIcon size={22} />}
+            tone="success"
+            title="No finding: nothing in the record fits a rule."
+            body="If an unusual pattern or denied action appears in the audit record, it will surface here with links to the underlying events."
+          />
+        </Card>
       )}
       {list.data.findings.map((f) => (
         <Finding key={f.id} f={f} go={go} onChanged={() => void list.reload()} />

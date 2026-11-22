@@ -19,7 +19,7 @@ import type { ContainerInspect } from "./docker/engine.js";
 import { demuxAll, StdStreamDemuxer } from "./docker/stdstream.js";
 import { nodeScript, syncScript } from "./scripts/node-scripts.js";
 import { allocatorServer } from "./server.js";
-import { MiB, modelPlaneBody, toolPlaneBody, toolPlaneMounts } from "./specs.js";
+import { MiB, modelPlaneBody, sessionPlaneBody, toolPlaneBody, toolPlaneMounts } from "./specs.js";
 import { quotaHeld } from "./storage.js";
 
 const profile = (DEFAULT_PRESETS[2] as { profile: ResourceProfile }).profile;
@@ -78,6 +78,20 @@ describe("the containers an attempt is made of", () => {
     assert.deepEqual([h.NanoCpus, h.Memory, h.MemorySwap], [500e6, 1024 * MiB, 1024 * MiB]);
   });
 
+  test("a chat's or research run's sandbox: the Orbit Web image's runner, hardened, only the mounts it was given, its own limits and network", () => {
+    const body = sessionPlaneBody({ image: "orbit-web:1", network: "orbit-web-sn-1", dataVolume: "orbit-web_orbit-web-data", mounts: [{ subpath: "workspaces/chat-1", target: "/data/workspaces/chat-1", readOnly: false }, { subpath: "connections/a/c", target: "/data/connections/a/c", readOnly: false }], labels: { a: "b" }, cpuMillis: 1000, memoryMiB: 2048, pids: 1024, runnerToken: "r".repeat(64) });
+    const h = body.HostConfig;
+    assert.deepEqual([h.Privileged, h.ReadonlyRootfs, h.CapDrop, h.CapAdd, h.SecurityOpt, h.Init, body.User], [false, true, ["ALL"], [], ["no-new-privileges:true"], true, "10001:10001"]);
+    assert.deepEqual([h.NanoCpus, h.Memory, h.MemorySwap, h.PidsLimit], [1000e6, 2048 * MiB, 2048 * MiB, 1024]);
+    assert.deepEqual(h.Mounts.map((m) => [m.Source, m.Target, m.VolumeOptions.Subpath, m.ReadOnly]), [["orbit-web_orbit-web-data", "/data/workspaces/chat-1", "workspaces/chat-1", false], ["orbit-web_orbit-web-data", "/data/connections/a/c", "connections/a/c", false]]);
+    assert.deepEqual(Object.keys(h.Tmpfs).sort(), ["/data/home", "/tmp"]);
+    assert.deepEqual([h.NetworkMode, Object.keys(body.NetworkingConfig.EndpointsConfig)], ["orbit-web-sn-1", ["orbit-web-sn-1"]]);
+    // The image's own entry point (tini, then the API) is not what runs: the runner, under Docker's init.
+    assert.deepEqual([body.Entrypoint, body.Cmd], [[""], ["/usr/local/bin/node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/runner/main.js"]]);
+    assert.ok(body.Env.includes(`ORBIT_WEB_RUNNER_TOKEN=${"r".repeat(64)}`));
+    assert.ok(!JSON.stringify(body).includes("docker.sock"));
+  });
+
   test("the attestation finds what is wrong: a privilege, an added capability, a second network, a stray mount, a socket", () => {
     const inspect = (over: Partial<ContainerInspect["HostConfig"]> = {}, mounts?: ContainerInspect["Mounts"], nets = ["orbit-web-sandbox"]): ContainerInspect =>
       ({
@@ -91,6 +105,9 @@ describe("the containers an attempt is made of", () => {
     assert.match(hardeningProblems(inspect({ CapAdd: ["NET_ADMIN"] }), "20001:20001", "orbit-web-sandbox").join(), /NET_ADMIN/);
     assert.match(hardeningProblems(inspect({}, undefined, ["orbit-web-sandbox", "bridge"]), "20001:20001", "orbit-web-sandbox").join(), /not only/);
     assert.match(hardeningProblems(inspect({ Dns: [] }), "20001:20001", "orbit-web-sandbox").join(), /resolvers/);
+    // A chat's run reaches the internet by design: its sandbox keeps the runtime's own resolver -- and only that.
+    assert.deepEqual(hardeningProblems(inspect({ Dns: [] }), "20001:20001", "orbit-web-sandbox", []), []);
+    assert.match(hardeningProblems(inspect({ Dns: ["8.8.8.8"] }), "20001:20001", "orbit-web-sandbox", []).join(), /resolvers \["8\.8\.8\.8"\]/);
     const expected = toolPlaneMounts("v", { scratch: "s", cache: null, team: null });
     const requested = expected.map((e) => ({ Target: e.target, Source: e.volume, VolumeOptions: { Subpath: e.subpath as string } }));
     assert.deepEqual(mountProblems(inspect(), expected, ["/tmp"], requested), []);

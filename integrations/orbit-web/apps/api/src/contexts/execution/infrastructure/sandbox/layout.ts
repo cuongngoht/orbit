@@ -25,6 +25,19 @@ export const MODEL_PLANE = {
   managedSettings: "/etc/claude-code",
 } as const;
 
+// A chat's or a research session's RUN in a sandbox of its own (the Orbit Web image, its runner): Orbit Web's data
+// volume is mounted only where that run's own places are, each at the very path Orbit Web uses for it (so the CLI's
+// arguments and environment are the same as in Orbit Web's container); `home` (HOME) and /tmp are tmpfs.
+export const SESSION_PLANE = {
+  uid: 10001,
+  gid: 10001,
+  dataRoot: "/data",
+  home: "/data/home",
+  runnerPort: 7070,
+  node: "/usr/local/bin/node",
+  runnerMain: "/opt/orbit-web/apps/api/dist/runner/main.js",
+} as const;
+
 export const TOOL_PLANE = {
   uid: 20001,
   gid: 20001,

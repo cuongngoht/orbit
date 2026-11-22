@@ -283,7 +283,7 @@ export async function startHarness(o: HarnessOptions = {}): Promise<Harness> {
   const database = o.database ?? (await createTestDatabase());
   let config: AppConfig;
   try {
-    config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ORBIT_WEB_DATABASE_URL: database.url, ...o.env });
+    config = loadConfig({ PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: dataDir, ORBIT_PLUGIN_DIR: orbitPluginDir(), ORBIT_WEB_BUILD_INFO: join(dataDir, "no-build-info.json"), ORBIT_WEB_DATABASE_URL: database.url, ORBIT_WEB_UPDATE_CHECK: "off", ...o.env });
   } catch (err) {
     // A configuration Orbit Web refuses to start with: nothing of the test is left behind.
     if (o.database === undefined) await database.drop();

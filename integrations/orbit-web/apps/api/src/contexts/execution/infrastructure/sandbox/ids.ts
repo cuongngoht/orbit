@@ -83,9 +83,11 @@ export const LABELS = {
   assignment: "orbit-web.assignment",
   fence: "orbit-web.fence",
   prefix: "orbit-web.prefix",
+  session: "orbit-web.session",
+  kind: "orbit-web.kind",
 } as const;
 
-export type ContainerRole = "tool-plane" | "model-plane" | "tool-network" | "model-network" | "storage-helper" | "storage-worker" | "probe";
+export type ContainerRole = "tool-plane" | "model-plane" | "tool-network" | "model-network" | "storage-helper" | "storage-worker" | "probe" | "session-plane" | "session-network";
 
 export interface AttemptLabelInput extends EmployeeIds {
   dispatchKey: string;
@@ -107,6 +109,70 @@ export function attemptLabels(prefix: string, a: AttemptLabelInput, role: "tool-
     [LABELS.assignment]: a.assignmentId,
     [LABELS.fence]: String(a.fence),
   };
+}
+
+// ---- a chat's or a research session's run in a sandbox of its own -----------------------------------------------------
+
+export interface SessionNames {
+  container: string;
+  network: string;
+}
+
+// One container on one network of its own (Orbit Web's container is the network's only other member), both named from
+// the run's dispatch key alone.
+export const sessionNames = (prefix: string, dispatchKey: string): SessionNames => {
+  const h = attemptHash(dispatchKey);
+  return { container: `${prefix}-ss-${h}`, network: `${prefix}-sn-${h}` };
+};
+
+export interface SessionPlaces {
+  accountId: string;
+  sessionId: string;
+  connectionId: string;
+  runId: string;
+  dispatchKey: string;
+  kind: "chat" | "research";
+  workspace: "rw" | "ro" | "none";
+  switches: { github: boolean; azure: boolean };
+}
+
+export function sessionLabels(prefix: string, s: SessionPlaces, role: "session-plane" | "session-network"): Record<string, string> {
+  return {
+    [LABELS.managed]: "1",
+    [LABELS.prefix]: prefix,
+    [LABELS.role]: role,
+    [LABELS.dispatchKey]: s.dispatchKey,
+    [LABELS.account]: s.accountId,
+    [LABELS.session]: s.sessionId,
+    [LABELS.kind]: s.kind,
+    [LABELS.run]: s.runId,
+  };
+}
+
+export interface SessionMount {
+  // Inside Orbit Web's data volume, and where the sandbox sees it: the same path Orbit Web uses.
+  subpath: string;
+  target: string;
+  readOnly: boolean;
+}
+
+// What of Orbit Web's data a run's sandbox sees: its chat's workspace (read-only for a Plan run that is held there) and
+// project plugin, its connection's home, its own account's Orbit store -- and the installation's GitHub or Azure
+// sign-in only where the account turned that switch on. A research run: its connection's home alone.
+export function sessionMounts(s: SessionPlaces): SessionMount[] {
+  const at = (subpath: string, readOnly = false): SessionMount => ({ subpath, target: `/data/${subpath}`, readOnly });
+  const account = checkId(s.accountId, "accountId");
+  const connection = at(`connections/${account}/${checkId(s.connectionId, "connectionId")}`);
+  if (s.kind === "research") return [connection];
+  const chat = checkId(s.sessionId, "sessionId");
+  return [
+    at(`workspaces/${chat}`, s.workspace === "ro"),
+    at(`sessions/${chat}`, true),
+    connection,
+    at(`orbit/accounts/${account}`),
+    ...(s.switches.github ? [at("github")] : []),
+    ...(s.switches.azure ? [at("azure")] : []),
+  ];
 }
 
 // ---- storage areas: paths inside the workforce volume ----------------------------------------------------------------

@@ -97,8 +97,17 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
     expect((await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""))).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
     await userEvent.keyboard("{Escape}");
-    push("session.started", started({ runtime: "codex", claudeSessionId: "th_1", claudeCodeVersion: null, model: "gpt-6.1-sol", requestedModel: "gpt-6.1-sol", plugins: [], orbitLoaded: false, orbitVersion: null }));
+    push("session.started", started({ runtime: "codex", claudeSessionId: "th_1", claudeCodeVersion: null, model: "gpt-6.1-sol", requestedModel: "gpt-6.1-sol", plugins: [], orbitLoaded: false, orbitVersion: null, sandboxed: true }));
     expect(await screen.findByText(/Started OpenAI Codex · gpt-6\.1-sol/)).toBeInTheDocument();
+    // Where it ran is said; Claude Code's plugin is not Codex's, so its absence is no warning.
+    expect(screen.getByText(/· own sandbox/)).toBeInTheDocument();
+    expect(screen.queryByText("Orbit plugin not loaded")).toBeNull();
+    // Its end names the AI that ran -- once.
+    push("session.completed", { subtype: "success", result: "Done", permissionDenials: 0, costUsd: null, turns: 1, durationMs: 100 });
+    expect(await screen.findByText(/OpenAI Codex finished \(1 turns/)).toBeInTheDocument();
+    push("session.started", started({ runtime: "codex", claudeSessionId: "th_1", claudeCodeVersion: null, model: "gpt-6.1-sol", requestedModel: "gpt-6.1-sol", plugins: [], orbitLoaded: false, orbitVersion: null, resumed: true }));
+    push("session.failed", { reason: "exit", subtype: null, message: "OpenAI Codex exited with code 1: boom", exitCode: 1, signal: null, permissionDenials: 0, costUsd: null, turns: null, durationMs: null });
+    expect(await screen.findByText("OpenAI Codex failed: exited with code 1: boom")).toBeInTheDocument();
   });
 
   test("a changed model, effort or mode is the chat's from its next message", async () => {

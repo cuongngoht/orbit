@@ -32,6 +32,10 @@ export interface CodexChatOptions {
   // every account's sign-ins, keys and workspaces), and of that only the chat's own `room` -- written in Autonomous,
   // read in Plan. Null: no sandbox here, so its commands cannot run at all (they fail before they start).
   confine: { denied: string[]; room: string[] } | null;
+  // The run has a sandbox of its own (a container holding this chat's places alone): that container holds its commands,
+  // so Codex's own sandbox -- which cannot start in a container without user namespaces -- is not asked for. A Plan run's
+  // workspace is mounted read-only there.
+  container?: boolean;
 }
 
 // Codex's permission profile for a chat (`[permissions]`, an allow-list: what is not named is not reachable).
@@ -65,7 +69,7 @@ export function codexChatArgs(o: CodexChatOptions): string[] {
   // takes the place of the permission profile (seen on codex-cli 0.169.0: with `--sandbox workspace-write` beside the
   // profile, a command read the path the profile denied), so the profile alone decides -- it also keeps their
   // network off.
-  const parent = o.confine === null ? ["exec", "--sandbox", sandbox] : ["exec"];
+  const parent = o.container === true ? ["exec", "--sandbox", "danger-full-access"] : o.confine === null ? ["exec", "--sandbox", sandbox] : ["exec"];
   return o.threadId === null ? [...parent, ...own, "-"] : [...parent, "resume", ...own, o.threadId, "-"];
 }
 

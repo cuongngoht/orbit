@@ -29,6 +29,8 @@ export const IMAGES = {
   workstation: "orbit-web-workstation:sandbox-test",
   storageHelper: "orbit-web-storage-helper:sandbox-test",
   modelPlane: process.env.ORBIT_WEB_SANDBOX_TEST_MODEL_PLANE ?? "orbit-web-model-plane:sandbox-test",
+  // A chat's or research run's own sandbox: the Orbit Web image (its runner) -- one built here, or the one named.
+  session: process.env.ORBIT_WEB_SANDBOX_TEST_SESSION ?? "ghcr.io/cuongngoht/orbit-web:0.8.0",
 };
 
 // Null when a runtime answers here; else why the suite is skipped.
@@ -132,6 +134,7 @@ export async function createLab(): Promise<Lab> {
     ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: IMAGES.workstation,
     ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: IMAGES.modelPlane,
     ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: IMAGES.storageHelper,
+    ORBIT_WEB_SANDBOX_IMAGE_SESSION: IMAGES.session,
     // The lab's proxy plays Orbit Web's container: connected to each attempt's two networks, under the name attempts use.
     ORBIT_WEB_CONTROL_CONTAINER: net("proxy"),
     ORBIT_WEB_SANDBOX_HOST: "egress",
@@ -161,7 +164,7 @@ export async function createLab(): Promise<Lab> {
     await engine.networkCreate({ Name: net("db"), Internal: true, Labels: labels });
     await engine.volumeCreate({ Name: net("data"), Labels: labels });
     // Two accounts' connection homes, Orbit Web's (10001), each with its login file.
-    const seed = await runOnce(engine, prefix, { Image: IMAGES.workstation, User: "0:0", Cmd: ["sleep", "120"], Labels: labels, HostConfig: { NetworkMode: "none", Mounts: [{ Type: "volume", Source: net("data"), Target: "/data" }] } }, ["sh", "-c", 'for o in "$1" "$2"; do mkdir -p "/data/connections/$o/conn-1/claude"; printf %s "$3" > "/data/connections/$o/conn-1/claude/.credentials.json"; done; chown -R 10001:10001 /data/connections; chmod -R go-rwx /data/connections', "seed", orbitA, orbitB, credential], { timeoutMs: 60_000, maxOutputBytes: 65536 });
+    const seed = await runOnce(engine, prefix, { Image: IMAGES.workstation, User: "0:0", Cmd: ["sleep", "120"], Labels: labels, HostConfig: { NetworkMode: "none", Mounts: [{ Type: "volume", Source: net("data"), Target: "/data" }] } }, ["sh", "-c", 'for o in "$1" "$2"; do mkdir -p "/data/connections/$o/conn-1/claude"; printf %s "$3" > "/data/connections/$o/conn-1/claude/.credentials.json"; done; chown -R 10001:10001 /data/connections; chmod -R go-rwx /data/connections; mkdir -p /data/workspaces/chat-a/repository /data/workspaces/chat-b/repository /data/sessions/chat-a /data/orbit/accounts/$1 /data/control/credentials; echo mine > /data/workspaces/chat-a/repository/mine.txt; echo theirs > /data/workspaces/chat-b/repository/theirs.txt; echo secret > /data/control/credentials/key; chown -R 10001:10001 /data/workspaces /data/sessions /data/orbit /data/control', "seed", orbitA, orbitB, credential], { timeoutMs: 60_000, maxOutputBytes: 65536 });
     if (seed.code !== 0) throw new Error(`seeding the connections room failed: ${text(seed.stderr)}`);
     // The egress proxy (joined to each attempt's networks by the allocator, as `egress`); the database stand-in alone.
     const proxy = await engine.containerCreate(net("proxy"), { Image: IMAGES.workstation, User: "20001:20001", Cmd: ["node", "-e", PROXY], Env: [`TOKEN=${runToken}`], Labels: labels, HostConfig: { NetworkMode: net("lab"), Init: true } });

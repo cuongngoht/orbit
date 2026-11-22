@@ -2,7 +2,7 @@
 // about each run -- its version and whether Orbit loaded, how it ended, and anything it refused.
 import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
-import { effortLabel, MODE_LABELS } from "@orbit-web/contracts";
+import { effortLabel, MODE_LABELS, RUNTIME_LABELS, type RuntimeKind } from "@orbit-web/contracts";
 import { BranchFork16Regular } from "@fluentui/react-icons";
 import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
 import { PlanCard } from "./PlanCard";
@@ -116,28 +116,37 @@ function RunStart({ item }: { item: RunStartItem }) {
         {/* A run of an earlier Orbit Web named no effort or mode. */}
         {d.requestedEffort ? ` · ${effortLabel(d.requestedEffort)} effort` : ""}
         {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}
+        {/* Where it ran: a sandbox of its own (a container holding this chat's places alone). */}
+        {d.sandboxed ? " · own sandbox" : ""}
       </Text>
       {d.orbitLoaded ? (
         <Badge appearance="tint" color="brand" size="small">
           Orbit {d.orbitVersion ?? ""} loaded
         </Badge>
       ) : (
-        <Badge appearance="tint" color="warning" size="small">
-          Orbit plugin not loaded
-        </Badge>
+        // The Orbit plugin is Claude Code's: a run of another CLI never loads it, which is nothing to warn about.
+        d.runtime !== "codex" && (
+          <Badge appearance="tint" color="warning" size="small">
+            Orbit plugin not loaded
+          </Badge>
+        )
       )}
     </div>
   );
 }
 
-function RunEnd({ item }: { item: RunEndItem }) {
+// A run's failure, naming the AI that ran -- once (the message may already start with its name).
+const failedText = (label: string, message: string): string => `${label} failed: ${message.startsWith(`${label} `) ? message.slice(label.length + 1) : message}`;
+
+function RunEnd({ item, runtime }: { item: RunEndItem; runtime: RuntimeKind }) {
   const s = useStyles();
   const e = item.end;
+  const label = RUNTIME_LABELS[runtime];
   if (e.type === "session.completed") {
     const cost = e.data.costUsd !== null ? ` · $${e.data.costUsd.toFixed(4)}` : "";
     return (
       <Text size={200} className={s.meta}>
-        Claude Code finished ({e.data.turns ?? "?"} turns{cost}). Whether the change is verified is Orbit's to say — see the Orbit panel.
+        {label} finished ({e.data.turns ?? "?"} turns{cost}). Whether the change is verified is Orbit's to say — see the Orbit panel.
       </Text>
     );
   }
@@ -149,7 +158,7 @@ function RunEnd({ item }: { item: RunEndItem }) {
     );
   return (
     <MessageBar intent="error" className={s.msgBar}>
-      <MessageBarBody className={s.msgBody}>Claude Code failed: {e.data.message}</MessageBarBody>
+      <MessageBarBody className={s.msgBody}>{failedText(label, e.data.message)}</MessageBarBody>
     </MessageBar>
   );
 }
@@ -190,6 +199,8 @@ function UserMessage({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageI
 }
 
 export interface TimelineActions {
+  // The AI the chat runs on (its run ends name it): Claude Code unless said.
+  runtime?: RuntimeKind;
   // Where an image a message carried is read.
   imageUrl?: (imageId: string) => string;
   // Carry a proposed plan out: switch to Autonomous and ask for it.
@@ -217,7 +228,7 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
     case "run-start":
       return <RunStart item={item} />;
     case "run-end":
-      return <RunEnd item={item} />;
+      return <RunEnd item={item} runtime={actions.runtime ?? "claude"} />;
     case "workspace":
       return <Workspace item={item} />;
     case "branch":

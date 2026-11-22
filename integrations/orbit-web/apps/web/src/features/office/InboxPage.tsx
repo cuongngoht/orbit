@@ -2,19 +2,39 @@
 // information, settle a run or a delivery, and work that cannot go on: BLOCKED (retry it, or cancel it) or UNSCHEDULABLE
 // (it can never start as configured: the numbers are said, and the ways out -- the employee's resources, the operator's
 // authorization, or cancelling it). A decision is pinned to the version it was shown with.
-import { Badge, Button, Field, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, Textarea } from "@fluentui/react-components";
+import { Badge, Button, Field, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Clock16Regular } from "@fluentui/react-icons";
+import { ShieldClearIcon } from "../../components/SectionIcons";
 import { INBOX_KIND_TEXT, type Inbox, type InboxItem } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
-import { AsOf, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmptyState, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 const OPERATOR_COMMAND = "node dist/cli/governance.js budget set";
 
+const useStyles = makeStyles({
+  cardAccent: { borderLeftWidth: "4px" },
+  accentDanger: { borderLeftColor: tokens.colorPaletteRedBorder2 },
+  accentImportant: { borderLeftColor: tokens.colorBrandStroke1 },
+  accentWarning: { borderLeftColor: tokens.colorPaletteDarkOrangeBorder2 },
+  accentClosed: { borderLeftColor: tokens.colorNeutralStroke1 },
+  cmd: {
+    paddingTop: "1px",
+    paddingRight: "6px",
+    paddingBottom: "1px",
+    paddingLeft: "6px",
+    borderRadius: "6px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
+});
+
 function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => void }) {
+  const s = useStyles();
   const o = useOfficeStyles();
   const act = useAction();
   const [answer, setAnswer] = useState("");
@@ -33,14 +53,15 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
     });
   const open = item.state === "open";
   const canCommand = item.assignmentId !== null && version !== null;
+  const accent = !open ? s.accentClosed : item.kind === "unschedulable" || item.kind === "blocked" ? s.accentDanger : item.kind === "acceptance" ? s.accentImportant : s.accentWarning;
   return (
-    <li className={o.card} aria-label={item.title}>
+    <li className={mergeClasses(o.card, s.cardAccent, accent)} aria-label={item.title}>
       <div className={o.between}>
         <div className={o.row}>
-          <Badge appearance="tint" color={item.kind === "unschedulable" || item.kind === "blocked" ? "danger" : item.kind === "acceptance" ? "important" : "warning"}>
+          <Badge appearance="tint" color={item.kind === "unschedulable" || item.kind === "blocked" ? "danger" : item.kind === "acceptance" ? "important" : "warning"} style={{ borderRadius: "9999px" }}>
             {INBOX_KIND_TEXT[item.kind]}
           </Badge>
-          <Text weight="semibold" className={o.wrap}>
+          <Text weight="semibold" size={300} className={o.wrap}>
             {item.title}
           </Text>
         </div>
@@ -49,28 +70,32 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
           {item.deadline ? ` · decide by ${when(item.deadline)}` : ""}
         </Text>
       </div>
-      <Text size={200} className={o.wrap}>
+      <Text size={300} className={o.wrap}>
         {item.reason}
       </Text>
       {item.waiting && (
-        <Text size={200} className={o.muted}>
+        <Callout tone="info" icon={<Clock16Regular />}>
           Waiting: {item.waiting}
-        </Text>
+        </Callout>
       )}
       {!open && (
-        <Text size={200} className={o.muted}>
-          {item.state === "resolved" ? "Resolved" : item.state === "expired" ? "Expired" : "Withdrawn"} {when(item.resolvedAt)}
-          {item.resolution ? `: ${item.resolution}` : ""}
-        </Text>
+        <div className={o.inset}>
+          <Text size={200} className={o.muted}>
+            {item.state === "resolved" ? "Resolved" : item.state === "expired" ? "Expired" : "Withdrawn"} {when(item.resolvedAt)}
+            {item.resolution ? `: ${item.resolution}` : ""}
+          </Text>
+        </div>
       )}
       {open && item.kind === "unschedulable" && (
-        <Text size={200}>
-          As configured this work can never start. Lower what the employee asks for, have the operator raise the account's authorization (<span className={o.mono}>{OPERATOR_COMMAND}</span> on the server), or cancel the work and give it to somebody else.
-        </Text>
+        <div className={o.inset}>
+          <Text size={200}>
+            As configured this work can never start. Lower what the employee asks for, have the operator raise the account's authorization (<code className={mergeClasses(o.mono, s.cmd)}>{OPERATOR_COMMAND}</code> on the server), or cancel the work and give it to somebody else.
+          </Text>
+        </div>
       )}
       {open && item.kind === "information" && canCommand && (
         <form
-          className={o.form}
+          className={mergeClasses(o.form, o.inset)}
           aria-label={`Answer: ${item.title}`}
           onSubmit={(e) => {
             e.preventDefault();
@@ -87,27 +112,30 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
           </div>
         </form>
       )}
-      <div className={o.row}>
-        {open && item.kind === "acceptance" && (
-          <Button className={o.touch} appearance="primary" onClick={() => go("mission", item.missionId, "handoffs")}>
-            Review the result
-          </Button>
-        )}
-        {open && item.kind === "unschedulable" && (
-          <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={editResources}>
-            Edit the employee's resources
-          </Button>
-        )}
-        {open && item.kind === "blocked" && (
-          <Button className={o.touch} appearance="primary" disabled={act.busy || !canCommand} onClick={() => command("retry")}>
-            Retry
-          </Button>
-        )}
-        {open && (item.kind === "unschedulable" || item.kind === "blocked") && (
-          <Button className={o.touch} disabled={act.busy || !canCommand} onClick={() => command("cancel")}>
-            Cancel the work
-          </Button>
-        )}
+      <div className={o.divider} />
+      <div className={o.between}>
+        <div className={o.row}>
+          {open && item.kind === "acceptance" && (
+            <Button className={o.touch} appearance="primary" onClick={() => go("mission", item.missionId, "handoffs")}>
+              Review the result
+            </Button>
+          )}
+          {open && item.kind === "unschedulable" && (
+            <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={editResources}>
+              Edit the employee's resources
+            </Button>
+          )}
+          {open && item.kind === "blocked" && (
+            <Button className={o.touch} appearance="primary" disabled={act.busy || !canCommand} onClick={() => command("retry")}>
+              Retry
+            </Button>
+          )}
+          {open && (item.kind === "unschedulable" || item.kind === "blocked") && (
+            <Button className={o.touch} disabled={act.busy || !canCommand} onClick={() => command("cancel")}>
+              Cancel the work
+            </Button>
+          )}
+        </div>
         <Link className="orbit-target" as="button" onClick={() => go("mission", item.missionId)}>
           Open the work
         </Link>
@@ -140,7 +168,12 @@ function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "hi
   return (
     <>
       {items.length === 0 ? (
-        <Text className={o.muted}>{state === "open" ? "Nothing needs you now." : "Nothing decided yet."}</Text>
+        <EmptyState
+          icon={<ShieldClearIcon size={22} />}
+          tone="success"
+          title={state === "open" ? "Nothing needs you now." : "Nothing decided yet."}
+          body={state === "open" ? "Reviews, questions, and blocked assignments waiting on you will appear here." : "Resolved, expired, or withdrawn items are kept here."}
+        />
       ) : (
         <ul className={o.list} aria-label={state === "open" ? "Needs you" : "Decided"}>
           {items.map((i) => (
@@ -171,10 +204,12 @@ export function InboxPage({ go }: { go: Go }) {
   return (
     <div className={o.page}>
       <div className={o.between}>
-        <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "history")} aria-label="Which items">
-          <Tab value="open">Open{inbox.data && state === "open" ? ` (${inbox.data.open})` : ""}</Tab>
-          <Tab value="history">History</Tab>
-        </TabList>
+        <div className={o.tabStrip}>
+          <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "history")} aria-label="Which items">
+            <Tab value="open">Open{inbox.data && state === "open" ? ` (${inbox.data.open})` : ""}</Tab>
+            <Tab value="history">History</Tab>
+          </TabList>
+        </div>
         <AsOf at={inbox.data?.asOf ?? null} />
       </div>
       {inbox.data === null ? (

@@ -12,6 +12,8 @@ import { DatabaseUnavailable, Db, pgCode } from "../../infra/db/db.js";
 import { schemaState } from "../../infra/db/migrate.js";
 import { MIGRATIONS } from "../../infra/db/migrations.js";
 import { ToolchainService } from "./toolchain.service.js";
+import { UpdatesController, UpdatesService } from "./updates.service.js";
+import { publicFeed, UPDATE_FEED } from "./updates.js";
 
 const LATEST_SCHEMA = Math.max(...MIGRATIONS.map((m) => m.version));
 
@@ -72,8 +74,8 @@ export class HealthController {
 }
 
 @Module({
-  providers: [ToolchainService, HealthService],
-  controllers: [HealthController],
+  providers: [ToolchainService, HealthService, UpdatesService, { provide: UPDATE_FEED, useValue: publicFeed }],
+  controllers: [HealthController, UpdatesController],
   exports: [ToolchainService, HealthService],
 })
 export class HealthModule {}

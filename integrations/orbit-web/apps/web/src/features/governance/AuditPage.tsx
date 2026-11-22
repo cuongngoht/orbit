@@ -2,26 +2,38 @@
 // one of your agents, nobody verified, Orbit Web itself), the chat or research workspace, the run, the revision and
 // decision it stands on, why, and its place in the account's hash chain. Read only: no page and no route changes or
 // removes a record.
-import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { ChevronDown16Regular, ChevronUp16Regular } from "@fluentui/react-icons";
 import { AUDIT_EVENTS, type AuditEvent } from "@orbit-web/governance-core";
 import type { AuditPage as Page, ChainVerification } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, CleanSelect, ErrorBar, Word, principalOf, short, useParts, when } from "./parts";
+import { Card, CleanSelect, ErrorBar, Word, plural, principalOf, short, useParts, when } from "./parts";
 
 const EVENT_TYPE_OPTIONS = [
   { value: "", label: "every record" },
   ...Object.keys(AUDIT_EVENTS).map((t) => ({ value: t, label: t })),
 ];
 
+const useStyles = makeStyles({
+  cardOk: { borderLeftWidth: "3px", borderLeftColor: tokens.colorPaletteGreenBorder2 },
+  cardDeny: { borderLeftWidth: "3px", borderLeftColor: tokens.colorPaletteRedBorder2 },
+  cardInfo: { borderLeftWidth: "3px", borderLeftColor: tokens.colorNeutralStroke1 },
+});
+
+const OK_OUTCOMES = new Set(["allow", "ok", "succeeded", "signed_in", "granted", "created", "consumed", "resolved"]);
+const DENY_OUTCOMES = new Set(["deny", "refused", "failed", "rejected"]);
+
 function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boolean }) {
   const s = useParts();
+  const st = useStyles();
   const [open, setOpen] = useState(initiallyOpen);
+  const accent = OK_OUTCOMES.has(event.outcome) ? st.cardOk : DENY_OUTCOMES.has(event.outcome) ? st.cardDeny : st.cardInfo;
   return (
     <li id={event.eventId} aria-label={event.eventType}>
-      <Card>
+      <Card className={accent}>
         <div className={s.between}>
           <div className={s.row}>
             <span className={s.codeChip}>#{event.seq}</span>
@@ -33,11 +45,19 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
             </Text>
             <Word value={event.outcome} label={event.outcome} />
           </div>
-          <Button size="small" appearance="subtle" shape="circular" onClick={() => setOpen(!open)} aria-expanded={open}>
+          <Button
+            size="small"
+            appearance="secondary"
+            shape="circular"
+            icon={open ? <ChevronUp16Regular /> : <ChevronDown16Regular />}
+            iconPosition="after"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+          >
             {open ? "Less" : "Everything it says"}
           </Button>
         </div>
-        <Text size={200}>
+        <Text size={200} className={s.muted}>
           {principalOf(event.principalType, event.principalId, event.agentId)}
           {event.workspaceId ? ` · workspace ${short(event.workspaceId, 8)}` : ""}
           {event.reasonCodes.length > 0 ? ` · ${event.reasonCodes.join(", ")}` : ""}
@@ -71,7 +91,7 @@ export function AuditPage({ item }: { item: string | null }) {
   };
   return (
     <div className={s.page}>
-      <div className={s.between}>
+      <div className={s.toolbarBar}>
         <CleanSelect
           ariaLabel="Record type"
           value={type}
@@ -87,7 +107,7 @@ export function AuditPage({ item }: { item: string | null }) {
       </div>
       {verification && (
         <MessageBar intent={verification.ok ? "success" : "error"}>
-          <MessageBarBody>{verification.ok ? `The chain holds: ${verification.count} record(s), head ${short(verification.head, 16)}.` : `The chain does NOT hold at record ${verification.brokenAt} (${verification.problem}).`}</MessageBarBody>
+          <MessageBarBody>{verification.ok ? `The chain holds: ${plural(verification.count, "record")}, head ${short(verification.head, 16)}.` : `The chain does NOT hold at record ${verification.brokenAt} (${verification.problem}).`}</MessageBarBody>
         </MessageBar>
       )}
       <ErrorBar text={error} />
@@ -106,7 +126,7 @@ export function AuditPage({ item }: { item: string | null }) {
         )
       ) : (
         <>
-          <ul className={s.list} aria-label="Audit records">
+          <ul className={mergeClasses(s.list)} aria-label="Audit records">
             {page.data.events.map((e) => (
               <Record key={e.eventId} event={e} open={false} />
             ))}

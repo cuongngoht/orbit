@@ -37,7 +37,6 @@ import {
 import {
   Add20Regular,
   BookOpen16Regular,
-  BuildingMultiple20Regular,
   ChevronDown12Regular,
   Code16Regular,
   Delete16Regular,
@@ -49,12 +48,12 @@ import {
   People16Regular,
   Rename16Regular,
   Search20Regular,
-  ShieldKeyhole20Regular,
   Settings20Regular,
   SignOut20Regular,
 } from "@fluentui/react-icons";
 import type { AuthAccount, AuthUser, ResearchSessionSummary, SessionSummary } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
+import { GovernanceIcon, OfficeIcon } from "../components/SectionIcons";
 import { SourceMark } from "../components/SourceMark";
 import { errorText, send } from "../services/api";
 
@@ -236,12 +235,12 @@ export function Sidebar(p: SidebarProps) {
           </Tooltip>
           {p.onOffice && (
             <Tooltip content="Office" relationship="label">
-              <Button appearance="subtle" icon={<BuildingMultiple20Regular />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
+              <Button appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
             </Tooltip>
           )}
           {p.onGovernance && (
             <Tooltip content="Governance" relationship="label">
-              <Button appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
+              <Button appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
             </Tooltip>
           )}
         </div>
@@ -294,12 +293,12 @@ export function Sidebar(p: SidebarProps) {
           Customize
         </Button>
         {p.onOffice && (
-          <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={<BuildingMultiple20Regular />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
+          <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
             Office
           </Button>
         )}
         {p.onGovernance && (
-          <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<ShieldKeyhole20Regular />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
+          <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
             Governance
           </Button>
         )}

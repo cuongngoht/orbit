@@ -21,6 +21,7 @@ import {
   checkProbes,
   checkQuotas,
   checkSandboxIds,
+  checkSessionSpec,
   checkToolPath,
   intIn,
   MAX_FILE_BYTES,
@@ -30,16 +31,18 @@ import {
   type AttemptStatusRecord,
   type AttestRequest,
   type PublishResult,
+  type SessionRecord,
+  type SessionSpec,
 } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
-import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
-import { MODEL_PLANE, TOOL_PLANE } from "../contexts/execution/infrastructure/sandbox/layout.js";
+import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, sessionLabels, sessionMounts, sessionNames, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
+import { MODEL_PLANE, SESSION_PLANE, TOOL_PLANE } from "../contexts/execution/infrastructure/sandbox/layout.js";
 import { storageAdmits, tmpSizeMiB, type AreaLevel } from "../contexts/execution/infrastructure/sandbox/storage-policy.js";
 import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountInfo, type Check } from "./attest-checks.js";
 import { cgroupUsage, limitsMatch, observedLimits, parseReading, type CgroupReading } from "./cgroup.js";
 import { execIn, failure, text, type ExecOutcome } from "./containers.js";
 import { DockerEngine, DockerError, type ContainerInspect, type NetworkInspect as NetworkInfo } from "./docker/engine.js";
 import { attestProbeScript, cgroupScript, modelPlaneScript, nodeScript, syncScript, toolFileScript, writeTestScript, type AttestProbeConfig } from "./scripts/node-scripts.js";
-import { limitsProbeBody, MiB, MODEL_PLANE_PIDS, MODEL_PLANE_TMPFS, modelPlaneBody, modelPlaneMounts, PROBE_LIMITS, toolPlaneBody, toolPlaneMounts, type VolumeMount } from "./specs.js";
+import { limitsProbeBody, MiB, MODEL_PLANE_PIDS, MODEL_PLANE_TMPFS, modelPlaneBody, modelPlaneMounts, PROBE_LIMITS, sessionPlaneBody, toolPlaneBody, toolPlaneMounts, type VolumeMount } from "./specs.js";
 import { WorkforceStorage, type StorageState } from "./storage.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -445,17 +448,17 @@ export class Allocator implements AllocatorApi {
     if (this.config.control.container !== null) await this.engine.networkConnect(name, this.config.control.container, [this.config.control.alias]);
   }
 
-  private async createNetwork(name: string, labels: Record<string, string>): Promise<void> {
+  private async createNetwork(name: string, labels: Record<string, string>, internal = true): Promise<void> {
     const exhausted = (err: unknown) => (err instanceof DockerError && /address pools|fully subnetted|no available/i.test(err.reason) ? new AllocatorError("unavailable", `the container runtime has no address space left for another attempt's network (${err.reason}): set ORBIT_WEB_ATTEMPT_SUBNETS, or Docker's default-address-pools`) : err);
     if (this.config.attemptSubnets.length === 0) {
-      await this.engine.networkCreate({ Name: name, Internal: true, Labels: labels }).catch((err: unknown) => Promise.reject(exhausted(err)));
+      await this.engine.networkCreate({ Name: name, Internal: internal, Labels: labels }).catch((err: unknown) => Promise.reject(exhausted(err)));
       return;
     }
     const used = new Set((await this.engine.networkList({ [LABELS.prefix]: this.prefix })).flatMap((n) => (n.IPAM.Config ?? []).map((c) => c.Subnet)));
     for (const subnet of subnetBlocks(this.config.attemptSubnets)) {
       if (used.has(subnet)) continue;
       try {
-        await this.engine.networkCreate({ Name: name, Internal: true, Labels: labels, IPAM: { Config: [{ Subnet: subnet }] } });
+        await this.engine.networkCreate({ Name: name, Internal: internal, Labels: labels, IPAM: { Config: [{ Subnet: subnet }] } });
         return;
       } catch (err) {
         if (err instanceof DockerError && /overlap/i.test(err.reason)) continue;
@@ -859,5 +862,98 @@ export class Allocator implements AllocatorApi {
       for (const c of [tool, model]) if (c !== null) this.pidsPeaks.delete(c.Id);
       return left.length === 0 ? { gone: true, detail: "both planes and their networks are gone (the runtime no longer knows them)" } : { gone: false, detail: `${left.join(", ")} still exist` };
     });
+  }
+
+  // ---- a chat's or a research session's run in a sandbox of its own -------------------------------------------------
+
+  // The run's own network: made once, labelled as the run, joined by Orbit Web's container (the run's programs reach the
+  // agent gateway there, and Orbit Web reaches the run's runner). Not internal: a chat's programs reach the internet as
+  // they did in Orbit Web's container -- but nothing else of this host's containers.
+  private async sessionNetwork(name: string, labels: Record<string, string>, dispatchKey: string): Promise<void> {
+    let net = await this.engine.networkInspect(name);
+    if (net === null) {
+      await this.createNetwork(name, labels, false);
+      net = await this.engine.networkInspect(name);
+    }
+    if (net === null) throw new Error(`the network ${name} vanished while it was being made`);
+    if (net.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${name} does not belong to this dispatch key`);
+    if (this.config.control.container !== null) await this.engine.networkConnect(name, this.config.control.container, [this.config.control.alias]);
+  }
+
+  private sameSession(c: ContainerInspect, s: SessionSpec): boolean {
+    const l = c.Config.Labels ?? {};
+    return l[LABELS.dispatchKey] === s.dispatchKey && l[LABELS.account] === s.accountId && l[LABELS.session] === s.sessionId && l[LABELS.run] === s.runId && l[LABELS.kind] === s.kind;
+  }
+
+  // What a run's sandbox must be before its runner is told anything: hardened, as Orbit Web's user, on its own network
+  // alone, and holding that run's places of the data volume -- nothing more (a stray mount, a socket) and nothing less.
+  private sessionProblems(c: ContainerInspect, s: SessionSpec, network: string): string[] {
+    const expected: VolumeMount[] = sessionMounts(s).map((m) => ({ volume: this.config.names.dataVolume, subpath: m.subpath, target: m.target, readOnly: m.readOnly }));
+    const requested = (c.HostConfig as unknown as { Mounts?: { Target: string; Source: string; VolumeOptions?: { Subpath?: string } }[] }).Mounts ?? [];
+    return [...hardeningProblems(c, `${SESSION_PLANE.uid}:${SESSION_PLANE.gid}`, network, []), ...mountProblems(c, expected, ["/tmp", SESSION_PLANE.home], requested)];
+  }
+
+  async startSession(specIn: SessionSpec): Promise<SessionRecord> {
+    const s = checkSessionSpec(specIn);
+    return this.locks.run(`session:${s.dispatchKey}`, async () => {
+      const names = sessionNames(this.prefix, s.dispatchKey);
+      let c = await this.engine.containerInspect(names.container);
+      if (c !== null && !this.sameSession(c, s)) throw new AllocatorError("conflict", `the dispatch key ${s.dispatchKey} belongs to another run`);
+      if (c === null) await this.placesHold();
+      await this.sessionNetwork(names.network, sessionLabels(this.prefix, s, "session-network"), s.dispatchKey);
+      if (c === null) {
+        const body = sessionPlaneBody({ image: this.config.images.session, network: names.network, dataVolume: this.config.names.dataVolume, mounts: sessionMounts(s), labels: sessionLabels(this.prefix, s, "session-plane"), cpuMillis: this.config.session.cpuMillis, memoryMiB: this.config.session.memoryMiB, pids: this.config.session.pids, runnerToken: runnerToken(this.secret, s.dispatchKey) });
+        try {
+          await this.engine.containerCreate(names.container, body);
+        } catch (err) {
+          if (err instanceof DockerError) throw new AllocatorError("conflict", `the run's sandbox could not be made: ${err.reason}`);
+          throw err;
+        }
+        c = await this.engine.containerInspect(names.container);
+      }
+      if (c === null) throw new Error("the run's sandbox vanished while it was being made");
+      try {
+        if (!c.State.Running) await this.engine.containerStart(c.Id);
+      } catch (err) {
+        if (err instanceof DockerError) throw new AllocatorError("conflict", `the run's sandbox could not start: ${err.reason}`);
+        throw err;
+      }
+      const started = await this.engine.containerInspect(c.Id);
+      const problems = started === null ? ["it is gone"] : this.sessionProblems(started, s, names.network);
+      if (problems.length > 0) {
+        await this.engine.containerRemove(c.Id, true);
+        throw new AllocatorError("conflict", `the run's sandbox is not what it must be, so it was removed: ${problems.join("; ")}`);
+      }
+      await this.waitForRunner(c.Id);
+      return { dispatchKey: s.dispatchKey, name: names.container, ip: started?.NetworkSettings.Networks?.[names.network]?.IPAddress || null, port: SESSION_PLANE.runnerPort, createdAt: started?.Created ?? this.iso() };
+    });
+  }
+
+  async removeSession(dispatchKeyIn: string): Promise<{ gone: boolean; detail: string }> {
+    const dispatchKey = checkDispatchKey(dispatchKeyIn);
+    return this.locks.run(`session:${dispatchKey}`, async () => {
+      const names = sessionNames(this.prefix, dispatchKey);
+      const c = await this.engine.containerInspect(names.container);
+      if (c !== null && c.Config.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${c.Name} does not belong to this dispatch key`);
+      if (c !== null) await this.engine.containerRemove(c.Id, true);
+      const net = await this.engine.networkInspect(names.network);
+      if (net !== null && net.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${net.Name} does not belong to this dispatch key`);
+      if (net !== null) {
+        for (const member of Object.keys(net.Containers ?? {})) await this.engine.networkDisconnect(net.Name, member);
+        await this.engine.networkRemove(net.Name);
+      }
+      const left = [(await this.engine.containerInspect(names.container)) === null ? null : names.container, (await this.engine.networkInspect(names.network)) === null ? null : names.network].filter((x) => x !== null);
+      return left.length === 0 ? { gone: true, detail: "the run's sandbox and its network are gone (the runtime no longer knows them)" } : { gone: false, detail: `${left.join(", ")} still exist` };
+    });
+  }
+
+  async sweepSessions(): Promise<{ removed: number }> {
+    const own = { [LABELS.managed]: "1", [LABELS.prefix]: this.prefix };
+    const keys = new Set<string>();
+    for (const c of await this.engine.containerList({ ...own, [LABELS.role]: "session-plane" })) if (c.Labels[LABELS.dispatchKey]) keys.add(c.Labels[LABELS.dispatchKey] as string);
+    for (const n of await this.engine.networkList({ ...own, [LABELS.role]: "session-network" })) if (n.Labels?.[LABELS.dispatchKey]) keys.add(n.Labels[LABELS.dispatchKey] as string);
+    let removed = 0;
+    for (const key of keys) if ((await this.removeSession(key)).gone) removed += 1;
+    return { removed };
   }
 }

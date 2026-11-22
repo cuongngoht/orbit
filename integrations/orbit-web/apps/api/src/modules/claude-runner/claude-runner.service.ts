@@ -15,7 +15,7 @@
 // the gateway, and in the governed deployment the proxy) and says what the policy lets the runtime do -- the web tools,
 // commands, which of the connectors its owner checked for chats. Nothing starts undecided.
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
-import { ACCEPTS_MESSAGES, effortFor, modelOf, RUNTIME_LABELS, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, effortFor, modelOf, RUNTIME_LABELS, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus, type Settings } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, realpathSync, writeFileSync, type WriteStream } from "node:fs";
 import { dirname, join } from "node:path";
@@ -24,7 +24,7 @@ import { EventBus } from "../../core/events/event-bus.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
 import { conflict, notFound } from "../../common/errors.js";
 import { Db } from "../../infra/db/db.js";
-import { claudeEnv, codexEnv } from "../../infra/process/env.js";
+import { claudeEnv, codexEnv, orbitStoreOf } from "../../infra/process/env.js";
 import { LineSplitter } from "../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle, ProcessPort } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
@@ -34,6 +34,7 @@ import type { Principal } from "../auth/principal.js";
 import { ClaudeConnectorsService, type RunConnectors } from "../connections/claude-connectors.service.js";
 import { ClaudeModelsService } from "../connections/claude-models.service.js";
 import { RunConnections, type RunConnection } from "../connections/run-connections.js";
+import { SESSION_SANDBOXES, type SessionLease, type SessionSandboxes } from "../session-sandbox/session-sandboxes.js";
 import { RunGovernanceService, type RunPlan } from "../governance/run-governance.service.js";
 import { ProjectService } from "../project/project.service.js";
 import { AutoModeService } from "./auto-mode.js";
@@ -70,6 +71,8 @@ interface ActiveRun {
   logBytes: number;
   done: Promise<void>;
   plan: RunPlan;
+  // Where its CLI runs: its own sandbox (given back when the run's end is recorded), or the agent's place.
+  lease: SessionLease;
   // The run's publications, one after another: each waits for the one before it.
   queue: Promise<void>;
   // Set once the run's end is being recorded: it is recorded once, whoever notices first.
@@ -110,6 +113,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     @Inject(ClaudeConnectorsService) private readonly connectors: ClaudeConnectorsService,
     @Inject(Transcript) private readonly transcript: Transcript,
     @Inject(RunConnections) private readonly connections: RunConnections,
+    @Inject(SESSION_SANDBOXES) private readonly sandboxes: SessionSandboxes,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is recorded as interrupted, never resumed.
@@ -317,6 +321,22 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const azure = credentials && prefs.azureForClaude;
     // GitHub's sign-in only ever reaches a chat whose repository came from GitHub.
     const github = credentials && prefs.githubForClaude && session.source === "github";
+    const lease = await this.sandboxFor(session, runId, connection, { workspace: "rw", github, azure });
+    try {
+      if (this.stopRequested.has(session.id)) {
+        await lease.release();
+        return await this.stoppedBeforeStart(session, runId, plan);
+      }
+      await this.startClaude(session, input, runId, plan, connectors, connection, lease, { resume, prefs, azure, github });
+    } catch (err) {
+      await lease.release();
+      throw err;
+    }
+  }
+
+  // Claude Code, in the run's place (its sandbox, or the agent's).
+  private async startClaude(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connectors: RunConnectors, connection: RunConnection, lease: SessionLease, o: { resume: boolean; prefs: Settings; azure: boolean; github: boolean }): Promise<void> {
+    const { resume, prefs, azure, github } = o;
     const project = await this.project.runtime(session);
     // The effort the account's catalog says this model takes (none, for a model that takes no level).
     const catalog = await this.models.catalog(session.accountId);
@@ -332,7 +352,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       mode: session.mode,
       pluginDirs: [...(orbit ? [this.config.pluginDir] : []), ...project.pluginDirs],
       enabledPlugins: project.enabledPlugins,
-      autoModeEnvironment: this.autoMode.current(plan.isolated),
+      autoModeEnvironment: this.autoMode.current(plan.isolated, lease.sandboxed),
       sessionId: session.claudeSessionId,
       resume,
       webTools: prefs.webTools && plan.webTools,
@@ -350,9 +370,22 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     });
     // The session reads as running since its message was accepted (send).
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, connection.configDir, { azure, github }), ...connection.secretEnv, ...plan.env } });
+    const handle = lease.port.spawn(this.config.binaries.claude, args, { cwd: session.workspacePath, env: { ...claudeEnv(this.config, connection.configDir, { azure, github, orbitStore: orbitStoreOf(this.config, session.accountId) }), ...connection.secretEnv, ...this.envIn(lease, plan.env) } });
     const mapper = new StreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume, cwd: session.workspacePath });
-    this.attach(session, input, runId, plan, handle, mapper);
+    this.attach(session, input, runId, plan, handle, mapper, lease);
+  }
+
+  // The run's own sandbox (where this Orbit Web makes them): asked for once governance allowed the run -- waited for, and
+  // the chat told, when every one is in use -- and given back once the run's end is recorded.
+  private sandboxFor(session: SessionRecord, runId: string, connection: RunConnection, o: { workspace: "rw" | "ro"; github: boolean; azure: boolean }): Promise<SessionLease> {
+    const waiting = (running: number) => void this.bus.publishSession(session.id, "run.notice", { kind: "info", message: `Waiting for a sandbox to run in: all ${running} are in use by other runs. This run starts when one of them ends.` }, runId).catch(() => undefined);
+    return this.sandboxes.acquire({ accountId: session.accountId, sessionId: session.id, connectionId: connection.connection.id, runId, kind: "chat", workspace: o.workspace, switches: { github: o.github, azure: o.azure } }, waiting);
+  }
+
+  // How the run's programs reach Orbit Web from its sandbox: the agent gateway by the name Orbit Web has there.
+  private envIn(lease: SessionLease, env: Record<string, string>): Record<string, string> {
+    if (lease.controlHost === null || env.ORBIT_AGENT_GATEWAY === undefined) return env;
+    return { ...env, ORBIT_AGENT_GATEWAY: `http://${lease.controlHost}:${this.config.port}/api/agent` };
   }
 
   // A chat on OpenAI Codex: `codex exec --json` in the workspace, in the connection's own CODEX_HOME, resuming the thread
@@ -362,6 +395,30 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const prefs = await this.settings.get(session.accountId);
     const option = modelOf(await this.models.catalogFor(session.accountId, connection.connection), session.model);
     const effort = option !== null && option.efforts.length === 0 ? null : session.effort;
+    // In a sandbox of its own a Plan run's workspace is mounted read-only: the container holds what Codex's own
+    // read-only sandbox would.
+    const lease = await this.sandboxFor(session, runId, connection, { workspace: session.mode === "plan" ? "ro" : "rw", github: false, azure: false });
+    try {
+      if (this.stopRequested.has(session.id)) {
+        await lease.release();
+        return await this.stoppedBeforeStart(session, runId, plan);
+      }
+      if (lease.sandboxed) {
+        // Its commands run, held by the container -- which holds this chat's places and nothing else of Orbit Web.
+        const args = codexChatArgs({ model: session.model, effort, mode: session.mode, webTools: prefs.webTools && plan.webTools, execute: plan.execute, note: plan.note, threadId: resume ? session.claudeSessionId : null, images: input.images ?? [], confine: null, container: true });
+        await this.spawnCodex(session, input, runId, plan, connection, lease, args, resume);
+        return;
+      }
+      await this.startCodexHere(session, input, runId, plan, connection, lease, { resume, prefs, effort });
+    } catch (err) {
+      await lease.release();
+      throw err;
+    }
+  }
+
+  // Codex where the agent's programs run (no sandbox of its own): confined by Codex's own sandbox where that starts.
+  private async startCodexHere(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connection: RunConnection, lease: SessionLease, o: { resume: boolean; prefs: Settings; effort: string | null }): Promise<void> {
+    const { resume, prefs, effort } = o;
     // Where Codex's own sandbox runs here, its commands reach nothing of Orbit Web's data -- no account's sign-ins, keys
     // or workspaces -- but this chat's own room; where it cannot, they cannot run at all, and the chat is told.
     const sandbox = await this.codexSandboxRuns();
@@ -369,9 +426,13 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     if (!sandbox) await this.bus.publishSession(session.id, "run.notice", { kind: "info", message: "OpenAI Codex's sandbox cannot start on this server: its commands cannot run here (it still answers). An operator lets them run by allowing user namespaces where Orbit Web runs." }, runId);
     // Unconfined, it runs nothing: no shell, read-only -- whatever kept the profile from being confirmed.
     const args = codexChatArgs({ model: session.model, effort, mode: session.mode, webTools: prefs.webTools && plan.webTools, execute: plan.execute && sandbox, note: plan.note, threadId: resume ? session.claudeSessionId : null, images: input.images ?? [], confine });
+    await this.spawnCodex(session, input, runId, plan, connection, lease, args, resume);
+  }
+
+  private async spawnCodex(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connection: RunConnection, lease: SessionLease, args: string[], resume: boolean): Promise<void> {
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
-    const handle = this.process.spawn(this.config.binaries.codex, args, { cwd: session.workspacePath, env: { ...codexEnv(this.config, connection.configDir), ...plan.env } });
-    this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }));
+    const handle = lease.port.spawn(this.config.binaries.codex, args, { cwd: session.workspacePath, env: { ...codexEnv(this.config, connection.configDir), ...this.envIn(lease, plan.env) } });
+    this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }), lease);
   }
 
   // Whether Codex's own sandbox can start on this host (`codex sandbox -- true`), asked once: in a container without user
@@ -391,7 +452,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   // A started CLI made the session's run: its stream read into the chat's events, its end recorded once, the input given.
-  private attach(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, handle: ProcessHandle, mapper: ChatMapper): void {
+  private attach(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, handle: ProcessHandle, mapper: ChatMapper, lease: SessionLease): void {
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,
@@ -406,6 +467,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
       logBytes: 0,
       done: new Promise<void>((r) => (resolveDone = r)),
       plan,
+      lease,
       queue: Promise.resolve(),
       ending: null,
     };
@@ -434,7 +496,9 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   // Published in its turn: after every event of this run the mapper made before it.
-  private publish(run: ActiveRun, e: MappedEvent): void {
+  private publish(run: ActiveRun, mapped: MappedEvent): void {
+    // The run's start says where it ran: a sandbox of its own.
+    const e: MappedEvent = run.lease.sandboxed && mapped.type === "session.started" ? { type: "session.started", data: { ...mapped.data, sandboxed: true } } : mapped;
     run.queue = run.queue.then(() => this.publishNow(run, e)).catch((err: unknown) => this.logger.error(`an event of run ${run.runId} was not published: ${err instanceof Error ? err.message : String(err)}`));
   }
 
@@ -451,7 +515,10 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   private finalize(run: ActiveRun, exit: ExitInfo): Promise<void> {
-    run.ending ??= this.recordEnd(run, exit).catch((err: unknown) => this.logger.error(`the end of run ${run.runId} could not be recorded: ${err instanceof Error ? err.message : String(err)}`));
+    // Its sandbox is given back once its end is recorded -- however that went.
+    run.ending ??= this.recordEnd(run, exit)
+      .catch((err: unknown) => this.logger.error(`the end of run ${run.runId} could not be recorded: ${err instanceof Error ? err.message : String(err)}`))
+      .finally(() => run.lease.release());
     return run.ending;
   }
 

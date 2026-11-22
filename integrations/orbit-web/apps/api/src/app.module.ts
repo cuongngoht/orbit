@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 import type { AppConfig } from "./config/config.js";
 import { OfficeModule } from "./contexts/office.module.js";
 import { CoreModule } from "./core/core.module.js";
+import { SessionSandboxModule } from "./modules/session-sandbox/session-sandbox.module.js";
 import { AccessModule } from "./modules/access/access.module.js";
 import { AuthModule } from "./modules/auth/auth.module.js";
 import { AzureAuthModule } from "./modules/azure-auth/azure-auth.module.js";
@@ -30,6 +31,7 @@ export class AppModule {
       module: AppModule,
       imports: [
         CoreModule.forRoot(config),
+        SessionSandboxModule,
         // Right after the core: its gate is the first every route passes.
         AuthModule,
         HealthModule,

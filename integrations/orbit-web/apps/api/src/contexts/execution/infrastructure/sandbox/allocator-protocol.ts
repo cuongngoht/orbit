@@ -10,7 +10,7 @@ import { readFileSync, statSync } from "node:fs";
 import { posix } from "node:path";
 import { checkResourceProfile, type UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, AttemptSpec, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
-import { checkDispatchKey, checkEmployeeIds, checkId, connectionSubpath, SandboxInputError } from "./ids.js";
+import { checkDispatchKey, checkEmployeeIds, checkId, connectionSubpath, SandboxInputError, type SessionPlaces } from "./ids.js";
 
 // ---- the operations ------------------------------------------------------------------------------------------------
 
@@ -70,6 +70,19 @@ export interface PublishResult {
   reason: string | null;
 }
 
+// A chat's or a research session's run in a sandbox of its own: ids and switches, nothing else (the allocator works out
+// the image, the mounts and the limits).
+export type SessionSpec = SessionPlaces;
+
+export interface SessionRecord {
+  dispatchKey: string;
+  // The container's name on its own network (Orbit Web reaches its runner there), and its address on that network.
+  name: string;
+  ip: string | null;
+  port: number;
+  createdAt: string;
+}
+
 export interface AllocatorApi {
   probe(force: boolean): Promise<HostCapabilities>;
   provisionEmployee(ids: SandboxIds, quotas: { deskMiB: number; cacheMiB: number }): Promise<ProvisionResult>;
@@ -89,9 +102,13 @@ export interface AllocatorApi {
   usage(dispatchKey: string): Promise<{ modelPlane: UsageView | null; toolPlane: UsageView | null }>;
   stop(dispatchKey: string, graceMs: number): Promise<void>;
   remove(dispatchKey: string): Promise<{ gone: boolean; detail: string }>;
+  startSession(spec: SessionSpec): Promise<SessionRecord>;
+  removeSession(dispatchKey: string): Promise<{ gone: boolean; detail: string }>;
+  // Every run's sandbox left over (Orbit Web restarted while one ran): removed, with its network.
+  sweepSessions(): Promise<{ removed: number }>;
 }
 
-export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove"] as const;
+export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove", "startSession", "removeSession", "sweepSessions"] as const;
 export type Operation = (typeof OPERATIONS)[number];
 
 // An error the allocator says on purpose: a code a caller can act on, and words.
@@ -215,6 +232,30 @@ export function checkAttestSpec(v: unknown): AttestSpec {
     egress: { proxyHost: checkHost(eg.proxyHost, "egress.proxyHost"), proxyPort: intIn(eg.proxyPort, 1, 65535, "egress.proxyPort"), runToken: checkToken(eg.runToken, "egress.runToken") },
     bridge: { url: checkUrl(br.url, "bridge.url"), runToken: checkToken(br.runToken, "bridge.runToken") },
     teamRoom,
+  };
+}
+
+const SESSION_FIELDS = ["accountId", "sessionId", "connectionId", "runId", "dispatchKey", "kind", "workspace", "switches"];
+
+// A run's sandbox, whole: a field nobody declared (an image, a mount, an environment) is refused, never ignored.
+export function checkSessionSpec(v: unknown): SessionSpec {
+  if (!isRecord(v)) return bad("spec must be an object");
+  for (const k of Object.keys(v)) if (!SESSION_FIELDS.includes(k)) bad(`${k} is not a field of a run's sandbox`);
+  const kind = v.kind === "chat" || v.kind === "research" ? v.kind : bad("kind must be chat or research");
+  const workspace = v.workspace === "rw" || v.workspace === "ro" || v.workspace === "none" ? v.workspace : bad("workspace must be rw, ro or none");
+  const sw = isRecord(v.switches) && typeof v.switches.github === "boolean" && typeof v.switches.azure === "boolean" ? v.switches : bad("switches must be {github, azure}, each true or false");
+  if (kind === "chat" && workspace === "none") bad("a chat's run mounts its workspace (rw or ro)");
+  if (kind === "research" && workspace !== "none") bad("a research run has no workspace");
+  if (kind === "research" && (sw.github === true || sw.azure === true)) bad("a research run is given no sign-in of GitHub or Azure");
+  return {
+    accountId: checkId(v.accountId, "accountId"),
+    sessionId: checkId(v.sessionId, "sessionId"),
+    connectionId: checkId(v.connectionId, "connectionId"),
+    runId: checkId(v.runId, "runId"),
+    dispatchKey: checkDispatchKey(v.dispatchKey),
+    kind,
+    workspace,
+    switches: { github: sw.github as boolean, azure: sw.azure as boolean },
   };
 }
 

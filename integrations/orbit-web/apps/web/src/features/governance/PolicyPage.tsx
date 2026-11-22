@@ -31,6 +31,7 @@ import {
   tokens,
 } from "@fluentui/react-components";
 import { LockClosed16Regular } from "@fluentui/react-icons";
+import { DecisionsIcon, PolicyIcon } from "../../components/SectionIcons";
 import { ACTION_KINDS, ENVIRONMENTS, PRINCIPAL_TYPES, checkConstitution, type AccountPolicy, type Impact, type ImpactCell, type RiskLevel } from "@orbit-web/governance-core";
 import type { PolicyOverview, RevisionSource, RevisionSummary, RevisionView, SimulateResult } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -319,7 +320,7 @@ function Simulation({ revisionId }: { revisionId: string | null }) {
       .catch((err: unknown) => setError(errorText(err)));
   };
   return (
-    <Card title="Simulate a decision" description="Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.">
+    <Card title="Simulate a decision" icon={<DecisionsIcon size={18} />} tone="teal" description="Asks this revision what it would decide. Nothing is recorded and nothing is allowed by asking.">
       <div className={styles.simGrid}>
         <Field label="Who" className={styles.simField}>
           {(fp) => <CleanSelect className={styles.simControl} fieldProps={fp} value={principalType} onChange={setPrincipalType} options={PRINCIPAL_TYPES.map((p) => ({ value: p, label: p === "human" ? "you" : p }))} />}
@@ -391,7 +392,8 @@ function RevisionDetail({ revision, revisions, onChanged }: { revision: Revision
       description={
         <>
           Digest <span className={s.codeChip}>{short(revision.digest, 16)}</span> · {SOURCES[revision.source]}
-          {revision.basedOn ? ` (from ${short(revision.basedOn, 13)})` : ""} · by {authors.join(", ")}
+          {revision.basedOn ? ` (from ${short(revision.basedOn, 13)})` : ""}
+          {(!revision.publishedAt || byWhom(revision.publishedBy) !== authors.join(", ")) && ` · by ${authors.join(", ")}`}
           {revision.publishedAt ? ` · published ${when(revision.publishedAt)} by ${byWhom(revision.publishedBy)}` : ""}
         </>
       }
@@ -558,9 +560,11 @@ export function PolicyPage({ item, go }: { item: string | null; go: (page: Gover
     <div className={s.page}>
       <Card
         title="Revisions"
+        icon={<PolicyIcon size={18} />}
+        tone="brand"
         description="Your account's policy: a draft is validated, reviewed and confirmed by you before it is in effect."
         actions={
-          <Button appearance="primary" shape="circular" onClick={() => draft({})}>
+          <Button appearance="primary" shape="circular" style={{ flexShrink: 0 }} onClick={() => draft({})}>
             {o.effective ? "New draft from the policy in effect" : "Start from the default policy"}
           </Button>
         }

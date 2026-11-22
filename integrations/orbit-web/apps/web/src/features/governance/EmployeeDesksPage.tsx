@@ -2,17 +2,36 @@
 // still holds. Its desk and cache stay committed of the account's storage (an archive keeps them, read only) until the
 // owner reviews them here and deletes the desk: then the desk, the cache and every workspace go for good, and the storage
 // is released once the sandbox is read back gone. A desk being deleted is shown until it is.
-import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
+import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Delete16Regular } from "@fluentui/react-icons";
+import { DesksIcon } from "../../components/SectionIcons";
 import type { EmployeeDesk, EmployeeDeskList } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { sizeText } from "../resources/format";
-import { Card, ErrorBar, Word, useParts, when } from "./parts";
+import { Card, EmptyState, ErrorBar, Word, useParts, when } from "./parts";
 
 const LEFT_TEXT: Record<string, string> = { archived: "Left the office", deleted: "Desk being deleted" };
+
+const useStyles = makeStyles({
+  barTrack: {
+    width: "100%",
+    height: "6px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    overflow: "hidden",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
+  barFill: {
+    height: "100%",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorBrandBackground,
+    transitionProperty: "width",
+    transitionDuration: "200ms",
+  },
+});
 
 function Desk({ d, onChanged }: { d: EmployeeDesk; onChanged: () => void }) {
   const s = useParts();
@@ -35,7 +54,7 @@ function Desk({ d, onChanged }: { d: EmployeeDesk; onChanged: () => void }) {
     }
   };
   return (
-    <Card title={<>{d.name} <Word value={LEFT_TEXT[d.employment] ?? d.employment} /></>}>
+    <Card title={<>{d.name} <Word value={LEFT_TEXT[d.employment] ?? d.employment} /></>} icon={<DesksIcon size={18} />} tone="neutral">
       <Text size={200} className={s.muted}>
         {deleting ? "Its owner deleted the desk" : "Left"} {when(d.leftAt)}
         {d.reason ? ` · ${d.reason}` : ""}
@@ -79,20 +98,32 @@ function Desk({ d, onChanged }: { d: EmployeeDesk; onChanged: () => void }) {
 
 export function EmployeeDesksPage() {
   const s = useParts();
+  const st = useStyles();
   const list = useResource<EmployeeDeskList>(() => get("/api/office/desks"), []);
   useAppEvent("office.changed", (e) => e.data.areas.includes("roster") && void list.reload());
   if (list.data === null) return list.error ? <MessageBar intent="error"><MessageBarBody>{list.error}</MessageBarBody></MessageBar> : <Spinner label="Reading the desks…" />;
   const { desks, storage } = list.data;
+  const pct = storage.budgetMiB > 0 ? Math.min(100, Math.round((storage.committedMiB / storage.budgetMiB) * 100)) : 0;
   return (
     <div className={s.page}>
-      <Text>
-        An employee who leaves the office -- archived, or rejected at its trial -- keeps its desk, read only, and its storage stays committed: {sizeText(storage.committedMiB)} of the account's {sizeText(storage.budgetMiB)} is committed now. Review each one here and delete the desks you no longer need.
-      </Text>
-      {desks.length === 0 && (
-        <div className={s.empty}>
-          <Text>No desk is held: nobody has left the office with one.</Text>
+      <Card
+        title="Employee desks"
+        icon={<DesksIcon size={18} />}
+        tone="neutral"
+        description={`An employee who leaves the office — archived, or rejected at its trial — keeps its desk, read only, and its storage stays committed: ${sizeText(storage.committedMiB)} of the account's ${sizeText(storage.budgetMiB)} is committed now. Review each one here and delete the desks you no longer need.`}
+      >
+        <div className={st.barTrack} role="progressbar" aria-label="Account storage committed" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className={st.barFill} style={{ width: `${pct}%` }} />
         </div>
-      )}
+        {desks.length === 0 && (
+          <EmptyState
+            icon={<DesksIcon size={22} />}
+            tone="neutral"
+            title="No desk is held: nobody has left the office with one."
+            body="Archived or rejected employees whose sandboxes still hold storage will appear here for review."
+          />
+        )}
+      </Card>
       {desks.map((d) => (
         <Desk key={`${d.employeeId}:${d.version}`} d={d} onChanged={() => void list.reload()} />
       ))}

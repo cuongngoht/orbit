@@ -1,12 +1,14 @@
 // THE WORK of the office: its missions, open or closed, each with who holds it and where it stands -- a queued one is
 // marked as queued, behind its employee's current work. "Load more" reads the next page.
-import { Button, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text } from "@fluentui/react-components";
+import { Button, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, mergeClasses } from "@fluentui/react-components";
+import { ChevronRight16Regular, Warning16Regular } from "@fluentui/react-icons";
+import { WorkMissionIcon } from "../../components/SectionIcons";
 import { ASSIGNMENT_STATE_TEXT, type MissionList, type MissionSummary } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
-import { AsOf, StateBadge, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmployeeAvatar, EmptyState, StateBadge, useOfficeStyles, when } from "./parts";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -14,22 +16,33 @@ function Row({ m, go }: { m: MissionSummary; go: Go }) {
   const o = useOfficeStyles();
   const a = m.assignment;
   return (
-    <li className={o.item}>
-      <div className={o.row}>
-        <StateBadge text={a.state === "QUEUED" ? "Queued" : ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
-        <Link className="orbit-target" as="button" onClick={() => go("mission", m.id)}>
-          {m.title}
-        </Link>
+    <li className={mergeClasses(o.card, o.cardInteractive)}>
+      <div className={o.between}>
+        <div className={o.row}>
+          <StateBadge text={a.state === "QUEUED" ? "Queued" : ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
+          <Link className="orbit-target" as="button" style={{ fontWeight: 600 }} onClick={() => go("mission", m.id)}>
+            {m.title}
+          </Link>
+        </div>
+        <div className={o.row}>
+          <Text size={200} className={o.muted}>
+            Updated {when(m.updatedAt)}
+          </Text>
+          <ChevronRight16Regular aria-hidden className={o.muted} />
+        </div>
       </div>
-      <Text size={200} className={o.muted}>
-        {a.state === "QUEUED" ? `Queued for ${a.employeeName}` : `Held by ${a.employeeName}`}
-        {m.deadline ? ` · due ${when(m.deadline)}` : ""}
-        {m.nextAction ? ` · next: ${m.nextAction}` : ""} · updated {when(m.updatedAt)}
-      </Text>
-      {a.reason && (
-        <Text size={200} className={o.warn}>
-          {a.reason}
+      <div className={o.row}>
+        <EmployeeAvatar name={a.employeeName} size="sm" />
+        <Text size={200} className={o.muted}>
+          {a.state === "QUEUED" ? `Queued for ${a.employeeName}` : `Held by ${a.employeeName}`}
+          {m.deadline ? ` · due ${when(m.deadline)}` : ""}
+          {m.nextAction ? ` · next: ${m.nextAction}` : ""}
         </Text>
+      </div>
+      {a.reason && (
+        <Callout tone="warn" icon={<Warning16Regular />}>
+          {a.reason}
+        </Callout>
       )}
     </li>
   );
@@ -58,7 +71,18 @@ function Missions({ first, state, go }: { first: MissionList; state: "open" | "c
   return (
     <>
       {missions.length === 0 ? (
-        <Text className={o.muted}>{state === "open" ? "No open work. Assign some from the overview." : "Nothing has closed yet."}</Text>
+        <EmptyState
+          icon={<WorkMissionIcon size={22} />}
+          tone="teal"
+          title={state === "open" ? "No open work. Assign some from the overview." : "Nothing has closed yet."}
+          action={
+            state === "open" ? (
+              <Button appearance="primary" onClick={() => go("overview")}>
+                Go to overview
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <ul className={o.list} aria-label={state === "open" ? "Open work" : "Closed work"}>
           {missions.map((m) => (
@@ -89,10 +113,12 @@ export function WorkPage({ go }: { go: Go }) {
   return (
     <div className={o.page}>
       <div className={o.between}>
-        <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "closed")} aria-label="Which work">
-          <Tab value="open">Open</Tab>
-          <Tab value="closed">Closed</Tab>
-        </TabList>
+        <div className={o.tabStrip}>
+          <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "closed")} aria-label="Which work">
+            <Tab value="open">Open</Tab>
+            <Tab value="closed">Closed</Tab>
+          </TabList>
+        </div>
         <AsOf at={list.data?.asOf ?? null} />
       </div>
       {list.data === null ? (

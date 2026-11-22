@@ -3,13 +3,14 @@
 import { Badge, MessageBar, MessageBarBody, Text, makeStyles, mergeClasses, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
 import { ChevronDown16Regular, ChevronRight16Regular } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
+import { IconBadge, type IconTone } from "../../components/SectionIcons";
 
 export const useParts = makeStyles({
   page: {
     display: "flex",
     flexDirection: "column",
-    gap: "18px",
-    maxWidth: "1120px",
+    gap: "20px",
+    maxWidth: "1160px",
     width: "100%",
     marginTop: 0,
     marginRight: "auto",
@@ -41,29 +42,18 @@ export const useParts = makeStyles({
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "16px",
-    "@media (max-width: 899px)": { gridTemplateColumns: "1fr" },
+    "@media (max-width: 767px)": { gridTemplateColumns: "1fr" },
   },
-  row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
-  between: { display: "flex", gap: "10px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" },
-  cardTitleWrap: { display: "inline-flex", alignItems: "center", gap: "10px", minWidth: 0, flexWrap: "wrap" },
-  cardIcon: {
-    width: "28px",
-    height: "28px",
-    borderRadius: "8px",
-    backgroundColor: tokens.colorNeutralBackground2,
-    color: tokens.colorNeutralForeground2,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  cardTitleStack: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 },
+  row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0 },
+  between: { display: "flex", gap: "10px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", minWidth: 0 },
+  cardTitleWrap: { display: "inline-flex", alignItems: "flex-start", gap: "10px", minWidth: 0, flexWrap: "nowrap", flexGrow: 1, flexShrink: 1, flexBasis: "240px" },
+  cardTitleStack: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flexGrow: 1 },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "10px",
     "@media (min-width: 640px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
-    "@media (min-width: 1440px)": { gridTemplateColumns: "repeat(6, minmax(0, 1fr))" },
+    "@media (min-width: 1100px)": { gridTemplateColumns: "repeat(6, minmax(0, 1fr))" },
   },
   stat: {
     display: "flex",
@@ -76,11 +66,11 @@ export const useParts = makeStyles({
     paddingLeft: "14px",
     borderRadius: "12px",
     backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.border("1px", "solid", "transparent"),
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     textAlign: "left",
     width: "100%",
     fontVariantNumeric: "tabular-nums",
-    transitionProperty: "background-color, border-color, transform",
+    transitionProperty: "background-color, border-color, box-shadow, transform",
     transitionDuration: "140ms",
     color: tokens.colorNeutralForeground1,
     fontFamily: tokens.fontFamilyBase,
@@ -88,8 +78,13 @@ export const useParts = makeStyles({
   statButton: {
     cursor: "pointer",
     ":hover": {
-      backgroundColor: tokens.colorSubtleBackgroundHover,
-      ...shorthands.borderColor(tokens.colorNeutralStroke1),
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      ...shorthands.borderColor(tokens.colorBrandStroke1),
+      boxShadow: tokens.shadow4,
+    },
+    ":focus-visible": {
+      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
+      outlineOffset: "2px",
     },
     ":active": { transform: "scale(0.99)" },
   },
@@ -118,6 +113,7 @@ export const useParts = makeStyles({
   inset: {
     backgroundColor: tokens.colorNeutralBackground2,
     borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     paddingTop: "12px",
     paddingRight: "14px",
     paddingBottom: "12px",
@@ -127,20 +123,59 @@ export const useParts = makeStyles({
     gap: "8px",
     minWidth: 0,
   },
-  pillBar: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" },
-  filterPill: { borderRadius: "9999px", minHeight: "32px", "@media (pointer: coarse)": { minHeight: "38px" } },
+  toolbarBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    flexWrap: "wrap",
+    paddingTop: "10px",
+    paddingRight: "14px",
+    paddingBottom: "10px",
+    paddingLeft: "14px",
+    borderRadius: "14px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    minWidth: 0,
+  },
+  pillBar: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    flexWrap: "wrap",
+    paddingTop: "3px",
+    paddingRight: "3px",
+    paddingBottom: "3px",
+    paddingLeft: "3px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
+  filterPill: {
+    borderRadius: "9999px",
+    minHeight: "30px",
+    "&[data-fui-focus-visible]::after": { borderRadius: "9999px" },
+    "@media (pointer: coarse)": { minHeight: "38px" },
+  },
+  divider: { height: "1px", width: "100%", backgroundColor: tokens.colorNeutralStroke2, flexShrink: 0 },
   empty: {
-    paddingTop: "24px",
-    paddingBottom: "24px",
-    paddingLeft: "16px",
-    paddingRight: "16px",
-    borderRadius: "12px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    paddingTop: "32px",
+    paddingBottom: "32px",
+    paddingLeft: "20px",
+    paddingRight: "20px",
+    borderRadius: "14px",
+    ...shorthands.border("1px", "dashed", tokens.colorNeutralStroke1),
     backgroundColor: tokens.colorNeutralBackground2,
     textAlign: "center",
     color: tokens.colorNeutralForeground3,
   },
   muted: { color: tokens.colorNeutralForeground3 },
-  mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, wordBreak: "break-all" },
+  mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflowWrap: "anywhere" },
   codeChip: {
     display: "inline-block",
     maxWidth: "100%",
@@ -241,11 +276,16 @@ export const useParts = makeStyles({
     ...shorthands.border("0"),
     zIndex: 1,
   },
+  badgeInner: { display: "inline-flex", alignItems: "center", gap: "5px" },
+  badgeDot: { width: "6px", height: "6px", borderRadius: "9999px", backgroundColor: "currentColor", flexShrink: 0 },
 });
+
+export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
 export function Card({
   title,
   icon,
+  tone = "brand",
   description,
   actions,
   children,
@@ -254,6 +294,7 @@ export function Card({
 }: {
   title?: ReactNode;
   icon?: ReactNode;
+  tone?: IconTone;
   description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
@@ -267,11 +308,7 @@ export function Card({
       {(title !== undefined || actions !== undefined || description !== undefined) && (
         <div className={s.between}>
           <div className={s.cardTitleWrap}>
-            {icon !== undefined && (
-              <span className={s.cardIcon} aria-hidden>
-                {icon}
-              </span>
-            )}
+            {icon !== undefined && <IconBadge icon={icon} tone={tone} size="md" />}
             <div className={s.cardTitleStack}>
               {title !== undefined && (
                 <Text weight="semibold" size={400}>
@@ -293,14 +330,36 @@ export function Card({
   );
 }
 
+export function EmptyState({ icon, tone = "brand", title, body, action }: { icon?: ReactNode; tone?: IconTone; title: string; body?: string; action?: ReactNode }) {
+  const s = useParts();
+  return (
+    <div className={s.empty}>
+      {icon && <IconBadge icon={icon} tone={tone} size="lg" />}
+      <Text weight="semibold" size={300} style={{ color: tokens.colorNeutralForeground1, textAlign: "center" }}>
+        {title}
+      </Text>
+      {body && (
+        <Text size={200} className={s.muted} style={{ maxWidth: "440px", textAlign: "center" }}>
+          {body}
+        </Text>
+      )}
+      {action}
+    </div>
+  );
+}
+
 export function Stat({
   label,
   value,
+  icon,
+  iconTone = "neutral",
   onClick,
   tone = "neutral",
 }: {
   label: string;
   value: ReactNode;
+  icon?: ReactNode;
+  iconTone?: IconTone;
   onClick?: () => void;
   tone?: "neutral" | "warning" | "danger";
 }) {
@@ -309,8 +368,13 @@ export function Stat({
   const content = (
     <>
       <span className={s.statHead}>
-        <Text size={200}>{label}</Text>
-        {onClick && <ChevronRight16Regular aria-hidden />}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "7px", minWidth: 0 }}>
+          {icon && <IconBadge icon={icon} tone={iconTone} size="sm" />}
+          <Text size={200} style={{ minWidth: 0 }}>
+            {label}
+          </Text>
+        </span>
+        {onClick && <ChevronRight16Regular aria-hidden style={{ flexShrink: 0 }} />}
       </span>
       <Text className={s.statValue}>{value}</Text>
     </>
@@ -420,9 +484,13 @@ const LABELS: Record<string, string> = {
 
 // A word of governance, said as a badge whose colour says how much it allows or how bad it is.
 export function Word({ value, label }: { value: string; label?: string }) {
+  const s = useParts();
   return (
     <Badge appearance="tint" color={TONES[value] ?? "informative"} style={{ borderRadius: "9999px", flexShrink: 0, whiteSpace: "nowrap" }}>
-      {label ?? LABELS[value] ?? value.replace(/_/g, " ").toLowerCase()}
+      <span className={s.badgeInner}>
+        <span className={s.badgeDot} aria-hidden />
+        <span>{label ?? LABELS[value] ?? value.replace(/_/g, " ").toLowerCase()}</span>
+      </span>
     </Badge>
   );
 }

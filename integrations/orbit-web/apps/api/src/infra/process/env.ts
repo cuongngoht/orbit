@@ -187,11 +187,11 @@ function githubForClaude(config: AppConfig): Record<string, string> {
 // its login is, its sessions and the plugins installed for it. `azure` / `github`: a person let Claude Code use that
 // CLI's sign-in, so its `az` finds the profile, or its `gh` and `git push` find GitHub's. Otherwise it is not told where
 // the sign-in is (and its tools are refused the directory).
-export function claudeEnv(config: AppConfig, configDir: string, o: { azure?: boolean; github?: boolean } = {}): Record<string, string> {
+export function claudeEnv(config: AppConfig, configDir: string, o: { azure?: boolean; github?: boolean; orbitStore?: string } = {}): Record<string, string> {
   return {
     ...baseEnv(config),
     CLAUDE_CONFIG_DIR: configDir,
-    ORBIT_STORE_DIR: config.data.orbit,
+    ORBIT_STORE_DIR: o.orbitStore ?? config.data.orbit,
     DISABLE_AUTOUPDATER: "1",
     BROWSER: "true",
     ...telemetryEnv(config),
@@ -200,11 +200,15 @@ export function claudeEnv(config: AppConfig, configDir: string, o: { azure?: boo
   };
 }
 
-// Orbit's own read commands, run as the session's Claude Code would see them.
-export function orbitEnv(config: AppConfig, orbitSession: string | null): Record<string, string> {
+// Each account's own Orbit machine store: what its chats' Orbit learns and records, and all a run's sandbox mounts of
+// Orbit's data (sandbox/ids.ts `sessionMounts`) -- never another account's.
+export const orbitStoreOf = (config: AppConfig, accountId: string): string => join(config.data.orbit, "accounts", accountId);
+
+// Orbit's own read commands, run as the session's Claude Code would see them (its account's store).
+export function orbitEnv(config: AppConfig, accountId: string, orbitSession: string | null): Record<string, string> {
   return {
     ...baseEnv(config),
-    ORBIT_STORE_DIR: config.data.orbit,
+    ORBIT_STORE_DIR: orbitStoreOf(config, accountId),
     ...(orbitSession ? { ORBIT_SESSION: orbitSession } : {}),
   };
 }

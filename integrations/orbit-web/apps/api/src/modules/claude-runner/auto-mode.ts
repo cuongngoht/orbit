@@ -21,6 +21,14 @@ export const ENVIRONMENT_HERE: Readonly<Record<string, string>> = {
     "Claude Code runs inside Orbit Web's Docker container, as a non-root user with no Docker socket, in the workspace of one chat. The same container keeps the sign-ins of the Claude, GitHub and Azure CLIs and Orbit Web's own data under /data: they are never read, printed or sent anywhere.",
 };
 
+// A run in a SANDBOX OF ITS OWN: a container made for this run alone, holding this chat's places and nothing else of
+// Orbit Web.
+export const ENVIRONMENT_SANDBOXED: Readonly<Record<string, string>> = {
+  "Network posture": ENVIRONMENT_HERE["Network posture"] as string,
+  "Host containment":
+    "Claude Code runs in a container made for this one run, as a non-root user with no Docker socket, in the workspace of one chat. The container holds that chat's workspace, its own connection's sign-in and its account's Orbit store -- nothing of any other chat or account, no database and none of Orbit Web's own data -- and is removed when the run ends. Its sign-in and the workspace's secrets are still real: they are never read, printed or sent anywhere.",
+};
+
 // A GOVERNED run's place: its way out and its host are the organization's Constitution's, held by Orbit Web.
 export const ENVIRONMENT_GOVERNED: Readonly<Record<string, string>> = {
   "Network posture":
@@ -74,10 +82,12 @@ export class AutoModeService implements OnModuleInit {
     void this.read();
   }
 
-  // The environment for an Autonomous run, or null (the CLI's own then stand). A governed run is told its own place.
-  current(governed = false): string[] | null {
+  // The environment for an Autonomous run, or null (the CLI's own then stand). A governed run is told its own place, and
+  // so is a run in a sandbox of its own.
+  current(governed = false, sandboxed = false): string[] | null {
     if (this.environment === null && Date.now() - this.failedAt > RETRY_MS) void this.read();
     if (governed && this.defaults !== null) return environmentFor(this.defaults, ENVIRONMENT_GOVERNED);
+    if (sandboxed && this.defaults !== null) return environmentFor(this.defaults, ENVIRONMENT_SANDBOXED);
     return this.environment;
   }
 

@@ -130,6 +130,9 @@ export interface AppConfig {
   // The access cookie is marked Secure: set when Orbit Web is reached through an HTTPS proxy.
   secureCookie: boolean;
   maxBudgetUsd: number | null;
+  // Settings → System asks each publisher for its newest release a minute after start and daily (ORBIT_WEB_UPDATE_CHECK
+  // not "off"); a person's check works either way.
+  updateCheck: boolean;
   // Whether a subscription connection may be signed in from its card (ADR 0068): Orbit Web runs the CLI's own sign-in and
   // relays its URL, Codex's one-time code and the code a person pastes for Claude Code. ORBIT_WEB_SIGN_IN_ON_PAGE=0: only
   // the terminal's connect.js signs one in.
@@ -376,6 +379,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     accessToken,
     secureCookie: env.ORBIT_WEB_COOKIE_SECURE === "1",
     maxBudgetUsd: budget(env.ORBIT_WEB_MAX_BUDGET_USD),
+    updateCheck: env.ORBIT_WEB_UPDATE_CHECK?.trim().toLowerCase() !== "off",
     signInOnPage: env.ORBIT_WEB_SIGN_IN_ON_PAGE !== "0",
     binaries: {
       claude: env.ORBIT_WEB_CLAUDE_BIN || "claude",

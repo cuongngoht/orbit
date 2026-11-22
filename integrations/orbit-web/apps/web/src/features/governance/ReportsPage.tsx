@@ -1,7 +1,8 @@
 // DAILY REPORTS: one UTC day of the account's audit record, counted and cited, frozen when generated -- by you here, or
 // by Orbit Web shortly after a day ends when your policy asks for it. No model writes a word of it, and it holds the
 // account's own records alone.
-import { Button, Field, Input, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
+import { Button, Field, Input, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "@fluentui/react-components";
+import { ReportsIcon } from "../../components/SectionIcons";
 import type { ReportList, ReportView } from "@orbit-web/contracts";
 import { useState } from "react";
 import { Markdown } from "../../components/Markdown";
@@ -9,7 +10,7 @@ import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, ErrorBar, Word, byWhom, useParts, when } from "./parts";
+import { Card, EmptyState, ErrorBar, Word, byWhom, useParts, when } from "./parts";
 
 export function ReportsPage({ item, go }: { item: string | null; go: (page: GovernancePage, item?: string | null) => void }) {
   const s = useParts();
@@ -26,24 +27,24 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
   };
   return (
     <div className={s.page}>
-      <Card title="Generate a report">
-        <div className={s.row}>
+      <Card title="Generate a report" icon={<ReportsIcon size={18} />} tone="teal" description="Produces a frozen, cited summary of one UTC day from the audit record alone.">
+        <div className={s.row} style={{ alignItems: "flex-end" }}>
           <Field label="UTC day">
             <Input type="date" value={day} onChange={(_, d) => setDay(d.value)} />
           </Field>
-          <Button appearance="primary" style={{ alignSelf: "flex-end" }} onClick={generate}>
+          <Button appearance="primary" onClick={generate}>
             Generate
           </Button>
         </div>
         <ErrorBar text={error} />
       </Card>
       {item && report.data && (
-        <Card title={`Report of ${report.data.day}`} actions={<Button as="a" href={`/api/governance/reports/${report.data.id}/markdown`}>Download</Button>}>
+        <Card title={`Report of ${report.data.day}`} icon={<ReportsIcon size={18} />} tone="teal" actions={<Button as="a" href={`/api/governance/reports/${report.data.id}/markdown`}>Download</Button>}>
           <Markdown text={report.data.markdown} />
         </Card>
       )}
       {item && <ErrorBar text={report.error} />}
-      <Card title="Reports">
+      <Card title="Reports" icon={<ReportsIcon size={18} />} tone="teal">
         {list.data === null ? (
           list.error ? (
             <ErrorBar text={list.error} />
@@ -51,9 +52,12 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
             <Spinner />
           )
         ) : list.data.reports.length === 0 ? (
-          <div className={s.empty}>
-            <Text>No report yet.</Text>
-          </div>
+          <EmptyState
+            icon={<ReportsIcon size={22} />}
+            tone="teal"
+            title="No report yet."
+            body="Select a UTC day above and click Generate to create your first daily report."
+          />
         ) : (
           <div className={s.tableWrap}>
             <Table size="small" aria-label="Reports">

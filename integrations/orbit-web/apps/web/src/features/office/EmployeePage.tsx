@@ -3,6 +3,7 @@
 // and what its containers use, the resource revisions, and an edit that applies to future attempts), and its employment
 // -- each move with its reason. Every change names the version read; a stale one offers the latest.
 import { Badge, Button, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Select, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, Textarea, useRestoreFocusTarget } from "@fluentui/react-components";
+import { ErrorCircle16Regular, TaskListLtr20Regular, Warning16Regular } from "@fluentui/react-icons";
 import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
@@ -13,7 +14,8 @@ import { office, useOfficeRead } from "./api";
 import { AssignDialog } from "./AssignDialog";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { usableForEmployees } from "./HireWizard";
-import { AsOf, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
+import { EmployeeDeskScene, deskMoodText } from "./VirtualDesk";
 import { ResourceFields, resourceProblems, storageProblem } from "./ResourceFields";
 import { RunDetails } from "./RunDetails";
 
@@ -170,12 +172,16 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
   return (
     <>
       <section className={o.card} aria-label="How it runs">
-        <Text weight="semibold">How it runs</Text>
-        {!changing && (
-          <Button size="small" onClick={() => setChanging(true)}>
-            Change how it runs
-          </Button>
-        )}
+        <div className={o.between}>
+          <Text weight="semibold" size={400}>
+            How it runs
+          </Text>
+          {!changing && (
+            <Button size="small" onClick={() => setChanging(true)}>
+              Change how it runs
+            </Button>
+          )}
+        </div>
         {changing && (
           <RunsOnForm
             e={e}
@@ -186,6 +192,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
             onCancel={() => setChanging(false)}
           />
         )}
+        <div className={o.divider} />
         <dl className={o.dl}>
           <dt className={o.dt}>Runtime</dt>
           <dd className={o.dd}>{RUNTIME_LABELS[x.runtime]}</dd>
@@ -227,7 +234,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
           <Input value={note} onChange={(_, d) => setNote(d.value)} />
         </Field>
         <Text size={200} className={o.muted}>
-          Skills: {p.skills.join(", ") || "none named"} · languages: {p.languages.join(", ") || "none named"}
+          Skills: {p.skills.join(", ") || "none named"} · Languages: {p.languages.join(", ") || "none named"}
         </Text>
         <div>
           <Button type="submit" appearance="primary" disabled={act.busy || !changed || title.trim() === ""}>
@@ -376,9 +383,9 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
           <Table size="small" aria-label="Storage areas">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Area</TableHeaderCell>
-                <TableHeaderCell>Quota</TableHeaderCell>
-                <TableHeaderCell>Used</TableHeaderCell>
+                <TableHeaderCell style={{ width: "165px" }}>Area</TableHeaderCell>
+                <TableHeaderCell style={{ width: "92px" }}>Quota</TableHeaderCell>
+                <TableHeaderCell style={{ width: "104px" }}>Used</TableHeaderCell>
                 <TableHeaderCell>Enforcement</TableHeaderCell>
               </TableRow>
             </TableHeader>
@@ -386,13 +393,13 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
               {sb.areas.map((a) => (
                 <TableRow key={a.area}>
                   <TableCell>{AREA_TEXT[a.area]}</TableCell>
-                  <TableCell>{sizeText(a.quotaMiB)}</TableCell>
-                  <TableCell>{a.usedMiB === null ? "not measured" : sizeText(a.usedMiB)}</TableCell>
+                  <TableCell style={{ whiteSpace: "nowrap" }}>{sizeText(a.quotaMiB)}</TableCell>
+                  <TableCell style={{ whiteSpace: "nowrap" }}>{a.usedMiB === null ? "not measured" : sizeText(a.usedMiB)}</TableCell>
                   <TableCell>
-                    <Badge appearance="tint" color={LEVEL_TONE[a.level]}>
+                    <Badge appearance="tint" color={LEVEL_TONE[a.level]} style={{ height: "auto", minHeight: "20px", paddingTop: "3px", paddingBottom: "3px", whiteSpace: "normal", textAlign: "left", lineHeight: "1.3" }}>
                       {LEVEL_TEXT[a.level]}
                     </Badge>
-                    <Text size={200} className={o.muted} block>
+                    <Text size={200} className={o.muted} block style={{ marginTop: "4px", overflowWrap: "anywhere" }}>
                       {a.evidence}
                     </Text>
                   </TableCell>
@@ -497,7 +504,7 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
       </section>
       <section className={o.card} aria-label="Department">
         <Text weight="semibold">Department</Text>
-        <div className={o.row}>
+        <div className={o.row} style={{ alignItems: "flex-end" }}>
           <Field label="Move to">
             <Select value={departmentId} onChange={(_, d) => setDepartmentId(d.value)}>
               <option value="">Unassigned</option>
@@ -540,35 +547,49 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
   const saved = (d: EmployeeDetail) => employee.set(d);
   return (
     <div className={o.page}>
-      <div className={o.between}>
-        <div className={o.stack}>
-          <div className={o.row}>
-            <Text as="h2" weight="semibold" size={500} className={o.wrap}>
-              {e.name}
-            </Text>
-            <WorkLabelBadge label={e.workLabel} />
-            <Badge appearance="outline">{EMPLOYMENT_TEXT[e.employment]}</Badge>
+      <section className={o.heroCard} aria-label={e.name}>
+        <div className={o.between}>
+          <div className={o.row} style={{ alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+            <div style={{ padding: "6px 10px", borderRadius: "14px", backgroundColor: "var(--orbit-tool-bg)" }}>
+              <EmployeeDeskScene name={e.name} workLabel={e.workLabel} compact />
+            </div>
+            <div className={o.stack}>
+              <div className={o.row}>
+                <Text as="h2" weight="semibold" size={600} className={o.wrap}>
+                  {e.name}
+                </Text>
+                <WorkLabelBadge label={e.workLabel} />
+                <Badge appearance="outline" style={{ borderRadius: "9999px" }}>
+                  {EMPLOYMENT_TEXT[e.employment]}
+                </Badge>
+              </div>
+              <Text size={200} className={o.muted}>
+                {e.title} · {RUNTIME_LABELS[e.execution.runtime]} · {e.execution.model}
+                {e.execution.effort ? ` · ${effortLabel(e.execution.effort)}` : ""}
+              </Text>
+              <div className={o.row}>
+                <AsOf at={employee.loadedAt} />
+                <Text size={200} className={o.muted}>
+                  · {deskMoodText(e.workLabel)}
+                </Text>
+              </div>
+            </div>
           </div>
-          <Text size={200} className={o.muted}>
-            {e.title} · {RUNTIME_LABELS[e.execution.runtime]} · {e.execution.model}
-            {e.execution.effort ? ` · ${effortLabel(e.execution.effort)}` : ""}
-          </Text>
-          {e.notReadyReason && (
-            <Text size={200} className={o.danger}>
-              Not ready: {e.notReadyReason}
-            </Text>
-          )}
-          {e.connectionWarning && (
-            <Text size={200} className={o.warn}>
-              Connection: {e.connectionWarning}
-            </Text>
-          )}
-          <AsOf at={employee.loadedAt} />
+          <Button className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={e.employment === "archived"} onClick={() => setAssigning(true)} {...restore}>
+            Assign work
+          </Button>
         </div>
-        <Button className={o.touch} appearance="primary" disabled={e.employment === "archived"} onClick={() => setAssigning(true)} {...restore}>
-          Assign work
-        </Button>
-      </div>
+        {e.notReadyReason && (
+          <Callout tone="danger" icon={<ErrorCircle16Regular />}>
+            Not ready: {e.notReadyReason}
+          </Callout>
+        )}
+        {e.connectionWarning && (
+          <Callout tone="warn" icon={<Warning16Regular />}>
+            Connection: {e.connectionWarning}
+          </Callout>
+        )}
+      </section>
       <div className={`${o.tabStrip} orbit-hscroll`}>
         <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label="Employee">
           {EMPLOYEE_TABS.map((t) => (

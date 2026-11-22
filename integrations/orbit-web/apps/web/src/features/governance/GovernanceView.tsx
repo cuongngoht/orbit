@@ -4,21 +4,24 @@
 // finished the Claude sign-in owns the account and governs it, and nobody else's. Every page reads the API, which holds
 // every route to this browser's session whatever a page shows.
 import { Avatar, Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
-import {
-  Board16Regular,
-  BookOpen16Regular,
-  Chat16Regular,
-  CheckmarkCircle16Regular,
-  DocumentCheckmark16Regular,
-  DocumentText16Regular,
-  History16Regular,
-  Desktop16Regular,
-  Navigation20Regular,
-  Scales16Regular,
-  ShieldKeyhole20Regular,
-  Warning16Regular,
-} from "@fluentui/react-icons";
+import { Navigation20Regular } from "@fluentui/react-icons";
 import type { ReactElement, ReactNode } from "react";
+import {
+  ApprovalsIcon,
+  AuditChainIcon,
+  DecisionsIcon,
+  DesksIcon,
+  FindingsIcon,
+  GovernanceIcon,
+  IconBadge,
+  OverviewIcon,
+  PolicyIcon,
+  ReportsIcon,
+  ResearchIcon,
+  WorkspacesIcon,
+  toneColor,
+  type IconTone,
+} from "../../components/SectionIcons";
 import { GOVERNANCE_PAGES, type GovernancePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
 import { ApprovalsPage } from "./ApprovalsPage";
@@ -44,17 +47,17 @@ const TITLES: Record<GovernancePage, string> = {
   reports: "Daily reports",
 };
 
-const ICONS: Record<GovernancePage, ReactElement> = {
-  overview: <Board16Regular />,
-  policy: <DocumentCheckmark16Regular />,
-  workspaces: <Chat16Regular />,
-  research: <BookOpen16Regular />,
-  desks: <Desktop16Regular />,
-  approvals: <CheckmarkCircle16Regular />,
-  decisions: <Scales16Regular />,
-  audit: <History16Regular />,
-  findings: <Warning16Regular />,
-  reports: <DocumentText16Regular />,
+const NAV_META: Record<GovernancePage, { tone: IconTone; icon: (active: boolean) => ReactElement }> = {
+  overview: { tone: "brand", icon: (active) => <OverviewIcon size={16} active={active} /> },
+  policy: { tone: "brand", icon: (active) => <PolicyIcon size={16} active={active} /> },
+  workspaces: { tone: "brand", icon: (active) => <WorkspacesIcon size={16} active={active} /> },
+  research: { tone: "teal", icon: (active) => <ResearchIcon size={16} active={active} /> },
+  desks: { tone: "neutral", icon: (active) => <DesksIcon size={16} active={active} /> },
+  approvals: { tone: "warning", icon: (active) => <ApprovalsIcon size={16} active={active} /> },
+  decisions: { tone: "brand", icon: (active) => <DecisionsIcon size={16} active={active} /> },
+  audit: { tone: "teal", icon: (active) => <AuditChainIcon size={16} active={active} /> },
+  findings: { tone: "danger", icon: (active) => <FindingsIcon size={16} active={active} /> },
+  reports: { tone: "teal", icon: (active) => <ReportsIcon size={16} active={active} /> },
 };
 
 // The account governed here, as this browser's session names it.
@@ -81,7 +84,7 @@ const useStyles = makeStyles({
     flexShrink: 0,
   },
   topInner: {
-    maxWidth: "1120px",
+    maxWidth: "1160px",
     width: "100%",
     marginTop: 0,
     marginRight: "auto",
@@ -90,17 +93,6 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     gap: "10px",
-  },
-  emblem: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "10px",
-    backgroundColor: tokens.colorBrandBackground2,
-    color: tokens.colorBrandForeground1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
   title: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "2px" },
   accountPill: {
@@ -114,26 +106,27 @@ const useStyles = makeStyles({
     paddingLeft: "4px",
     borderRadius: "9999px",
     backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     maxWidth: "260px",
     overflow: "hidden",
     flexShrink: 0,
   },
   accountText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   subnavBar: {
-    backgroundColor: tokens.colorNeutralBackground1,
+    backgroundColor: "var(--orbit-header-bg)",
     ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
     paddingTop: "8px",
     paddingBottom: "8px",
     paddingLeft: "20px",
     paddingRight: "20px",
     "@media (max-width: 639px)": {
-      paddingLeft: "12px",
-      paddingRight: "12px",
+      paddingLeft: "10px",
+      paddingRight: "10px",
     },
     flexShrink: 0,
   },
   subnav: {
-    maxWidth: "1120px",
+    maxWidth: "1160px",
     width: "100%",
     marginTop: 0,
     marginRight: "auto",
@@ -141,13 +134,12 @@ const useStyles = makeStyles({
     marginLeft: "auto",
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    flexWrap: "wrap",
-    "@media (max-width: 639px)": {
-      flexWrap: "nowrap",
-      overflowX: "auto",
-      paddingRight: "20px",
-    },
+    gap: "4px",
+    flexWrap: "nowrap",
+    overflowX: "auto",
+    paddingTop: "2px",
+    paddingBottom: "2px",
+    paddingRight: "16px",
   },
   tab: {
     flexShrink: 0,
@@ -159,14 +151,17 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightRegular,
     color: tokens.colorNeutralForeground2,
     ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover, color: tokens.colorNeutralForeground1 },
+    ":focus-visible": { borderRadius: "9999px" },
+    "&[data-fui-focus-visible]::after": { borderRadius: "9999px" },
     "@media (pointer: coarse)": { minHeight: "38px" },
   },
   tabSelected: {
-    backgroundColor: tokens.colorSubtleBackgroundSelected,
+    backgroundColor: "var(--orbit-card-bg)",
     color: tokens.colorNeutralForeground1,
     fontWeight: tokens.fontWeightSemibold,
-    ...shorthands.borderColor(tokens.colorNeutralStroke1),
-    ":hover": { backgroundColor: tokens.colorSubtleBackgroundSelected, color: tokens.colorNeutralForeground1 },
+    boxShadow: "var(--orbit-soft-shadow)",
+    ...shorthands.borderColor(tokens.colorNeutralStroke2),
+    ":hover": { backgroundColor: "var(--orbit-card-bg)", color: tokens.colorNeutralForeground1 },
   },
   content: {
     flexGrow: 1,
@@ -222,11 +217,7 @@ export function GovernanceView({
       <header className={s.top}>
         <div className={s.topInner}>
           {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
-          {!isMobile && (
-            <span className={s.emblem} aria-hidden>
-              <ShieldKeyhole20Regular />
-            </span>
-          )}
+          {!isMobile && <IconBadge icon={<GovernanceIcon size={18} active />} tone="brand" size="md" />}
           <div className={s.title}>
             <Text weight="semibold" size={isMobile ? 400 : 500}>
               Governance · {TITLES[page]}
@@ -248,20 +239,24 @@ export function GovernanceView({
         </div>
       </header>
       <div className={s.subnavBar}>
-        <nav className={mergeClasses(s.subnav, isMobile && "orbit-hscroll orbit-hscroll-fade")} aria-label="Governance">
-          {GOVERNANCE_PAGES.map((p) => (
-            <Button
-              key={p}
-              size="small"
-              appearance="subtle"
-              icon={ICONS[p]}
-              className={mergeClasses(s.tab, p === page && s.tabSelected)}
-              aria-current={p === page ? "page" : undefined}
-              onClick={() => go(p)}
-            >
-              {TITLES[p]}
-            </Button>
-          ))}
+        <nav className={mergeClasses(s.subnav, "orbit-hscroll", isMobile && "orbit-hscroll-fade")} aria-label="Governance">
+          {GOVERNANCE_PAGES.map((p) => {
+            const active = p === page;
+            const meta = NAV_META[p];
+            return (
+              <Button
+                key={p}
+                size="small"
+                appearance="subtle"
+                icon={<span style={{ display: "inline-flex", color: active ? toneColor(meta.tone) : undefined }}>{meta.icon(active)}</span>}
+                className={mergeClasses(s.tab, active && s.tabSelected)}
+                aria-current={active ? "page" : undefined}
+                onClick={() => go(p)}
+              >
+                {TITLES[p]}
+              </Button>
+            );
+          })}
         </nav>
       </div>
       <div className={s.content}>

@@ -9,9 +9,9 @@ import { test } from "node:test";
 import { DEFAULT_PRESETS } from "@orbit-web/contracts";
 import { loadSandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
-import { checkAttemptSpec, checkExecRequest, NonceCache, readSecret, signedHeaders, toolPath, verifySigned } from "./allocator-protocol.js";
+import { checkAttemptSpec, checkExecRequest, checkSessionSpec, NonceCache, readSecret, signedHeaders, toolPath, verifySigned } from "./allocator-protocol.js";
 import { infrastructureCapacity } from "./capacity.js";
-import { attemptLabels, attemptNetworks, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, scratchArea, subnetBlocks, teamArea } from "./ids.js";
+import { attemptLabels, attemptNetworks, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, scratchArea, sessionMounts, sessionNames, subnetBlocks, teamArea } from "./ids.js";
 import { chooseMechanism, hostProtectionOf, storageAdmits, tmpSizeMiB } from "./storage-policy.js";
 
 const O = "0f1e2d3c-0000-4000-8000-000000000001";
@@ -171,4 +171,51 @@ test("capacity: detected or configured, minus the control plane's limits and the
   assert.deepEqual([configured.total.cpuMillis, configured.usable.cpuMillis, configured.headroom.memoryMiB], [2000, 2000, 1024]);
   const tiny = infrastructureCapacity(caps, loadSandboxConfig({ ORBIT_WEB_CONTROL_PLANE_LIMITS: "orbit-web:8:64g" }));
   assert.deepEqual([tiny.usable.cpuMillis, tiny.usable.memoryMiB], [0, 0]);
+});
+
+// A chat's or a research session's run in a sandbox of its own: what it may name, and what that names on the disk.
+const session = (over: Record<string, unknown> = {}) => ({ accountId: "acct-1", sessionId: "chat-1", connectionId: "conn-1", runId: "run-1", dispatchKey: "session:run-1", kind: "chat", workspace: "rw", switches: { github: false, azure: false }, ...over });
+
+test("protocol: a run's sandbox names ids and switches alone -- never an image, a path, a mount or a variable", () => {
+  assert.deepEqual(checkSessionSpec(session()), session());
+  assert.equal(checkSessionSpec(session({ kind: "research", workspace: "none" })).kind, "research");
+  assert.throws(() => checkSessionSpec(session({ sessionId: "../chat-2" })), /sessionId/);
+  assert.throws(() => checkSessionSpec(session({ connectionId: "conn/../../x" })), /connectionId/);
+  assert.throws(() => checkSessionSpec(session({ kind: "employee" })), /kind/);
+  assert.throws(() => checkSessionSpec(session({ workspace: "none" })), /a chat's run mounts its workspace/);
+  assert.throws(() => checkSessionSpec(session({ kind: "research", workspace: "rw" })), /a research run has no workspace/);
+  assert.throws(() => checkSessionSpec(session({ kind: "research", workspace: "none", switches: { github: true, azure: false } })), /a research run is given no sign-in/);
+  assert.throws(() => checkSessionSpec(session({ switches: { github: "yes", azure: false } })), /switches/);
+  for (const extra of [{ image: "evil:1" }, { mounts: [] }, { env: { X: "1" } }, { network: "host" }]) assert.throws(() => checkSessionSpec(session(extra)), /is not a field/, JSON.stringify(extra));
+});
+
+test("ids: a run's sandbox is one container on one network of its own, named from its dispatch key alone", () => {
+  const a = sessionNames("orbit-web", "session:run-1");
+  assert.deepEqual(a, sessionNames("orbit-web", "session:run-1"));
+  assert.match(a.container, /^orbit-web-ss-[0-9a-f]{24}$/);
+  assert.match(a.network, /^orbit-web-sn-[0-9a-f]{24}$/);
+  assert.notEqual(sessionNames("orbit-web", "session:run-2").container, a.container);
+  assert.notEqual(runnerToken("s".repeat(40), "session:run-1"), runnerToken("s".repeat(40), "session:run-2"));
+});
+
+test("ids: a run's sandbox sees its own chat, its own connection and its own account's Orbit store -- at the paths Orbit Web uses, and nothing else", () => {
+  const where = (m: { subpath: string; target: string; readOnly: boolean }) => `${m.target}<-${m.subpath}${m.readOnly ? ":ro" : ""}`;
+  assert.deepEqual(sessionMounts(checkSessionSpec(session())).map(where), [
+    "/data/workspaces/chat-1<-workspaces/chat-1",
+    "/data/sessions/chat-1<-sessions/chat-1:ro",
+    "/data/connections/acct-1/conn-1<-connections/acct-1/conn-1",
+    "/data/orbit/accounts/acct-1<-orbit/accounts/acct-1",
+  ]);
+  assert.equal(sessionMounts(checkSessionSpec(session({ workspace: "ro" })))[0]?.readOnly, true, "a Plan run on Codex reads its workspace and writes nothing there");
+  assert.deepEqual(sessionMounts(checkSessionSpec(session({ switches: { github: true, azure: true } }))).slice(-2).map(where), ["/data/github<-github", "/data/azure<-azure"]);
+  assert.deepEqual(sessionMounts(checkSessionSpec(session({ kind: "research", workspace: "none" }))).map(where), ["/data/connections/acct-1/conn-1<-connections/acct-1/conn-1"]);
+});
+
+test("config: a run's sandbox is the Orbit Web image by default, with limits of its own and at most four at once", () => {
+  const d = loadSandboxConfig({});
+  assert.equal(d.images.session, "ghcr.io/cuongngoht/orbit-web:0.8.0");
+  assert.deepEqual(d.session, { cpuMillis: 1000, memoryMiB: 2048, pids: 1024, max: 4 });
+  const c = loadSandboxConfig({ ORBIT_WEB_SANDBOX_IMAGE_SESSION: "orbit-web:0.8.0-x", ORBIT_WEB_SESSION_SANDBOX_CPU: "2", ORBIT_WEB_SESSION_SANDBOX_MEMORY: "4g", ORBIT_WEB_SESSION_SANDBOX_PIDS: "2048", ORBIT_WEB_SESSION_SANDBOX_MAX: "8" });
+  assert.deepEqual([c.images.session, c.session], ["orbit-web:0.8.0-x", { cpuMillis: 2000, memoryMiB: 4096, pids: 2048, max: 8 }]);
+  assert.throws(() => loadSandboxConfig({ ORBIT_WEB_SESSION_SANDBOX_MAX: "0" }), /ORBIT_WEB_SESSION_SANDBOX_MAX/);
 });

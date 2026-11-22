@@ -7,12 +7,15 @@
 //                   (out only through Orbit's egress proxy, whose credential is the run's token), no public DNS
 //   model plane     the CLI: model-plane image, uid 10001, read-only root, no capability, the connection's config home
 //                   only, small tmpfs, the internal model network, the runner (which wants this attempt's token)
+//   run sandbox     a chat's or a research session's run: the Orbit Web image's runner, uid 10001, read-only root, no
+//                   capability, that run's own places of Orbit Web's data volume (at the paths Orbit Web uses), tmpfs
+//                   HOME and /tmp, a network of its own (Orbit Web's container its only other member)
 //   storage helper  privileged, network none: the only container that sees the whole workforce volume (the
 //                   allocator's privileges, never an employee's)
 //   storage worker  an employee's own data moved (seed, publish, inputs), as that employee, with nothing else mounted
 import type { ResourceProfile } from "@orbit-web/contracts";
-import { LABELS, SCRATCH_DIRS, type ContainerRole } from "../contexts/execution/infrastructure/sandbox/ids.js";
-import { MODEL_PLANE, TOOL_PLANE, TOOL_PLANE_ENV } from "../contexts/execution/infrastructure/sandbox/layout.js";
+import { LABELS, SCRATCH_DIRS, type ContainerRole, type SessionMount } from "../contexts/execution/infrastructure/sandbox/ids.js";
+import { MODEL_PLANE, SESSION_PLANE, TOOL_PLANE, TOOL_PLANE_ENV } from "../contexts/execution/infrastructure/sandbox/layout.js";
 import { tmpSizeMiB } from "../contexts/execution/infrastructure/sandbox/storage-policy.js";
 
 export const MiB = 1024 * 1024;
@@ -163,6 +166,50 @@ export function modelPlaneBody(i: ModelPlaneInput) {
       Mounts: modelPlaneMounts(i).map(mountOf),
       NetworkMode: i.network,
       Dns: ["127.0.0.1"],
+      OomScoreAdj: 300,
+    },
+    NetworkingConfig: { EndpointsConfig: { [i.network]: {} } },
+  };
+}
+
+export interface SessionPlaneInput {
+  image: string;
+  network: string;
+  dataVolume: string;
+  mounts: SessionMount[];
+  labels: Record<string, string>;
+  cpuMillis: number;
+  memoryMiB: number;
+  pids: number;
+  runnerToken: string;
+}
+
+export const sessionTmpMiB = (memoryMiB: number): number => Math.max(64, Math.min(1024, Math.floor(memoryMiB / 2)));
+
+// A chat's or a research session's run: the runner (under Docker's init -- the image's own entry point, tini then the
+// API, is reset), as Orbit Web's user, with that run's places only. Its programs get their environment from each
+// spawn (the runner passes PATH through); nothing of the run is in the container's own environment but the runner's.
+export function sessionPlaneBody(i: SessionPlaneInput) {
+  return {
+    Image: i.image,
+    Hostname: "sandbox",
+    User: `${SESSION_PLANE.uid}:${SESSION_PLANE.gid}`,
+    WorkingDir: SESSION_PLANE.home,
+    Entrypoint: [""],
+    Cmd: [SESSION_PLANE.node, "--disable-warning=ExperimentalWarning", SESSION_PLANE.runnerMain],
+    Env: [`ORBIT_WEB_RUNNER_TOKEN=${i.runnerToken}`, `ORBIT_WEB_RUNNER_PORT=${SESSION_PLANE.runnerPort}`, "ORBIT_WEB_RUNNER_PASS_ENV=PATH", `HOME=${SESSION_PLANE.home}`],
+    Labels: i.labels,
+    StopSignal: "SIGTERM",
+    StopTimeout: 10,
+    HostConfig: {
+      ...HARDENED,
+      ...limits(i.cpuMillis, i.memoryMiB, i.pids),
+      Tmpfs: {
+        "/tmp": `rw,nosuid,nodev,size=${sessionTmpMiB(i.memoryMiB)}m,mode=1777`,
+        [SESSION_PLANE.home]: `rw,nosuid,nodev,size=${sessionTmpMiB(i.memoryMiB)}m,mode=0700,uid=${SESSION_PLANE.uid},gid=${SESSION_PLANE.gid}`,
+      },
+      Mounts: i.mounts.map((m) => mountOf({ volume: i.dataVolume, subpath: m.subpath, target: m.target, readOnly: m.readOnly })),
+      NetworkMode: i.network,
       OomScoreAdj: 300,
     },
     NetworkingConfig: { EndpointsConfig: { [i.network]: {} } },

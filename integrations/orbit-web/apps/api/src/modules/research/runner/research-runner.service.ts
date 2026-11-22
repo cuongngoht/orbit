@@ -24,15 +24,16 @@ import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModu
 import { effortFor, modelOf, type EventDataMap, type ResearchSessionStatus, type RunAccepted } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import type { AppConfig } from "../../../config/config.js";
-import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../../core/tokens.js";
+import { APP_CONFIG } from "../../../core/tokens.js";
 import { conflict } from "../../../common/errors.js";
 import { claudeEnv } from "../../../infra/process/env.js";
 import { LineSplitter } from "../../../infra/process/lines.js";
-import type { ExitInfo, ProcessHandle, ProcessPort } from "../../../infra/process/process.port.js";
+import type { ExitInfo, ProcessHandle } from "../../../infra/process/process.port.js";
 import { bounded, redactSecrets, tail } from "../../../infra/security/redact.js";
 import { ClaudeConnectorsService } from "../../connections/claude-connectors.service.js";
 import { ClaudeModelsService } from "../../connections/claude-models.service.js";
 import { RunConnections, type RunConnection } from "../../connections/run-connections.js";
+import { SESSION_SANDBOXES, type SessionLease, type SessionSandboxes } from "../../session-sandbox/session-sandboxes.js";
 import { decideOutcome } from "../../claude-runner/outcome.js";
 import { StreamMapper, TEXT_LIMIT, type MappedEvent } from "../../claude-runner/stream-mapper.js";
 import type { Principal } from "../../auth/principal.js";
@@ -72,6 +73,8 @@ interface ActiveRun {
   used: Set<string>;
   // Set as its end is being written: it is written once, whoever notices the end first.
   finalizing: boolean;
+  // Where its Claude Code runs: its own sandbox (given back once its end is written), or the agent's place.
+  lease: SessionLease;
   done: Promise<void>;
 }
 
@@ -110,7 +113,6 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(AGENT_PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(ResearchSessionStore) private readonly sessions: ResearchSessionStore,
     @Inject(ResearchRunStore) private readonly runs: ResearchRunStore,
     @Inject(SourceStore) private readonly sources: SourceStore,
@@ -122,6 +124,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
     @Inject(ClaudeConnectorsService) private readonly connectorChoices: ClaudeConnectorsService,
     @Inject(RunConnections) private readonly connections: RunConnections,
+    @Inject(SESSION_SANDBOXES) private readonly sandboxes: SessionSandboxes,
   ) {}
 
   // After a restart nothing is running: a run the restart cut short is interrupted, never run again.
@@ -249,7 +252,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       const allowed = allowedNamesOf(prepared.plan);
       const connectors = choices.research.filter((c) => allowed.has(c.name));
       const denied = choices.known.filter((c) => !allowed.has(c.name)).map((c) => c.prefix);
-      this.start(session, prompt, runId, prepared.plan, effort, connectors, denied, connection);
+      await this.inSandbox(session, prompt, runId, prepared.plan, effort, connectors, denied, connection);
     } catch (err) {
       await this.notStarted(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`).catch((e: unknown) => this.logger.error(`research run ${runId} could not be refused cleanly: ${message(e)}`));
     } finally {
@@ -272,11 +275,35 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
     await this.setStatus(session.id, "failed", why.slice(0, 300), runId);
   }
 
-  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], deniedConnectors: string[], connection: RunConnection): void {
+  // The run's own sandbox (its connection's home alone -- no workspace, no sign-in of GitHub or Azure), or the agent's
+  // place: a question whose sandbox cannot be made is not asked, and says why.
+  private async inSandbox(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], denied: string[], connection: RunConnection): Promise<void> {
+    let lease: SessionLease;
+    try {
+      const waiting = (running: number) => void this.stream.publish(session.id, "research.run.notice", { kind: "info", message: `Waiting for a sandbox to run in: all ${running} are in use by other runs. This question is asked when one of them ends.` }, runId).catch(() => undefined);
+      lease = await this.sandboxes.acquire({ accountId: session.accountId, sessionId: session.id, connectionId: connection.connection.id, runId, kind: "research", workspace: "none", switches: { github: false, azure: false } }, waiting);
+    } catch (err) {
+      await this.notStarted(session, runId, `The question could not be asked: ${message(err)}`);
+      await this.governance.finished(plan, runId, "failed", null);
+      return;
+    }
+    if (this.stopRequested.has(session.id)) {
+      await lease.release();
+      return this.stoppedBeforeStart(session, runId, plan);
+    }
+    try {
+      this.start(session, prompt, runId, plan, effort, connectors, denied, connection, lease);
+    } catch (err) {
+      await lease.release();
+      throw err;
+    }
+  }
+
+  private start(session: ResearchSessionRecord, prompt: string, runId: string, plan: RunPlan, effort: string | null, connectors: ResearchConnector[], deniedConnectors: string[], connection: RunConnection, lease: SessionLease): void {
     const args = researchArgs({ model: session.model, effort, maxBudgetUsd: this.config.maxBudgetUsd, connectors, deniedConnectors });
     // The agent's HOME: a directory that exists wherever Claude Code runs. With no tool, nothing in it is read.
     const cwd = this.config.data.home;
-    const handle = this.process.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config, connection.configDir), ...connection.secretEnv, ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
+    const handle = lease.port.spawn(this.config.binaries.claude, args, { cwd, env: { ...claudeEnv(this.config, connection.configDir), ...connection.secretEnv, ...(connectors.length === 0 ? { ENABLE_CLAUDEAI_MCP_SERVERS: "false" } : {}), ...plan.env } });
     let resolveDone: () => void = () => undefined;
     const run: ActiveRun = {
       runId,
@@ -297,6 +324,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       connectors,
       used: new Set<string>(),
       finalizing: false,
+      lease,
       done: new Promise<void>((r) => (resolveDone = r)),
     };
     this.active.set(session.id, run);
@@ -414,6 +442,7 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
       this.logger.error(`the end of research run ${run.runId} could not be written: ${message(err)}`);
     } finally {
       this.active.delete(run.session.id);
+      await run.lease.release();
     }
     try {
       await this.governance.finished(run.plan, run.runId, outcome.status, exit.code);

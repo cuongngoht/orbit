@@ -27,3 +27,4 @@ export const CSRF_HEADER = "x-orbit-csrf";
 // The Claude CLI's word for a Claude subscription's sign-in (`claude auth status` -> authMethod): what a Claude Code
 // connection of the `subscription` method is signed in with (ai-connections.ts).
 export const CLAUDE_ACCOUNT_METHOD = "claude.ai";
+export * from "./updates.js";

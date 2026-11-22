@@ -38,7 +38,7 @@ test("an OTEL_* variable the container sets wins over its default; nothing else 
 
 test("the collector's token reaches Claude Code alone: never git, gh, az or Orbit's own commands", () => {
   const c = config({ OTEL_EXPORTER_OTLP_ENDPOINT: ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS: HEADERS });
-  for (const env of [gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), orbitEnv(c, null)]) assert.deepEqual(telemetryOf(env), {});
+  for (const env of [gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), orbitEnv(c, "acct-1", null)]) assert.deepEqual(telemetryOf(env), {});
 });
 
 test("the image declares every telemetry attribute as the code does -- but where it goes, its token and the switch that turns it on", () => {
@@ -52,7 +52,7 @@ test("the image declares every telemetry attribute as the code does -- but where
 
 test("the database's URL -- and any PostgreSQL connection variable -- reaches no program Orbit Web starts", () => {
   const c = config({ ORBIT_WEB_DATABASE_URL: "postgres://orbit:hunter2@postgres:5432/orbit", PGPASSWORD: "hunter2", PGHOST: "postgres", DATABASE_URL: "postgres://x:y@z/w" });
-  for (const env of [claudeEnv(c, DIR, { azure: true, github: true }), gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), githubGitEnv(c), controlEnv(c), orbitEnv(c, null)]) {
+  for (const env of [claudeEnv(c, DIR, { azure: true, github: true }), gitEnv(c), ghEnv(c), azureEnv(c), azureGitEnv(c), githubGitEnv(c), controlEnv(c), orbitEnv(c, "acct-1", null)]) {
     assert.deepEqual(Object.keys(env).filter((k) => k.startsWith("PG") || k.includes("DATABASE")), []);
     assert.equal(JSON.stringify(env).includes("hunter2"), false);
   }

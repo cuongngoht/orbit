@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, RuntimeConnection, SetupStatus } from "@orbit-web/contracts";
+import type { Customizations, RuntimeConnection, SetupStatus, SystemUpdates } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
@@ -160,6 +160,31 @@ describe("Settings: the sections, over the page", () => {
     // The database, as PostgreSQL answers about itself -- never its address, its user or a connection string.
     expect(system.textContent).toContain("PostgreSQL 17.6 · schema 3 · pgvector 0.8.1");
     expect(system.textContent).not.toMatch(/postgres(ql)?:\/\//i);
+  });
+
+  test("System: whether a newer release exists -- each component against its publisher's newest, checked when asked, and how to update without a new Orbit Web", async () => {
+    const row = (component: string, installed: string | null, latest: string | null, state: string, security: boolean | null = null, detail: string | null = null) => ({ component, installed, latest, state, security, detail });
+    const notYet: SystemUpdates = { checkedAt: null, components: [row("claude", "2.1.328", null, "not_checked", null, "Not checked yet.")], howToUpdate: ["node scripts/update-pins.mjs --apply", "docker compose up -d"] };
+    const checked: SystemUpdates = {
+      checkedAt: "2026-11-22T08:00:00.000Z",
+      components: [row("claude", "2.1.328", "2.1.341", "update_available"), row("codex", "0.169.0", "0.169.0", "up_to_date"), row("node", "24.22.3", "24.23.1", "update_available", true), row("az", "2.91.0", null, "unknown", null, "Its publisher could not be asked: offline"), row("git", "2.39.5", null, "not_checked", null, "Git comes with the image's base system.")],
+      howToUpdate: notYet.howToUpdate,
+    };
+    const api = fakeApi().on("GET", "/api/system/updates", () => notYet).on("POST", "/api/system/updates/check", () => checked);
+    show("system", { api });
+    const updates = await screen.findByRole("region", { name: "Updates" });
+    expect(within(updates).getByText("Not checked yet.")).toBeInTheDocument();
+    await userEvent.click(within(updates).getByRole("button", { name: "Check for updates" }));
+    expect(await within(updates).findByText("2.1.341")).toBeInTheDocument();
+    const rows = within(updates).getAllByRole("row").map((r) => r.textContent ?? "");
+    expect(rows.find((r) => r.startsWith("Claude CLI"))).toMatch(/2\.1\.328.*2\.1\.341.*Update available/);
+    expect(rows.find((r) => r.startsWith("OpenAI Codex CLI"))).toMatch(/Up to date/);
+    expect(rows.find((r) => r.startsWith("Node.js"))).toMatch(/Security update/);
+    expect(rows.find((r) => r.startsWith("Azure CLI"))).toMatch(/Couldn't check: Its publisher could not be asked: offline/);
+    expect(rows.find((r) => r.startsWith("Git"))).toMatch(/Not checked: Git comes with the image's base system/);
+    expect(within(updates).getByText(/2 updates available/)).toBeInTheDocument();
+    expect(within(updates).getByText("node scripts/update-pins.mjs --apply")).toBeInTheDocument();
+    expect(posted(api, "/api/system/updates/check")).toBeTruthy();
   });
 
   test("System: a database that does not answer, or whose schema or pgvector is missing, is said so", async () => {

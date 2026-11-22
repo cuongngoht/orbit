@@ -195,7 +195,7 @@ export class WorkspaceService implements OnModuleInit {
 
   private async seat(session: SessionRecord): Promise<boolean> {
     await this.step(session, "orbit");
-    const r = await this.orbit.seat(session.workspacePath);
+    const r = await this.orbit.seat(session.workspacePath, session.accountId);
     if (!succeeded(r)) await this.bus.publishSession(session.id, "run.notice", { kind: "info", message: `Orbit could not seat this checkout (${endedHow(r)}); Claude Code still loads the plugin. ${tail(r.stderr, 2)}` });
     return succeeded(r);
   }

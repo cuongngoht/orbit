@@ -2,15 +2,45 @@
 // handed in -- each revision with its artifacts, its claims (supported by a source, or not) and what it is missing -- and
 // the last attempt, its model, effort and resources as asked, resolved and observed. A review names the revision being
 // read (its digest) and the assignment's version: if either moved on, nothing is done and the page offers the latest.
-import { Badge, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Spinner, Tab, TabList, Text, Textarea, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Badge, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Spinner, Tab, TabList, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { ArrowDownload16Regular } from "@fluentui/react-icons";
 import { ASSIGNMENT_STATE_TEXT, DELIVERY_STATE_TEXT, type AssignmentView, type DeliveryView, type HandoffStatus, type HandoffView, type MissionDetail, type TeamRoomChange } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, type AssignmentCommand } from "./api";
-import { AsOf, ProblemBar, RUN_STATE_TEXT, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, EmployeeAvatar, ProblemBar, RUN_STATE_TEXT, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
 import { RunDetails } from "./RunDetails";
+
+const useStyles = makeStyles({
+  nested: { borderLeftWidth: "3px", borderLeftColor: tokens.colorBrandStroke2 },
+  timelineList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    listStyleType: "none",
+    marginTop: 0,
+    marginRight: 0,
+    marginBottom: 0,
+    marginLeft: "6px",
+    paddingLeft: "16px",
+    borderLeftWidth: "2px",
+    borderLeftStyle: "solid",
+    borderLeftColor: tokens.colorNeutralStroke2,
+    minWidth: 0,
+  },
+  timelineItem: { position: "relative" },
+  timelineDot: {
+    position: "absolute",
+    left: "-22px",
+    top: "14px",
+    width: "10px",
+    height: "10px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorBrandBackground,
+    ...shorthands.border("2px", "solid", "var(--orbit-card-bg)"),
+  },
+});
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -69,9 +99,10 @@ function AssignmentActions({ a, onDone, onLoadLatest }: { a: AssignmentView; onD
 }
 
 function AssignmentRow({ a, go, depth }: { a: AssignmentView; go: Go; depth: number }) {
+  const s = useStyles();
   const o = useOfficeStyles();
   return (
-    <li className={o.item} style={{ marginLeft: `${Math.min(depth, 3) * 16}px` }}>
+    <li className={mergeClasses(o.item, depth > 0 && s.nested)} style={{ marginLeft: `${Math.min(depth, 3) * 16}px` }}>
       <div className={o.row}>
         <StateBadge text={ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
         <Text weight="semibold">{a.title}</Text>
@@ -371,6 +402,7 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
 }
 
 export function MissionPage({ id, tab, go }: { id: string; tab: string | null; go: Go }) {
+  const s = useStyles();
   const o = useOfficeStyles();
   const mission = useOfficeRead<MissionDetail>(() => office.mission(id), [id], ["missions", "inbox"], id);
   const current: MissionTab = (MISSION_TABS as readonly string[]).includes(tab ?? "") ? (tab as MissionTab) : "overview";
@@ -390,12 +422,13 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const hasTeam = m.assignments.some((a) => a.parentId !== null) || current === "team";
   return (
     <div className={o.page}>
-      <div className={o.stack}>
-        <Text as="h2" weight="semibold" size={500} className={o.wrap}>
+      <section className={o.heroCard} aria-label={m.title}>
+        <Text as="h2" weight="semibold" size={600} className={o.wrap}>
           {m.title}
         </Text>
         <div className={o.row}>
           <StateBadge text={ASSIGNMENT_STATE_TEXT[m.assignment.state]} state={m.assignment.state} />
+          <EmployeeAvatar name={m.assignment.employeeName} size="sm" />
           <Text size={200}>
             Held by{" "}
             <Link as="button" onClick={() => go("employee", m.assignment.employeeId)}>
@@ -406,7 +439,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           </Text>
         </div>
         <AsOf at={mission.loadedAt} />
-      </div>
+      </section>
       <div className={`${o.tabStrip} orbit-hscroll`}>
         <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label="Mission">
           {MISSION_TABS.filter((t) => t !== "team" || hasTeam).map((t) => (
@@ -421,10 +454,13 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       {current === "overview" && (
         <>
           <section className={o.card} aria-label="What is wanted">
-            <Text weight="semibold">What is wanted</Text>
+            <Text weight="semibold" size={400}>
+              What is wanted
+            </Text>
             <Text className={o.wrap} style={{ whiteSpace: "pre-wrap" }}>
               {m.goal}
             </Text>
+            <div className={o.divider} />
             <dl className={o.dl}>
               <dt className={o.dt}>Deliverables</dt>
               <dd className={o.dd}>{m.deliverables.length === 0 ? "None named" : m.deliverables.map((d) => `${d.name}${d.required ? "" : " (optional)"}`).join(", ")}</dd>
@@ -463,9 +499,10 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           {m.timeline.length === 0 ? (
             <Text className={o.muted}>Nothing happened yet.</Text>
           ) : (
-            <ol className={o.list}>
+            <ol className={s.timelineList}>
               {m.timeline.map((t) => (
-                <li key={t.seq} className={o.item}>
+                <li key={t.seq} className={mergeClasses(o.item, s.timelineItem)}>
+                  <span className={s.timelineDot} aria-hidden />
                   <Text size={200} className={o.muted}>
                     {when(t.at)} · {t.actor}
                   </Text>

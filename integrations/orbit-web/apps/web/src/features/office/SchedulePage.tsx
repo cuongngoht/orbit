@@ -2,7 +2,9 @@
 // run due at an instant shown in the schedule's own zone and in UTC, and each period's occurrence with where its work
 // stands and where its report went. A report is "Sent" only with the receiver's receipt; anything else is said as what it
 // is. A new schedule shows its next runs, worked out by the API, as it is written.
-import { Badge, Button, Field, Input, Link, MessageBar, MessageBarBody, Select, Spinner, Text, Textarea } from "@fluentui/react-components";
+import { Badge, Button, Field, Input, Link, MessageBar, MessageBarBody, Select, Spinner, Text, Textarea, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Add16Regular, CalendarClock20Regular, Pause16Regular, Play16Regular } from "@fluentui/react-icons";
+import { ScheduleIcon } from "../../components/SectionIcons";
 import {
   ASSIGNMENT_STATE_TEXT,
   DELIVERY_STATE_TEXT,
@@ -27,7 +29,7 @@ import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { errorText } from "../../services/api";
 import { NOT_SERVED, office, unlessNotServed, useOfficeRead } from "./api";
-import { AsOf, ProblemBar, useAction, useOfficeStyles } from "./parts";
+import { AsOf, EmployeeAvatar, EmptyState, ProblemBar, useAction, useOfficeStyles } from "./parts";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -35,6 +37,13 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 const KIND_TEXT: Record<ScheduleKind, string> = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly" };
 const MISSED_TEXT: Record<MissedPolicy, string> = { catch_up_latest: "Run the newest missed period", catch_up_each: "Run each missed period (up to the limit)", skip: "Skip missed periods, and say so" };
 const PERIOD_UNIT: Record<ScheduleKind, string> = { daily: "day", weekly: "week", monthly: "month", quarterly: "quarter" };
+
+const useStyles = makeStyles({
+  cardActive: { borderLeftWidth: "4px", borderLeftColor: tokens.colorBrandStroke1 },
+  cardPaused: { borderLeftWidth: "4px", borderLeftColor: tokens.colorNeutralStroke1 },
+  sectionLabel: { textTransform: "uppercase", letterSpacing: "0.04em", color: tokens.colorNeutralForeground3 },
+  occurrencesWrap: { display: "flex", flexDirection: "column", gap: "8px", paddingTop: "8px" },
+});
 
 export function ruleText(r: ScheduleRule): string {
   const at = `at ${r.localTime} (${r.timezone})`;
@@ -64,26 +73,28 @@ function Occurrences({ schedule, go }: { schedule: ScheduleView; go: Go }) {
     <ul className={o.list} aria-label={`Occurrences of ${schedule.name}`}>
       {list.data.map((x) => (
         <li key={x.id} className={o.item}>
-          <div className={o.row}>
-            <Text weight="semibold" size={200}>
-              Period {x.periodKey}
-            </Text>
-            <Badge appearance="tint" color={x.state === "skipped" ? "subtle" : "informative"}>
-              {x.state === "skipped" ? "Skipped" : "Work made"}
-            </Badge>
-            <Badge appearance="tint" color={x.delivery === "SENT" ? "success" : x.delivery === "FAILED" || x.delivery === "NEEDS_RECONCILIATION" ? "danger" : "subtle"}>
-              {deliveryText(x)}
-            </Badge>
+          <div className={o.between}>
+            <div className={o.row}>
+              <Text weight="semibold" size={200}>
+                Period {x.periodKey}
+              </Text>
+              <Badge appearance="tint" color={x.state === "skipped" ? "subtle" : "informative"} style={{ borderRadius: "9999px" }}>
+                {x.state === "skipped" ? "Skipped" : "Work made"}
+              </Badge>
+              <Badge appearance="tint" color={x.delivery === "SENT" ? "success" : x.delivery === "FAILED" || x.delivery === "NEEDS_RECONCILIATION" ? "danger" : "subtle"} style={{ borderRadius: "9999px" }}>
+                {deliveryText(x)}
+              </Badge>
+            </div>
+            {x.missionId && (
+              <Link className="orbit-target" as="button" onClick={() => go("mission", x.missionId)}>
+                Open the work
+              </Link>
+            )}
           </div>
           <Text size={200} className={o.muted}>
             Due {utc(x.dueAt)} · schedule revision {x.scheduleRevision}
             {x.assignmentState ? ` · the work: ${ASSIGNMENT_STATE_TEXT[x.assignmentState]}` : ""}
           </Text>
-          {x.missionId && (
-            <Link className="orbit-target" as="button" onClick={() => go("mission", x.missionId)}>
-              Open the work
-            </Link>
-          )}
         </li>
       ))}
     </ul>
@@ -91,22 +102,31 @@ function Occurrences({ schedule, go }: { schedule: ScheduleView; go: Go }) {
 }
 
 function ScheduleItem({ s: schedule, go, onChanged, onLoadLatest }: { s: ScheduleView; go: Go; onChanged: (s: ScheduleView) => void; onLoadLatest: () => void }) {
+  const st = useStyles();
   const o = useOfficeStyles();
   const act = useAction();
   const [showing, setShowing] = useState(false);
   const next = schedule.next[0] ?? null;
   const paused = schedule.state === "paused";
   return (
-    <li className={o.card} aria-label={schedule.name}>
+    <li className={mergeClasses(o.card, paused ? st.cardPaused : st.cardActive)} aria-label={schedule.name}>
       <div className={o.between}>
         <div className={o.row}>
-          <Text weight="semibold">{schedule.name}</Text>
-          <Badge appearance="tint" color={paused ? "subtle" : "success"}>
+          <Text weight="semibold" size={400}>
+            {schedule.name}
+          </Text>
+          <Badge appearance="tint" color={paused ? "subtle" : "success"} style={{ borderRadius: "9999px" }}>
             {paused ? "Paused" : "Active"}
           </Badge>
         </div>
         <div className={o.row}>
-          <Button className={o.touch} size="small" disabled={act.busy} onClick={() => void act.run(async () => onChanged(await office.updateSchedule(schedule, { state: paused ? "active" : "paused" })))}>
+          <Button
+            className={o.touch}
+            size="small"
+            icon={paused ? <Play16Regular /> : <Pause16Regular />}
+            disabled={act.busy}
+            onClick={() => void act.run(async () => onChanged(await office.updateSchedule(schedule, { state: paused ? "active" : "paused" })))}
+          >
             {paused ? "Resume" : "Pause"}
           </Button>
           <Button className={o.touch} size="small" appearance="subtle" onClick={() => setShowing(!showing)} aria-expanded={showing}>
@@ -114,34 +134,46 @@ function ScheduleItem({ s: schedule, go, onChanged, onLoadLatest }: { s: Schedul
           </Button>
         </div>
       </div>
-      <Text size={200}>{ruleText(schedule.rule)}</Text>
-      <Text size={200} className={o.muted}>
-        Done by {schedule.employeeName} · {schedule.recipients.length} recipient(s) · {MISSED_TEXT[schedule.missedPolicy]} · revision {schedule.revision}
-      </Text>
-      {next ? (
-        <div className={o.stack}>
-          <Text size={200} weight="semibold">
-            Next run
-          </Text>
-          <RunLine run={next} timezone={schedule.rule.timezone} />
-        </div>
-      ) : (
+      <div className={o.row}>
+        <CalendarClock20Regular aria-hidden className={o.muted} />
+        <Text size={200}>{ruleText(schedule.rule)}</Text>
+      </div>
+      <div className={o.row}>
+        <EmployeeAvatar name={schedule.employeeName} size="sm" />
         <Text size={200} className={o.muted}>
-          {paused ? "Paused: no run is due." : "No run is due."}
+          Done by {schedule.employeeName} · {schedule.recipients.length} recipient(s) · {MISSED_TEXT[schedule.missedPolicy]} · revision {schedule.revision}
         </Text>
-      )}
+      </div>
+      <div className={o.inset}>
+        <Text size={200} weight="semibold">
+          Next run
+        </Text>
+        {next ? (
+          <RunLine run={next} timezone={schedule.rule.timezone} />
+        ) : (
+          <Text size={200} className={o.muted}>
+            {paused ? "Paused: no run is due." : "No run is due."}
+          </Text>
+        )}
+      </div>
       {schedule.lastOccurrence && (
         <Text size={200} className={o.muted}>
           Last: period {schedule.lastOccurrence.periodKey} · {deliveryText(schedule.lastOccurrence)}
         </Text>
       )}
       <ProblemBar problem={act.problem} onLoadLatest={onLoadLatest} />
-      {showing && <Occurrences schedule={schedule} go={go} />}
+      {showing && (
+        <div className={st.occurrencesWrap}>
+          <div className={o.divider} />
+          <Occurrences schedule={schedule} go={go} />
+        </div>
+      )}
     </li>
   );
 }
 
 function NewSchedule({ account, onCreated, onCancel }: { account: AuthAccount | null; onCreated: () => void; onCancel: () => void }) {
+  const st = useStyles();
   const o = useOfficeStyles();
   const roster = useResource<Roster>(() => office.roster({ department: null, q: "", status: null }), []);
   const employees = (roster.data?.employees ?? []).filter((e) => e.employment !== "archived");
@@ -223,16 +255,21 @@ function NewSchedule({ account, onCreated, onCancel }: { account: AuthAccount | 
   };
   return (
     <form
-      className={o.card}
+      className={o.heroCard}
       aria-label="New schedule"
       onSubmit={(e) => {
         e.preventDefault();
         void create();
       }}
     >
-      <Text weight="semibold" size={400}>
-        New schedule
-      </Text>
+      <div className={o.between}>
+        <Text weight="semibold" size={500}>
+          New schedule
+        </Text>
+        <Text size={100} weight="semibold" className={st.sectionLabel}>
+          Cadence & time zone
+        </Text>
+      </div>
       <div className={o.formGrid}>
         <Field label="Name" required>
           <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
@@ -308,6 +345,10 @@ function NewSchedule({ account, onCreated, onCancel }: { account: AuthAccount | 
           </ul>
         )}
       </section>
+      <div className={o.divider} />
+      <Text size={100} weight="semibold" className={st.sectionLabel}>
+        Mission & delivery
+      </Text>
       <Field label="What each period's work is" required>
         <Textarea value={goal} resize="vertical" onChange={(_, d) => setGoal(d.value)} />
       </Field>
@@ -342,6 +383,7 @@ function NewSchedule({ account, onCreated, onCancel }: { account: AuthAccount | 
           <MessageBarBody>{error}</MessageBarBody>
         </MessageBar>
       )}
+      <div className={o.divider} />
       <div className={o.row}>
         <Button type="submit" appearance="primary" disabled={busy || name.trim() === "" || goal.trim() === "" || target === ""}>
           Create the schedule
@@ -369,7 +411,7 @@ export function SchedulePage({ go, account }: { go: Go; account: AuthAccount | n
       <div className={o.between}>
         <AsOf at={list.loadedAt} />
         {!creating && (
-          <Button className={o.touch} appearance="primary" onClick={() => setCreating(true)}>
+          <Button className={o.touch} appearance="primary" icon={<Add16Regular />} onClick={() => setCreating(true)}>
             New schedule
           </Button>
         )}
@@ -393,7 +435,7 @@ export function SchedulePage({ go, account }: { go: Go; account: AuthAccount | n
           <Spinner label="Reading the schedules…" />
         )
       ) : list.data.length === 0 ? (
-        <Text className={o.muted}>No schedule yet.</Text>
+        <EmptyState icon={<ScheduleIcon size={22} />} tone="teal" title="No schedule yet." body="Create a schedule above so an employee runs recurring work automatically at a set time." />
       ) : (
         <ul className={o.list} aria-label="Schedules">
           {list.data.map((s) => (

@@ -4,7 +4,7 @@
 import { request } from "node:http";
 import type { UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
-import { AllocatorError, ERROR_STATUS, signedHeaders, type AllocatorApi, type AllocatorAttemptSpec, type AllocatorErrorCode, type AttemptRecord, type AttemptStatusRecord, type AttestRequest, type Operation, type PublishResult } from "./allocator-protocol.js";
+import { AllocatorError, ERROR_STATUS, signedHeaders, type AllocatorApi, type AllocatorAttemptSpec, type AllocatorErrorCode, type AttemptRecord, type AttemptStatusRecord, type AttestRequest, type SessionRecord, type SessionSpec, type Operation, type PublishResult } from "./allocator-protocol.js";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
 
@@ -122,5 +122,17 @@ export class AllocatorClient implements AllocatorApi {
 
   remove(dispatchKey: string): Promise<{ gone: boolean; detail: string }> {
     return this.call("remove", { dispatchKey });
+  }
+
+  startSession(spec: SessionSpec): Promise<SessionRecord> {
+    return this.call("startSession", { spec });
+  }
+
+  removeSession(dispatchKey: string): Promise<{ gone: boolean; detail: string }> {
+    return this.call("removeSession", { dispatchKey });
+  }
+
+  sweepSessions(): Promise<{ removed: number }> {
+    return this.call("sweepSessions", {});
   }
 }

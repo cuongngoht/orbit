@@ -45,6 +45,12 @@ name: orbit-web
 
 x-employees: &employees
   ORBIT_WEB_SANDBOX_PREFIX: orbit-web
+  # Chats and research: each run in a sandbox of its own (this image's runner, holding that run's places alone) --
+  # its limits (read by the allocator) and how many at once (read by Orbit Web; a run beyond waits for one to end).
+  ORBIT_WEB_SESSION_SANDBOX_CPU: ${ORBIT_WEB_SESSION_SANDBOX_CPU:-}
+  ORBIT_WEB_SESSION_SANDBOX_MEMORY: ${ORBIT_WEB_SESSION_SANDBOX_MEMORY:-}
+  ORBIT_WEB_SESSION_SANDBOX_PIDS: ${ORBIT_WEB_SESSION_SANDBOX_PIDS:-}
+  ORBIT_WEB_SESSION_SANDBOX_MAX: ${ORBIT_WEB_SESSION_SANDBOX_MAX:-}
   # The name an attempt reaches Orbit Web by, on the attempt's own networks (the allocator connects this container to
   # each of them, under this name: its egress proxies and the tool endpoint).
   ORBIT_WEB_SANDBOX_HOST: orbit-web
@@ -110,7 +116,8 @@ services:
       # A test installation's standing setup code (8-64 characters), filled in on the setup page until the first
       # administrator exists. Unset (the default): only a code printed by `governance.js owner setup-code` sets it up.
       ORBIT_WEB_SETUP_CODE: ${ORBIT_WEB_SETUP_CODE:-}
-      # AI employees: every attempt in its own two containers, made by the allocator.
+      # AI employees: every attempt in its own two containers, made by the allocator -- and every chat's and research
+      # session's run in a sandbox of its own.
       ORBIT_WEB_SANDBOX: container
       ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171
       ORBIT_WEB_ACCEPT_SOFT_STORAGE: ${ORBIT_WEB_ACCEPT_SOFT_STORAGE:-0}
@@ -162,7 +169,10 @@ services:
       ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.0}
       ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
       ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
-      # Orbit Web's data volume (its connections room holds each connection's home): this project's own.
+      # A chat's or research run's own sandbox: Orbit Web's own image (its CLIs, its runner).
+      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ${ORBIT_WEB_SESSION_IMAGE:-ghcr.io/cuongngoht/orbit-web:0.8.0}
+      # Orbit Web's data volume (its connections room holds each connection's home, its workspaces each chat's): this
+      # project's own.
       ORBIT_WEB_DATA_VOLUME: ${COMPOSE_PROJECT_NAME}_orbit-web-data
       # Orbit Web's container: connected to every attempt's two internal networks, their only other member.
       ORBIT_WEB_CONTROL_CONTAINER: orbit-web

@@ -300,6 +300,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               <Timeline
                 items={state.items}
                 actions={{
+                  runtime: detail.data?.runtime ?? "claude",
                   imageUrl: (imageId) => chatImagePath(sessionId, imageId),
                   canRunPlan: canSend && !sending,
                   onRunPlan: () =>

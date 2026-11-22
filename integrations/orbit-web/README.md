@@ -406,11 +406,21 @@ A chat runs on your account's default Claude Code connection: connect one first 
 until then the composer says so, with a link. With another connection connected (an **OpenAI Codex** one, say), the new
 chat's composer offers *AI connection*: the chat runs on the one chosen for its whole life, with that connection's own
 models and efforts. A chat on Codex runs `codex exec --json` in the chat's workspace, in that connection's own home.
-Its commands run only CONFINED: where Codex's own sandbox starts on this server (`codex sandbox -- true`, asked once), a
-permission profile lets them read the system but nothing of Orbit Web's data -- no account's sign-ins, keys or
-workspaces -- except the chat's own room (written in *Autonomous*, read in *Plan*), with no network; where it cannot
-start (a container without user namespaces, as the default Docker setup is), the chat gets no shell at all, answers,
-and says so. What the account's policy does not allow it does not have (no execution: no shell); a spending cap
+
+**Each run in a sandbox of its own.** Where the allocator is (the default `docker/compose.yaml`), every chat's and every
+research question's run starts its CLI in a container made for that run alone -- Orbit Web's own image, its runner, as
+Orbit Web's user, read-only, no capability, its own CPU, memory and process limits, on a network of its own whose only
+other member is Orbit Web -- holding that chat's workspace (read-only for a *Plan* run on Codex) and project room, that
+connection's home and that account's own Orbit store, and nothing else of Orbit Web's data: no other chat, no other
+account, no database, none of Orbit Web's own rooms (the GitHub or Azure sign-in only where the account turned that
+switch on; a research run holds its connection's home alone). The container is removed when the run ends, however it
+ends. At most `ORBIT_WEB_SESSION_SANDBOX_MAX` (4) run at once -- a run beyond waits and says so -- each with
+`ORBIT_WEB_SESSION_SANDBOX_CPU` / `_MEMORY` / `_PIDS` (1 vCPU, 2g, 1024). A run's start says *own sandbox*. There,
+Codex's commands run, held by the container (Codex's own sandbox, which a container without user namespaces cannot
+start, is not asked for). Without an allocator (a development setup), a Codex chat's commands run only CONFINED: where
+Codex's own sandbox starts (`codex sandbox -- true`, asked once), a permission profile lets them read the system but
+nothing of Orbit Web's data except the chat's own room, with no network; where it cannot, the chat gets no shell at
+all, answers, and says so. What the account's policy does not allow it does not have (no execution: no shell); a spending cap
 (`ORBIT_WEB_MAX_BUDGET_USD`), which Codex cannot be held to, refuses its runs. It runs with no configuration of
 anybody's, no MCP server (Claude's connectors and the Orbit plugin are Claude Code's) and none of Codex's apps, plugins,
 hooks, browser or desktop tools; each message resumes the thread the first one started, and its images are files beside
@@ -1047,16 +1057,17 @@ For one person, on their own machine, by default:
 
 **The limit, said plainly.**
 
-- **The single deployment** (`docker/compose.yaml`): the coding agent's shell, the CLIs' sign-ins and Orbit Web run in
-  **one container as one user**. The API holds -- the agent has no session, cannot turn a switch on or administer
-  governance through it -- but the process does not: a determined prompt injection could still read the GitHub CLI's
-  stored token, the Azure CLI's, the telemetry collector's token, or Orbit Web's own environment (the database's URL
-  among it) and use them. The environment scrub, the deny rules, auto mode's classifier, `--setting-sources user` and the
-  private directories are **defence in depth, not isolation**, and nothing calls it isolated because records carry an
-  account; a policy that requires isolation refuses runs here. With GitHub's switch on, Claude Code pushes and opens pull
-  requests as you by design. A chat on **OpenAI Codex** runs commands only under Codex's own sandbox with Orbit Web's
-  permission profile (nothing of `/data` but its own room, no network) -- checked on the binary: a command asked to read
-  another account's sign-in gets "Operation not permitted" -- and none at all where that sandbox cannot start.
+- **The single deployment** (`docker/compose.yaml`): each chat's and research question's run is in a **sandbox of its
+  own** ([Use it](#use-it)): a container holding that run's places alone -- not the database, not Orbit Web's
+  environment or rooms, not another chat's workspace or another account's sign-in -- removed when the run ends. What it
+  does hold is real: its chat's workspace, its connection's own sign-in, its account's Orbit store, and -- with that
+  switch on -- the installation's GitHub or Azure sign-in (with GitHub's switch on, Claude Code pushes and opens pull
+  requests as you by design). Its network reaches the internet, as a chat always has, and nothing of this host's other
+  containers. Orbit Web's own work in a workspace -- the clone, Changes, branches, the Orbit panel -- runs in Orbit
+  Web's container, on the same disk. The deny rules, auto mode's classifier and `--setting-sources user` stay **defence
+  in depth** inside the sandbox; nothing calls a run isolated because records carry an account, and a policy that
+  requires isolation (attested, as the governed deployment does) still refuses runs here. Without an allocator, runs
+  are in Orbit Web's own container, beside every sign-in and Orbit Web's environment, as they were before.
 - **The governed deployment** (`docker/compose.governed.yaml`) holds at the container: the database (and its
   network), the sign-ins and the control plane's room are not in the agent's container, and its only way out is the
   proxy (the security lab,
@@ -1075,13 +1086,11 @@ For one person, on their own machine, by default:
   container mounts every account's AI connection homes, as it mounts every workspace: run accounts that must not see
   each other as separate deployments.
 - **Research.** The passages a question retrieves are sent to Claude (Anthropic). A research run's restrictions are the
-  Claude CLI's own flags, not an operating system's: in the single deployment it runs as the same user as everything
-  else in the container. Accounts are separated at the API and in the rows, not on disk -- in the single deployment a
-  chat's agent can read the files of another account's workspace, and every account's AI connection homes are in its
-  container (its deny rules are defence in depth, not isolation) -- and the GitHub and Azure CLIs' sign-ins are the
-  installation's: for chats, accounts on one Orbit Web are not tenants of an isolated system. An employee's attempts are
-  isolated per attempt (above). Sharing has no read-only
-  level.
+  Claude CLI's own flags; in the single deployment it runs in a sandbox of its own holding its connection's home alone.
+  Accounts are separated at the API and in the rows; on disk, a run's sandbox holds its own account's places only --
+  but the GitHub and Azure CLIs' sign-ins are the installation's, and Orbit Web's own container holds every account's
+  data: accounts on one Orbit Web are not tenants of an isolated system. An employee's attempts are isolated per
+  attempt (above). Sharing has no read-only level.
 - Open repositories you trust, keep *Run project plugins* off unless you trust them too, keep the port on loopback, and
   disconnect a source when you are done.
 

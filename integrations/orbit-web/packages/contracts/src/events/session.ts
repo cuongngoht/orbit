@@ -74,6 +74,9 @@ export interface SessionStartedData {
   orbitLoaded: boolean;
   orbitVersion: string | null;
   resumed: boolean;
+  // The run's CLI ran in a sandbox of its own (a container holding that chat's places alone); absent: where the agent's
+  // programs always run.
+  sandboxed?: boolean;
 }
 
 export type MessageRole = "user" | "assistant";

@@ -62,6 +62,12 @@ async function dispatch(api: AllocatorApi, op: Operation, a: Record<string, unkn
       return null;
     case "remove":
       return api.remove(s("dispatchKey"));
+    case "startSession":
+      return api.startSession(a.spec as never);
+    case "removeSession":
+      return api.removeSession(s("dispatchKey"));
+    case "sweepSessions":
+      return api.sweepSessions();
   }
 }
 

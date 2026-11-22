@@ -8,10 +8,15 @@
 // administrator up with the one-time code its terminal prints (used once), signs a browser in with a password, and keeps
 // its state (Settings, the browser's session, and a research workspace with a source it read and indexed in the
 // container's own worker) across a restart and across re-creating the container. Then the trial: refused at start where
-// another machine could reach it, and on this machine `admin` / `123456` signs in.
+// another machine could reach it, and on this machine `admin` / `123456` signs in. With --browser (Playwright's Chromium
+// on this machine) the trial is then walked through in a real browser: the sign-in page, the office set up, Hire waiting
+// for a connection and saying why, a subscription connection added and its terminal command shown, Compute & storage,
+// Employee network access, and every page at 320 px without sideways scrolling (screenshots into --out).
 //
-//   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep]
+//   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep] [--browser [--out=<dir>]]
 import { spawnSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { request } from "node:http";
@@ -356,12 +361,93 @@ async function main() {
   check("   on this machine alone the trial starts on an empty database, and says its login", made.status === 0 && vector.status === 0 && trialUp && trialStatus.body?.trial?.enabled === true && trialStatus.body.trial.username === "admin" && trialStatus.body.trial.password === "123456", `healthy ${trialUp}, trial ${JSON.stringify(trialStatus.body?.trial ?? null)}`);
   const trialLogin = await http(trialPort, "/api/auth/login", { method: "POST", headers: { "content-type": "application/json", "x-orbit-web": "1" }, body: JSON.stringify({ username: "admin", password: "123456" }) });
   check("   ...and admin / 123456 signs in", trialLogin.status === 200 && trialLogin.body?.state === "signed_in", `HTTP ${trialLogin.status}`);
+  if (flag("browser")) await inBrowser(trialPort);
   docker(["rm", "-f", trial]);
 
   if (!flag("keep")) cleanUp();
   const failed = results.filter((r) => !r.ok);
   process.stdout.write(`\n${results.length - failed.length}/${results.length} Docker checks passed${flag("keep") ? ` (kept ${name}, volume ${volume})` : ""}\n`);
   process.exit(failed.length === 0 ? 0 : 1);
+}
+
+// THE TRIAL IN A REAL BROWSER (Chromium, through Playwright as this machine has it): what a person sees.
+async function inBrowser(port) {
+  let chromium;
+  try {
+    ({ chromium } = createRequire(import.meta.url)("playwright"));
+  } catch {
+    check("13. a real browser (--browser)", false, "Playwright is not installed on this machine");
+    return;
+  }
+  const out = opt("out");
+  if (out) mkdirSync(out, { recursive: true });
+  const shot = async (page, file) => out && (await page.screenshot({ path: join(out, file) }));
+  const url = `http://127.0.0.1:${port}`;
+  const errors = [];
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+    const page = await context.newPage();
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    await page.goto(url);
+    await page.getByText("Sign in to Orbit Web").first().waitFor({ timeout: 15_000 });
+    const signInText = await page.locator("body").innerText();
+    await shot(page, "signin.png");
+    check("13. a real browser: the sign-in page is Orbit Web's own, the trial's login said in a red bar", /Sign in to Orbit Web/.test(signInText) && /Trial login admin \/ 123456/.test(signInText) && !/Continue with Claude/.test(signInText));
+    await page.getByRole("textbox", { name: "Username" }).fill("admin");
+    await page.getByRole("textbox", { name: "Password" }).fill("123456");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await page.getByRole("button", { name: "Office" }).waitFor({ timeout: 15_000 });
+    await page.goto(`${url}/#/office`);
+    await page.getByRole("textbox", { name: /Office name/ }).fill("Smoke office");
+    await page.getByRole("button", { name: "Set up the office" }).click();
+    const hire = page.getByRole("button", { name: "Hire employee" });
+    await hire.waitFor({ timeout: 15_000 });
+    const why = await page.getByText(/Connect an AI CLI first/).count();
+    await shot(page, "office.png");
+    check("   the office is set up with no AI connection; Hire waits for one and says why", (await hire.isDisabled()) && why > 0, `hire ${(await hire.isDisabled()) ? "disabled" : "enabled"}`);
+    await page.goto(`${url}/#/settings/ai-connections`);
+    await page.getByRole("button", { name: "Add a connection" }).first().click();
+    await page.getByRole("button", { name: "Add connection", exact: true }).click();
+    const command = page.getByText(/docker compose exec orbit-web node \/opt\/orbit-web\/apps\/api\/dist\/cli\/connect\.js [0-9a-f-]{36}/).first();
+    await command.waitFor({ timeout: 15_000 });
+    await shot(page, "ai-connections.png");
+    check("   a Claude Code subscription connection is added, Disconnected, with the terminal command that signs it in", (await page.getByText("Disconnected").count()) > 0, (await command.innerText()).replace(/[0-9a-f-]{36}/, "<id>"));
+    await page.goto(`${url}/#/settings/compute`);
+    await page.getByText("Infrastructure capacity").waitFor({ timeout: 15_000 });
+    const compute = await page.getByRole("dialog").first().innerText();
+    await shot(page, "compute.png");
+    check("   Compute & storage says the capacity, how it was obtained, the budget and each storage level", /Detected from this host|Configured/.test(compute) && /Account budget/.test(compute) && /Measured only|Hard limit|Not enforced/.test(compute));
+    await page.goto(`${url}/#/governance/policy`);
+    await page.getByText("Employee network access").first().waitFor({ timeout: 15_000 });
+    const policy = await page.locator("body").innerText();
+    check("   Governance offers Employee network access: Autonomous or Restricted, private addresses never", /Autonomous/.test(policy) && /Restricted/.test(policy) && /private, loopback, link-local and cloud-metadata addresses are refused/.test(policy));
+    await context.close();
+    const small = await browser.newContext({ viewport: { width: 320, height: 720 }, storageState: undefined });
+    const p = await small.newPage();
+    p.on("pageerror", (e) => errors.push(`320 px: ${e.message}`));
+    await p.goto(url);
+    await p.getByRole("textbox", { name: "Username" }).fill("admin");
+    await p.getByRole("textbox", { name: "Password" }).fill("123456");
+    await p.getByRole("button", { name: "Sign in" }).click();
+    await p.waitForTimeout(1500);
+    const wide = [];
+    for (const hash of ["#/office", "#/office/work", "#/office/inbox", "#/office/schedule", "#/settings/ai-connections", "#/settings/compute", "#/governance/policy"]) {
+      await p.goto(`${url}/${hash}`);
+      await p.waitForTimeout(1500);
+      const w = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      if (w > 0) wide.push(`${hash} +${w}px`);
+      await shot(p, `320-${hash.replace(/[#/]+/g, "-").replace(/^-|-$/g, "")}.png`);
+    }
+    check("   at 320 px no page of the Office, Settings or Governance scrolls sideways", wide.length === 0, wide.join(", ") || "7 pages");
+    await small.close();
+  } catch (err) {
+    check("   the browser walk-through", false, String(err.message ?? err).split("\n")[0].slice(0, 300));
+  } finally {
+    await browser.close();
+  }
+  check("   ...and the page reported no error", errors.length === 0, errors.slice(0, 3).join(" | ").slice(0, 300));
 }
 
 function cleanUp() {

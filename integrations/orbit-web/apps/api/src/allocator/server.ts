@@ -28,6 +28,8 @@ async function dispatch(api: AllocatorApi, op: Operation, a: Record<string, unkn
     case "archiveEmployee":
       await api.archiveEmployee(a.ids as never);
       return null;
+    case "deleteEmployee":
+      return api.deleteEmployee(a.ids as never);
     case "measure":
       return api.measure(a.ids as never);
     case "prepareWorkspace":

@@ -1,9 +1,12 @@
 # The module map
 
 What every directory and module of this engine is FOR, one entry each. It is reference: read it before you add,
-move or split a module, and when a name in the code needs its context. The rules that bind every change -- the
-dependency direction, who owns what, the rules that are enforced -- stay in [AGENTS.md](../../AGENTS.md), which every
-agent has loaded; this map does not repeat them and they win where the two seem to disagree.
+move or split a module, and when a name in the code needs its context. How the modules fit together -- the system,
+the layers and the dependency direction with the full text of every import boundary, who owns what, the data and the
+main flows -- is [docs/architecture.md](../architecture.md). The rules that bind every change -- the dependency
+direction, who owns what, the rules that are enforced -- stay in [AGENTS.md](../../AGENTS.md), which every agent has
+loaded (the import boundaries' full text, moved to docs/architecture.md, binds as AGENTS.md does); this map does not
+repeat them and they win where the two seem to disagree.
 
 ```
 cli/           composition roots: argv → build a ctx → call src → exit code. No logic.

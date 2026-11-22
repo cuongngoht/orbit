@@ -58,8 +58,8 @@ agent's word and never Orbit's own records. What runs and how it is judged is th
 (`evaluator/prereg/<release>.json`), committed before any model run it governs: the task order, a development set and
 a held-out set, the arms, the limits, the ledger and the verdict rule. A campaign is made from it
 (`node evaluator/cli.mjs prereg campaign <phase> --rev=<release commit>`), never by hand, and run detached and resumed
-after a worker restart -- how, with the credential mapped by name, is in `CLAUDE.md` ("Shipping a release from Claude
-Code cloud"). Then the record:
+after a worker restart -- how, with the credential mapped by name, is in `AGENTS.md` ("Claude Code", "Shipping a
+release from Claude Code cloud"). Then the record:
 
 ```bash
 node evaluator/cli.mjs record --campaign=final-060,mini-060 --out=evaluator/results/0.6.0/record.json
@@ -128,7 +128,7 @@ Never edit a generated `schema.json` to make a gate pass. Run
 
 ### The version number is a promise
 
-The rule is in `CLAUDE.md` and there is no third answer:
+The rule is in `AGENTS.md` ("Definition of done") and there is no third answer:
 
 - **Changing** anything a consumer can observe is **major**: a CLI name or flag under `cli/`, an
   exit code, a `run-log.jsonl` record kind, a `ORBIT_*` variable, the `$DATA/` layout, a

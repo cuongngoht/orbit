@@ -63,6 +63,10 @@ export class AllocatorClient implements AllocatorApi {
     await this.call("archiveEmployee", { ids });
   }
 
+  deleteEmployee(ids: SandboxIds): Promise<{ gone: boolean; detail: string }> {
+    return this.call("deleteEmployee", { ids });
+  }
+
   measure(ids: SandboxIds): Promise<AreaState[]> {
     return this.call("measure", { ids });
   }

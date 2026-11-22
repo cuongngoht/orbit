@@ -74,6 +74,7 @@ export interface AllocatorApi {
   probe(force: boolean): Promise<HostCapabilities>;
   provisionEmployee(ids: SandboxIds, quotas: { deskMiB: number; cacheMiB: number }): Promise<ProvisionResult>;
   archiveEmployee(ids: SandboxIds): Promise<void>;
+  deleteEmployee(ids: SandboxIds): Promise<{ gone: boolean; detail: string }>;
   measure(ids: SandboxIds): Promise<AreaState[]>;
   prepareWorkspace(ids: SandboxIds, assignmentId: string, scratchMiB: number): Promise<AreaState>;
   publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<PublishResult>;
@@ -90,7 +91,7 @@ export interface AllocatorApi {
   remove(dispatchKey: string): Promise<{ gone: boolean; detail: string }>;
 }
 
-export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove"] as const;
+export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove"] as const;
 export type Operation = (typeof OPERATIONS)[number];
 
 // An error the allocator says on purpose: a code a caller can act on, and words.

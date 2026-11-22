@@ -313,6 +313,15 @@ export class WorkforceStorage {
     await this.mustHelper(["remove", this.mechanism, path], `removing ${path}`);
   }
 
+  // The names of the directories in `path` (none when it is not there).
+  async subdirs(path: string): Promise<string[]> {
+    const out = await this.mustHelper(["subdirs", path], `listing ${path}`);
+    return out
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  }
+
   async removeDir(path: string): Promise<void> {
     await this.mustHelper(["rmdir", path], `removing ${path}`);
   }

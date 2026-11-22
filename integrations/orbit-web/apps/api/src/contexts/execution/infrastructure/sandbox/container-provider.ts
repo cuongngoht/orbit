@@ -57,6 +57,10 @@ export class ContainerSandboxProvider implements SandboxProvider {
     return this.allocator.archiveEmployee(ids);
   }
 
+  deleteEmployee(ids: SandboxIds): Promise<{ gone: boolean; detail: string }> {
+    return this.allocator.deleteEmployee(ids);
+  }
+
   measure(ids: SandboxIds): Promise<AreaState[]> {
     return this.allocator.measure(ids);
   }

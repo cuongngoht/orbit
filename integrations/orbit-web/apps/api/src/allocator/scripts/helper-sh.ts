@@ -14,6 +14,7 @@
 //   freeze <mechanism> <path> | remove <mechanism> <path> | rmdir <path>
 //   put <path> (stdin) | get <path> | plant <path> <nonce> | unplant <path>
 //   employees | df | fstype
+//   subdirs <path>                                       the names of the directories in it (none followed through a link)
 export const HELPER_SH = `
 set -eu
 umask 022
@@ -250,6 +251,15 @@ thaw-all)
   chattr -R -i /pool 2>/dev/null || true
   chmod -R u+w /pool 2>/dev/null || true
   echo ok ;;
+
+subdirs)
+  p=$(rel "$1")
+  nolinks "$p"
+  [ -d "$p" ] || exit 0
+  for d in "$p"/*; do
+    if [ -d "$d" ] && [ ! -L "$d" ]; then basename "$d"; fi
+  done
+  true ;;
 
 employees)
   for d in /pool/accounts/*/employees/*; do

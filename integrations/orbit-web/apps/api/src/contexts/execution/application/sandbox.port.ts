@@ -149,6 +149,9 @@ export interface SandboxProvider {
   provisionEmployee(ids: SandboxIds, quotas: { deskMiB: number; cacheMiB: number }): Promise<ProvisionResult>;
   // Frozen read-only (the employee was archived); nothing is deleted.
   archiveEmployee(ids: SandboxIds): Promise<void>;
+  // Deleted (an archived employee its owner deleted): every area of the employee and its record, read back -- refused
+  // (`gone: false`, said why) while a container of one of its attempts exists. Gone already is gone.
+  deleteEmployee(ids: SandboxIds): Promise<{ gone: boolean; detail: string }>;
   // Current use of the employee's areas.
   measure(ids: SandboxIds): Promise<AreaState[]>;
 

@@ -9,12 +9,12 @@ about your project, runs UI tests written as plain JSON (checking the screen, th
 investigates a running application the way a QA engineer would, and shows its work in a viewer beside your session.
 
 - **Local and private** — all state lives on your machine, outside your repository. No cloud service.
-- **Autonomous by default** — Orbit works on its own; a person is asked only at a few **protected boundaries** (writing
-  your checkout, a git push, a production deploy or migration, destroying production data).
+- **Autonomous by default** — a person is asked only at a few **protected boundaries**: writing your checkout, a git
+  push, a production deploy or migration, destroying production data.
 - **Governed** — deterministic engine rules check every action; the boundaries, catalogs and limits are a person's.
 - **Evidence-based** — a step is verified only by a record its owner keeps: a passing check, a test run, a QA report.
 - **Product-neutral** — the engine names no product, vendor or stack; your project declares its own.
-- **Zero dependencies** — plain Node.js 20 or newer, with no npm packages.
+- **Zero dependencies** — plain Node.js 20 or newer, no npm packages.
 
 This README describes Orbit **0.6.0** and Orbit Web **0.8.0**. What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
@@ -28,24 +28,7 @@ This README describes Orbit **0.6.0** and Orbit Web **0.8.0**. What changed in e
 6. [Where your data lives](#where-your-data-lives)
 7. [Settings and switches](#settings-and-switches)
 8. [Orbit Live and Orbit Control](#orbit-live-and-orbit-control)
-9. [Feature guides](#feature-guides) —
-   [goals](#goals) ·
-   [requirements, work and tasks](#requirements-work-and-tasks) ·
-   [project context](#project-context) ·
-   [project memory](#project-memory) ·
-   [coordinated workflows](#coordinated-workflows-and-playbooks) ·
-   [autonomous engineering](#autonomous-engineering) ·
-   [check observation](#check-observation-adapters) ·
-   [work tracking](#unified-work-tracking) ·
-   [running the application](#running-the-application) ·
-   [UI test cases](#ui-test-cases) ·
-   [autonomous QA](#autonomous-qa) ·
-   [system graph](#system-graph) ·
-   [Satellite](#orbit-satellite) ·
-   [self-improvement](#autonomous-self-improvement) ·
-   [session trail](#the-session-trail) ·
-   [project reports](#project-reports) ·
-   [extending Orbit](#extending-orbit-in-your-project)
+9. [Feature guides](#feature-guides)
 10. [Orbit Web](#orbit-web)
 11. [Developing Orbit](#developing-orbit)
 12. [Further reading](#further-reading)
@@ -54,54 +37,21 @@ This README describes Orbit **0.6.0** and Orbit Web **0.8.0**. What changed in e
 
 ## Install
 
-**Requirements:** Node.js 20 or newer, and nothing else for the engine. Orbit Control needs Node 24.15 or newer and
-finds one by itself; UI tests need `playwright-cli` ([check the install](#check-the-install)).
+Node.js 20 or newer is all the engine needs. Orbit Control needs Node 24.15 or newer and finds one by itself; UI tests
+need `playwright-cli` ([check the install](#check-the-install)).
 
-### Claude Code
-
-```bash
-/plugin marketplace add cuongngoht/orbit
-/plugin install orbit@orbit
-```
-
-### Grok Build
-
-```bash
-grok plugin install cuongngoht/orbit --trust
-# or from a local clone:
-grok plugin install /path/to/orbit --trust
-```
-
-`--trust` lets Grok run the plugin's hooks. Details: [docs/grok.md](docs/grok.md).
-
-### Codex
-
-From a clone or an unpacked release:
-
-```bash
-codex plugin marketplace add <plugin-root>
-codex plugin add orbit@orbit
-```
-
-Installing does not trust the hooks: review and trust them in Codex afterwards. Enable only one Orbit installation per
-workspace. Details: [docs/codex.md](docs/codex.md).
-
-### Antigravity CLI
-
-```bash
-agy plugin install <plugin-root>
-```
-
-Details: [docs/antigravity.md](docs/antigravity.md).
-
-### Local development
-
-From a clone of this repository: `claude --plugin-dir .`
+| Host | Install | Notes |
+| --- | --- | --- |
+| **Claude Code** | `/plugin marketplace add cuongngoht/orbit`, then `/plugin install orbit@orbit` | |
+| **Grok Build** | `grok plugin install cuongngoht/orbit --trust` (or the path of a local clone) | `--trust` lets Grok run the plugin's hooks. [docs/grok.md](docs/grok.md) |
+| **Codex** | from a clone or an unpacked release: `codex plugin marketplace add <plugin-root>`, then `codex plugin add orbit@orbit` | Installing does not trust the hooks: review and trust them in Codex. Enable only one Orbit installation per workspace. [docs/codex.md](docs/codex.md) |
+| **Antigravity CLI** | `agy plugin install <plugin-root>` | [docs/antigravity.md](docs/antigravity.md) |
+| **Local development** | `claude --plugin-dir .` from a clone of this repository | |
 
 ### Check the install
 
-`<plugin-root>` is the directory the host installed Orbit in (inside a skill on Claude Code, `${CLAUDE_PLUGIN_ROOT}`).
-Every command is `node <plugin-root>/cli/<tool>.mjs`, called by its path: Orbit puts nothing on your PATH.
+`<plugin-root>` is where the host installed Orbit (`${CLAUDE_PLUGIN_ROOT}` inside a skill on Claude Code). Every command
+is `node <plugin-root>/cli/<tool>.mjs`, called by its path: Orbit puts nothing on your PATH.
 
 ```bash
 node <plugin-root>/cli/orbit.mjs doctor           # where the goals store is, and how many goals it holds
@@ -129,8 +79,8 @@ How each host binds the plugin root and the session: [docs/hosts.md](docs/hosts.
 
    Orbit keeps the goal as submitted, analyzes it, plans work units, runs them through their owners, verifies against
    evidence and reports.
-4. **Or just ask.** Describe the change, the bug or the question in plain words, in English or Vietnamese. The
-   [prompt router](#the-prompt-router) suggests the skill or agent that fits, or adds nothing when none is needed.
+4. **Or just ask**, in English or Vietnamese. The [prompt router](#the-prompt-router) suggests the skill or agent that
+   fits, or adds nothing when none is needed.
 5. **Watch it work** in [Orbit Live](#orbit-live), beside your session. Normal development needs no approval; when work
    reaches a [protected boundary](#protected-boundaries), decide it in [Orbit Control](#orbit-control) (`/orbit-control`).
 
@@ -142,14 +92,14 @@ How each host binds the plugin root and the session: [docs/hosts.md](docs/hosts.
  Goal ──► Requirement ──► Plan ──► Task (own workspace) ──► Checks / QA ──► Evidence ──► Report
            snapshot        units    build · test · fix       verified by      kept by
                                                              their owner      its owner
- Everything above is kept on your machine, in the Orbit store, never in your repository.
+ All of it is kept on your machine, in the Orbit store, never in your repository.
 ```
 
-Three parts work together. The **host's model** reasons: it reads the goal, chooses the next step and writes the code.
-The **engine** (plain Node.js commands under `cli/`) keeps the state in append-only journals, judges each step before it
-runs and settles it with receipts. The **hooks** watch the session and add a line only where Orbit has something to
-say. [Orbit Live](#orbit-live) shows what the journals hold; [Orbit Control](#orbit-control) is where a person decides.
-Layers, dependency direction and data: [docs/architecture.md](docs/architecture.md).
+The **host's model** reasons: it reads the goal, chooses the next step and writes the code. The **engine** (plain
+Node.js commands under `cli/`) keeps the state in append-only journals, judges each step before it runs and settles it
+with receipts. The **hooks** watch the session and speak only where Orbit has something to say. [Orbit
+Live](#orbit-live) shows what the journals hold; [Orbit Control](#orbit-control) is where a person decides. Layers,
+dependency direction and data: [docs/architecture.md](docs/architecture.md).
 
 | Idea | What it means for you |
 | --- | --- |
@@ -159,62 +109,62 @@ Layers, dependency direction and data: [docs/architecture.md](docs/architecture.
 | **Your repository is untrusted data** | Orbit runs only commands your project files declare, as argument lists — never a shell line a model wrote. |
 | **Changes happen in isolation** | An engineering task edits and commits in its own workspace (a local clone), never in your checkout. |
 | **Autonomous by default** | Building, testing, QA, sandboxes, containers, local databases and local commits run without asking anybody. |
-| **A person decides at the boundary** | A push, a production deploy or migration, and destroying production data wait for one approval of exactly that action; writing your checkout is yours alone. An agent cannot approve its own action. |
+| **A person decides at the boundary** | A push, a production deploy or migration and destroying production data wait for one approval of exactly that action; writing your checkout is yours alone. An agent cannot approve its own action. |
 | **No product knowledge in the engine** | Products, vendors and stacks live in your project's data, or in adapters and packs a project opts into. |
 
 ---
 
 ## Skills
 
-Name a skill yourself (`/orbit-help`; in Claude Code also with the plugin prefix, `/orbit:orbit-help`), or let the host
-pick one: it reads each skill's description, whose first sentence says *when* to use it. Every description fits the
-host's listing budget (at most 300 characters, 7,500 for all 26), which `test/activation-catalog.test.mjs` holds.
+Name a skill yourself (`/orbit-help`; in Claude Code also `/orbit:orbit-help`), or let the host pick one: each
+description's first sentence says *when* to use it, within the host's listing budget (300 characters each, 7,500 for
+all 26 — `test/activation-catalog.test.mjs` holds both).
 
 ### Entry points
 
 | Skill | Use it for |
 | --- | --- |
-| **`/orbit`** | A whole specification — a PBI, a bug report, a goal with several requirements or acceptance criteria — taken to a verified outcome: analyze → plan → execute → verify → report. Pass the complete text. For one change, use `orbit-develop`. |
-| **`/orbit-help`** | Not knowing where to start, or a task that needs several owners in turn (a work item, a code change, the running app, QA, regression, review). Starts or resumes a coordinated workflow, or names the one skill that fits. |
-| **`/satellite`** | A goal run as an autonomous multi-agent mission: a work graph, least-privilege agents, every criterion settled on an independent owner's record. |
+| **`/orbit`** | A whole specification — a PBI, a bug report, a goal with acceptance criteria — taken to a verified outcome: analyze → plan → execute → verify → report. For one change, use `orbit-develop`. |
+| **`/orbit-help`** | Not knowing where to start, or a task several owners take in turn (a work item, a code change, the running app, QA, review). Starts or resumes a coordinated workflow, or names the one skill that fits, and why. |
+| **`/satellite`** | A goal run as an autonomous multi-agent mission: a work graph, least-privilege agents, each criterion settled on an independent owner's record. |
 
 ### Engineering
 
 | Skill | Use it for |
 | --- | --- |
-| `orbit-requirements` | Turn a work item, PBI, issue, ticket or user story into atomic requirement facts and one frozen snapshot, asking a person only what blocks. Never decides a requirement itself. |
-| `orbit-engineer` | Take a requirement or objective autonomously to a **verified** change in a task-owned workspace: plan, build, test, diagnose, fix, regression, review; it commits, and a push waits for approval. |
-| `orbit-develop` | Implement a feature, fix, refactor or rename directly in this checkout, the way this project builds code: project context first, the smallest change, verified, reviewed. |
-| `orbit-runtime` | What this checkout needs to run and whether this machine can run it; start or stop what its files declare; a port conflict, an unreachable database, a dev container. |
-| `orbit-architecture` | Architecture questions — what the project is made of, where an integration belongs, whether a capability exists — from a kept, evidence-backed snapshot that re-reads only what moved. |
-| `orbit-reverse-engineer` | Map the running system (components, workloads, interfaces, queues, schedules, stores, and what talks to what) as a kept system graph. |
-| `orbit-dotnet` | Which technologies a .NET solution declares, what its code really uses each for, how it is wired, and whether to reuse or build. |
-| `orbit-research` | How a library, SDK or API behaves, answered from a source for the version this project's manifest pins (official documentation first), and kept as knowledge scoped to that version. |
+| `orbit-requirements` | A work item, PBI, issue or user story read into atomic requirement facts and one frozen snapshot; asks a person only what blocks, and never decides a requirement itself. |
+| `orbit-engineer` | A requirement taken autonomously to a **verified** change in a task-owned workspace: plan, build, test, diagnose, fix, review; it commits, and a push waits for approval. |
+| `orbit-develop` | A feature, fix, refactor or rename made directly in this checkout, the way this project builds code: context first, the smallest change, verified and reviewed. |
+| `orbit-runtime` | What this checkout needs to run and whether this machine can; start or stop what its files declare; a port conflict, an unreachable server, a dev container. |
+| `orbit-architecture` | What the project is made of, where an integration belongs, whether a capability exists — from a kept snapshot that re-reads only what moved. |
+| `orbit-reverse-engineer` | The running system mapped as a kept system graph: components, workloads, interfaces, queues, schedules, stores, and what talks to what. |
+| `orbit-dotnet` | Which technologies a .NET solution declares, what its code really uses each for, and whether to reuse or build. |
+| `orbit-research` | How a library, SDK or API behaves, answered from a source for the version the manifest pins, and kept as knowledge scoped to that version. |
 | `orbit-learn` | Dated lessons, with evidence, from what repeated across independent sessions; recall, record or forget one. Never decides PASS. |
-| `orbit-improve` | Improve this project's generated playbooks and Satellite roles from evidence: the smallest successor, evaluated against the current version on frozen inputs. |
+| `orbit-improve` | This project's generated playbooks and Satellite roles improved from evidence: the smallest successor, evaluated against the current version on frozen inputs. |
 
 ### Quality and testing
 
 | Skill | Use it for |
 | --- | --- |
-| `orbit-qa` | Investigate a live application like a senior QA engineer, one step at a time inside approved limits, watching screen, network and data; it reports only what it proves. |
-| `orbit-test-plan` | Decide *what* to test before any test is written: known versus assumed, one checkable, risk-ranked plan per feature. |
-| `orbit-ui-test` | Run or author ONE JSON UI test case: one command drives it through `playwright-cli` and verifies UI, API and SQL, with evidence on failure. |
-| `orbit-test-suite` | Run an agreed set of cases the way a tester does — the browser profile, evidence for each — and write one review page. |
-| `orbit-ui-map` | Fill and correct the UI map (screens, controls, effects) from the declared frontend source, then confirm it live. |
-| `orbit-ui-explore` | Explore a screen nobody wrote cases for; leave candidate map records, cases that survived a real run and a session sheet. |
-| `orbit-browser` | Pick a browser and a signed-in profile on this machine and open a test session on a copy of it. No password is read. |
-| `orbit-sql` | Read-only SQL Server checks for a UI test through `sqlcmd`: one `SELECT` per call, the connection from `ORBIT_SQL_*`. |
-| `orbit-qc-builder` | Build the smallest project-local QC tool a verification needs when nothing here can do it (a second database, a vendor SDK, a queue). |
-| `orbit-security-audit` | Assess the project against the security catalogs it is held to, from evidence, and hand the security obligations to QA. Never says "compliant". |
+| `orbit-qa` | A live application investigated like a senior QA engineer, one step at a time inside approved limits, watching screen, network and data; it reports only what it proves. |
+| `orbit-test-plan` | *What* to test, decided before any test is written: known versus assumed, one checkable, risk-ranked plan per feature. |
+| `orbit-ui-test` | ONE JSON UI test case run or authored: `playwright-cli` drives it, and it verifies UI, API and SQL, with evidence on failure. |
+| `orbit-test-suite` | An agreed set of cases run the way a tester does — the browser profile, evidence for each — and one review page. |
+| `orbit-ui-map` | The UI map (screens, controls, effects) filled and corrected from the declared frontend source, then confirmed live. |
+| `orbit-ui-explore` | A screen nobody wrote cases for, explored: candidate map records, cases that survived a real run, one session sheet. |
+| `orbit-browser` | A browser and a signed-in profile on this machine, opened as a test session on a copy of it. No password is read. |
+| `orbit-sql` | Read-only SQL Server checks for a test through `sqlcmd`: one `SELECT` per call, the connection from `ORBIT_SQL_*`. |
+| `orbit-qc-builder` | The smallest project-local QC tool a check needs when nothing here can do it (a second database, a vendor SDK, a queue). |
+| `orbit-security-audit` | The project assessed against the security catalogs it is held to, from evidence, with its obligations handed to QA. Never says "compliant". |
 
 ### Operations
 
 | Skill | Use it for |
 | --- | --- |
-| `orbit-control` | Start Orbit Control and get its URL: MCP servers, CLI tools, report connections and sign-in, limits and policies, the router. |
-| `orbit-report` | A product owner's report from GitHub or Azure DevOps — pull requests, reviews, work items, pipelines — read once, frozen, rendered as one offline HTML page. Azure DevOps signs in with your Microsoft account by default ([how](#microsoft-sign-in-for-azure-devops)); GitHub reads with a token. |
-| `orbit-release` | Ship a new version of Orbit itself, or install or upgrade it in another repository. |
+| `orbit-control` | Orbit Control started and its URL returned: MCP servers, CLI tools, report connections and sign-in, limits, policies, the router. |
+| `orbit-report` | A product owner's report from GitHub or Azure DevOps, read once, frozen and rendered as one offline HTML page ([project reports](#project-reports)). |
+| `orbit-release` | A new version of Orbit itself shipped, or Orbit installed or upgraded in another repository. |
 
 ### Role agents
 
@@ -223,108 +173,81 @@ the whole request: `orbit-engineering-agent` (drive one engineering task), `orbi
 `orbit-failure-analyst` (classify a failed UI run into one cause), `orbit-dsl-doctor` (repair how a case is written,
 never what it means) and `orbit-engineering-observer` (propose what a session taught about how this project builds
 code). The other fifteen — the architecture scanner, the reverse-engineering agent, the security auditor, the map healer
-and recorder, the QA case writer, the five requirement-roundtable agents and Satellite's four — are dispatched only from
-their parent skill's playbook, because each needs that skill's step first: their catalog row names the parent (`via` in
-`catalog/components.json`), and the router never offers one on its own.
+and recorder, the QA case writer, the five requirement-roundtable agents and Satellite's four — run only from their
+parent skill's playbook (`via` in `catalog/components.json`); the router never offers one on its own.
 
 ### The prompt router
 
-Beside every prompt, Orbit's router says how much Orbit the request needs, in one line, or nothing at all
-(RouteDecision v3, [ADR 0050](docs/adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md)):
+Beside every prompt, Orbit's router says how much Orbit the request needs, in one line or not at all (RouteDecision v3,
+[ADR 0050](docs/adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md)):
 
 | Strategy | When |
 | --- | --- |
-| **NONE** (adds no text) | a prompt you opened with a slash command (you already chose what runs), a greeting, a status question that asks for nothing else ("how far along are we?", "tới đâu rồi"), a background task's notification the host delivers as a prompt, an opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself |
+| **NONE** (adds nothing) | a prompt you opened with a slash command (you already chose what runs), a greeting, a status question that asks for nothing else ("how far along are we?", "tới đâu rồi"), a background task's notification, an opt-out ("without Orbit", "không dùng orbit"), or anything the session already does itself |
 | **DIRECT** | names the one skill or agent that fits |
-| **COORDINATED** | gives the one command for a change several owners take in turn — a work item to settle, an investigation or a security check to prove it (`/orbit-help`'s workflow) — or for a whole specification (`/orbit`'s goal). A question that only names code ("is the orders endpoint protected?") asks for no change. |
+| **COORDINATED** | the one command for a change several owners take in turn (`/orbit-help`'s workflow) or for a whole specification (`/orbit`'s goal); a question that only names code ("is the orders endpoint protected?") asks for no change |
 | **SATELLITE** | only ever a mission you asked for |
 | **RESUME** | picks up an open work of this checkout through its owner |
 
 English and Vietnamese are read alike; words past the first 2,000 characters (a pasted log or file) never decide what a
-prompt is about; a one-word match counts only when it is a skill's own word. The router suggests; the host decides.
-`test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both languages.
-
-**Facts, not only words** (0.6.0, [ADR 0059](docs/adr/0059-proactive-execution-from-facts-said-once-and-explained.md)).
-A fact about the session's work brings a skill or agent in too, never a word the engine guessed: a check the session ran
-after its edits failed (`check.failed`), the same check failed three times in a row with nothing changed between
-(`check.repeats`, said once as no progress), or the session's tracked work has a knowledge need nobody answered
-(`knowledge.owed`). A catalog row names the facts its playbook handles (`reactsTo`), and a fact that holds counts for it
-as one of its words would — so a check that failed after the last prompt shapes the next prompt's decision.
-
-Switch the router off with the `prompt_router` option or `ORBIT_PROMPT_ROUTER=off`. What each host lets it do:
-[docs/hosts.md](docs/hosts.md).
+prompt is about; a one-word match counts only when it is a skill's own word. Since 0.6.0 a **fact** about the session's
+work counts too, never a word the engine guessed: a check that failed after the session's edits (`check.failed`), the
+same check failing three times with nothing changed between (`check.repeats`), a knowledge need of the tracked work
+nobody answered (`knowledge.owed`). A catalog row names the facts its playbook handles (`reactsTo`), and the existing
+resolver picks the provider ([ADR 0059](docs/adr/0059-proactive-execution-from-facts-said-once-and-explained.md)). The
+router suggests; the host decides. `test/fixtures/routing/corpus.jsonl` holds it to realistic prompts in both
+languages. Off: the `prompt_router` option or `ORBIT_PROMPT_ROUTER=off`.
 
 ### Follow-through during a session
 
-Where Orbit owns the work, the rest of a session gets at most a line at a time (0.5.0 and 0.6.0):
+Where Orbit owns the work, the rest of the session gets at most a line at a time:
 
 | Moment | What Orbit adds |
 | --- | --- |
-| **Session start** (a checkout Orbit knows) | One line of at most 300 bytes — each family's usable count, what you switched off, the project's STATUS word — and, on a resumed or compacted session, its open work and next step. |
-| **One of Orbit's agents returns** | One line naming the owner record that settles its work (the workflow, goal, mission or task) and where it stands. What the agent said is its report, never the evidence; its message and transcript are never read. |
-| **An Orbit command fails** under the session's governed work | The owner's recovery row beside the usual diagnosis: an action that did not settle is read back with `reconcile`, never sent again. |
-| **Any tool call fails** | At most one line of advice — the fact that holds, its subject, the skill or agent that handles it and the call that brings it in — or nothing. An ordered silence table keeps it quiet when the host cannot carry a line, the trail is off, your prompt said stop, nothing holds, the same fact was said this session, this prompt had its line, your work is paused or waiting for you, or nothing here handles it. Nothing is said after a call that succeeded. |
-| **Stop, with a workflow step ready** | The turn is held open — at most twice per prompt, never twice in a row — with the step and its one command, or the model says in one sentence why it stops. Never past your pause, cancel, approval or question, never after a turn that only answered a question or a prompt that said stop or wait, never with the trail off. Off: `trigger.holdOnStop`. |
-| **Stop, after edits nothing checked** | A turn that edited code a component of this checkout owns, with no passing test or declared verifying check after the edit (a lint or a build alone shows nothing works), is held open once per prompt, naming the safe check that component declares and its command. With no declared check it names the tracked test files Orbit's relation adapters link to the edited files (by the checkout's own test patterns, such as pytest's `python_files`), or asks for a regression test where none covers the change. It runs nothing. Off: `trigger.holdUnverified`. |
+| Session start, in a checkout Orbit knows | one line of at most 300 bytes — each family's usable count, what you switched off, the project's STATUS word — and, on a resumed or compacted session, its open work and next step |
+| One of Orbit's agents returns | the owner record that settles its work (the workflow, goal, mission or task) and where it stands; what the agent said is its report, never the evidence |
+| An Orbit command fails under governed work | the owner's recovery row: an action that did not settle is read back with `reconcile`, never sent again |
+| Any tool call fails (0.6.0) | at most one line of advice — the fact, its subject, the skill or agent that handles it and the call that brings it in — or nothing: an ordered silence table keeps quiet when the host cannot carry a line, the trail is off, you said stop, nothing holds, it was said already this session, this prompt had its line, your work is paused or waiting, or nothing handles it. Never after a call that succeeded |
+| Stop, with a workflow step ready | the turn is held open (at most twice per prompt, never twice in a row) with the step and its command, or the model says in one sentence why it stops; never past your pause, cancel, approval or question, never after a halt cue. Off: `trigger.holdOnStop` |
+| Stop, after edits nothing checked (0.6.0) | held open once per prompt when the turn edited code a component owns and no test or declared verifying check passed after the edit (a lint or a build alone shows nothing works), naming the safe check that component declares — or, with none, the tracked test files linked to the edited files, or a regression test to write. It runs nothing. Off: `trigger.holdUnverified` |
 
-The two Stop holds are Claude Code's; each host's row is in [docs/hosts.md](docs/hosts.md). `node cli/trace.mjs
-activation` reads back how a suggestion became an outcome — suggested → selected → dispatched → executed → verified,
-each from its own source, with only an owner's record ever verified — and marks a turn that dispatched more of Orbit's
-agents than its strategy accounted for as **over-delegated**. A line of advice is kept as `advice.given` (the fact, its
-subject, the provider and its kind, never the sentence) and counted as suggested.
+The Stop holds are Claude Code's; each host's row is in [docs/hosts.md](docs/hosts.md). `trace activation` shows how a
+suggestion became an outcome — suggested → selected → dispatched → executed → verified, with only an owner's record
+ever verified — and marks a turn that dispatched more agents than its strategy accounted for as **over-delegated**.
 
 ---
 
 ## Command line
 
-Every skill is backed by a command under `cli/`. On any host the reliable form is `node <plugin-root>/cli/<tool>.mjs …`
-(below, `node cli/…` for short). Each file starts with its usage, and most commands take `--json`.
+Every skill is backed by commands under `cli/`. On any host the reliable form is `node <plugin-root>/cli/<tool>.mjs …`
+(`node cli/…` below, for short). Each file starts with its usage, and most commands take `--json`.
 
-| Area | Command | What it is for |
+| Area | Commands | What they are for |
 | --- | --- | --- |
-| Start | `orbit.mjs` | goals: `goal start`, `analyze`, `plan`, `step`, `status`, `verify`, `report`, `resume`, `list`; `doctor` |
-| | `help.mjs` | one recommended next step, and why (`--for="<task>"`) |
-| | `automation.mjs` | coordinated workflows: `start`, `context`, `step`, `settle`, `reconcile`, `finish`; `status`, `doctor` |
-| | `track.mjs` | unified work tracking: `status`, `list`, `current`, `coverage` |
-| Requirements and work | `requirements.mjs` | a work item read into facts, questions and a frozen snapshot |
-| | `work.mjs` | the one work a requirement has: needs, bindings, receipts, checkpoints |
-| | `task.mjs` | one execution: `list`, `show`, `why`, `events`, `machine`; a person's `pause` and `cancel` |
+| Start | `orbit.mjs` | goals (`goal start`, `analyze`, `plan`, `step`, `status`, `verify`, `report`, `resume`, `list`) and `doctor` |
+| | `help.mjs` · `automation.mjs` · `track.mjs` | one recommended next step; coordinated workflows; unified work tracking |
+| Requirements and work | `requirements.mjs` · `work.mjs` · `task.mjs` | facts, questions and snapshots; a work's needs and receipts; one execution (`list`, `show`, `why`) |
 | Engineering | `autonomous-engineering.mjs` | a task taken to a verified change: `start`, `context`, `step`, `reconcile`, `finish` |
 | | `context.mjs` | what a task touches, and whether that is enough (`--for="<task>"`) |
 | | `runtime.mjs` | what a checkout needs to run: `discover`, `status`, `doctor`, `start`, `stop`, a task's sandbox |
-| Project memory | `architecture.mjs` | the architecture snapshot and the system graph: `ensure`, `facts`, `why`, `graph`, `diff` |
-| | `intelligence.mjs` | which technologies, and what each is used for: `ensure`, `technologies`, `integrations`, `resolve` |
-| | `engineering.mjs` | how this project builds code: `facts`, `why`, `recall`, `doctor` |
-| | `knowledge.mjs` | contextual claims and capability opportunities: `claims`, `verify`, `opportunities`, `decide` |
-| | `learn.mjs` | lessons from independent sessions: `lessons`, `why`, `recall`, `remember`, `forget`, `analyse` |
+| Project memory | `architecture.mjs` · `intelligence.mjs` · `engineering.mjs` · `knowledge.mjs` · `learn.mjs` | architecture and the system graph; technologies; conventions; knowledge and opportunities; lessons |
 | Testing and QA | `run-case.mjs` | run one JSON UI test case (`--dry`, `--report`) |
 | | `query.mjs` | the UI map, the cases and the DSL (`dsl`, `verb`, `field`); `check`, `triage`, `doctor`, `storage` |
-| | `qa-plan.mjs`, `plan-check.mjs` | test plans (`plans`, `show`, `coverage`, `select`, `impact`, `new`), held to their rules |
-| | `autonomous-qa.mjs` | QA investigations and generated tests: `plan`, `derive`, `step`, `reconcile`, `finish` |
-| | `security-audit.mjs` | the security catalogs in effect, and an assessment from evidence |
-| | `report.mjs`, `review.mjs`, `explore.mjs` | a run, a screen, a session or an exploration as one self-contained HTML page |
-| | `record-edge.mjs` | add controls to the UI map, or correct one in place (`--replace`) |
-| Viewing | `live.mjs` | Orbit Live: `status`, `watch`, `tui`, `open`, `pin`, `settings`, `doctor` |
-| | `trace.mjs` | the session trail: `turns`, `turn`, `usage`, `activation`, `where` |
-| | `host.mjs` | Claude Code's status line (`--kind=statusline`) and a host's settings |
-| Resources | `resources.mjs` | the registry of skills, agents, MCP servers, tools and capabilities; `route "<prompt>"` dry-runs the router |
-| | `mcp.mjs` | managed and external MCP servers; `call` through every gate |
-| | `skill-factory.mjs` | generated project playbooks: `list`, `show`, `discover`, `workflow`, `runs`, `review` |
-| | `qc-tool.mjs` | this project's own QC tools: `new`, `verify`, `register`, `status`, `rollback` |
-| | `setup.mjs` | install the declared tools that have a package name |
-| Data | `storage.mjs`, `init.mjs` | where test data lives; seat a project; a person's `import` and `export` |
-| Reports | `project-report.mjs` | a product owner's report: `run`, `render`, `connect`, `sign-in`, `sign-out` |
-| Improvement | `improve.mjs` | self-improvement: `status`, `analyse`, `resume`, `evaluate`, `metrics` |
-| Missions | `satellite/cli/satellite.mjs` | Orbit Satellite: `mission start`, `context`, `step`; `live tui` |
+| | `qa-plan.mjs` · `plan-check.mjs` | test plans and their coverage, held to their rules |
+| | `autonomous-qa.mjs` · `security-audit.mjs` | QA investigations and generated tests; security assessments |
+| | `report.mjs` · `review.mjs` · `explore.mjs` · `record-edge.mjs` | a run, screen, session or exploration as one HTML page; UI map records |
+| Viewing | `live.mjs` · `trace.mjs` · `host.mjs` | Orbit Live; the session trail; Claude Code's status line |
+| Resources | `resources.mjs` · `mcp.mjs` | the registry and a dry route (`route "<prompt>"`); MCP servers, called through every gate |
+| | `skill-factory.mjs` · `qc-tool.mjs` · `setup.mjs` | generated playbooks; this project's QC tools; installing declared tools |
+| Data and reports | `storage.mjs` · `init.mjs` · `project-report.mjs` | where test data lives, and a person's transfers; seating a project; product owner reports |
+| More | `improve.mjs` · `satellite/cli/satellite.mjs` | self-improvement; Orbit Satellite missions |
 
 **Exit codes**, the same across the CLIs: `0` done · `1` failed (only where something can fail: a test case, a plan or
 integrity check, an MCP tool's own error) · `2` refused · `3` blocked · `4` inconclusive. A passing slice of a case
-(`--from`/`--to`) is `PARTIAL`, exit `0`.
+(`--from`/`--to`) is `PARTIAL`, exit `0`. The full reference, with the flags: [AGENTS.md › Commands](AGENTS.md#commands).
 
 > **Trying commands inside this repository?** Set `ORBIT_STORE_DIR=/tmp/orbit` first — everything writes to
 > `~/.orbit` by default.
-
-The full command reference, with the flags, is in [AGENTS.md › Commands](AGENTS.md#commands).
 
 ---
 
@@ -338,19 +261,13 @@ All durable state lives **outside your product repository**, in the machine stor
 | Override (the only one) | `ORBIT_STORE_DIR=/path/to/base` → `/path/to/base/<project-key>/` |
 | Show the paths | `node cli/query.mjs storage --json` or `node cli/storage.mjs where` |
 
-- A project is keyed by its repository's identity, so every checkout of one repository shares one store; runtime
+- A project is keyed by its repository's identity: every checkout of one repository shares one store, and runtime
   sessions stay separate per checkout.
-- **Test data** (`ui-tests/`) lives in the store by default:
-
-  ```text
-  ui-tests/project.json · graph/ · schema/{case,plan}.schema.json
-  ui-tests/screens/<screen-id>/<plan-id>.plan.json (+ .md)
-  ui-tests/screens/<screen-id>/cases/<case-id>.json
-  ```
-
-  A team that commits its test data with its code chooses the checkout explicitly (`init --in-checkout`, or
-  `storage export --all --move`), and `ORBIT_UI_TESTS` names a data directory directly. Moving data between the two is
-  a person's act (`storage import`, `storage export`), previewed and checked with per-file digests.
+- **Test data** (`ui-tests/`) lives in the store by default: `project.json`, `graph/`,
+  `screens/<screen>/<plan>.plan.json` and `screens/<screen>/cases/<case>.json`. A team that commits its test data with
+  its code chooses the checkout explicitly (`init --in-checkout`, or `storage export --all --move`), and
+  `ORBIT_UI_TESTS` names a data directory directly. Moving data between the two is a person's act (`storage import`,
+  `storage export`), previewed and checked with per-file digests.
 - **Reports, evidence, lessons, goals, requirements, works, tasks, generated playbooks and improvement campaigns**
   always stay in the store.
 - Reading never creates state; every write is contained, locked and checked for a stale revision.
@@ -359,8 +276,8 @@ All durable state lives **outside your product repository**, in the machine stor
 
 ## Settings and switches
 
-Everything below is on by default. On Claude Code each switch is a plugin option; on any host, an exported variable
-overrides it on one machine.
+These are on by default. On Claude Code each is a plugin option; on any host, an exported variable overrides it on one
+machine.
 
 | Switch | Option | Variable | Off means |
 | --- | --- | --- | --- |
@@ -383,49 +300,33 @@ revision it read.
 ### Orbit Live
 
 A **read-only** viewer beside your session, fed from the journals the engine keeps: tasks, goals, workflows, checks
-and QA. `/orbit` and `/orbit-help` open it once per session (`live ensure`), and only in an interactive one — never
-under `claude -p` or in CI:
+and QA. `/orbit` and `/orbit-help` open it once per session, only in an interactive one (never under `claude -p` or
+CI). In **Claude Code** it is a pane docked on the right (from 110 columns with the fullscreen layout,
+`CLAUDE_CODE_NO_FLICKER=1`; above the prompt otherwise). **Codex, Antigravity CLI and Grok Build** cannot say a person
+is there, so nothing opens by itself (unless you list the host in Live's `attendedHosts`); ask, and the agent runs
+`live open` — a split in tmux, Windows Terminal or iTerm2, or a macOS window, else the command is printed. In **VS
+Code**, the companion in [integrations/vscode-orbit-live](integrations/vscode-orbit-live) splits the asking terminal
+(machine-scoped settings `orbit.live.storeDirs`, `orbit.live.nodePath`).
 
-- **Claude Code:** a pane docked on the right inside Claude Code, drawn by the plugin's pane module (from 110 columns
-  with the fullscreen layout, `CLAUDE_CODE_NO_FLICKER=1`; above the prompt otherwise, saying so).
-- **Codex, Antigravity CLI, Grok Build:** nothing opens by itself, because their sessions cannot say a person is
-  there (unless you list the host in Live's `attendedHosts` setting). Ask for it and the agent runs `live open`: a
-  split beside the session in tmux, Windows Terminal or iTerm2, or a macOS window; elsewhere it prints the command.
-- **VS Code:** the companion under [integrations/vscode-orbit-live](integrations/vscode-orbit-live) splits the asking
-  terminal and runs Orbit's viewer (machine-scoped settings: `orbit.live.storeDirs`, `orbit.live.nodePath`).
-
-What it shows:
-
-- A badge that says what the task is doing — `ORBITING`, `IDLE`, `BLOCKED`, `COMPLETED` … — only on evidence. The
-  animated orbit in the header is the viewer's own motion, never progress.
-- The checklist, `NOW`, six views (events, tests, changes, notices, plan, timeline), task and test progress, the
-  baseline as a card, and a workflow's milestones under their step.
-- **Which agent did what** (0.2.2): where the host names the subagent that made a call (Claude Code), the session's
-  activity is grouped per agent — its type, whether it started or stopped, its calls, who launched it and the mission
-  run it carries. The session's own calls stay apart, and a coverage line says what this host lets the hooks see.
-- **Self-improvement** (0.3.0): an evaluation task shows its campaign in an `IMPROVE` section — the phase, both
-  versions, the verdict and the gates.
-
-Which task it shows: one this session created, a pin, or the one task running in this checkout — never the newest task
-on the machine. Two candidates are `AMBIGUOUS`, and `live pin <task>` chooses.
+The badge says what the task is doing — `ORBITING`, `IDLE`, `BLOCKED`, `COMPLETED` … — only on evidence; the animated
+orbit in the header is the viewer's motion, never progress. Below it: the checklist, `NOW`, six views (events, tests,
+changes, notices, plan, timeline), task and test progress, and a workflow's milestones under their step. Where the host
+names the subagent behind a call (Claude Code, 0.2.2), activity is grouped **per agent**; an evaluation task shows its
+campaign in an `IMPROVE` section (0.3.0). The task shown is one this session created, a pin or the one task running in
+this checkout — never the newest on the machine; two candidates are `AMBIGUOUS`, and `live pin <task>` chooses.
 
 ```bash
-node cli/live.mjs status          # print once
-node cli/live.mjs watch           # follow in this terminal; q detaches the viewer and nothing else
-node cli/live.mjs tui             # full screen, in a second terminal or pane
-node cli/live.mjs open            # open it beside this session
-node cli/live.mjs settings --apply='{"pane":{"widthPercent":36,"focusCli":true}}' --revision=<r>
+node cli/live.mjs status | watch | tui | open     # print once; follow here (q detaches); full screen; open beside you
 ```
 
-Pane settings: `pane.widthPercent`, `pane.focusCli`, `pane.animation: off` (keep it still) and `pane.orbitSpeed`
-(`slow` · `normal` · `fast`). To stop `/orbit` and `/orbit-help` opening it: Orbit Control › Advanced › Automation
+Settings (`live settings --apply='<json>' --revision=<r>`): `pane.widthPercent`, `pane.focusCli`, `pane.animation: off`
+and `pane.orbitSpeed` (`slow` · `normal` · `fast`). To stop it opening by itself: Orbit Control › Advanced › Automation
 limits › Live (`live.open`).
 
-**Status line (Claude Code).** Orbit can own one key, `statusLine`, in your Claude Code settings, naming a small script
-Orbit keeps in its store. `node cli/host.mjs render --host=claude --kind=statusline` shows what it would write and the
-revision; `apply … --revision=<r> --human` writes it and `remove … --revision=<r> --human` takes it out. A status line
-you already have is refused unless you `--replace` it (yours comes back on remove) or `--keep-existing` (yours runs
-first, then Orbit's; not on Windows).
+**Status line (Claude Code).** Orbit can own one key, `statusLine`, in your Claude Code settings:
+`node cli/host.mjs render --host=claude --kind=statusline` shows what it would write and the revision; `apply …
+--revision=<r> --human` writes it and `remove … --revision=<r> --human` takes it out. A status line you already have is
+refused unless you `--replace` it (yours comes back on remove) or `--keep-existing` (yours runs first; not on Windows).
 
 ### Orbit Control
 
@@ -434,17 +335,14 @@ connections (a credential that goes straight to the OS secret store, or a Micros
 security catalogs, self-improvement (Advanced › Improvement), the router's inspector, analytics and the session trail —
 and the protected actions waiting for a person. Start it with `/orbit-control` (or
 `node <plugin-root>/skills/orbit-control/start.mjs`) and open the URL it prints, `#token=…` included: without the token
-the page is read-only. It needs Node 24.15 or newer and finds one itself (`ORBIT_CONTROL_NODE`, the running Node, a
-private runtime, then nvm's versions).
+the page is read-only.
 
-- **MCP servers.** A *managed* server is Orbit's: added here from the catalog or as your own, and called only through
-  Orbit's broker. An *external* server is one a host configured: listed and testable, never routed to, called or
-  written by Orbit. A secret is never typed in: a header or variable names the environment variable its value comes
-  from.
-- **Approvals.** Approving a push or a production action, and resuming a paused task, happen only here: a terminal
-  cannot prove a person typed them. An approval is for one action, spent once.
-- Orbit never adds, enables or approves an MCP server, a policy or an approval by itself — a person does it here. The
-  one thing it fetches on its own is a pinned, checksum-verified private tool that work you asked for needs (see
+- **MCP servers.** A *managed* server is Orbit's, added here and called only through Orbit's broker. An *external* one
+  is what a host configured: listed and testable, never routed to, called or written by Orbit. A secret is never typed
+  in: a header or variable names the environment variable its value comes from.
+- **Decisions.** Approving a push or a production action, and resuming a paused task, happen only here: a terminal
+  cannot prove a person typed them. Orbit never adds, enables or approves a server, a policy or an approval by itself.
+  The one thing it fetches on its own is a pinned, checksum-verified private tool that work you asked for needs (see
   [Microsoft sign-in](#microsoft-sign-in-for-azure-devops)).
 
 ### Protected boundaries
@@ -476,183 +374,147 @@ command — and unknown is never production.
 
 ## Feature guides
 
+[Goals](#goals) · [Requirements, work and tasks](#requirements-work-and-tasks) · [Project context](#project-context) ·
+[Project memory](#project-memory) · [Coordinated workflows](#coordinated-workflows-and-playbooks) ·
+[Autonomous engineering](#autonomous-engineering) · [Unified work tracking](#unified-work-tracking) ·
+[Running the application](#running-the-application) · [UI test cases](#ui-test-cases) · [Autonomous QA](#autonomous-qa) ·
+[System graph](#system-graph) · [Orbit Satellite](#orbit-satellite) · [Self-improvement](#autonomous-self-improvement) ·
+[The session trail](#the-session-trail) · [Project reports](#project-reports) ·
+[Extending Orbit](#extending-orbit-in-your-project)
+
 ### Goals
 
-`/orbit` keeps the specification exactly as submitted (`goal start`). The host's model then reads it into requirements —
-each row labelled `explicit`, `derived`, `assumption`, `unknown`, `conflict`, `decision` or `constraint`, and citing the
-line it rests on (a row with no kind is an assumption; one with no citation cites none) — and into a structured
-**intent**: category, work kinds, capabilities, verification, dependencies and missing prerequisites. The plan is drawn
-from the intent alone, never from the words, so a goal written in Vietnamese and its English twin plan the same. One
-work unit is planned per kind, in the engine's order (analyze → change → investigate → procedure → verify); a unit a
-missing prerequisite blocks is `unresolved` and never started. Each unit runs as a
-[coordinated workflow](#coordinated-workflows-and-playbooks), and `goal verify` says what the evidence shows.
+`/orbit` keeps the specification exactly as submitted. The host's model reads it into requirements — each labelled
+`explicit`, `derived`, `assumption`, `unknown`, `conflict`, `decision` or `constraint`, citing the line it rests on (a
+row with no kind is an assumption) — and a structured **intent**: category, work kinds, capabilities, verification,
+dependencies, missing prerequisites. The plan comes from the intent alone, never from the words, so a goal in Vietnamese
+and its English twin plan the same: one unit per work kind, in order (analyze → change → investigate → procedure →
+verify), each run as a [coordinated workflow](#coordinated-workflows-and-playbooks). A unit a missing prerequisite
+blocks is `unresolved` and never started.
 
 ```bash
-node cli/orbit.mjs goal start --stdin [--ref=PBI-482] < goal.txt   # keep the goal as submitted
-node cli/orbit.mjs goal analyze <goal-id> --stdin < analysis.json  # the host's reading, as JSON
-node cli/orbit.mjs goal plan|step|status|verify|report|resume <goal-id>
-node cli/orbit.mjs goal list
+node cli/orbit.mjs goal start --stdin [--ref=PBI-482] < goal.txt
+node cli/orbit.mjs goal analyze|plan|step|status|verify|report|resume <goal-id>
 ```
 
 ### Requirements, work and tasks
 
-- **A requirement** is what its own source says. `orbit-requirements` reads a work item into atomic facts and one
-  frozen snapshot (`rs-…`). A source record keeps what the item *was* (identity, revision, digest, whose word), never
-  its text. A pull request, a commit, a test or the code is never a requirement's source: what the product does today
-  is how it was built, not what it should do. Unknowns become questions, and only a person answers one
-  (`answer --human`). A roundtable of reviewer agents (product, domain, QA and a critic) proposes questions and decides
-  nothing.
-- **A work** (`w-…`) is the one piece of work a requirement has: the capabilities it needs, which provider serves each
-  (a binding the resolver writes), receipts of what was asked (digests, never the answer) and checkpoints. A capability
-  nothing provides is one knowledge opportunity for a person to decide — never an install.
-- **A task** (`tsk-…`) is one execution of a work: an append-only journal whose lifecycle, stage and attempt are
-  derived on every read. A person's pause, cancel or reject names the revision they read (`--expect=<revision>`);
-  approve and resume happen only in Orbit Control.
+- **A requirement** is what its own source says. `orbit-requirements` reads a work item into atomic facts and a frozen
+  snapshot (`rs-…`), keeping what the item *was* (identity, revision, digest, whose word), never its text. Code, tests
+  and pull requests are never a requirement's source: what the product does today is how it was built, not what it
+  should do. Unknowns become questions, and only a person answers one (`answer --human`); a roundtable of reviewer
+  agents proposes questions and decides nothing.
+- **A work** (`w-…`) holds what a requirement needs: capabilities, the provider bound to each, receipts (digests, never
+  the answer) and checkpoints. A capability nothing provides is an opportunity for a person, never an install.
+- **A task** (`tsk-…`) is one execution: an append-only journal whose state is derived on every read. Your pause or
+  cancel names the revision you read (`--expect=<revision>`); approve and resume happen only in Orbit Control.
 
 ```bash
-node cli/requirements.mjs resolve <ref>                              # find a work item
-node cli/requirements.mjs acquire <ref> | status <root> | snapshot <root>
+node cli/requirements.mjs resolve <ref> | acquire <ref> | status <root> | snapshot <root>
 node cli/requirements.mjs answer <root> --question=<rq-…> --says="…" --human
-node cli/work.mjs start "<objective>" --ref=<item> | show <w-…> | list
-node cli/task.mjs list | show <task> | why <task>
-node cli/task.mjs pause|cancel <task> --human --expect=<revision>
+node cli/task.mjs list | show <task> | why <task> | pause <task> --human --expect=<revision>
 ```
 
 ### Project context
 
 `context --for="<task>"` is what `orbit-develop`, `orbit-engineer` and `orbit-help` read before they choose a scope.
-Memory first, it composes the architecture, technology, engineering, knowledge, work and working-set sections, and two
-answers about the task itself (0.5.0):
+Memory first, it composes the architecture, technology, engineering, knowledge, work and working-set sections, and
+answers two questions about the task (0.5.0):
 
-- **RELEVANT** — what the task touches, from what the owners already hold: architecture's modules, boundaries,
-  system-graph nodes and gates, the integrations, what engineering and knowledge recall, the working set and, once the
-  paths are known, what the change reaches and which declared checks hold it. Each item is a `file`, `symbol`,
-  `component` or `check`, classed `direct`, `dependency`, `downstream`, `verification` or `unknown`, with its evidence,
-  its freshness (against its own scope, never HEAD) and who found it (`engine` or `host-verified`). At most 40 are
-  listed and the rest counted. Names are matched with identifiers split (`createOrder` is "create order"): no
-  embeddings, no parsing of any language.
-- **SUFFICIENCY** — one word: `ENOUGH` (proceed from those items), `DISCOVER` (with the targeted reads that would fill
-  the gap, each an Orbit command; never a full scan, and never a read already made that would find the same nothing) or
-  `ASK` (a question about the task's own work is already open: a requirement's blocking question or a goal's missing
-  prerequisite). Orbit never makes a question up, and only a person answers one.
+- **RELEVANT** — what the task touches, from what the owners already hold: each item a `file`, `symbol`, `component` or
+  `check`, classed `direct`, `dependency`, `downstream`, `verification` or `unknown`, with its evidence, its freshness
+  (against its own scope, never HEAD) and who found it (`engine` or `host-verified`); at most 40 are listed. Names match
+  with identifiers split (`createOrder` is "create order"): no embeddings, no parsing of any language. Each direct file
+  is followed one hop each way — what it imports, who imports it, its tests — by relation adapters in a pack
+  (JavaScript/TypeScript and Python ship in `skills/orbit-develop/relations/`).
+- **SUFFICIENCY** — `ENOUGH` (proceed from those items), `DISCOVER` (the targeted reads that would fill the gap, each an
+  Orbit command, never a full scan) or `ASK` (a question about the task's own work is already open; Orbit never makes
+  one up). Since 0.6.0 it also answers by level — enough to **investigate** (a direct file or symbol the tree holds), to
+  **change** (those confirmed by a read, their dependents known, a done criterion and the check that would prove it),
+  to **conclude** (every proof need satisfied, nothing moved since, the work `verified`) — each an ordered table over
+  facts, never a count of search hits ([ADR 0058](docs/adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md)).
 
-A host proposes what it found with `--with-refs` — `{ "task": "…", "refs": [{ "kind": "file|symbol", "ref": "…",
-"why": "…" }] }` on stdin. A file is checked against the tracked listing and a symbol by one whole-word search of the
-index; one the tree does not hold is refused by name and never listed. Composing the package writes nothing.
-
-**Three levels** (0.6.0, [ADR 0058](docs/adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md)). SUFFICIENCY also
-says whether the task knows enough to **investigate** (a direct file or symbol the tracked tree holds), to **change**
-(the direct items confirmed by a read, what depends on them known or said unknown, a done criterion recorded as a
-`proof` need on the task's work, and the check that would prove it identified) and to **conclude** (every proof need
-satisfied, nothing it rests on moved since, and the work `verified` by an owner's completed task). Each level is an
-ordered table over facts, never a count of search hits: it names the row that stops it and the command that fills each
-gap. A name the task's words matched is a candidate, never confirmed, however many there are.
-
-**Relations, one hop each way.** RELEVANT follows each direct file to what it imports, to who imports it and to the
-tests that go with it — read from the tracked tree on demand, never a graph of the repository. What a file names is a
-language's, so relation adapters in a pack read it (JavaScript/TypeScript and Python ship in
-`skills/orbit-develop/relations/`). A route-shaped string two files share is a hypothesis you verify by reading both; a
-file no adapter reads is a gap you fill by reading it and proposing what you found with `--with-refs`.
-
-**A bounded discovery loop.** Discovery is recorded on the task's own work: its done criteria are `proof` needs, its gaps
-`knowledge` needs, and each round is a checkpoint that keeps what it asked (`work checkpoint <w-…> --asked="<source ·
-target>"`). `context --work=<w-…>` reads the rounds back: they stop after five, or after two in a row that settle
-nothing new, and a target already answered is not offered again while that answer is fresh — so the next session
-re-reads only what went stale. A scope gone from the tree is said as `GONE`, and a need settled on it is settled again.
-A question about how a technology behaves goes to `orbit-research`.
+A host proposes what it found with `--with-refs`; a file or symbol the tracked tree does not hold is refused by name.
+Discovery is recorded on the task's own work: done criteria are `proof` needs, gaps are `knowledge` needs, and each round
+is a checkpoint (`work checkpoint <w-…> --asked="<source · target>"`). Rounds stop after five, or after two in a row that
+settle nothing new, and an answer still fresh is not asked again — so the next session re-reads only what went stale.
+Composing the package writes nothing.
 
 ```bash
-node cli/context.mjs --for="<task>" [--json]              # what the task touches, and whether that is enough
-node cli/context.mjs --with-refs --json < refs.json       # the same, with the files and symbols you propose, verified
-node cli/context.mjs --for="<task>" --work=<w-…>          # with the rounds of the task's own work
+node cli/context.mjs --for="<task>" [--work=<w-…>] [--json]
+node cli/context.mjs --with-refs --json < refs.json   # {"task": "…", "refs": [{"kind": "file|symbol", "ref": "…", "why": "…"}]}
 ```
 
 ### Project memory
 
-Orbit keeps what it learns about a project in the store, reads that memory first and re-reads the repository only when
-something moved — and it prints that decision. Every fact names its evidence and its scope. Freshness is measured
-against that scope, never against HEAD (keyed to the commit, every fact would be stale on every push): `stale` means
-"revalidate", never "false"; an uncommitted edit is `unknown`; a scope deleted, renamed away or gone on a branch switch
-is `GONE`.
+Orbit keeps what it learns about a project in the store, reads memory first and re-reads the repository only when
+something moved — and prints that decision. Each fact names its evidence and its scope, and freshness is measured
+against that scope, never HEAD: `stale` means "revalidate", never "false"; an uncommitted edit is `unknown`; a scope
+deleted, renamed away or gone on a branch switch is `GONE`.
 
 | Memory | What it keeps | Commands (`node cli/…`) |
 | --- | --- | --- |
-| Architecture | modules, boundaries, gates and the [system graph](#system-graph). `ensure` decides whether to read the repository at all; the normal answer is `CURRENT`, a few git calls | `architecture.mjs ensure`, `facts`, `why <id>`, `diff` |
-| Technologies | what is declared, used and configured — a technology is not a capability; integrations keyed by system *and* operation; `resolve` says reuse, build, unknown or blocked, and never acts | `intelligence.mjs ensure`, `technologies`, `integrations`, `resolve <intent>` |
-| Engineering conventions | how this project builds code, from tracked files and the checks that passed | `engineering.mjs facts`, `why <id>`, `recall`, `doctor` |
-| Knowledge | claims, each a relation in a context (two contexts are two claims); authority derived — rule · adopted · source · confirmed · host-memory · inference; a relation nobody declared is still kept | `knowledge.mjs claims --for="…"`, `why <id>`, `opportunities` |
-| Lessons | what repeated across independent sessions — two machines or two UTC days; one session is only an observation | `learn.mjs lessons`, `why <id>`, `recall`, `remember`, `forget` |
+| Architecture | modules, boundaries, gates and the [system graph](#system-graph); `ensure` normally answers `CURRENT` after a few git calls | `architecture.mjs ensure`, `facts`, `why <id>`, `diff` |
+| Technologies | what is declared, used and configured (a technology is not a capability); integrations by system *and* operation; `resolve` says reuse, build, unknown or blocked, and never acts | `intelligence.mjs ensure`, `technologies`, `integrations`, `resolve <intent>` |
+| Engineering conventions | how this project builds code, from tracked files and the checks that passed | `engineering.mjs facts`, `why <id>`, `doctor` |
+| Knowledge | claims, each a relation in a context (two contexts are two claims); authority derived: rule · adopted · source · confirmed · host-memory · inference | `knowledge.mjs claims --for="…"`, `opportunities` |
+| Lessons | what repeated in independent sessions (two machines or two UTC days); one session is only an observation | `learn.mjs lessons`, `why <id>`, `recall` |
 
-**A gap is an opportunity, and only a person decides one.** A capability nothing here provides is remembered as one
-opportunity, development goes on, and nothing is installed, enabled or generated. Defer, accept, ignore or reopen it
-with `knowledge decide <opp-id> defer|accept|ignore|reopen --human`; deferred means "not now", never "never".
-
-**The engineering observer.** On by default and bounded: it runs at a milestone only (a commit, a session's end, a
-check passing after an edit, a task completed on its own proof), at most four times a session, and what it proposes is
-never stronger than `observed`. It watches only a checkout the machine knows — one somebody used Orbit in, one that
-commits `ui-tests/`, or a directory named by `ORBIT_UI_TESTS` — so a repository you merely open is written about
-nowhere. Switch it off with `ORBIT_ENGINEERING_OBSERVE=off` or the `engineering_observe` option;
-`engineering doctor` says whether it is on, whether it ran and what stopped it.
-
-**Host memory is a hint.** What your host keeps about the project (Claude Code's memory) can point discovery at a
-subject, but it never becomes a fact, is never copied into the store and is always outranked by current source.
+A capability nothing provides is remembered as one **opportunity** and work goes on; only a person decides it
+(`knowledge decide <opp-id> defer|accept|ignore|reopen --human`). The **engineering observer** is on by default and
+bounded: a milestone only (a commit, a session's end, a check passing after an edit, a completed task), at most four
+times a session, never stronger than `observed`, and only in a checkout the machine knows (one Orbit was used in, one
+that commits `ui-tests/`, or `ORBIT_UI_TESTS`). Turn it off with `ORBIT_ENGINEERING_OBSERVE=off`; `engineering doctor`
+says whether it ran and what stopped it. Your **host's memory** is a hint: it can point discovery somewhere, but never
+becomes a fact, is never copied into the store and is always outranked by current source.
 
 ### Coordinated workflows and playbooks
 
 `/orbit-help` with a concrete task starts a **coordinated workflow**
-([ADR 0017](docs/adr/0017-a-coordinator-is-a-task-that-dispatches-to-owners.md)): a task of its own whose every step is
-an owner's — a frozen requirement read back, runtime understanding, an engineering task, an investigation, a project
-playbook — and is settled only on that owner's record. One step runs at a time; the plan is a graph the engine's tables
-draw, revised only on evidence and at most `execution.maxReplans` times. The engine calls no model and runs no command
-line of its own; its limits are a person's, set in Orbit Control. A workflow never cancels the engineering task it
-started: a person does.
+([ADR 0017](docs/adr/0017-a-coordinator-is-a-task-that-dispatches-to-owners.md)): a task whose every step is an owner's —
+a frozen requirement, runtime understanding, an engineering task, an investigation, a project playbook — settled only on
+that owner's record. One step runs at a time; the plan is a graph the engine's tables draw, revised only on evidence (at
+most `execution.maxReplans` times). The engine calls no model, and its limits are a person's, set in Orbit Control.
 
 When a workflow needs a capability nothing provides, the skill factory drafts a **project-scoped playbook**: a
-`SKILL.md` and, when the work is a sequence of calls to capabilities this machine already has, a declared
-`workflow.json` — data the engine interprets, never code. The engine validates it, registers it in the store and runs it
-pinned to one version, each step through its provider's own gate (the MCP broker or the capability pipeline) and every
-call a receipt of digests. Later workflows reuse the pinned playbook instead of drafting again
+`SKILL.md` and, for a sequence of calls to capabilities this machine already has, a declared `workflow.json` — data,
+never code. The engine validates it, registers it and runs it pinned to one version, each step through its provider's
+own gate (the MCP broker or the capability pipeline) and every call a receipt of digests; later workflows reuse the pin
 ([ADR 0030](docs/adr/0030-a-generated-skill-declares-a-workflow-the-engine-runs-through-owner-gates.md)).
 
 ```bash
-node cli/automation.mjs status | plan --for="<objective>"                 # settings in effect; what a workflow would do
-node cli/automation.mjs context <task> | reconcile <task> | finish <task>
+node cli/automation.mjs status | plan --for="<objective>" | context <task> | reconcile <task>
 node cli/skill-factory.mjs discover --for=release.readiness.verification   # reusable (and its pin) or which gap
-node cli/skill-factory.mjs workflow <id|pin>                               # its steps, in order
-node cli/skill-factory.mjs runs <id> | review <id>                         # what each run came to; a successor proposed, never written
+node cli/skill-factory.mjs workflow <id|pin> | runs <id> | review <id>     # its steps; its runs; a successor proposed
 ```
 
 ### Autonomous engineering
 
-`orbit-engineer` (`autonomous-engineering.mjs`) takes a requirement or an objective to a verified change in a workspace
-of the task's own: a local clone. Your checkout, its `.git` included, is never written.
+`orbit-engineer` (`autonomous-engineering.mjs`) takes a requirement to a verified change in the task's own workspace, a
+local clone; your checkout, `.git` included, is never written.
 
-- **A change is held to what it reaches**
-  ([ADR 0019](docs/adr/0019-a-change-is-held-to-what-it-reaches.md)). From the changed paths and the component graph
-  runtime understanding read, the engine derives which declared checks are REQUIRED; every other one is NOT AFFECTED,
-  not run, and never a pass. A path nothing holds, or a changed component nothing tests, is MISSING and blocks
-  completion. A failure is a regression unless its baseline failed the same way (`failed-as-before`: shown, never a
-  pass), and at least one required test or verify command must pass.
+- **Held to what it reaches** ([ADR 0019](docs/adr/0019-a-change-is-held-to-what-it-reaches.md)): the changed paths and
+  the component graph decide which declared checks are REQUIRED; the rest are NOT AFFECTED, never a pass. A path nothing
+  holds, or a changed component nothing tests, is MISSING and blocks completion. A failure its baseline already had is
+  `failed-as-before` — shown, never a pass — and at least one required test or verify command must pass.
 - **Only declared checks run**, chosen by id and run as argument lists; nothing a model writes becomes a command.
-- **What stopped a check** is classified from facts, never from the words of an error: `DEPENDENCY` (the workspace's
-  dependency restore for that component ran and failed), `ACCESS` (a target a person said the component requires is
-  unreachable from here, asked fresh), `ENVIRONMENT` (it could not run here, or failed the same way before any change),
-  `CODE`, `TEST`, `CAPABILITY`, `REQUIREMENT`, `DATA`, `SCOPE` and `UNKNOWN`. A class chooses what to look at next; it
-  is never a verdict. Three attempts on one failure signature conclude `NO_PROGRESS`.
-- **Commit, then push on approval.** A verified change is committed by itself; that exact commit is pushed only through
-  the git-push boundary, approved once in Orbit Control. It never merges.
+- **What stopped a check** comes from facts, never from an error's words: `DEPENDENCY` (the component's dependency
+  restore ran and failed), `ACCESS` (a target a person said it requires is unreachable, asked fresh), `ENVIRONMENT` (it
+  cannot run here, or failed the same way before any change), `CODE`, `TEST`, `CAPABILITY`, `REQUIREMENT`, `DATA`,
+  `SCOPE`, `UNKNOWN`. A class picks what to look at next, never a verdict; three attempts on one failure signature are
+  `NO_PROGRESS`.
+- **Commit, then push on approval:** a verified change is committed by itself, and that exact commit is pushed only
+  after one approval in Orbit Control. It never merges.
 
-The task's context ends with a `DO` line: the one command that goes on — `step` with the decision on stdin, or
-`reconcile` for an action that did not settle. `task why <task>` says, for each decision, how it settled (a receipt, or
-REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent) and which receipt moved the task next.
+The task's context ends with a `DO` line, the one command that goes on. `task why <task>` says how each decision settled
+(a receipt, or REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent) and which receipt moved it next.
 
 ```bash
 node cli/autonomous-engineering.mjs start --ref=<item> | start "<objective>"
 node cli/autonomous-engineering.mjs context <task> | step <task> < decision.json | reconcile <task> | finish <task>
-node cli/task.mjs why <task> [--json]
 ```
 
-### Check observation adapters
+#### Check observation adapters
 
 While a declared check runs beside an engineering task, Orbit reads its output through one adapter, chosen by the
 command and its output. What it observes is shown live in Orbit Live and never changes the verdict:
@@ -665,60 +527,50 @@ command and its output. What it observes is shown live in Orbit Live and never c
 
 ### Unified work tracking
 
-When `/orbit-help` is given a concrete task, Orbit follows it as one **work** (`w-…`) from the request to what it came
-to — whether you work it in the session (`developer`) or an engineering task or a coordinated workflow takes it
-(`autonomous`). A tracked work keeps its identity, its links and what was reported; what a task did, which verdict a
-check earned and what changed stay with their owners and are read back on every view. Tracking creates no task,
-sandbox or workflow, grants nothing and never blocks the work it sits beside. It is shown on three separate axes:
+When `/orbit-help` gets a concrete task, Orbit follows it as one **work** (`w-…`) from the request to what it came to,
+whether you work it in the session (`developer`) or an engineering task or workflow takes it (`autonomous`). A tracked
+work keeps its identity, links and what was reported; what a task did, which verdict a check earned and what changed
+stay with their owners and are read back on every view. Tracking creates no task, sandbox or workflow, grants nothing
+and never blocks the work. It is shown on three separate axes:
 
 - **Lifecycle:** `RECEIVED`, `IN_PROGRESS`, `INTERRUPTED`, `WAITING`, `BLOCKED`, `PAUSED`, `REPORTED_DONE`, `FAILED`,
   `CANCELLED`.
 - **Evidence:** `none` · `observed` · `reported` · `verified` — only a completed linked task is `verified`, and an edit
   observed after it takes that away.
-- **Liveness:** whether a session is still on it (`ACTIVE`, `QUIET`, `ENDED`, `NONE`) — never a lifecycle.
+- **Liveness:** whether a session is still on it (`ACTIVE`, `QUIET`, `ENDED`, `NONE`), never a lifecycle.
 
 Files are the paths an edit tool was seen writing while a session was bound, never the checkout's dirty files; a check
-is a command named like one, with how it ended, never "passed". How much each host lets tracking see differs
-(`track.mjs coverage`; [docs/hosts.md](docs/hosts.md)).
+is a command named like one, with how it ended, never "passed". What each host lets tracking see differs:
+`track.mjs coverage` says, and [docs/hosts.md](docs/hosts.md) has the table.
 
 ```bash
-node cli/track.mjs status [<w-…>]     # lifecycle, evidence, the files and checks observed, linked tasks
-node cli/track.mjs list               # this checkout's tracked works
-node cli/track.mjs coverage           # what this host lets tracking observe, and what it cannot
+node cli/track.mjs status [<w-…>] | list | coverage
 ```
 
 ### Running the application
 
 `orbit-runtime` works out what a checkout needs to run from its own files — manifests, version files, container and dev
-container files, pipelines and build files — and runs none of them to find out.
-
-- A command is launched only as a file declared it, as an argument list, never as a shell line.
-- Orbit stops only what it can prove it started (a receipt, a pid and the pid's start time agree). A port in use blocks
-  the start and names its holder; it is never freed or moved.
-- What it takes to run a checkout is kept per checkout (`<store>/checkouts/<checkoutId>/`), because a branch's
-  manifest, a machine's tools and a held port differ per checkout.
-- A task's **sandbox** is its own: containers, an internal network and leased ports, fingerprinted and receipted. It
-  never reuses your running application, and you never reuse its.
-- Writing the repository (`runtime adopt`) is the primary-checkout-write boundary: only you, in Orbit Control.
+container files, pipelines, build files — and runs none of them to find out. A command is launched only as a file
+declared it, as an argument list. Orbit stops only what it can prove it started (a receipt, a pid and the pid's start
+time agree); a port in use blocks the start and names its holder, and is never freed or moved. What it takes to run a
+checkout is kept per checkout, since a branch's manifest, a machine's tools and a held port differ. A task's **sandbox**
+is its own — containers, an internal network, leased ports, each fingerprinted and receipted — and never reuses your
+running application. Writing the repository (`runtime adopt`) is the primary-checkout-write boundary: only you, in
+Orbit Control.
 
 ```bash
-node cli/runtime.mjs discover | status | doctor          # what it needs, how each component would run, what is missing
-node cli/runtime.mjs start|stop [--component=<key>]      # only what a file declared; only what Orbit proves it started
-node cli/runtime.mjs design | proposal                   # what an environment would have to change
+node cli/runtime.mjs discover | status | doctor | design | proposal
+node cli/runtime.mjs start|stop [--component=<key>]
 ```
 
 ### UI test cases
 
-The Orbit Engine runs UI test cases written as plain JSON through `playwright-cli`. A case names controls by their
-place in the project's UI map (`"on": "home/Add"`), so a moved locator is corrected once, in the map. Each verdict rules
-on one layer: the screen (`ui`), the call it made (`api`) or the row it wrote (`sql`):
+The Orbit Engine runs UI test cases written as plain JSON through `playwright-cli`. A case names controls by their place
+in the project's UI map (`"on": "home/Add"`), so a moved locator is corrected once, in the map, and each verdict rules on
+one layer — the screen (`ui`), the call it made (`api`) or the row it wrote (`sql`):
 
 ```json
-{
-  "id": "create-thing",
-  "name": "Create a thing",
-  "start": "home",
-  "creates": "one thing ${NAME}",
+{ "id": "create-thing", "name": "Create a thing", "start": "home", "creates": "one thing ${NAME}",
   "params": [{ "n": "NAME", "required": true }],
   "steps": [
     { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
@@ -728,30 +580,27 @@ on one layer: the screen (`ui`), the call it made (`api`) or the row it wrote (`
     { "do": "api", "match": "api/things", "method": "POST", "status": 201 },
     { "do": "sql", "query": "SELECT COUNT(*) AS n FROM Things WHERE Name='${NAME}'", "expect": "Number(it[0].n) === 1" }
   ],
-  "seen": "live"
-}
+  "seen": "live" }
 ```
 
-- **PASS is earned and says what it proved:** `proved ui n · api n · sql n`. No verdict executed is `INCONCLUSIVE` (4).
-  A database that cannot be reached is `BLOCKED` (3) — the product is not broken because a laptop is off the VPN. A
-  case refused before the browser (an invalid case, a missing parameter, a destructive case without its flag, no
-  signed-in session) is `REFUSED` (2).
-- **A case that writes must be witnessed below the screen.** A screen can show a write that never happened, so a case
-  that declares `creates` and rules only on the screen is a finding.
-- **Evidence and reports.** A failure leaves its evidence; `--report` writes one self-contained HTML page into the
-  store (pictures inlined, the case's JSON inside), and `run-case <that-report.html>` runs the case again.
-- **Self-healing is never "change the test until it passes".** `orbit-failure-analyst` classifies a failure into one of
-  nine causes; only the owner of that cause repairs its own artifact (`orbit-dsl-doctor` a case's representation,
-  `orbit-map-healer` one locator), and the repair goes back through the engine.
-- New cases an agent writes stay in the store's drafts, even after a PASS; promoting one to the shared regression set
-  is a person's request.
+- **PASS is earned and says what it proved** — `proved ui n · api n · sql n`. No verdict executed is `INCONCLUSIVE`
+  (4); an unreachable database is `BLOCKED` (3), because the product is not broken when a laptop is off the VPN; a case
+  refused before the browser (invalid, a missing parameter, a destructive case without its flag, no signed-in session)
+  is `REFUSED` (2).
+- **A write is witnessed below the screen:** a screen can show a write that never happened, so a case that declares
+  `creates` and rules only on the screen is a finding.
+- **Reports are self-contained:** `--report` writes one HTML page into the store, pictures and the case's JSON inside,
+  and `run-case <that-report.html>` runs the case again.
+- **Self-healing is never "change the test until it passes":** `orbit-failure-analyst` classifies a failure into one of
+  nine causes, only that cause's owner repairs its own artifact (`orbit-dsl-doctor` a case's form, `orbit-map-healer`
+  one locator), and the repair goes back through the engine. Cases an agent writes stay in the store's drafts, even
+  after a PASS, until a person promotes them.
 
 ```bash
 node cli/run-case.mjs create-thing NAME=TC-1 --dry      # resolve and print the plan; no browser, no database
 node cli/run-case.mjs create-thing NAME=TC-1 --report   # run it, with a self-contained HTML report
 node cli/query.mjs dsl | verb sql | field into          # the case vocabulary, from the DSL tables
-node cli/query.mjs check                                # integrity: dangling edges, invalid cases, a stale schema
-node cli/query.mjs triage                               # one run: what its evidence shows, and what it cannot tell
+node cli/query.mjs check | triage                       # integrity; what one run's evidence shows, and cannot tell
 node cli/qa-plan.mjs coverage <plan-id>                 # criterion → scenario → case → run → evidence
 ```
 
@@ -769,39 +618,25 @@ finding concludes are derived from the investigation's journal, never from the h
 | `regression` | run already-accepted cases through `run-case` |
 | `fixture-write` | generated tests that write — only in the task's isolated sandbox, on the run's own fixture, each write under a grant |
 
-Every mode but `observe` runs only on an environment whose modes a person approved.
+Every mode but `observe` runs only on an environment whose modes a person approved. **Generated tests** go from an
+accepted requirement to a verified outcome: obligations are derived from accepted plans against the frozen system graph;
+the host proposes a design and the engine compiles every verdict and page script from the accepted criteria and fixed
+templates; a frozen version runs only in a task's isolated sandbox (Docker), writing only under a grant minted for its
+fixture; and the host validates what the worker left before anything is recorded. Backends are reached through adapters
+(`orbit.adapter/v1`) in packs a project opts into, each proven by conformance receipts; an operation may declare what
+its request carries ([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)).
 
-**Generated tests**, from an accepted requirement to a verified outcome:
-
-1. Obligations are **derived** from accepted plans against the frozen system graph.
-2. The host proposes a test design; the engine compiles every verdict and page script from the accepted criteria and
-   fixed templates.
-3. A frozen version runs only in a task's **isolated sandbox** (Docker), where a write is allowed only under a grant
-   minted for its own fixture.
-4. The host validates what the worker left before anything is recorded; ordered result rows give the outcome.
-
-Backends are reached through adapters (`orbit.adapter/v1`) shipped as packs a project opts into; what each adapter is
-proven to support is computed from conformance receipts. An adapter's operation may declare what its request carries
-([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)), and a design is held to it before
-a draft exists.
-
-A verdict must depend on the application, never on what the design itself causes. Every contradiction rule reads a
-design through one model of what it causes (`src/qa/backend/causes.mjs`) and names no operation or shape: a wait for a
-second delivery nothing brings, a match the design pins itself, a result its own step satisfies. Since 0.6.0,
-`NEVER_DECIDED` refuses a design that waits for a schedule to decide an occurrence when the clock is injected and
-nothing moved it, and `CLOCK_PASSED` advises when a design moves the clock only to where an earlier test already took
-it.
-
-Security catalogs (by default ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and
-isolation are configured by a person in Orbit Control; a task's own sandbox needs nobody's trust to run
-([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)). Orbit never calls anything
-"compliant".
+A verdict must depend on the application, never on what the design itself causes: every contradiction rule reads a
+design through one model of what it causes (`src/qa/backend/causes.mjs`) and names no operation or shape. Since 0.6.0,
+`NEVER_DECIDED` refuses a design that waits for a schedule to decide while the injected clock never moved, and
+`CLOCK_PASSED` advises when a design moves the clock only to where an earlier test already took it. Security catalogs
+(by default ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and isolation are a
+person's, in Orbit Control ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)); Orbit
+never calls anything "compliant".
 
 ```bash
 node cli/autonomous-qa.mjs plan --objective="…" --plan=<id> --sandbox=<env-id> --mode=fixture-write
-node cli/autonomous-qa.mjs derive --investigation=<id>       # the obligations its accepted plans imply
-node cli/autonomous-qa.mjs step --investigation=<id>         # one decision, on stdin
-node cli/autonomous-qa.mjs reconcile --investigation=<id>    # a dispatch that never settled, read back, never resent
+node cli/autonomous-qa.mjs derive|step|reconcile|finish --investigation=<id>   # a dispatch that never settled is read back
 node cli/security-audit.mjs assess --investigation=<id>      # the security controls in effect, from that record
 node cli/qa-plan.mjs expects <contract.json>                 # OpenAPI, AsyncAPI or schedule → candidate expectations
 node cli/query.mjs adapters --matrix                         # what each adapter is proven to support
@@ -844,9 +679,8 @@ in the main session. Each run says which of the host's agents carries it, and ho
 | `CONFLICTING` | two agents are named for one run, or one agent for two runs: neither is chosen |
 | `UNATTRIBUTED` | a serial run, or nothing observed: its calls cannot be told from the session's own |
 
-In `live tui`, press `2`, select a run with `j`/`k` and press `enter` to inspect it: its pins, parent and children, its
-host agent and the basis of that word, its calls (direct, and through the agents it launched) and its records. Details:
-[satellite/docs/README.md](satellite/docs/README.md),
+In `live tui`, press `2`, select a run with `j`/`k` and press `enter` to see its pins, parent and children, its host
+agent and the basis of that word, its calls and its records. Details: [satellite/docs/README.md](satellite/docs/README.md),
 [ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
 
 ### Autonomous self-improvement
@@ -854,75 +688,65 @@ host agent and the basis of that word, its calls (direct, and through the agents
 Orbit improves this project's **declared playbooks** and **Satellite roles** from what they actually did, and only on
 independent evidence ([ADR 0045](docs/adr/0045-autonomous-self-improvement-on-independent-evidence.md)):
 
-1. **Detect.** The runs the owners recorded become signals; one problem is one opportunity, by its fingerprint. A single
-   failure, retries inside one session, a provider, an environment or a person's approval never count.
-2. **Diagnose and generate.** Only a defect of the definition itself gets a successor: the skill factory drafts it from
-   the version it succeeds, the host writes the change, and it is staged as a candidate nobody is offered.
-3. **Validate.** A candidate that widens its tools, drops a required step, loosens a success rule or carries anything
+1. **Detect** — the owners' run records become signals, one opportunity per problem. A single failure, retries in one
+   session, a provider, an environment or a person's approval never count.
+2. **Generate** — only a defect of the definition itself gets a successor, drafted by the skill factory from the
+   version it succeeds, written by the host and staged as a candidate nobody is offered.
+3. **Validate** — a candidate that widens its tools, drops a required step, loosens a success rule or carries anything
    executable is refused before it runs.
-4. **Evaluate.** The candidate and the version it would replace run the same frozen inputs, through the same gates as
-   ordinary work. It is better only when two independent sessions (two UTC days or two machines) say so and none says
-   otherwise.
-5. **Promote.** Twelve gates, then the owner's own door chooses it for new work. A pin a task already holds never moves,
-   and the replaced version is kept whole.
-6. **Monitor and roll back.** A regression in independent sessions puts the replaced version back; a result becomes a
-   lesson only through learn's own ladder.
+4. **Evaluate** — candidate and current version run the same frozen inputs through the same gates as ordinary work; it
+   is better only when two independent sessions (two UTC days or two machines) say so and none says otherwise.
+5. **Promote** — twelve gates, then the owner's own door picks it for new work. A pin a task holds never moves.
+6. **Monitor** — a regression in independent sessions puts the replaced version back.
 
-It runs by itself after a workflow and from the hooks, never evaluating there. Every switch and bound is a person's,
-under `improvement.*` in Orbit Control; with automatic promotion off, a qualified candidate waits for a person. Nothing
-it does crosses a protected boundary, widens a permission or overrides a person's decision.
+It runs by itself after a workflow and from the hooks, but never evaluates there. Every switch and bound is a person's
+(`improvement.*` in Orbit Control); with automatic promotion off, a qualified candidate waits for a person. Nothing it
+does crosses a protected boundary, widens a permission or overrides a person's decision.
 
 ```bash
-node cli/improve.mjs status                  # switches, opportunities, campaigns
-node cli/improve.mjs analyse [--dry]         # what the owners' records show; one opportunity per problem
-node cli/improve.mjs resume <imp-id>         # a campaign stepped until it needs the host, a person or a session
-node cli/improve.mjs evaluate <imp-id>       # the candidate beside the version it would replace, in this session
-node cli/improve.mjs metrics                 # nine metrics, each with its numerator and denominator
+node cli/improve.mjs status | analyse [--dry] | metrics      # switches and campaigns; opportunities; nine metrics
+node cli/improve.mjs resume <imp-id> | evaluate <imp-id>     # step a campaign; evaluate in this session
 ```
 
 ### The session trail
 
-The hooks keep a trail of what each session did through Orbit, on this machine only, and as metadata by allow-list: for
-each prompt a salted fingerprint, its length and what the router decided; which skills and agents started; which Orbit
-commands (and which classes of other command) ran and how they ended; where a turn ended. Never a prompt's text, a
-response, an argument, a tool's output, a path or a file's contents. It is kept 90 days, never sent anywhere, and
-switched off with the `trace` option or `ORBIT_TRACE=off`. The views are folds rebuilt on every read, so a terminal and
-Orbit Control's Trace and Analytics pages always agree.
+The hooks keep a trail of what each session did through Orbit, on this machine only, as metadata by allow-list: per
+prompt a salted fingerprint, its length and what the router decided; which skills and agents started; which Orbit
+commands (and classes of other command) ran and how they ended; where a turn ended; a line of advice as `advice.given`
+(table words, never the sentence). Never a prompt's text, a response, an argument, a tool's output, a path or a file's
+contents. It is kept 90 days and sent nowhere. The views are folds rebuilt on every read, so a terminal and Orbit
+Control's Trace and Analytics pages always agree.
 
 ```bash
-node cli/trace.mjs turns              # one line per prompt: what the router decided, the path the session took
-node cli/trace.mjs turn <turn-id>     # one prompt in full
-node cli/trace.mjs usage              # commands, skills, failures and least privilege, with their denominators
-node cli/trace.mjs activation         # suggested → selected → dispatched → executed → verified
-node cli/trace.mjs where              # where the trail is kept, and what it never keeps
+node cli/trace.mjs turns | turn <turn-id>    # one line per prompt; one prompt in full
+node cli/trace.mjs usage | activation        # counts with their denominators; suggested → … → verified
+node cli/trace.mjs where                     # where the trail is kept, and what it never keeps
 ```
 
 ### Project reports
 
-`orbit-report` builds a product owner's report from GitHub or Azure DevOps: pull requests, reviews, work items and
+`orbit-report` builds a product owner's report from GitHub or Azure DevOps — pull requests, reviews, work items,
 pipelines. A run collects once and freezes the snapshot, and every render reads only that snapshot: nothing after the
-cut-off is counted, a gap is "not available (needs …)" and never a zero, and a forecast never reaches past the window it
-has history for. The result is one offline HTML page. When a report lacks what you asked for, Orbit may itself build,
-verify and activate the smallest report part for this project (a metric, a section, a transform, an exporter) — never
-one that replaces a standard part, needs a package, reads the source's API or a credential, or reaches another project.
+cut-off counts, a gap is "not available (needs …)" and never a zero, and a forecast never reaches past the window it has
+history for. The result is one offline HTML page. When a report lacks what you asked for, Orbit may build, verify and
+activate the smallest report part for this project (a metric, a section, a transform, an exporter) — never one that
+replaces a standard part, needs a package, reads the source's API or a credential, or reaches another project. A GitHub
+connection reads with a token (named by an environment variable, or stored through Orbit Control in the OS secret
+store); an Azure DevOps connection signs in with Microsoft by default.
 
 ```bash
-node cli/project-report.mjs status | settings | parts | runs
+node cli/project-report.mjs status | settings | parts | runs | connections | probe
 node cli/project-report.mjs run [--months=N | --from=D --to=D | --all] [--dry]
 node cli/project-report.mjs render [<run-id>|latest]                   # again, asking no source
-node cli/project-report.mjs connections | probe
 ```
-
-A GitHub connection reads with a token; you name the environment variable it comes from, or store it in Orbit Control,
-which puts it straight into the OS secret store. An Azure DevOps connection signs in with Microsoft by default.
 
 #### Microsoft sign-in for Azure DevOps
 
-Orbit's Microsoft sign-in is independent of your own Azure CLI login. If you already use `az` for development, Orbit does
-not change that account, subscription, configuration or login session: it keeps a separate Azure CLI profile in its
-machine store. You may be signed in as account A in your terminal and as account B in Orbit at the same time. A personal
-access token is the alternative. Sign in once per machine, and every project that uses the connection reads with it
-([ADR 0043](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md)):
+Orbit's Microsoft sign-in is independent of your own Azure CLI login: it keeps a separate Azure CLI profile in its
+machine store, and never changes your account, subscription, configuration or login session. You may be signed in as
+account A in your terminal and as account B in Orbit at the same time. Sign in once per machine, and every project that
+uses the connection reads with it; a personal access token is the alternative
+([ADR 0043](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md)).
 
 ```bash
 node <plugin-root>/cli/project-report.mjs connect <id> --provider=azure-devops --organization=<org>   # signs in with Microsoft (the default)
@@ -953,53 +777,46 @@ sign-in is required, run `sign-in` yourself (in Claude Code, type `! node <plugi
 | WSL | as Linux, with its own Orbit state; a Windows `az` reached through WSL is refused, and so is a profile on a Windows drive | a Linux `az` |
 | Alpine (musl) | none: the Python Orbit installs is a glibc build | an `az` already there |
 
-This covers the Azure CLI processes Orbit starts for its own sign-in. A tool a project's own capability declares
-(`tools: ["az"]`) and `query doctor` run as the project asked. How far each platform has been run for real, and how far
-only resolved or faked, is in the
-[platform evidence table](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md#platform-evidence).
+This covers the Azure CLI processes Orbit starts for its own sign-in; a tool a project's own capability declares
+(`tools: ["az"]`) and `query doctor` run as the project asked. How far each platform was run for real, and how far only
+resolved or faked: the [platform evidence table](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md#platform-evidence).
 
 ### Extending Orbit in your project
 
-Everything specific to your product lives in your project's data and the tools it opts into, never in the engine:
+Everything specific to your product lives in your project's data and in what it opts into, never in the engine:
 
-- **Project QC tools.** When a test needs something no built-in verb can do — a second database, a vendor SDK, a
-  queue — `orbit-qc-builder` builds the smallest project-local *capability*, and a case asks it through the one `call`
-  verb. It lives outside the repository, is loaded for real into a throwaway context before it is trusted
-  (`qc-tool verify`) and is registered only once it verifies. A capability sees a narrow facade — no store, no ledger,
-  no environment, no way to write a verdict — and its own crash is `BLOCKED`, never a defect in your feature.
-- **Packs.** Orbit ships capability packs that stay inert until a project lists them in `project.json` `packs`:
-  `orbit-api-test` (HTTP reads and writes) and `orbit-backend-test` (messaging, schedulers, jobs, state, fixtures, the
-  clock, identity — each answered by whichever adapter discovery and its declared semantics select).
-- **MCP servers** are added, tested and policed in [Orbit Control](#orbit-control). A session calls a managed server
-  through every gate with `node cli/mcp.mjs call <server> <tool> --for=<capability> --input='{…}'`.
-- **Playbooks** a workflow needs are drafted, verified and pinned per project
-  ([coordinated workflows](#coordinated-workflows-and-playbooks)).
+- **Project QC tools.** When a test needs what no built-in verb can do — a second database, a vendor SDK, a queue —
+  `orbit-qc-builder` builds the smallest project-local *capability*, and a case asks it through the one `call` verb. It
+  lives outside the repository, is loaded for real into a throwaway context before it is trusted (`qc-tool verify`) and
+  is registered only once it verifies. A capability sees a narrow facade — no store, no ledger, no environment, no way
+  to write a verdict — and its own crash is `BLOCKED`, never a defect in your feature.
+- **Packs** stay inert until a project lists them in `project.json` `packs`: `orbit-api-test` (HTTP reads and writes)
+  and `orbit-backend-test` (messaging, schedulers, jobs, state, fixtures, the clock, identity — each answered by
+  whichever adapter discovery and its declared semantics select).
+- **MCP servers** are added and policed in [Orbit Control](#orbit-control), and a session calls a managed one through
+  every gate: `node cli/mcp.mjs call <server> <tool> --for=<capability> --input='{…}'`.
 
 ```bash
-node cli/qc-tool.mjs where | list                          # this project's QC tools, and any that failed to load
-node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
-node cli/qc-tool.mjs verify|register <dir>                 # exit 2 if it would not load
-node cli/query.mjs capabilities                            # what a {"do":"call"} step may ask here
-node cli/query.mjs extensions                              # loaded, refused, and why
+node cli/qc-tool.mjs list | new <id> <scratch-dir> [--tool=psql] | verify <dir> | register <dir>
+node cli/query.mjs capabilities | extensions     # what a {"do":"call"} step may ask; what loaded, what was refused and why
 ```
 
 ---
 
 ## Orbit Web
 
-[Orbit Web](integrations/orbit-web/README.md) (0.8.0) is a self-hosted, browser-based home for Claude Code with the
-Orbit plugin — and a **virtual office of AI employees** — running in Docker beside PostgreSQL (with pgvector) and an
-allocator.
+[Orbit Web](integrations/orbit-web/README.md) (0.8.0) is a self-hosted, browser-based home for Claude Code with the Orbit
+plugin — and a **virtual office of AI employees** — running in Docker beside PostgreSQL (with pgvector) and an allocator.
 
 - **Its own accounts.** You sign in to Orbit Web itself, with a username and a password, independent of every AI CLI.
   The first administrator is set up with a one-time code the server prints
   (`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code`). Each account
   is a tenant, and every record belongs to one.
-- **AI connections, per account.** Settings › AI Connections connects the CLIs an account works with: Claude Code,
+- **AI connections, per account.** Settings › AI Connections connects the CLIs an account works with — Claude Code,
   OpenAI Codex and Google Antigravity, all three in the image. A Claude Code or Codex subscription is signed in with the
-  official CLI's own sign-in — from its card (Orbit Web shows the link the CLI printed; for Claude Code you paste back
-  the code its page shows) or from a terminal on the server — and an API key is the other way. No credential of the
-  server's own is ever given to any program.
+  official CLI's own sign-in, from its card (Orbit Web shows the link the CLI printed; for Claude Code you paste back the
+  code its page shows) or from a terminal on the server; an API key is the other way. No credential of the server's own
+  is ever given to any program.
 - **Chat and coding:** Claude Code with Orbit on a repository from GitHub or Azure DevOps (or none), with the model,
   effort and mode you pick; the page streams what it does, the files it changed and what Orbit says about the work.
 - **Research:** your documents and pages, asked in conversation, every answer cited to a frozen passage.
@@ -1018,13 +835,12 @@ To run it — the passwords, the allocator's secret, three images and `docker co
 ## Developing Orbit
 
 ```bash
-node --test                                                  # the suite: no browser, no network, no sleeps (npm test)
-node cli/check-five-lines.mjs src cli skills --strict         # Five Lines: must print 0 finding(s) (npm run lint)
+node --test                                                  # the suite (npm test): no browser, no network, no sleeps
+node cli/check-five-lines.mjs src cli skills --strict         # Five Lines (npm run lint): must print 0 finding(s)
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
 node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
 node skills/orbit-release/panel.mjs                          # Orbit Control on its own Node: server tests, panel build
-claude plugin validate . && node skills/orbit-release/pane-check.mjs   # the Claude Code pane module
 ```
 
 Run one suite at a time: two at once interfere. Before changing code, read:
@@ -1040,41 +856,34 @@ vocabulary is data (`src/dsl/`); no product, vendor or stack is named in engine 
 observe — CLI names and flags, exit codes, `ORBIT_*` variables, the `ui-tests/` layout, the DSL — is a contract:
 changing one is a major version and adding to one a minor version, bumped in all five manifests.
 
-No GitHub workflow gates the plugin: the gates run where the release is made. The one scoped exception is Orbit Web's
-two workflows — checks for pull requests that touch `integrations/orbit-web/**`, and its image published by hand behind
-a reviewer ([ADR 0060](docs/adr/0060-orbit-web-a-browser-host-around-the-official-clis.md)).
+### Releasing and the independent evaluator
 
-### The independent evaluator
-
-`evaluator/` measures what Orbit adds to a coding host from outside
-([evaluator/README.md](evaluator/README.md), [ADR 0057](docs/adr/0057-an-independent-evaluator-measures-a-release.md)).
-It runs the same task with the same model, effort, tools, limits and prompt in arms that differ only by the plugin —
-the plain host, Orbit at the previous release, Orbit at the release candidate (a second host, mini-SWE-agent, makes it
-a 2 × 2) — and grades the patch each run leaves by hidden tests the agent never sees, in a fresh container with no
-network: never by the agent's word, never by Orbit's own records. It is a package of its own (Orbit imports nothing of
-it, and it imports nothing of Orbit) and never ships.
-
-What runs and how it is judged is pre-registered (`evaluator/prereg/<release>.json`) before any model run: SWE-bench
-Verified instances and local task packs, a development set and a held-out set, the arms, and the verdict rule —
-IMPROVED, NO_DIFFERENCE, REGRESSED or INCONCLUSIVE, where a one-task difference is INCONCLUSIVE.
+A release qualifies on the fast tier plus the record of the **independent evaluator** (`evaluator/`,
+[evaluator/README.md](evaluator/README.md), [ADR 0057](docs/adr/0057-an-independent-evaluator-measures-a-release.md))
+for that very artifact. The evaluator runs the same task with the same model, effort, tools, limits and prompt in arms
+that differ only by the plugin — the plain host, Orbit at the previous release, Orbit at the release candidate (a second
+host, mini-SWE-agent, makes it a 2 × 2) — and grades the patch each run leaves by hidden tests the agent never sees, in a
+fresh container with no network: never by the agent's word, never by Orbit's own records. It is a package of its own
+(Orbit imports nothing of it, and it imports nothing of Orbit) and never ships. What runs and how it is judged is
+pre-registered (`evaluator/prereg/<release>.json`) before any model run — SWE-bench Verified instances and local task
+packs, a development set and a held-out set, the arms and the verdict rule: IMPROVED, NO_DIFFERENCE, REGRESSED or
+INCONCLUSIVE, where a one-task difference is INCONCLUSIVE.
 
 ```bash
-node evaluator/cli.mjs checks                                # the evaluator's own checks, no Docker
-node evaluator/cli.mjs selfcheck --ca-file=<pem>             # its scripted controls, for real, no model
-node evaluator/cli.mjs prereg verify                         # the registered order, re-derived from its rule
+node evaluator/cli.mjs checks | prereg verify                # its own checks; the registered order, re-derived
 node evaluator/cli.mjs prereg campaign final --rev=<commit>  # a phase's campaign, made from the pre-registration
 node evaluator/cli.mjs run <campaign.json> | resume <id> | status <id> | report <id> --md
-node evaluator/cli.mjs record --campaign=<id>,<id> --out=<record.json>   # what ship.mjs --evidence reads
+node evaluator/cli.mjs record --campaign=<id>,<id> --out=<record.json>
+node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>   # the publish gate
 ```
 
-### Releasing
-
-A release qualifies on the fast tier plus the evaluator's record of that very artifact:
-`node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>` must say PUBLISHABLE on the pushed head before
-the merge commit is tagged `v<version>`. The gate never tags, pushes or publishes; IMPROVED, NO_DIFFERENCE and
-INCONCLUSIVE are said as what they are, and a one-task difference is never called a gain. The whole contract is in
+`ship.mjs --evidence` must say PUBLISHABLE on the pushed head before the merge commit is tagged `v<version>`; it never
+tags, pushes or publishes itself, and IMPROVED, NO_DIFFERENCE and INCONCLUSIVE are said as what they are. No GitHub
+workflow gates the plugin: the gates run where the release is made. The one scoped exception is Orbit Web's two
+workflows — pull-request checks for `integrations/orbit-web/**`, and its image published by hand behind a reviewer
+([ADR 0060](docs/adr/0060-orbit-web-a-browser-host-around-the-official-clis.md)). The release contract:
 [skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md); running the held-out campaigns from a Claude Code cloud
-session is described in [CLAUDE.md](CLAUDE.md).
+session: [CLAUDE.md](CLAUDE.md).
 
 ---
 

@@ -31,7 +31,7 @@ import {
   type AttestRequest,
   type PublishResult,
 } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
-import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
+import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
 import { MODEL_PLANE, TOOL_PLANE } from "../contexts/execution/infrastructure/sandbox/layout.js";
 import { storageAdmits, tmpSizeMiB, type AreaLevel } from "../contexts/execution/infrastructure/sandbox/storage-policy.js";
 import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountInfo, type Check } from "./attest-checks.js";
@@ -292,6 +292,30 @@ export class Allocator implements AllocatorApi {
       await this.storage.put(sandboxMeta(ids), Buffer.from(JSON.stringify({ ...record, archived: true, updatedAt: this.iso() } satisfies SandboxRecord)));
       await this.storage.freeze(deskArea(ids));
       if (record.cacheMiB > 0) await this.storage.freeze(cacheArea(ids));
+    });
+  }
+
+  // An employee DELETED by its owner (an archived one): its whole sandbox goes -- every assignment's scratch, the cache,
+  // the desk and its record -- refused while a container of one of its attempts exists. Read back: what is left is said,
+  // and a sandbox already gone is gone (a retry after a lost answer).
+  async deleteEmployee(idsIn: SandboxIds): Promise<{ gone: boolean; detail: string }> {
+    const ids = checkSandboxIds(idsIn);
+    return this.locks.run(`employee:${ids.orbitId}/${ids.employeeId}`, async () => {
+      await this.ready();
+      const record = await this.sandboxRecord(ids);
+      if (record !== null && record.sandboxId !== ids.sandboxId) throw new AllocatorError("conflict", "the employee's sandbox is another one");
+      const left = await this.engine.containerList({ [LABELS.prefix]: this.prefix, [LABELS.account]: ids.orbitId, [LABELS.employee]: ids.employeeId });
+      const planes = left.filter((c) => c.Labels[LABELS.role] === "tool-plane" || c.Labels[LABELS.role] === "model-plane");
+      if (planes.length > 0) return { gone: false, detail: `${planes.length} container(s) of this employee's attempts still exist: they are removed first` };
+      for (const assignmentId of await this.storage.subdirs(`${employeeDir(ids)}/assignments`)) {
+        await this.storage.removeArea(scratchArea(ids, assignmentId));
+        await this.storage.removeDir(assignmentDir(ids, assignmentId));
+      }
+      await this.storage.removeArea(cacheArea(ids));
+      await this.storage.removeArea(deskArea(ids));
+      await this.storage.removeDir(employeeDir(ids));
+      const still = (await this.storage.get(sandboxMeta(ids))) !== null || (await this.storage.usage(deskArea(ids))) !== null;
+      return still ? { gone: false, detail: "the employee's sandbox is still there after its removal" } : { gone: true, detail: "the desk, the cache, every workspace and the sandbox's record are gone (read back)" };
     });
   }
 

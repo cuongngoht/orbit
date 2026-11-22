@@ -32,7 +32,7 @@ import {
 
 // GET /api/settings, as a fresh Orbit Web answers it.
 export function settings(over: Partial<Settings> = {}): Settings {
-  return { defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, githubForClaude: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
+  return { defaultRuntime: "claude", defaultModel: "sonnet", defaultEffort: "medium", defaultMode: "autonomous", projectSkills: true, projectPlugins: false, webTools: false, githubForClaude: false, azureForClaude: false, theme: "system", maxBudgetUsd: null, ...over };
 }
 
 // GET /api/sources: by default neither source is connected (a chat still starts, without a repository).

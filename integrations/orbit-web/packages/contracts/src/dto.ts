@@ -3,7 +3,7 @@ import type { EffortChoice, ModeChoice, ModelChoice, RepositorySource } from "./
 import type { ConnectionState, LoginState, SessionStatus, ThemePreference } from "./status.js";
 import type { AnySessionEvent } from "./events/envelope.js";
 import type { ImageRef } from "./images.js";
-import type { RuntimeInstallation, RuntimeKind } from "./ai-connections.js";
+import type { ChatRuntime, RuntimeInstallation, RuntimeKind } from "./ai-connections.js";
 
 export interface ApiErrorBody {
   error: {
@@ -373,6 +373,8 @@ export interface FileDiff {
 }
 
 export interface Settings {
+  // The AI a new chat starts on (its default connection), then that AI's model, effort and mode.
+  defaultRuntime: ChatRuntime;
   defaultModel: ModelChoice;
   defaultEffort: EffortChoice;
   defaultMode: ModeChoice;
@@ -395,6 +397,7 @@ export interface Settings {
 }
 
 export interface UpdateSettingsRequest {
+  defaultRuntime?: ChatRuntime;
   defaultModel?: ModelChoice;
   defaultEffort?: EffortChoice;
   defaultMode?: ModeChoice;

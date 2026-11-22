@@ -1,11 +1,11 @@
-// GET/PATCH /api/settings: the ACCOUNT's preferences (the default model, effort and mode of a new chat, whether the
+// GET/PATCH /api/settings: the ACCOUNT's preferences (the AI a new chat starts on and its model, effort and mode, whether the
 // plugins a repository is or declares are run -- off unless its owner turns it on: they run code --, whether Claude may
 // use the web tools, theme). Each account keeps its own: another account signing in on this Orbit Web finds its own
 // preferences, never the one before's -- the privileged switches above all.
 // POST /api/access: in token mode, trades the access token for an HttpOnly, SameSite=Strict cookie kept 30 days (asked for
 // before the Claude sign-in, so it is reachable before it). GET /api/access/link: the token again, for whoever is in.
 import { Body, Controller, Get, HttpCode, Inject, Injectable, Module, Patch, Post, Req, Res } from "@nestjs/common";
-import { checkUpdateSettings, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isEffortChoice, isModeChoice, isModelChoice, isTheme, type AccessLink, type Settings } from "@orbit-web/contracts";
+import { checkUpdateSettings, DEFAULT_CHAT_RUNTIME, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, isChatRuntime, isEffortChoice, isModeChoice, isModelChoice, isTheme, modelOf, type AccessLink, type Settings, type UpdateSettingsRequest } from "@orbit-web/contracts";
 import { PRIVILEGED_SETTINGS } from "@orbit-web/governance-core";
 import type { Request, Response } from "express";
 import { viewer } from "../../common/request-scope.js";
@@ -16,7 +16,7 @@ import { Public } from "../auth/decorators.js";
 import { accepted, ApiError, badRequest } from "../../common/errors.js";
 import { ACCESS_COOKIE, accessTokenMatches, accessTokenPresented } from "../../infra/security/guards.js";
 import { ConnectionsModule } from "../connections/connections.module.js";
-import { ClaudeModelsService } from "../connections/claude-models.service.js";
+import { ClaudeModelsService, type RunChoice } from "../connections/claude-models.service.js";
 import { GovernanceModule } from "../governance/governance.module.js";
 import type { GovernanceContext } from "../auth/principal.js";
 import { PrincipalResolver } from "../auth/principals.js";
@@ -41,6 +41,7 @@ export class SettingsService {
   async get(accountId: string): Promise<Settings> {
     const saved = (await this.store.get<Partial<Settings>>(accountId, KEY)) ?? {};
     return {
+      defaultRuntime: isChatRuntime(saved.defaultRuntime) ? saved.defaultRuntime : DEFAULT_CHAT_RUNTIME,
       defaultModel: isModelChoice(saved.defaultModel) ? saved.defaultModel : DEFAULT_MODEL,
       defaultEffort: isEffortChoice(saved.defaultEffort) ? saved.defaultEffort : DEFAULT_EFFORT,
       defaultMode: isModeChoice(saved.defaultMode) ? saved.defaultMode : DEFAULT_MODE,
@@ -56,22 +57,30 @@ export class SettingsService {
 
   // A change of the account's preferences, by its owner. Turning a PRIVILEGED setting on is authorized first
   // (settings-gate.ts: the account's owner, and the account's policy), and recorded before it is written; turning one
-  // off is recorded. A new default model, effort or mode is held to what the account may use (an effort the model does
-  // not take moves to one it does).
+  // off is recorded. A new chat's AI, model, effort and mode are held to what the account may use on THAT AI (an effort
+  // the model does not take moves to one it does).
   async update(accountId: string, body: unknown, ctx: GovernanceContext): Promise<Settings> {
     const asked = accepted(checkUpdateSettings(body));
     const { maxBudgetUsd: _ignored, ...current } = await this.get(accountId);
-    const runChanged = asked.defaultModel !== undefined || asked.defaultEffort !== undefined || asked.defaultMode !== undefined;
-    const run = runChanged
-      ? await this.models.settle(accountId, { model: current.defaultModel, effort: current.defaultEffort, mode: current.defaultMode }, { ...(asked.defaultModel ? { model: asked.defaultModel } : {}), ...(asked.defaultEffort ? { effort: asked.defaultEffort } : {}), ...(asked.defaultMode ? { mode: asked.defaultMode } : {}) })
-      : null;
-    const change = run === null ? asked : { ...asked, defaultModel: run.model, defaultEffort: run.effort, defaultMode: run.mode ?? current.defaultMode };
+    const runChanged = asked.defaultRuntime !== undefined || asked.defaultModel !== undefined || asked.defaultEffort !== undefined || asked.defaultMode !== undefined;
+    const run = runChanged ? await this.settleRun(accountId, current, asked) : null;
+    const change = run === null ? asked : { ...asked, defaultRuntime: asked.defaultRuntime ?? current.defaultRuntime, defaultModel: run.model, defaultEffort: run.effort, defaultMode: run.mode ?? current.defaultMode };
     const widened = PRIVILEGED_SETTINGS.filter((k) => change[k] === true && current[k] !== true);
     const narrowed = PRIVILEGED_SETTINGS.filter((k) => change[k] === false && current[k] === true);
     if (widened.length > 0) await this.gate.authorize(ctx, widened);
     await this.store.set(accountId, KEY, { ...current, ...change });
     if (narrowed.length > 0) await this.gate.narrowed(ctx, narrowed);
     return this.get(accountId);
+  }
+
+  // A new chat's model, effort and mode, held to the catalog of the AI it starts on (the one asked for, else the one
+  // kept). Another AI chosen without a model brings one of its own -- the one it recommends -- when the model kept is
+  // not that AI's.
+  private async settleRun(accountId: string, current: Omit<Settings, "maxBudgetUsd">, asked: UpdateSettingsRequest): Promise<RunChoice> {
+    const runtime = asked.defaultRuntime ?? current.defaultRuntime;
+    const catalog = await this.models.catalogOfRuntime(accountId, runtime);
+    const model = asked.defaultModel ?? (runtime !== current.defaultRuntime && modelOf(catalog, current.defaultModel) === null ? catalog.recommended : current.defaultModel);
+    return this.models.settleWith(catalog, { model: current.defaultModel, effort: current.defaultEffort, mode: current.defaultMode }, { model, ...(asked.defaultEffort ? { effort: asked.defaultEffort } : {}), ...(asked.defaultMode ? { mode: asked.defaultMode } : {}) });
   }
 }
 

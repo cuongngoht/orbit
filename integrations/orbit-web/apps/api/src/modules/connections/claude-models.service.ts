@@ -5,7 +5,7 @@
 // CLI could not be asked (or there is no connected connection), the fallback list is shown, labelled, and a choice is
 // held to its shape alone: the CLI then refuses what the account cannot use, with its own error.
 import { Inject, Injectable } from "@nestjs/common";
-import { catalogRefusals, effortFor, FALLBACK_CATALOG, modelOf, RUNTIME_LABELS, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice } from "@orbit-web/contracts";
+import { catalogRefusals, CONNECTION_ERRORS, effortFor, FALLBACK_CATALOG, modelOf, RUNTIME_LABELS, type ChatRuntime, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice } from "@orbit-web/contracts";
 import { HttpStatus } from "@nestjs/common";
 import type { ConnectionRecord } from "../../infra/connections/stores.js";
 import { accountAudience, EventBus } from "../../core/events/event-bus.js";
@@ -51,6 +51,16 @@ export class ClaudeModelsService {
     if (c.models.length > 0 && (c.source === "account" || c.source === "fallback")) return { source: c.source, models: c.models, recommended: c.recommended ?? (c.models[0] as { id: string }).id, detail: c.source === "fallback" ? `${RUNTIME_LABELS[connection.runtime]} could not be asked which models this connection may use: its fallback list is shown, and the CLI decides.` : null };
     if (connection.runtime === "claude") return fallback(`The Claude Code connection "${connection.label}" gave no model list: the default list is shown.`);
     throw new ApiError(HttpStatus.CONFLICT, "connection_models_unknown", `${RUNTIME_LABELS[connection.runtime]} "${connection.label}" has not said which models it may use: Re-check it in Settings → AI Connections.`);
+  }
+
+  // The catalog a new chat's defaults are held to: the AI it starts on -- Claude Code's (the account's catalog, the
+  // fallback list included), or that of the runtime's connection a new chat starts on, which must be signed in (409
+  // says where).
+  async catalogOfRuntime(accountId: string, runtime: ChatRuntime): Promise<ModelCatalog> {
+    if (runtime === "claude") return this.catalog(accountId);
+    const c = await this.runs.signedInOf(accountId, runtime);
+    if (c === null) throw new ApiError(HttpStatus.CONFLICT, CONNECTION_ERRORS.connectionRequired, `${RUNTIME_LABELS[runtime]} is not signed in: sign in to its subscription in Settings → AI Connections first.`);
+    return this.catalogFor(accountId, c);
   }
 
   // What a change leaves of a run's model, effort and mode, held to the account's catalog. An effort the change did not

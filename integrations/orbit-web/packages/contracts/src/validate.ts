@@ -12,6 +12,7 @@ import {
   type ModelChoice,
   type RepositorySource,
 } from "./models.js";
+import { CHAT_RUNTIMES, isChatRuntime, type ChatRuntime } from "./ai-connections.js";
 import { CONNECTOR_LIMITS, CONNECTOR_USES, type UpdateConnectorsRequest } from "./connectors.js";
 import { imageIdsProblem } from "./images.js";
 import { THEMES, type ThemePreference } from "./status.js";
@@ -217,13 +218,15 @@ export function checkSendMessage(body: unknown): Checked<SendMessageRequest> {
 
 export function checkUpdateSettings(body: unknown): Checked<UpdateSettingsRequest> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = unknownFields(body, ["defaultModel", "defaultEffort", "defaultMode", "projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude", "theme"]);
+  const errors = unknownFields(body, ["defaultRuntime", "defaultModel", "defaultEffort", "defaultMode", "projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude", "theme"]);
+  if (body.defaultRuntime !== undefined && !isChatRuntime(body.defaultRuntime)) errors.push(`defaultRuntime must be one of ${CHAT_RUNTIMES.join(", ")}`);
   if (body.defaultModel !== undefined && !isModelChoice(body.defaultModel)) errors.push(`default${MODELS_SAID.replace("model", "Model")}`);
   if (body.defaultEffort !== undefined && !isEffortChoice(body.defaultEffort)) errors.push(`default${EFFORTS_SAID.replace("effort", "Effort")}`);
   if (body.defaultMode !== undefined && !isModeChoice(body.defaultMode)) errors.push(`defaultMode must be one of ${MODE_CHOICES.join(", ")}`);
   for (const flag of ["projectSkills", "projectPlugins", "webTools", "githubForClaude", "azureForClaude"]) if (body[flag] !== undefined && typeof body[flag] !== "boolean") errors.push(`${flag} must be true or false`);
   if (body.theme !== undefined && !isTheme(body.theme)) errors.push("theme must be one of system, light, dark");
   return checked(errors, () => ({
+    ...(body.defaultRuntime !== undefined ? { defaultRuntime: body.defaultRuntime as ChatRuntime } : {}),
     ...(body.defaultModel !== undefined ? { defaultModel: body.defaultModel as ModelChoice } : {}),
     ...(body.defaultEffort !== undefined ? { defaultEffort: body.defaultEffort as EffortChoice } : {}),
     ...(body.defaultMode !== undefined ? { defaultMode: body.defaultMode as ModeChoice } : {}),

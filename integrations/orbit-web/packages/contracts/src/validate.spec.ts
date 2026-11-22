@@ -107,6 +107,12 @@ test("an update names something to change: the title, or the model, effort or mo
   assert.deepEqual(checkUpdateSettings({ defaultEffort: "low", defaultMode: "plan", projectPlugins: false }), { ok: true, value: { defaultEffort: "low", defaultMode: "plan", projectPlugins: false } });
 });
 
+test("a new chat's default AI is one a chat runs on: Claude Code or OpenAI Codex, nothing else", () => {
+  assert.deepEqual(checkUpdateSettings({ defaultRuntime: "codex" }), { ok: true, value: { defaultRuntime: "codex" } });
+  assert.deepEqual(checkUpdateSettings({ defaultRuntime: "claude", defaultModel: "opus" }), { ok: true, value: { defaultRuntime: "claude", defaultModel: "opus" } });
+  for (const bad of ["agy", "gpt", "", null, 1]) assert.deepEqual(checkUpdateSettings({ defaultRuntime: bad }), { ok: false, errors: ["defaultRuntime must be one of claude, codex"] }, JSON.stringify(bad));
+});
+
 test("the models, efforts and modes are the CLI's own words", () => {
   assert.deepEqual([...MODEL_CHOICES], ["opus", "fable", "sonnet", "haiku"]);
   assert.deepEqual([...EFFORT_CHOICES], ["low", "medium", "high", "xhigh", "max"]);

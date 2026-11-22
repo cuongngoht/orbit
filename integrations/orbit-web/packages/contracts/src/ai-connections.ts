@@ -30,6 +30,12 @@ export type RuntimeKind = (typeof RUNTIME_KINDS)[number];
 export const RUNTIME_LABELS: Record<RuntimeKind, string> = { claude: "Claude Code", codex: "OpenAI Codex", agy: "Google Antigravity" };
 export const isRuntimeKind = (v: unknown): v is RuntimeKind => typeof v === "string" && (RUNTIME_KINDS as readonly string[]).includes(v);
 
+// The AIs a chat runs on (Google Antigravity runs none), and so the ones a new chat may start on by default.
+export const CHAT_RUNTIMES = ["claude", "codex"] as const satisfies readonly RuntimeKind[];
+export type ChatRuntime = (typeof CHAT_RUNTIMES)[number];
+export const isChatRuntime = (v: unknown): v is ChatRuntime => typeof v === "string" && (CHAT_RUNTIMES as readonly string[]).includes(v);
+export const DEFAULT_CHAT_RUNTIME: ChatRuntime = "claude";
+
 // Whether the CLI is on this server, as running it says.
 export const INSTALLATION_STATES = ["installed", "not_installed", "error"] as const;
 export type InstallationState = (typeof INSTALLATION_STATES)[number];

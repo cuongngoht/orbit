@@ -7,7 +7,7 @@
 // The Orbit plugin is loaded into a chat only when the account's owner approved it for chats, on that connection, for
 // the plugin's digest as it is now (an upgraded plugin waits for the owner's confirmation).
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { AUTH_STATE_TEXT, CONNECTION_ERRORS, RUNTIME_LABELS, type PluginUseCase, type RuntimeKind } from "@orbit-web/contracts";
+import { AUTH_STATE_TEXT, CONNECTION_ERRORS, isChatRuntime, RUNTIME_LABELS, type PluginUseCase, type RuntimeKind } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { ApiError, notFound } from "../../common/errors.js";
@@ -31,7 +31,6 @@ export const connectionUnavailable = (c: ConnectionRecord): ApiError =>
   new ApiError(HttpStatus.CONFLICT, CONNECTION_ERRORS.connectionUnavailable, `Your ${RUNTIME_LABELS[c.runtime]} connection "${c.label}" is not connected (${AUTH_STATE_TEXT[c.authState]}${c.reason ? `: ${c.reason}` : ""}). Check it in Settings → AI Connections.`);
 
 // The runtimes a chat may run on.
-export const CHAT_RUNTIMES: readonly RuntimeKind[] = ["claude", "codex"];
 
 @Injectable()
 export class RunConnections {
@@ -45,6 +44,13 @@ export class RunConnections {
   // The account's default Claude Code connection, whatever its state (null: it has none).
   claudeOf(accountId: string): Promise<ConnectionRecord | null> {
     return this.connections.defaultOf(accountId, "claude");
+  }
+
+  // The connection a new chat on `runtime` starts on: its default one when it is signed in, else the first of that
+  // runtime that is (null: none is) -- as the web app picks it (features/connections/chatConnections.ts).
+  async signedInOf(accountId: string, runtime: RuntimeKind): Promise<ConnectionRecord | null> {
+    const signedIn = (await this.connections.list(accountId)).filter((c) => c.runtime === runtime && c.authState === "connected");
+    return signedIn.find((c) => c.isDefault) ?? signedIn[0] ?? null;
   }
 
   // The connection a run of the account starts on now, or null when it has no connected one.
@@ -66,7 +72,7 @@ export class RunConnections {
   async chatConnectionOf(accountId: string, connectionId: string | null): Promise<ConnectionRecord | null> {
     if (connectionId === null) return this.claudeOf(accountId);
     const c = await this.connections.get(accountId, connectionId);
-    if (c === null || !CHAT_RUNTIMES.includes(c.runtime)) throw notFound("AI connection");
+    if (c === null || !isChatRuntime(c.runtime)) throw notFound("AI connection");
     return c;
   }
 

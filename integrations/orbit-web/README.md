@@ -447,7 +447,10 @@ the sidebar.
      arrives as a **Plan** card; *Run it in Autonomous* switches the chat to Autonomous and asks Claude to carry out
      the plan above, in the same conversation.
 
-   A new chat starts with the defaults in Settings → Code (Sonnet 5.5, Medium, Autonomous until you change them).
+   A new chat starts with the defaults in Settings → Code, chosen in the same order: the **AI** (Claude Code until you
+   choose another you signed in), then a model of that AI's own, its effort and the mode (Sonnet 5.5, Medium,
+   Autonomous on Claude Code until you change them). With no AI signed in yet, Settings → Code and the new chat offer no
+   model at all: they point to Settings → AI Connections, to sign one in with your subscription first.
 4. **Sending the first message creates the chat** and opens it. Orbit Web prepares its workspace, step by step in the
    chat: the clone (GitHub with `gh repo clone`; Azure DevOps with `git clone`, see Connectors) or the empty repository,
    a branch of its own (`orbit-web/<id>`, so the branch you picked is never written), a local commit identity (GitHub's

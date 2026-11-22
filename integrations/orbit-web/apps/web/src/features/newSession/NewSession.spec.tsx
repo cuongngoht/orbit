@@ -85,6 +85,25 @@ describe("a new session: the composer always at the bottom, and the draft in its
     await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Hi" }));
   });
 
+  test("a new chat starts on the AI Settings names, with the model it keeps for that AI", async () => {
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codexConnection()] }));
+    show({ settings: settings({ defaultRuntime: "codex", defaultModel: "gpt-5.5", defaultEffort: "low" }) });
+    expect(await screen.findByRole("button", { name: "AI OpenAI Codex" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Model GPT-5.5, effort Low" })).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hi{Enter}");
+    await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, connectionId: CONN_CODEX, model: "gpt-5.5", effort: "low", mode: "autonomous", prompt: "Hi" }));
+  });
+
+  test("with no AI signed in, a new chat says where to sign one in first: no model of nobody's, and nothing is sent", async () => {
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [] }));
+    show();
+    expect(await screen.findByRole("link", { name: "Sign in to an AI first" })).toHaveAttribute("href", expect.stringContaining("settings=ai-connections"));
+    expect(screen.queryByRole("button", { name: /^Model / })).toBeNull();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hi");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(created(a)).toBeUndefined();
+  });
+
   test("on the default Claude Code connection the AI says so, and what the chat sends is as it was", async () => {
     const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection()] }));
     show();

@@ -1,15 +1,20 @@
-// SETTINGS → APPEARANCE and CODE: the theme; how a new chat runs by default (model, effort, mode), what a repository
+// SETTINGS → APPEARANCE and CODE: the theme; how a new chat runs by default (its AI, then that AI's model, effort and
+// mode -- or, with no AI signed in, the way to sign one in), what a repository
 // brings to its chats (its skills, as instructions; its plugins, which run code) and the tools Claude is offered. Each
 // change is saved at once (`PATCH /api/settings`) and the answer is the settings as they are now.
-import { Field, MessageBar, MessageBarBody, Radio, RadioGroup, Switch, Text, makeStyles, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
+import { Field, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Switch, Text, makeStyles, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
 import { ChevronDown20Regular } from "@fluentui/react-icons";
 import {
   EFFORT_CHOICES,
+  effortFor,
   effortLabel,
   MODE_CHOICES,
   MODE_LABELS,
   modelLabel,
   modelOf,
+  RUNTIME_LABELS,
+  type AiConnectionsView,
+  type ChatRuntime,
   type EffortChoice,
   type ModeChoice,
   type ModelChoice,
@@ -18,8 +23,12 @@ import {
   type UpdateSettingsRequest,
 } from "@orbit-web/contracts";
 import { useState, type ReactNode } from "react";
+import { ConnectionRequired } from "../../components/ApiErrorBar";
+import { settingsHref } from "../../hooks/useHashRoute";
 import { errorText, send } from "../../services/api";
-import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { catalogOfConnection } from "../../services/models/ModelCatalog";
+import { useConnections } from "../connections/AiConnectionsSection";
+import { chatConnectionsOf, newChatConnection, signedInRuntimes, unsignedRuntimes, type ChatConnection } from "../connections/chatConnections";
 import { MODE_HINTS } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
@@ -163,59 +172,91 @@ export function AppearanceSection({ settings, onSettings }: SectionProps) {
   );
 }
 
+// A new chat's defaults, in the order a chat chooses them: the AI first -- one the account signed in -- then a model of
+// that AI's own, its effort, and the mode. With no AI signed in there is nothing of anybody's to offer: the way to sign
+// one in instead (Settings → AI Connections).
+function NewChatDefaults({ settings, view, failed, save }: { settings: Settings; view: AiConnectionsView | null; failed: string | null; save: (change: UpdateSettingsRequest) => Promise<void> }) {
+  const s = useStyles();
+  if (view === null) return <Text size={200} className={s.muted}>{failed === null ? "Reading your AI connections…" : `Your AI connections could not be read: ${failed}`}</Text>;
+  const chat = chatConnectionsOf(view);
+  const ai = newChatConnection(chat, settings.defaultRuntime);
+  if (ai === null) return <ConnectionRequired what="Claude Code or OpenAI Codex (sign in with your subscription)" />;
+  return <AiDefaults settings={settings} chat={chat} ai={ai} save={save} />;
+}
+
+function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: ChatConnection[]; ai: ChatConnection; save: (change: UpdateSettingsRequest) => Promise<void> }) {
+  const s = useStyles();
+  const catalog = catalogOfConnection(ai);
+  // The model kept is this AI's only when Settings names this AI; else the one this AI recommends.
+  const model = settings.defaultRuntime === ai.runtime && (modelOf(catalog, settings.defaultModel) !== null || catalog.source !== "account") ? settings.defaultModel : catalog.recommended;
+  const models = catalog.models.some((m) => m.id === model) ? catalog.models : [...catalog.models, { id: model, label: modelLabel(model, catalog) }];
+  const efforts = modelOf(catalog, model)?.efforts ?? [...EFFORT_CHOICES];
+  const effort = effortFor(modelOf(catalog, model), settings.defaultEffort) ?? settings.defaultEffort;
+  const effortText = (e: EffortChoice) => (e === "medium" ? `${effortLabel(e)} (recommended)` : effortLabel(e));
+  // A model, an effort or a mode is the AI's it was chosen on: it is saved with that AI.
+  const run = (change: UpdateSettingsRequest) => void save({ defaultRuntime: ai.runtime, ...change });
+  return (
+    <>
+      <Field label="Default AI">
+        {(fieldProps) => (
+          <SingleCaretSelect fieldProps={fieldProps} value={ai.runtime} displayText={RUNTIME_LABELS[ai.runtime]} onChange={(value) => void save({ defaultRuntime: value as ChatRuntime })}>
+            {signedInRuntimes(chat).map((r) => (
+              <option key={r} value={r}>
+                {RUNTIME_LABELS[r]}
+              </option>
+            ))}
+          </SingleCaretSelect>
+        )}
+      </Field>
+      {unsignedRuntimes(chat).map((r) => (
+        <Text key={r} size={200} className={s.muted}>
+          {RUNTIME_LABELS[r]} is not signed in: <Link href={settingsHref("ai-connections")}>sign in to its subscription</Link> to start new chats on it.
+        </Text>
+      ))}
+      <Field label="Default model">
+        {(fieldProps) => (
+          <SingleCaretSelect fieldProps={fieldProps} value={model} displayText={modelLabel(model, catalog)} onChange={(value) => run({ defaultModel: value as ModelChoice })}>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </SingleCaretSelect>
+        )}
+      </Field>
+      <Field label="Default effort" hint="Higher effort means more thorough responses, but takes longer and uses your limits faster.">
+        {(fieldProps) => (
+          <SingleCaretSelect fieldProps={fieldProps} value={effort} displayText={efforts.length === 0 ? "This model takes no effort level" : effortText(effort)} onChange={(value) => run({ defaultEffort: value as EffortChoice })}>
+            {efforts.map((e) => (
+              <option key={e} value={e}>
+                {effortText(e)}
+              </option>
+            ))}
+          </SingleCaretSelect>
+        )}
+      </Field>
+      <Field label="Default mode">
+        <RadioGroup value={settings.defaultMode} onChange={(_, d) => run({ defaultMode: d.value as ModeChoice })}>
+          {MODE_CHOICES.map((m) => (
+            <Radio key={m} value={m} label={`${MODE_LABELS[m]} — ${MODE_HINTS[m]}`} />
+          ))}
+        </RadioGroup>
+      </Field>
+    </>
+  );
+}
+
 export function CodeSection({ settings, onSettings }: SectionProps) {
   const s = useStyles();
   const { error, save } = useSave(onSettings);
-  // The signed-in account's models, and the efforts the default one takes.
-  const catalog = useModelCatalog();
-  const models = catalog.models.some((m) => m.id === settings.defaultModel) ? catalog.models : [...catalog.models, { id: settings.defaultModel, label: modelLabel(settings.defaultModel, catalog) }];
-  const efforts = modelOf(catalog, settings.defaultModel)?.efforts ?? [...EFFORT_CHOICES];
-  const effortText = (e: EffortChoice) => (e === "medium" ? `${effortLabel(e)} (recommended)` : effortLabel(e));
+  const connections = useConnections();
   return (
     <div className={s.root}>
       <Group title="A new chat">
         <Text size={200} className={s.muted}>
-          What a new chat starts with. A chat's own pickers change it for that chat, from its next message.
+          What a new chat starts with: the AI it runs on, then that AI's model, effort and mode. A chat's own pickers change the model, effort and mode for that chat, from its next message.
         </Text>
-        <Field label="Default model">
-          {(fieldProps) => (
-            <SingleCaretSelect
-              fieldProps={fieldProps}
-              value={settings.defaultModel}
-              displayText={modelLabel(settings.defaultModel, catalog)}
-              onChange={(value) => void save({ defaultModel: value as ModelChoice })}
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </SingleCaretSelect>
-          )}
-        </Field>
-        <Field label="Default effort" hint="Higher effort means more thorough responses, but takes longer and uses your limits faster.">
-          {(fieldProps) => (
-            <SingleCaretSelect
-              fieldProps={fieldProps}
-              value={settings.defaultEffort}
-              displayText={efforts.length === 0 ? "This model takes no effort level" : effortText(settings.defaultEffort)}
-              onChange={(value) => void save({ defaultEffort: value as EffortChoice })}
-            >
-              {efforts.map((e) => (
-                <option key={e} value={e}>
-                  {effortText(e)}
-                </option>
-              ))}
-            </SingleCaretSelect>
-          )}
-        </Field>
-        <Field label="Default mode">
-          <RadioGroup value={settings.defaultMode} onChange={(_, d) => void save({ defaultMode: d.value as ModeChoice })}>
-            {MODE_CHOICES.map((m) => (
-              <Radio key={m} value={m} label={`${MODE_LABELS[m]} — ${MODE_HINTS[m]}`} />
-            ))}
-          </RadioGroup>
-        </Field>
+        <NewChatDefaults settings={settings} view={connections.data} failed={connections.error} save={save} />
       </Group>
       <Group title="What a repository brings">
         <Switch checked={settings.projectSkills} onChange={(_, d) => void save({ projectSkills: d.checked })} label="Load project skills" />

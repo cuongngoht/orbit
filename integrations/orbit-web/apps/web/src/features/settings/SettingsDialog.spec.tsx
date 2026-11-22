@@ -1,12 +1,13 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, SetupStatus } from "@orbit-web/contracts";
+import type { Customizations, RuntimeConnection, SetupStatus } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
 import { SESSION_ID, authAccount, authStatus, authUser, idleFlow, inventory, sessionViews, settings, setupStatus } from "../../testing/fixtures";
+import { CONN_CODEX, connection, connectionsView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import type { SignOut } from "../auth/useSignOut";
 import { SettingsDialog, type SettingsDialogProps } from "./SettingsDialog";
@@ -45,6 +46,10 @@ function show(section: SettingsSection, o: { status?: SetupStatus; connector?: "
 }
 
 const patches = (api: FakeApi) => api.calls.filter((c) => c.method === "PATCH").map((c) => c.body);
+// The account's AI connections (GET /api/connections), and its OpenAI Codex one signed in, with its own models.
+const withConnections = (...connections: RuntimeConnection[]) => fakeApi().on("GET", "/api/connections", () => connectionsView({ connections }));
+const codexSignedIn = () =>
+  connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null } });
 const sections = (nav: HTMLElement) => within(nav).getAllByRole("button").map((b) => b.textContent).filter((t) => t !== "");
 const posted = (api: FakeApi, path: string) => api.calls.find((c) => c.method === "POST" && c.path === path);
 const flow = (connector: "github" | "azure", over: object) => pushApp("connector.flow", { connector, flow: { ...idleFlow(), updatedAt: "2026-11-20T00:01:00.000Z", ...over } });
@@ -278,13 +283,14 @@ describe("Settings → Appearance and Code: saved as they change", () => {
     await waitFor(() => expect(p.onSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: "dark" })));
   });
 
-  test("a new chat's model, effort and mode; what a repository brings; the web tools", async () => {
-    const { api } = show("code");
+  test("a new chat's AI, model, effort and mode; what a repository brings; the web tools", async () => {
+    const { api } = show("code", { api: withConnections(connection()) });
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(await within(dialog).findByLabelText("Default AI")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Claude Code"]);
     await userEvent.selectOptions(within(dialog).getByLabelText("Default model"), "opus");
     const effort = within(dialog).getByLabelText(/Default effort/);
-    expect(within(effort).getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium (recommended)", "High", "Extra", "Max"]);
-    await userEvent.selectOptions(effort, "max");
+    expect(within(effort).getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium (recommended)", "High"]);
+    await userEvent.selectOptions(effort, "high");
     await userEvent.click(within(dialog).getByRole("radio", { name: /^Plan — / }));
     expect(within(dialog).getByRole("switch", { name: "Load project skills" })).toBeChecked();
     await userEvent.click(within(dialog).getByRole("switch", { name: "Load project skills" }));
@@ -293,7 +299,40 @@ describe("Settings → Appearance and Code: saved as they change", () => {
     await userEvent.click(within(dialog).getByRole("switch", { name: "Run project plugins" }));
     await userEvent.click(within(dialog).getByRole("switch", { name: /web tools/ }));
     expect(within(dialog).getByText(/No per-run budget cap is set/)).toBeInTheDocument();
-    await waitFor(() => expect(patches(api)).toEqual([{ defaultModel: "opus" }, { defaultEffort: "max" }, { defaultMode: "plan" }, { projectSkills: false }, { projectPlugins: true }, { webTools: true }]));
+    await waitFor(() => expect(patches(api)).toEqual([{ defaultRuntime: "claude", defaultModel: "opus" }, { defaultRuntime: "claude", defaultEffort: "high" }, { defaultRuntime: "claude", defaultMode: "plan" }, { projectSkills: false }, { projectPlugins: true }, { webTools: true }]));
+  });
+
+  test("a new chat's defaults wait for an AI: with none signed in, the way to sign one in -- and no model of nobody's", async () => {
+    show("code", { api: withConnections() });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(await within(dialog).findByRole("link", { name: "Open AI Connections" })).toHaveAttribute("href", expect.stringContaining("settings=ai-connections"));
+    expect(within(dialog).getByText(/sign in with your subscription/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Default AI")).toBeNull();
+    expect(within(dialog).queryByLabelText("Default model")).toBeNull();
+    // What a repository brings is a chat's whatever AI it will run on.
+    expect(within(dialog).getByRole("switch", { name: "Load project skills" })).toBeInTheDocument();
+  });
+
+  test("on OpenAI Codex alone, a new chat's AI is Codex and its models are Codex's; Claude Code says where to sign it in", async () => {
+    const { api } = show("code", { api: withConnections(codexSignedIn()) });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    expect(within(await within(dialog).findByLabelText("Default AI")).getAllByRole("option").map((o) => o.textContent)).toEqual(["OpenAI Codex"]);
+    const model = within(dialog).getByLabelText("Default model");
+    expect(within(model).getAllByRole("option").map((o) => o.textContent)).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
+    expect(model).toHaveValue("gpt-6.1-sol");
+    expect(within(dialog).getByText(/Claude Code is not signed in/)).toBeInTheDocument();
+    await userEvent.selectOptions(model, "gpt-5.5");
+    await waitFor(() => expect(patches(api)).toEqual([{ defaultRuntime: "codex", defaultModel: "gpt-5.5" }]));
+  });
+
+  test("with Claude Code and OpenAI Codex signed in, the AI is chosen first", async () => {
+    const { api } = show("code", { api: withConnections(connection(), codexSignedIn()) });
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const ai = await within(dialog).findByLabelText("Default AI");
+    expect(within(ai).getAllByRole("option").map((o) => o.textContent)).toEqual(["Claude Code", "OpenAI Codex"]);
+    expect(within(dialog).queryByText(/is not signed in/)).toBeNull();
+    await userEvent.selectOptions(ai, "codex");
+    await waitFor(() => expect(patches(api)).toEqual([{ defaultRuntime: "codex" }]));
   });
 });
 

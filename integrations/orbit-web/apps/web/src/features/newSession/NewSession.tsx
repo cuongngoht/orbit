@@ -2,12 +2,13 @@
 // Claude Code -- the toolbar holds the draft (a repository of either source, or none; its branch; the model and effort;
 // the mode) and sending the first message creates the chat with them and opens it. RESEARCH: a workspace of sources
 // (new, or one this account has), the model, and an optional first question -- no repository and no GitHub.
-import { Avatar, Button, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Avatar, Button, Link, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { BookOpen20Regular, Code20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import type { ResearchSessionDetail } from "@orbit-web/contracts";
 import { NewResearchSession } from "../research/NewResearchSession";
-import { DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, effortFor, modelOf, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
+import { DEFAULT_CHAT_RUNTIME, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, effortFor, modelOf, type EffortChoice, type ModeChoice, type ModelChoice, type RepositorySource, type SessionSummary, type Settings, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
+import { settingsHref } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { send } from "../../services/api";
@@ -16,6 +17,7 @@ import { Composer } from "../composer/Composer";
 import { BranchPicker, RepositoryPicker, type RepositoryChoice } from "../composer/RepositoryPicker";
 import { catalogOfConnection, ModelCatalogOverride, useModelCatalog } from "../../services/models/ModelCatalog";
 import { useConnections } from "../connections/AiConnectionsSection";
+import { chatConnectionsOf, newChatConnection } from "../connections/chatConnections";
 import { AiPicker, autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 
 const useStyles = makeStyles({
@@ -141,20 +143,24 @@ export function NewSession({
   const [mode, setMode] = useState<ModeChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  // Which connection the chat runs on: the account's default Claude Code one unless a person names another (a Claude
-  // Code or OpenAI Codex connection of the account's, connected, with models to choose from).
+  // Which connection the chat runs on: one of the account's Claude Code or OpenAI Codex connections, signed in, with
+  // models to choose from -- the one a person names, else the one of the AI Settings names (chatConnections.ts).
   const [connectionId, setConnectionId] = useState<string | null>(null);
   const connections = useConnections();
-  const chatConnections = (connections.data?.connections ?? []).filter((c) => (c.runtime === "claude" || c.runtime === "codex") && c.auth === "connected" && c.catalog.models.length > 0);
+  const chatConnections = chatConnectionsOf(connections.data);
+  // No AI signed in at all: nothing of anybody's is offered, nothing is sent -- the way to sign one in instead.
+  const noAi = connections.data !== null && chatConnections.length === 0;
+  const defaultRuntime = settings?.defaultRuntime ?? DEFAULT_CHAT_RUNTIME;
   const defaultClaude = chatConnections.find((c) => c.runtime === "claude" && c.isDefault) ?? null;
-  // The AI the chat runs on: the one chosen -- else the default Claude Code connection, else the account's first one.
-  // Everything below (the picker, the models offered, what is sent) is this one's: nothing shown without it.
-  const effective = chatConnections.find((c) => c.id === connectionId) ?? defaultClaude ?? chatConnections[0] ?? null;
+  // The AI the chat runs on: the one chosen, else Settings' default AI. Everything below (the picker, the models
+  // offered, what is sent) is this one's: nothing shown without it.
+  const effective = chatConnections.find((c) => c.id === connectionId) ?? newChatConnection(chatConnections, defaultRuntime);
   const named = effective !== null && effective.id !== defaultClaude?.id ? effective : null;
   const accountCatalog = useModelCatalog();
   const catalog = named === null ? accountCatalog : catalogOfConnection(named);
-  // Settings' default model, unless this account cannot use it: then the one its CLI recommends.
-  const preferred = settings?.defaultModel ?? DEFAULT_MODEL;
+  // Settings' default model when the chat runs on Settings' AI, unless this account cannot use it: then the one its CLI
+  // recommends. On another AI, that AI's recommended one.
+  const preferred = effective === null || effective.runtime === defaultRuntime ? (settings?.defaultModel ?? DEFAULT_MODEL) : catalog.recommended;
   const usable = catalog.source !== "account" || modelOf(catalog, preferred) !== null ? preferred : catalog.recommended;
   const runModel = model ?? usable;
   const preferredEffort = settings?.defaultEffort ?? DEFAULT_EFFORT;
@@ -192,7 +198,7 @@ export function NewSession({
     <Composer
       autoFocus={!isMobile && !isCoarse}
       placeholder="Describe a task or ask a question"
-      canSend={!busy}
+      canSend={!busy && !noAi}
       running={false}
       busy={busy}
       onSend={(text, images) => void start(text, images)}
@@ -215,8 +221,14 @@ export function NewSession({
       }
       right={
         <ModelCatalogOverride catalog={catalog}>
-          {effective !== null && <AiPicker choices={chatConnections} value={effective.id} onChange={chooseConnection} />}
-          <ModelEffortPicker model={run.model} effort={run.effort} onModel={chooseModel} onEffort={setEffort} />
+          {noAi ? (
+            <Link href={settingsHref("ai-connections")}>Sign in to an AI first</Link>
+          ) : (
+            <>
+              {effective !== null && <AiPicker choices={chatConnections} value={effective.id} onChange={chooseConnection} />}
+              <ModelEffortPicker model={run.model} effort={run.effort} onModel={chooseModel} onEffort={setEffort} />
+            </>
+          )}
           <ModePicker mode={run.mode} onMode={setMode} autoMode={autoModeWith(catalog, run.model)} />
         </ModelCatalogOverride>
       }

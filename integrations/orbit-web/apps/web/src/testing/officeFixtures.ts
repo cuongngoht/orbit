@@ -124,7 +124,7 @@ export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnec
       checkedAt: "2026-11-21T08:59:00.000Z",
     },
     capabilities: capabilities(),
-    terminalCommand: `docker compose run --rm orbit-connect claude ${CONN_CLAUDE}`,
+    terminalCommand: `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${CONN_CLAUDE}`,
     plugins: { plugin: "orbit", installed: true, version: "0.6.0", digest: PLUGIN_DIGEST, useCases: { chat: { approved: false, needsConfirmation: false, decidedAt: null }, employee: { approved: true, needsConfirmation: false, decidedAt: "2026-11-21T08:00:00.000Z" } }, revision: 2 },
     employees: 2,
     version: 5,

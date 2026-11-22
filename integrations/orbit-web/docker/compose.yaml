@@ -2,7 +2,7 @@
 #
 #   cd integrations/orbit-web/docker && docker compose up -d --build
 #
-# Three services, and one more to run by hand:
+# Three services:
 #
 #   postgres         PostgreSQL 17 with pgvector: every record Orbit Web keeps (accounts, chats, research, governance,
 #                    the office). On a network of its own that only Orbit Web joins; never published on this machine.
@@ -15,8 +15,11 @@
 #                    employee's limits, and it keeps the employees' storage areas with their quotas. It answers
 #                    Orbit Web alone, on the private `control` network, to requests signed with a shared secret; it
 #                    publishes no port and takes no path, image, mount or privilege from a request.
-#   orbit-connect    (profile `tools`) a connection's sign-in in YOUR terminal, with the unmodified official CLI:
-#                    docker compose run --rm orbit-connect claude <connectionId>
+#
+# A subscription connection (Settings → AI Connections) is signed in from YOUR terminal, with the unmodified official
+# CLI and that connection's home alone -- the URL and the code never pass through Orbit Web's pages:
+#
+#   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
 #
 # Before the first start, beside this file:
 #
@@ -130,7 +133,6 @@ services:
       - default
       - db
       - control
-      - model
     cap_drop:
       - ALL
     security_opt:
@@ -190,44 +192,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
-  # A connection's sign-in, in the operator's terminal, with the unmodified official CLI: the URL and the code never
-  # pass through Orbit Web. The model-plane image, the connections room only, and the model network (its way out is
-  # Orbit Web's model-plane egress, which reaches the providers' hosts alone).
-  orbit-connect:
-    profiles: ["tools"]
-    image: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
-    command: ["node", "/opt/orbit-web/apps/api/dist/cli/connect.js"]
-    user: "10001:10001"
-    stdin_open: true
-    tty: true
-    volumes:
-      - { type: volume, source: orbit-web-data, target: /data/connections, volume: { subpath: connections } }
-    environment:
-      ORBIT_WEB_CONNECTIONS_DIR: /data/connections
-      HTTPS_PROXY: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
-      https_proxy: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
-    networks:
-      - model
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m
-      - /home/orbit:size=64m,uid=10001,gid=10001,mode=0700
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-
 networks:
   # The database's network: internal (no way out), joined by Orbit Web and the database alone.
   db:
     internal: true
   # Orbit Web and the allocator, alone.
   control:
-    internal: true
-  # A connection's sign-in (orbit-connect) and Orbit Web's model-plane egress, alone. An attempt never joins it: each
-  # attempt's tool plane and model plane get an internal network of their own from the allocator, shared with Orbit
-  # Web's container only -- so no attempt can reach another's ports, or another model plane's runner.
-  model:
     internal: true
 
 secrets:

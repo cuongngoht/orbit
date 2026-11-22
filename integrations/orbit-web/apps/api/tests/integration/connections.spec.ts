@@ -81,7 +81,7 @@ describe("settings → AI connections", () => {
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const c = made.body as RuntimeConnection;
     assert.deepEqual([c.auth, c.identity, c.isDefault, c.label, c.catalog.source], ["disconnected", null, true, "My Claude", "none"]);
-    assert.equal(c.terminalCommand, `docker compose run --rm orbit-connect ${c.id}`);
+    assert.equal(c.terminalCommand, `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${c.id}`);
     assert.equal(c.capabilities.toolPlaneSplit, "yes", "read from this binary's own --help");
     const home = join(h.config.data.connections, h.accountId as string, c.id, "claude");
     assert.ok(existsSync(home), "a config home of its own");

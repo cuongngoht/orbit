@@ -76,10 +76,10 @@ describe("Settings → AI Connections: three CLIs, each said as its own CLI says
     const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
     expect(within(conn).getByText("Disconnected")).toBeInTheDocument();
     const command = within(conn).getByLabelText("Terminal command");
-    expect(command).toHaveTextContent(`docker compose run --rm orbit-connect claude ${CONN_CLAUDE}`);
+    expect(command).toHaveTextContent(`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${CONN_CLAUDE}`);
     expect(conn.textContent).toContain("The sign-in URL and code never pass through Orbit");
     await userEvent.click(within(conn).getByRole("button", { name: "Copy" }));
-    expect(writeText).toHaveBeenCalledWith(`docker compose run --rm orbit-connect claude ${CONN_CLAUDE}`);
+    expect(writeText).toHaveBeenCalledWith(`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${CONN_CLAUDE}`);
     expect(await within(conn).findByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 

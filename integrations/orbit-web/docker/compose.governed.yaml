@@ -28,8 +28,9 @@
 #                    limits; the employees' storage with its quotas. On the private `control` network, answering Orbit
 #                    Web alone (signed requests); no published port. Needs `allocator.secret` beside this file and the
 #                    three employee images (see compose.yaml).
-#   orbit-connect    (profile `tools`) a connection's sign-in in the operator's own terminal:
-#                    docker compose -f compose.governed.yaml run --rm orbit-connect claude <connectionId>
+#
+# A subscription connection is signed in from the operator's own terminal, with the unmodified official CLI:
+#   docker compose -f compose.governed.yaml exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
 #
 # The control plane (orbit-web, orbit-agent, postgres, orbit-allocator) runs within fixed limits (the *_CPUS, *_MEMORY,
 # *_PIDS knobs below): what the host has beyond them, less a reserve for the OS, is what employees may use.
@@ -132,7 +133,6 @@ services:
       - agent
       - db
       - control
-      - model
     cpus: ${ORBIT_WEB_CPUS:-1.0}
     mem_limit: ${ORBIT_WEB_MEMORY:-2g}
     pids_limit: ${ORBIT_WEB_PIDS:-2048}
@@ -213,30 +213,6 @@ services:
     pids_limit: ${ORBIT_WEB_ALLOCATOR_PIDS:-256}
     stop_grace_period: 20s
 
-  orbit-connect:
-    profiles: ["tools"]
-    image: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
-    command: ["node", "/opt/orbit-web/apps/api/dist/cli/connect.js"]
-    user: "10001:10001"
-    stdin_open: true
-    tty: true
-    volumes:
-      - { type: volume, source: orbit-web-data, target: /data/connections, volume: { subpath: connections } }
-    environment:
-      ORBIT_WEB_CONNECTIONS_DIR: /data/connections
-      HTTPS_PROXY: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
-      https_proxy: http://orbit-web:${ORBIT_WEB_MODEL_EGRESS_PORT:-3129}
-    networks:
-      - model
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m
-      - /home/orbit:size=64m,uid=10001,gid=10001,mode=0700
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-
 networks:
   # The database's network: internal, joined by the control plane and the database alone -- never by the agent.
   db:
@@ -248,9 +224,6 @@ networks:
         - subnet: ${ORBIT_WEB_AGENT_SUBNET:-172.31.250.0/24}
   # Orbit Web and the allocator, alone.
   control:
-    internal: true
-  # A connection's sign-in and the model-plane egress, alone; each attempt has networks of its own (see compose.yaml).
-  model:
     internal: true
 
 secrets:

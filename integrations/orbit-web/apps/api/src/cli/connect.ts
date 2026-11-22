@@ -5,8 +5,11 @@
 // is signed in as, and the connection's status is written and printed -- `connected` only when the CLI's own status
 // names the identity, held to "one identity, one account" (modules/connections/probe.ts).
 //
-//   docker compose run --rm orbit-connect <connectionId>       (the command Settings → AI Connections shows)
-//   node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
+//                                                     (the command Settings → AI Connections shows)
+//
+// It runs where Orbit Web runs -- its configuration, its database and the connections room -- as Orbit Web's user, so
+// the home the CLI writes is the one the connection's model-plane containers mount.
 //
 // Exit codes: 0 connected, 1 not connected (said why) or refused, 2 a usage or configuration error, 3 no such connection.
 import { spawnSync } from "node:child_process";

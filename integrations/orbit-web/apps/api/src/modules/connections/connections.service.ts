@@ -53,9 +53,12 @@ import { RUNTIME_SPECS } from "./runtimes.js";
 
 const METHOD_LABELS: Record<AuthMethod, string> = { subscription: "subscription", api_key: "API key", cloud: "cloud provider" };
 
-// The one command a person runs in a terminal of the server to sign a subscription connection in: a one-off container
-// of Orbit Web's image (`orbit-connect`) that runs the provider's own, unmodified sign-in in that person's terminal.
-export const terminalCommandOf = (connectionId: string): string => `docker compose run --rm orbit-connect ${connectionId}`;
+// The one command a person runs in a terminal of the server to sign a subscription connection in: cli/connect.js in
+// Orbit Web's own container, which runs the provider's own, unmodified sign-in in that person's terminal with that one
+// connection's home, then asks the CLI whom it is signed in as. (In the governed deployment: `docker compose -f
+// compose.governed.yaml exec …`, the same command.)
+export const CONNECT_SCRIPT = "/opt/orbit-web/apps/api/dist/cli/connect.js";
+export const terminalCommandOf = (connectionId: string): string => `docker compose exec orbit-web node ${CONNECT_SCRIPT} ${connectionId}`;
 
 @Injectable()
 export class ConnectionsService {

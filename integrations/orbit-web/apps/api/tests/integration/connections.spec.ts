@@ -1,7 +1,8 @@
 // AN ACCOUNT'S AI CONNECTIONS, through the real API, with the CLIs scripted per connection home. A connection is the
 // account's alone, with a config home of its own; "connected" is only what its CLI's own status says (naming the
-// identity); one provider identity is connected to one account at a time; a subscription is signed in in a terminal
-// (never through Orbit's pages: no route relays a sign-in); an API key is kept by the credential store and never shown;
+// identity); one provider identity is connected to one account at a time; a subscription is signed in by its CLI's own
+// sign-in -- in a terminal, or from its card (connection-sign-in.spec.ts), the one route that relays one, per connection;
+// an API key is kept by the credential store and never shown;
 // the Orbit plugin is loaded into a chat only once its owner approved it for that digest; disconnect and delete use the
 // CLI's own logout and remove the home's login.
 import assert from "node:assert/strict";
@@ -57,10 +58,12 @@ describe("settings → AI connections", () => {
     assert.equal((await h.get("/api/sessions")).status, 200, "the rest of the app works without one");
   });
 
-  test("no route relays a provider's sign-in through Orbit's pages", () => {
+  test("a provider's sign-in is relayed only for one connection, from its card -- no account-wide relay of Orbit's own sign-in", () => {
     const paths = routesOf(h).map((r) => `${r.method} ${r.path}`);
     for (const relay of ["/api/claude/login", "/api/claude/session", "/api/claude/status", "/api/claude/logout"]) assert.equal(paths.some((p) => p.endsWith(relay) || p.includes(`${relay}/`)), false, relay);
     assert.ok(paths.includes("POST /api/connections") && paths.includes("PUT /api/connections/:id/plugins/orbit"));
+    for (const route of ["GET /api/connections/:id/sign-in", "POST /api/connections/:id/sign-in", "POST /api/connections/:id/sign-in/code", "POST /api/connections/:id/sign-in/cancel"]) assert.ok(paths.includes(route), route);
+    assert.deepEqual(paths.filter((p) => /sign-in/.test(p) && p.includes("/api/connections")).length, 4, "nothing else");
   });
 
   test("a method its provider does not permit, or nobody verified, is refused; a CLI not installed is said so", async () => {

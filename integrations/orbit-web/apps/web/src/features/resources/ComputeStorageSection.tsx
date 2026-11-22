@@ -6,6 +6,7 @@
 import { Badge, Button, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import type { AccountResourceBudget, PerEmployeeCeiling, ResourceSummary, StorageCategory, UpdateBudgetRequest } from "@orbit-web/contracts";
 import { STORAGE_CATEGORIES } from "@orbit-web/contracts";
+import { ArrowSync16Regular } from "@fluentui/react-icons";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
@@ -143,6 +144,9 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
     <form
       className={s.block}
       aria-label="Change the budget"
+      // The form checks each value itself (a number, at least 0, at most the authorization): the browser's own check
+      // refused any value off the arrows' step -- an authorization of 0.05 vCPU on a 0.25 step could not be saved.
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         void save();
@@ -185,6 +189,36 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
   );
 }
 
+// Re-check: the host's capacity read again now; the budgets that follow it move with it.
+function Recheck({ onDone }: { onDone: (r: ResourceSummary) => void }) {
+  const s = useStyles();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const recheck = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await send<ResourceSummary>("POST", "/api/office/resources/capacity/check"));
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Button className={s.button} size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowSync16Regular />} disabled={busy} onClick={() => void recheck()} title="Reads this host's CPU, memory and storage again now.">
+        Re-check
+      </Button>
+      {error && (
+        <MessageBar intent="error">
+          <MessageBarBody>{error}</MessageBarBody>
+        </MessageBar>
+      )}
+    </>
+  );
+}
+
 export function ComputeStorageSection() {
   const s = useStyles();
   const summary = useResourceSummary();
@@ -206,9 +240,10 @@ export function ComputeStorageSection() {
         <div className={s.row}>
           <Text weight="semibold">Infrastructure capacity</Text>
           <Badge appearance="outline">{CAPACITY_SOURCE_TEXT[cap.source]}</Badge>
+          <Recheck onDone={summary.set} />
         </div>
         <Text size={200} className={s.muted}>
-          What this host can give employees: its total, minus what Orbit, the database, the proxy and the system keep. Checked {when(cap.checkedAt)}.
+          What this host can give employees: its total, minus what Orbit, the database, the proxy and the system keep. Checked {when(cap.checkedAt)}. Re-check reads the host again now (after the server was resized, or its settings changed); a budget that follows the host's capacity follows it.
         </Text>
         <div className={s.table}>
           <Table size="small" aria-label="Capacity">

@@ -65,6 +65,24 @@ plugin it bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`
   everywhere*, `owner reset-password` and `owner revoke-sessions` from a terminal. A localhost-only **trial**
   (`compose.trial.yaml`: `admin` / `123456`, a red bar until the password changes) refuses to start anywhere another
   machine could reach it. Sharing names users of the deployment, by username or a verified email.
+- **A subscription signed in from its card** (ADR 0068). *Add a connection* starts the CLI's own sign-in at once, and
+  *Sign in* / *Reconnect* start it again: Orbit Web runs `claude auth login --claudeai` or `codex login --device-auth`
+  against that connection's home, and shows the browser that started it the link the CLI printed -- Claude Code's code
+  is pasted back on the card (to the CLI's stdin, nowhere else), Codex's one-time code is entered on OpenAI's page.
+  Connected only once the CLI's own status names the identity; another browser of the account sees only that one is
+  under way; no link, code or token is kept anywhere. The terminal's `connect.js` stays beside it, and
+  `ORBIT_WEB_SIGN_IN_ON_PAGE=0` leaves it the only way. Antigravity has none.
+- **Accounts are the gate; the access token is optional** (ADR 0069). Another host name may be answered without
+  `ORBIT_WEB_ACCESS_TOKEN`: a person signs in with a username and a password alone; a token, when set, is still a
+  perimeter in front of the sign-in. The localhost-only trial still answers loopback names alone.
+- **The host's capacity, read again** (ADR 0069). At every start and at **Re-check** (Settings → Compute & storage) the
+  sandbox provider is asked again, and every account authorization that comes from the capacity follows it (a budget
+  value that stood at it moves, one the owner lowered stays). `governance.js budget show | set` -- the command the pages
+  named -- authorizes an account's own numbers (kept until `--from-capacity`). The budget form takes any value up to the
+  authorization (the browser's step check no longer refuses one like 0.05 vCPU).
+- **Every AI CLI in the image** (ADR 0069): OpenAI Codex CLI 0.169.0 and the Google Antigravity CLI (`agy`) 1.5.14
+  (its release archive pinned by SHA-512 per architecture) beside Claude Code, in the control plane's and the model
+  plane's images; Settings → System names their versions.
 - **AI connections, each account's own** (ADR 0067, replacing ADR 0066's "one CLI identity for the deployment").
   Settings → AI Connections: Claude Code, OpenAI Codex, Google Antigravity, each connection with a config home of its own
   (`/data/connections/<OrbitId>/<connectionId>/`), mounted only into that connection's model planes. A subscription is

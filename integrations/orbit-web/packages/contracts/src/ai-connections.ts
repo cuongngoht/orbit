@@ -3,9 +3,10 @@
 // (the CLI's login lives there and nowhere else), and it is never mounted into an employee's sandbox.
 //
 // How a connection signs in is the PROVIDER's own mechanism, never something Orbit makes up:
-//   subscription  the official CLI's own sign-in, completed by a person in a terminal of the server (`terminalCommand`):
-//                 the URL and the code never pass through Orbit's pages (Anthropic does not permit a third-party product
-//                 to "collect, store, or intermediate Claude.ai credentials or session tokens").
+//   subscription  the official CLI's own sign-in, run against the connection's home: from its card (ADR 0068: Orbit Web
+//                 runs the CLI's sign-in, shows the URL -- and Codex's one-time code -- it printed, and hands the code a
+//                 person pastes for Claude Code to that process's stdin, keeping none of it), or by a person in a
+//                 terminal of the server (`terminalCommand`), where nothing of it passes through Orbit's pages at all.
 //   api_key       the account's own key of the provider, entered in the browser, kept by Orbit's credential store and
 //                 handed only to that connection's model-plane process.
 //   cloud         a cloud provider's credentials (Bedrock / Vertex / Foundry for Claude Code) -- not verified here.
@@ -14,6 +15,7 @@
 // home, its own model catalog) at `checkedAt`; nothing is inferred from a file being present or a setting being saved.
 import type { Checked } from "./validate.js";
 import type { ModelOption } from "./models.js";
+import type { LoginSnapshot } from "./dto.js";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const unknownFields = (body: Record<string, unknown>, allowed: readonly string[]): string[] =>
@@ -133,6 +135,9 @@ export interface RuntimeConnection {
   capabilities: RuntimeCapabilities;
   // For a subscription: the one command a person runs in a terminal of the server to sign this connection in.
   terminalCommand: string | null;
+  // Whether this connection can be signed in from its card (ConnectionSignIn): a subscription whose CLI's own sign-in
+  // Orbit Web knows how to relay (Claude Code, OpenAI Codex), unless the operator switched it off.
+  signInHere: boolean;
   // Claude Code only.
   plugins: PluginGrantView | null;
   // How many employees run on it (a disconnect stops their new work).
@@ -184,7 +189,44 @@ export const CONNECTION_ERRORS = {
   pluginChanged: "plugin_changed",
   // The Orbit plugin is offered on Claude Code connections only.
   pluginNotOffered: "plugin_not_offered",
+  // A sign-in from the card (ConnectionSignIn): not offered for this connection; another browser of the account has one
+  // under way; nothing under way for this browser.
+  signInNotOffered: "sign_in_not_offered",
+  signInBusy: "sign_in_busy",
+  noSignIn: "no_sign_in",
 } as const;
+
+// A SIGN-IN FROM THE CARD (ADR 0068): the connection's CLI running its own sign-in on the server, as the page follows it.
+// It belongs to the browser session that started it: only that browser sees its URL and code (`mine`), sends the code
+// Claude Code asks for, or cancels it; another browser of the account sees that one is under way, and by whom.
+//   GET  /api/connections/:id/sign-in          this connection's sign-in, as this browser may see it
+//   POST /api/connections/:id/sign-in          starts it (or returns the one this browser has under way)
+//   POST /api/connections/:id/sign-in/code     { code } -- Claude Code's code, written to the CLI's stdin and kept nowhere
+//   POST /api/connections/:id/sign-in/cancel
+export interface ConnectionSignIn {
+  connectionId: string;
+  // Whether this browser started it.
+  mine: boolean;
+  // Who started it (shown to the account's other browsers).
+  startedBy: string | null;
+  // The flow (LoginSnapshot): its URL, code and whether it waits for a code are null/false unless `mine`.
+  flow: LoginSnapshot;
+}
+
+export interface SignInCodeRequest {
+  code: string;
+}
+
+// The code a person copies from the provider's page: one token of printable characters, no whitespace inside.
+const SIGN_IN_CODE = /^[\x21-\x7e]{4,2048}$/;
+
+export function checkSignInCode(body: unknown): Checked<SignInCodeRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["code"]);
+  const code = typeof body.code === "string" ? body.code.trim() : null;
+  if (code === null || !SIGN_IN_CODE.test(code)) errors.push("code must be the code the sign-in page shows (4-2048 printable characters, no spaces)");
+  return checked(errors, () => ({ code: code as string }));
+}
 
 // Why a connection is not connected, as a code (RuntimeConnection.reasonCode).
 //   identity_already_connected  the identity its CLI names is connected to another Orbit account (or another connection

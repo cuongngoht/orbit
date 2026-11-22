@@ -141,7 +141,7 @@ export function setupStatus(_runtimes: Record<string, never> = {}, github: Parti
   const g: GitHubStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...github };
   const a: AzureStatus = { state: "not_connected", account: null, detail: null, flow: idleFlow(), availableToClaude: false, ...azure };
   return {
-    versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", gh: "2.89.0", git: "2.43.0", az: "2.91.0", python: "3.15.2", node: "24.11.0" },
+    versions: { web: ORBIT_WEB_VERSION, orbit: "0.6.0", orbitCommit: "6c36207cd57204f6f50deb3431a5db516b27f4bc", claude: "2.1.328", codex: "0.169.0", agy: "1.5.14", gh: "2.89.0", git: "2.43.0", az: "2.91.0", python: "3.15.2", node: "24.11.0" },
     runtimes: [
       { runtime: "claude", state: "installed", version: "2.1.330", detail: null, checkedAt: "2026-11-21T00:00:00.000Z" },
       { runtime: "codex", state: "not_installed", version: null, detail: null, checkedAt: "2026-11-21T00:00:00.000Z" },

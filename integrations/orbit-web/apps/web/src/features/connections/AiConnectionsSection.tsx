@@ -1,8 +1,9 @@
 // SETTINGS → AI CONNECTIONS: the three AI CLIs an Orbit account can connect -- Claude Code, OpenAI Codex, Google
 // Antigravity -- each as a card: whether the CLI is on this server, the ways of signing in it offers (with what each rests
 // on), and the account's connections to it. Every status is the CLI's own word, read at the time shown: Connected only
-// when its own status command names an identity. A subscription is signed in by the provider's own CLI in a terminal of
-// the server (its URL and code never pass through Orbit); an API key is typed here once and never shown back.
+// when its own status command names an identity. A subscription is signed in by the provider's own CLI: from its card
+// (ADR 0068: the CLI's sign-in runs on the server, this browser opens the link it printed -- and, for Claude Code, pastes
+// back the code its page shows) or in a terminal of the server; an API key is typed here once and never shown back.
 import {
   Badge,
   Button,
@@ -29,7 +30,7 @@ import {
   shorthands,
   tokens,
 } from "@fluentui/react-components";
-import { Add16Regular, ArrowSync16Regular, Copy16Regular, Delete16Regular, Key16Regular, PlugDisconnected16Regular, Star16Regular } from "@fluentui/react-icons";
+import { Add16Regular, ArrowSync16Regular, Copy16Regular, Delete16Regular, Key16Regular, Open16Regular, PlugDisconnected16Regular, Star16Regular } from "@fluentui/react-icons";
 import {
   AUTH_STATE_TEXT,
   RUNTIME_KINDS,
@@ -39,6 +40,7 @@ import {
   type AuthMethod,
   type AuthState,
   type Capability,
+  type ConnectionSignIn,
   type CreateConnectionRequest,
   type MethodSupport,
   type MethodSupportState,
@@ -48,7 +50,8 @@ import {
   type RuntimeInstallation,
   type RuntimeKind,
 } from "@orbit-web/contracts";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flowActive } from "../../hooks/useLoginFlow";
 import { useResource } from "../../hooks/useResource";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
@@ -101,7 +104,7 @@ function Helper() {
   const s = useStyles();
   const items: [string, string][] = [
     ["Signing in to Orbit", "Your username and password (Settings → Account). It never signs in to an AI provider."],
-    ["Connecting a provider", "A connection below: the provider's CLI signed in by its own command, or your API key. Its login stays in the connection's own folder on the server."],
+    ["Connecting a provider", "A connection below: the provider's CLI signed in by its own sign-in (from its card here, or a terminal of the server), or your API key. Its login stays in the connection's own folder on the server."],
     ["Enabling a plugin", "Whether Claude Code loads the Orbit plugin, for chats or for employees, for exactly the version you approve."],
     ["Granting connectors", "Which claude.ai connectors Claude may use in chats and research (Settings → Claude connectors)."],
   ];
@@ -170,8 +173,192 @@ function MethodRow({ m }: { m: MethodSupport }) {
   );
 }
 
+// SIGNING A SUBSCRIPTION IN FROM ITS CARD (ADR 0068): the connection's CLI runs its own sign-in on the server, and only
+// the browser that started it is shown the link it printed -- with Codex's one-time code to enter there -- and, for
+// Claude Code, sends back the code its page shows. Connected only once the CLI's own status names who it is.
+function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeConnection; autoStart: boolean; onStarted: () => void; onChanged: () => void; onClose: (() => void) | null }) {
+  const s = useStyles();
+  const path = `/api/connections/${encodeURIComponent(c.id)}/sign-in`;
+  const [view, setView] = useState<ConnectionSignIn | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"url" | "code" | null>(null);
+  const flow = view?.flow ?? null;
+  const active = flowActive(flow);
+  const wasActive = useRef(false);
+  // The card's latest reload, for the moment the sign-in ends (kept current after each render, never during one).
+  const changed = useRef(onChanged);
+  useEffect(() => {
+    changed.current = onChanged;
+  });
+  // What the server says now (a sign-in may be under way from before this card was drawn) -- or, right after the
+  // connection was added, its sign-in started.
+  useEffect(() => {
+    let gone = false;
+    const first = autoStart ? send<ConnectionSignIn>("POST", path) : get<ConnectionSignIn>(path);
+    if (autoStart) onStarted();
+    first.then((v) => !gone && setView(v)).catch((err: unknown) => !gone && setError(errorText(err)));
+    return () => {
+      gone = true;
+    };
+    // Once per card: a started sign-in is followed below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+  // While it runs, it is followed; when it ends, the card is read again (Connected, or the CLI's own reason).
+  useEffect(() => {
+    if (active) wasActive.current = true;
+    else if (wasActive.current) {
+      wasActive.current = false;
+      changed.current();
+    }
+    if (!active) return;
+    const timer = setInterval(() => void get<ConnectionSignIn>(path).then(setView).catch(() => undefined), 1500);
+    return () => clearInterval(timer);
+  }, [active, path]);
+  const run = async (work: () => Promise<ConnectionSignIn>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setView(await work());
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async (what: "url" | "code", text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+    } catch {
+      setCopied(null);
+    }
+  };
+  const start = () => run(() => send("POST", path));
+  const cancel = () => run(() => send("POST", `${path}/cancel`));
+  const submit = () =>
+    run(() => {
+      const typed = code.trim();
+      setCode("");
+      return send("POST", `${path}/code`, { code: typed });
+    });
+  const label = RUNTIME_LABELS[c.runtime];
+  const ended = flow !== null && !active && flow.state !== "idle";
+  return (
+    <section className={s.form} aria-label={`Sign in ${c.label}`}>
+      {view !== null && !view.mine && active ? (
+        <>
+          <Text size={200}>{view.startedBy ?? "Somebody"} is signing this connection in right now, from another browser. It turns Connected here when they finish.</Text>
+          <div className={s.actions}>
+            <Button size="small" disabled={busy} onClick={() => void cancel()}>
+              Cancel that sign-in
+            </Button>
+          </div>
+        </>
+      ) : active && flow !== null ? (
+        <>
+          {flow.state === "starting" && <Spinner size="tiny" label={`Starting ${label}'s own sign-in on the server…`} />}
+          {flow.state === "awaiting_user" && flow.url && (
+            <>
+              <Text size={200} weight="semibold">
+                1. Open the sign-in page and sign in with the account this connection is for
+              </Text>
+              <div className={s.command}>
+                <Link href={flow.url} target="_blank" rel="noopener noreferrer" className={s.code} aria-label="Sign-in link">
+                  {flow.url}
+                </Link>
+                <Button size="small" appearance="primary" icon={<Open16Regular />} as="a" href={flow.url} target="_blank" rel="noopener noreferrer">
+                  Open
+                </Button>
+                <Button size="small" icon={<Copy16Regular />} onClick={() => void copy("url", flow.url as string)}>
+                  {copied === "url" ? "Copied" : "Copy"}
+                </Button>
+              </div>
+              {flow.code && (
+                <>
+                  <Text size={200} weight="semibold">
+                    2. Enter this one-time code there
+                  </Text>
+                  <div className={s.command}>
+                    <code className={s.code} aria-label="One-time code">
+                      {flow.code}
+                    </code>
+                    <Button size="small" icon={<Copy16Regular />} onClick={() => void copy("code", flow.code as string)}>
+                      {copied === "code" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                  <Text size={200} className={s.muted}>
+                    This card turns Connected by itself once you finish there.
+                  </Text>
+                </>
+              )}
+              {flow.needsCode && (
+                <form
+                  aria-label="Send the sign-in code"
+                  className={s.actions}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void submit();
+                  }}
+                >
+                  <Field label="2. Paste the code the sign-in page shows" style={{ flexGrow: 1, minWidth: 0 }}>
+                    <Input value={code} autoComplete="off" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
+                  </Field>
+                  <Button type="submit" appearance="primary" disabled={busy || code.trim().length < 4} style={{ alignSelf: "flex-end" }}>
+                    Send code
+                  </Button>
+                </form>
+              )}
+            </>
+          )}
+          {flow.state === "verifying" && <Spinner size="tiny" label={flow.message ?? `Checking the sign-in with ${label}…`} />}
+          {flow.message && flow.state === "awaiting_user" && (
+            <Text size={200} className={s.muted}>
+              {flow.message}
+            </Text>
+          )}
+          <div className={s.actions}>
+            <Button size="small" disabled={busy} onClick={() => void cancel()}>
+              Cancel
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          {ended && flow !== null && (
+            <MessageBar intent={flow.state === "connected" ? "success" : "warning"}>
+              <MessageBarBody>{flow.message ?? (flow.state === "cancelled" ? "Sign-in cancelled." : "The sign-in ended.")}</MessageBarBody>
+            </MessageBar>
+          )}
+          <Text size={200}>
+            {c.auth === "connected"
+              ? `Sign in again with the same account (${c.identity ?? "the one it has"}): another account makes this connection Authentication required until it is disconnected.`
+              : `Sign in with ${label}'s own sign-in: Orbit Web runs it on the server for this connection, and shows you its link${c.runtime === "codex" ? " and the one-time code to enter there" : ", then takes the code its page shows"}. The login stays in this connection's folder; nothing of it is kept anywhere else.`}
+          </Text>
+          <div className={s.actions}>
+            <Button className={s.action} appearance="primary" icon={<Key16Regular />} disabled={busy} onClick={() => void start()}>
+              {ended || c.auth === "connected" ? "Sign in again" : "Sign in"}
+            </Button>
+            {onClose && (
+              <Button className={s.action} onClick={onClose}>
+                Close
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+      {error && (
+        <MessageBar intent="error">
+          <MessageBarBody>{error}</MessageBarBody>
+        </MessageBar>
+      )}
+    </section>
+  );
+}
+
 // The one command a person runs in a terminal of the server, to copy.
-function TerminalCommand({ command }: { command: string }) {
+function TerminalCommand({ command, secondary }: { command: string; secondary: boolean }) {
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -185,7 +372,9 @@ function TerminalCommand({ command }: { command: string }) {
   return (
     <div className={s.form}>
       <Text size={200}>
-        A subscription is signed in by the provider's own CLI, in a terminal of the server: run this command there and follow what it says. The sign-in URL and code never pass through Orbit. This card turns Connected once the CLI's own status names who it is signed in as — then press Re-check.
+        {secondary
+          ? "Or sign it in from a terminal of the server instead: run this command there and follow what it says (nothing of that sign-in passes through this page). Then press Re-check."
+          : "A subscription is signed in by the provider's own CLI, in a terminal of the server: run this command there and follow what it says. The sign-in URL and code never pass through Orbit. This card turns Connected once the CLI's own status names who it is signed in as — then press Re-check."}
       </Text>
       <div className={s.command}>
         <code className={s.code} aria-label="Terminal command">
@@ -336,7 +525,7 @@ function ApiKeyField({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
-function ConnectionCard({ c, onChanged }: { c: RuntimeConnection; onChanged: () => void }) {
+function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: RuntimeConnection; autoSignIn: boolean; onAutoSignIn: () => void; onChanged: () => void }) {
   const s = useStyles();
   const [error, setError] = useState<{ text: string; stale: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -392,7 +581,10 @@ function ConnectionCard({ c, onChanged }: { c: RuntimeConnection; onChanged: () 
       )}
       <Catalog c={c} />
       <Capabilities caps={c.capabilities} />
-      {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && <TerminalCommand command={c.terminalCommand} />}
+      {c.method === "subscription" && c.signInHere && (c.auth !== "connected" || reconnecting) && (
+        <SignIn c={c} autoStart={autoSignIn || reconnecting} onStarted={onAutoSignIn} onChanged={onChanged} onClose={reconnecting ? () => setReconnecting(false) : null} />
+      )}
+      {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && <TerminalCommand command={c.terminalCommand} secondary={c.signInHere} />}
       {c.method === "api_key" && reconnecting && (
         <form
           className={s.form}
@@ -417,7 +609,7 @@ function ConnectionCard({ c, onChanged }: { c: RuntimeConnection; onChanged: () 
           Re-check
         </Button>
         {c.method !== "cloud" && (
-          <Button className={s.action} size="small" icon={<Key16Regular />} disabled={busy} onClick={() => setReconnecting(true)} title={c.method === "subscription" ? "Shows the terminal command again: the same sign-in, run once more." : "Replaces the API key."}>
+          <Button className={s.action} size="small" icon={<Key16Regular />} disabled={busy} onClick={() => setReconnecting(true)} title={c.method === "subscription" ? (c.signInHere ? "Runs the CLI's own sign-in again, here: a link to open, and the code to send back." : "Shows the terminal command again: the same sign-in, run once more.") : "Replaces the API key."}>
             Reconnect
           </Button>
         )}
@@ -482,7 +674,7 @@ const PROVIDERS = [
   { value: "foundry", label: "Microsoft Foundry" },
 ] as const;
 
-function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: RuntimeKind; methods: MethodSupport[]; onDone: () => void; onCancel: () => void }) {
+function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: RuntimeKind; methods: MethodSupport[]; onDone: (made: RuntimeConnection) => void; onCancel: () => void }) {
   const s = useStyles();
   const offered = methods.filter((m) => m.state === "supported");
   const [method, setMethod] = useState<AuthMethod | null>(offered[0]?.method ?? null);
@@ -507,8 +699,7 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
     // The key leaves the page's state as it is sent: it is never shown back.
     setApiKey("");
     try {
-      await send("POST", "/api/connections", body);
-      onDone();
+      onDone(await send<RuntimeConnection>("POST", "/api/connections", body));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -555,7 +746,7 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
           </Field>
         </>
       )}
-      {method === "subscription" && <Text size={200}>Adding it gives you the terminal command that signs it in, on the server.</Text>}
+      {method === "subscription" && <Text size={200}>Adding it starts its sign-in right away, on its card: a link to open{runtime === "codex" ? " and a one-time code to enter there" : ", then the code its page shows to paste back"}. A terminal command does the same from the server.</Text>}
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
@@ -574,6 +765,8 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
 function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view: AiConnectionsView; onChanged: () => void }) {
   const s = useStyles();
   const [adding, setAdding] = useState(false);
+  // The connection just added: its sign-in starts on its card once, by itself.
+  const [justAdded, setJustAdded] = useState<string | null>(null);
   const install = view.installations.find((i) => i.runtime === runtime);
   const methods = view.methods.filter((m) => m.runtime === runtime);
   const connections = view.connections.filter((c) => c.runtime === runtime);
@@ -601,8 +794,9 @@ function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view:
           runtime={runtime}
           methods={methods}
           onCancel={() => setAdding(false)}
-          onDone={() => {
+          onDone={(made) => {
             setAdding(false);
+            if (made.method === "subscription" && made.signInHere && made.auth !== "connected") setJustAdded(made.id);
             onChanged();
           }}
         />
@@ -614,7 +808,7 @@ function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view:
       ) : (
         <ul className={s.list} aria-label={`${RUNTIME_LABELS[runtime]} connections`}>
           {connections.map((c) => (
-            <ConnectionCard key={`${c.id}:${c.version}`} c={c} onChanged={onChanged} />
+            <ConnectionCard key={`${c.id}:${c.version}`} c={c} autoSignIn={justAdded === c.id} onAutoSignIn={() => setJustAdded(null)} onChanged={onChanged} />
           ))}
         </ul>
       )}

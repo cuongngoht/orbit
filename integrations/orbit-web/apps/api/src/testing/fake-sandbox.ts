@@ -30,6 +30,8 @@ export class FakeSandboxProvider implements SandboxProvider {
   readonly execs: { dispatchKey: string; argv: string[]; cwd: string | undefined }[] = [];
   // What the test controls.
   shell = true;
+  // What the probe says the host has (a test resizes it).
+  host = { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 };
   provisionFailures = 0;
   findFails = false;
   // How the provider reads an input's bytes from Orbit Web's own store (bound by the test to the real reader).
@@ -42,7 +44,7 @@ export class FakeSandboxProvider implements SandboxProvider {
       runtime: { reachable: true, version: "fake", cgroup: "v2", detail: "in memory" },
       limits: { cpu: HARD, memory: HARD, pids: HARD, evidence: "fake" },
       storage: { mechanism: "none", areas: [], hostDiskProtection: HARD, evidence: "fake", probedAt: new Date().toISOString() } as never,
-      host: { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 },
+      host: { ...this.host },
       shellPossible: true,
       probedAt: new Date().toISOString(),
     };

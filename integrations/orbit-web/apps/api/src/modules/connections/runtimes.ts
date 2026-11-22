@@ -81,14 +81,14 @@ export function parseClaudeStatus(stdout: string): ClaudeCliStatus | null {
 export function readClaudeStatus(cli: ClaudeCliStatus, method: AuthMethod, apiKey: string | null): StatusReading {
   if (!cli.loggedIn) {
     if (method === "api_key") return reading("auth_required", "Claude Code did not take this API key: enter the key again.");
-    return reading("disconnected", "Nobody is signed in in this connection's home: run the command shown in a terminal of the server to sign in.");
+    return reading("disconnected", "Nobody is signed in in this connection's home: sign it in (Sign in on its card, or the command shown, in a terminal of the server).");
   }
   if (method === "api_key") {
     if (apiKey === null) return reading("auth_required", "This connection has no API key any more: enter one.");
     const id = keyIdentity(apiKey);
     return reading("connected", null, `Anthropic API key (${id.fingerprint})`, id.key);
   }
-  if (cli.authMethod !== CLAUDE_ACCOUNT_METHOD) return reading("auth_required", `Claude Code is signed in here with ${cli.authMethod ?? "a credential"}, which is not a Claude subscription: sign in again with the command shown.`);
+  if (cli.authMethod !== CLAUDE_ACCOUNT_METHOD) return reading("auth_required", `Claude Code is signed in here with ${cli.authMethod ?? "a credential"}, which is not a Claude subscription: sign in again (Reconnect on its card, or the command shown).`);
   if (cli.email === null) return reading("error", "Claude Code is signed in, but names no email for the account: nothing here can be held to one Orbit account.");
   const email = cli.email.toLowerCase();
   return reading("connected", null, cli.orgName !== null ? `${email} (${cli.orgName})` : email, `claude.ai:${email}|${cli.orgId ?? ""}`);
@@ -101,11 +101,11 @@ const EMAIL = /[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i;
 // prints it on standard error).
 export function readCodexStatus(r: RunResult, method: AuthMethod, apiKey: string | null): StatusReading {
   const said = `${r.stdout}\n${r.stderr}`;
-  if (/not logged in/i.test(said)) return reading(method === "api_key" ? "auth_required" : "disconnected", method === "api_key" ? "Codex did not take this API key: enter the key again." : "Nobody is signed in in this connection's home: run the command shown in a terminal of the server to sign in.");
+  if (/not logged in/i.test(said)) return reading(method === "api_key" ? "auth_required" : "disconnected", method === "api_key" ? "Codex did not take this API key: enter the key again." : "Nobody is signed in in this connection's home: sign it in (Sign in on its card, or the command shown, in a terminal of the server).");
   if (r.code !== 0 && !/logged in using/i.test(said)) return reading("error", redactSecrets(`codex login status ${endedHow(r)}: ${tail(r.stderr || r.stdout, 2)}`).slice(0, 300));
   const masked = MASKED_KEY.exec(said)?.[1] ?? null;
   if (masked !== null) {
-    if (method !== "api_key") return reading("auth_required", "Codex is signed in here with an API key, not a ChatGPT sign-in: sign in again with the command shown.");
+    if (method !== "api_key") return reading("auth_required", "Codex is signed in here with an API key, not a ChatGPT sign-in: sign in again (Reconnect on its card, or the command shown).");
     if (apiKey === null) return reading("auth_required", "This connection has no API key any more: enter one.");
     const id = keyIdentity(apiKey);
     return reading("connected", null, `OpenAI API key (${id.fingerprint})`, id.key);
@@ -151,7 +151,8 @@ export const otherCapabilities = (installed: boolean): RuntimeCapabilities => ({
 export interface RuntimeSpec {
   runtime: RuntimeKind;
   label: string;
-  // The official sign-in a person runs in a terminal of the server for a subscription (null: none offered).
+  // The official sign-in of a subscription -- run from its card (connection-sign-in.service.ts) or by a person in a
+  // terminal of the server (cli/connect.ts) -- null: none offered.
   login: string[] | null;
   logout: string[] | null;
   status: string[] | null;

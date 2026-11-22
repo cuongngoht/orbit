@@ -50,6 +50,9 @@ export interface BuildVersions {
   orbit: string | null;
   orbitCommit: string | null;
   claude: string | null;
+  // The other AI CLIs the image bundles (Settings → AI Connections says whether each answers here).
+  codex: string | null;
+  agy: string | null;
   gh: string | null;
   git: string | null;
   az: string | null;

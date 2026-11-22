@@ -19,11 +19,14 @@ test("defaults: loopback only, port 3000, /data, the bundled plugin", () => {
   assert.equal(c.accessToken, null);
 });
 
-test("answering another host name needs an access token", () => {
-  assert.throws(() => loadConfig({ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com" }), ConfigError);
+test("another host name is answered with Orbit's own accounts as the gate; an access token, when set, is a perimeter of 16 characters at least", () => {
+  const open = loadConfig({ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com" });
+  assert.ok(open.allowedHosts.includes("orbit.example.com"));
+  assert.equal(open.accessToken, null, "no token: the sign-in page asks for a username and a password alone");
   assert.throws(() => loadConfig({ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com", ORBIT_WEB_ACCESS_TOKEN: "short" }), ConfigError);
   const c = loadConfig({ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com", ORBIT_WEB_ACCESS_TOKEN: "a-long-enough-token-value" });
-  assert.ok(c.allowedHosts.includes("orbit.example.com"));
+  assert.equal(c.accessToken, "a-long-enough-token-value");
+  assert.throws(() => loadConfig({ ORBIT_WEB_ALLOWED_HOSTS: "orbit.example.com", ORBIT_WEB_TRIAL: "1" }), ConfigError, "the trial (a public login) still answers loopback names alone");
 });
 
 test("a budget cap is a positive number; paths are absolute", () => {

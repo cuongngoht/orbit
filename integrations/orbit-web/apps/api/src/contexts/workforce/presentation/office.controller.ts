@@ -11,6 +11,7 @@
 //   GET   /api/office/resource-presets                         resource presets (suggestions)
 //   GET   /api/office/resources                                capacity, budget, reservations, storage, attempts
 //   PATCH /api/office/resources/budget                         lower (or restore) the budget (If-Match)
+//   POST  /api/office/resources/capacity/check                 Re-check: the host's capacity read again now
 //   POST  /api/employees                                       hire                          → EmployeeDetail (201)
 //   GET   /api/employees/:id                                   one employee in full
 //   GET   /api/employees/:id/revisions/:revision               a profile revision (to restore from)
@@ -101,6 +102,20 @@ export class OfficeController {
       await this.outbox.touched(orbitId, ["roster"]);
       await this.governance.recorded(actor, "resources.budget", "budget", orbitId, after.version, `${after.cpuMillis} millicores, ${after.memoryMiB} MiB, ${after.storageMiB} MiB storage, ${after.maxConcurrent} concurrent`);
     });
+    return this.resources.summary(orbitId);
+  }
+
+  // Re-check: the host's capacity read again now (the sandbox provider's probe), and every budget whose authorization
+  // follows the capacity moved with it (resources.service.ts) -- what a restart does, without one.
+  @Post("office/resources/capacity/check")
+  @HttpCode(200)
+  async recheckCapacity(): Promise<ResourceSummary> {
+    const actor = ownerActor();
+    const orbitId = actor.command.orbitId;
+    await this.governance.authorize(actor, "office.roster.manage", orbitId, { capacity: true });
+    const { capacity, moved } = await this.resources.recheckCapacity();
+    await this.governance.recorded(actor, "resources.capacity.check", "capacity", orbitId, 0, `usable ${capacity.usable.cpuMillis} millicores, ${capacity.usable.memoryMiB} MiB, ${capacity.usable.storageMiB} MiB storage; ${moved} budget(s) followed`);
+    await this.outbox.touched(orbitId, ["roster"]);
     return this.resources.summary(orbitId);
   }
 

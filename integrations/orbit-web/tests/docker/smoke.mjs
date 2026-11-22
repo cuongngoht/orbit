@@ -243,12 +243,16 @@ async function main() {
 
   const versions = {
     claude: exec("claude", "--version"),
+    codex: exec("codex", "--version"),
+    agy: exec("sh", "-c", "HOME=$(mktemp -d) agy --version"),
     gh: exec("gh", "--version"),
     git: exec("git", "--version"),
     node: exec("node", "--version"),
     az: exec("az", "version", "--output", "json"),
   };
   check("5. claude is installed", versions.claude.status === 0, versions.claude.stdout.trim());
+  check("   the OpenAI Codex CLI is installed", versions.codex.status === 0 && /\d+\.\d+\.\d+/.test(versions.codex.stdout), versions.codex.stdout.trim() || versions.codex.stderr.trim().slice(0, 200));
+  check("   the Google Antigravity CLI (agy) is installed", versions.agy.status === 0 && /\d+\.\d+\.\d+/.test(versions.agy.stdout), versions.agy.stdout.trim() || versions.agy.stderr.trim().slice(0, 200));
   check("6. gh is installed", versions.gh.status === 0, versions.gh.stdout.split("\n")[0]);
   check("7. git is installed", versions.git.status === 0, versions.git.stdout.trim());
   check("   node is installed", versions.node.status === 0, versions.node.stdout.trim());

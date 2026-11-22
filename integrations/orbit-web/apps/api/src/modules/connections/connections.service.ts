@@ -4,8 +4,9 @@
 //
 //   create       a connection of a method its provider permits (methods.ts; 400 method_not_supported otherwise -- but a
 //                Claude Code cloud connection, saved and shown blocked); an API key goes to the credential store, never
-//                into the database, a route's answer, a log or an event. A subscription is signed in by its owner in a
-//                terminal of the server (`terminalCommand`), never through Orbit's pages.
+//                into the database, a route's answer, a log or an event. A subscription is signed in by the CLI's own
+//                sign-in: from its card (connection-sign-in.service.ts, ADR 0068), or by its owner in a terminal of the
+//                server (`terminalCommand`).
 //   check        the CLI asked now (probe.ts); `connected` only when its own status names the identity
 //   disconnect   the CLI's own logout against that home, then the home's login removed (an API key forgotten); work in
 //                progress is not this module's: it says so (connection-hooks.ts, the app stream) and the execution side
@@ -50,6 +51,7 @@ import { mayCreate, METHOD_SUPPORT, supportOf } from "./methods.js";
 import { orbitPlugin } from "./plugin.js";
 import { ConnectionProbe, noCatalog } from "./probe.js";
 import { RUNTIME_SPECS } from "./runtimes.js";
+import { signsInHere } from "./sign-in.js";
 
 const METHOD_LABELS: Record<AuthMethod, string> = { subscription: "subscription", api_key: "API key", cloud: "cloud provider" };
 
@@ -238,6 +240,19 @@ export class ConnectionsService {
     return this.viewOf(after);
   }
 
+  // A sign-in from the card started (connection-sign-in.service.ts): recorded, never its URL or code.
+  async signInStarted(ctx: GovernanceContext, c: ConnectionRecord): Promise<void> {
+    await this.record(ctx, "sign_in_started", c, c.id);
+  }
+
+  // A sign-in from the card ended with the CLI exiting 0: its CLI asked now (connected only when its own status names
+  // the identity), what moved recorded and announced like any check.
+  async signedIn(ctx: GovernanceContext, c: ConnectionRecord): Promise<ConnectionRecord> {
+    const after = await this.checked(c, "checked");
+    await this.record(ctx, "signed_in_from_page", after, `${c.id}:${after.authState}${after.reasonCode ? `:${after.reasonCode}` : ""}`);
+    return after;
+  }
+
   // A connection as the page shows it.
   async viewOf(c: ConnectionRecord): Promise<RuntimeConnection> {
     const spec = RUNTIME_SPECS[c.runtime];
@@ -255,6 +270,7 @@ export class ConnectionsService {
       catalog: c.catalog,
       capabilities: c.capabilities,
       terminalCommand: c.method === "subscription" && spec.login !== null ? terminalCommandOf(c.id) : null,
+      signInHere: this.config.signInOnPage && signsInHere(c),
       plugins: c.runtime === "claude" ? await this.pluginsOf(c) : null,
       employees: await this.connections.employeesOn(c.accountId, c.id),
       version: c.version,
@@ -314,7 +330,7 @@ export class ConnectionsService {
   }
 
   // The account's audit record of a connection's change: what, which connection, never a key.
-  private async record(ctx: GovernanceContext, what: ConnectionChange, c: Pick<ConnectionRecord, "runtime" | "method">, detail: string): Promise<void> {
+  private async record(ctx: GovernanceContext, what: ConnectionChange | "sign_in_started" | "signed_in_from_page", c: Pick<ConnectionRecord, "runtime" | "method">, detail: string): Promise<void> {
     await this.audit.record(ctx, { type: "settings.privileged.changed", outcome: what, data: { setting: `ai_connection.${c.runtime}.${c.method}.${what}`, value: detail } });
   }
 }

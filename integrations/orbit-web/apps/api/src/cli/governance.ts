@@ -10,6 +10,15 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner reset-password --username=<name> [--minutes=30]
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner revoke-sessions [--username=<name>]
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js revoke-sessions --account=<id> | --all
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js budget show [--account=<id>]
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js budget set (--account=<id> | --all)
+//       [--from-capacity] [--cpu=<vCPU>] [--memory=<GiB>] [--storage=<GiB>] [--max-concurrent=<n>]
+//       [--employee-cpu=<vCPU>] [--employee-memory=<GiB>] [--employee-desk=<GiB>] [--employee-scratch=<GiB>] [--employee-cache=<GiB>]
+//
+// `budget set` is the operator's AUTHORIZATION of an account: what its owner may raise the budget up to (Settings →
+// Compute & storage). With numbers it is the operator's own, kept until the operator changes it; `--from-capacity`
+// (alone) gives the account back to the host's usable capacity, which it then follows at every start. A budget value
+// that stood at the old authorization moves with it; one the owner had lowered stays (never above the new one).
 //
 // A code is printed ONCE and kept only as its hash; it expires (30 minutes by default) and is used once. It reads
 // ORBIT_WEB_DATABASE_URL like the API, refuses a database that is not at this build's schema, and changes no schema
@@ -22,8 +31,9 @@
 import "reflect-metadata";
 import { randomUUID } from "node:crypto";
 import { verifyChain, type AuditEventType } from "@orbit-web/governance-core";
-import { normalizeUsername, type SetupCodePurpose } from "@orbit-web/contracts";
+import { normalizeUsername, type BudgetAuthorization, type InfrastructureCapacity, type SetupCodePurpose } from "@orbit-web/contracts";
 import { ConfigError, loadConfig } from "../config/config.js";
+import { authorizationFrom, ResourcesService, type BudgetLimits } from "../contexts/execution/application/resources.service.js";
 import { SEARCH_PATH } from "../core/core.module.js";
 import { AccountStore, BrowserSessionStore, SetupCodeStore, SYSTEM_ACCOUNT_ID, UserStore, type EndedSession } from "../infra/accounts/stores.js";
 import { Db } from "../infra/db/db.js";
@@ -59,6 +69,7 @@ interface Opened {
   users: UserStore;
   codes: SetupCodeStore;
   sessions: BrowserSessionStore;
+  resources: ResourcesService;
 }
 
 async function open(): Promise<Opened> {
@@ -75,7 +86,9 @@ async function open(): Promise<Opened> {
     await db.close();
     throw new Refusal(`the database cannot be used: ${err instanceof Error ? err.message : String(err)}`, 2);
   }
-  return { db, audit: new AuditStore(db), accounts: new AccountStore(db), users: new UserStore(db), codes: new SetupCodeStore(db), sessions: new BrowserSessionStore(db) };
+  // No sandbox provider here: the terminal reads the capacity Orbit Web last read (at its start), and never measures this
+  // process's own host in its place.
+  return { db, audit: new AuditStore(db), accounts: new AccountStore(db), users: new UserStore(db), codes: new SetupCodeStore(db), sessions: new BrowserSessionStore(db), resources: new ResourcesService(config, db, null) };
 }
 
 // `accountId` null: the deployment's own chain (the system account's).
@@ -249,18 +262,121 @@ async function revokeUserSessions(s: Opened): Promise<number> {
 
 const OWNER: Record<string, (s: Opened) => Promise<number>> = { "setup-code": setupCode, "reset-password": resetPassword, "revoke-sessions": revokeUserSessions };
 
+// ---- budget: what the operator authorizes an account's employees to use ---------------------------------------------
+
+const vcpu = (millis: number): string => `${Math.round(millis) / 1000} vCPU`;
+const gib = (mib: number): string => `${(mib / 1024).toFixed(2).replace(/\.?0+$/, "")} GiB`;
+const limitsLine = (l: BudgetLimits): string =>
+  `CPU ${vcpu(l.cpuMillis)}, memory ${gib(l.memoryMiB)}, storage ${gib(l.storageMiB)}, ${l.maxConcurrent} at a time; per employee CPU ${vcpu(l.perEmployee.cpuMillis)}, memory ${gib(l.perEmployee.memoryMiB)}, desk ${gib(l.perEmployee.deskStorageMiB)}, scratch ${gib(l.perEmployee.scratchStorageMiB)}, cache ${gib(l.perEmployee.cacheStorageMiB)}`;
+const amountsLine = (a: InfrastructureCapacity["usable"]): string => `CPU ${vcpu(a.cpuMillis)}, memory ${gib(a.memoryMiB)}, storage ${gib(a.storageMiB)}`;
+
+// Each number a person may give, in the unit the page shows it in, and where it lands.
+const LIMIT_FLAGS: { flag: string; whole: boolean; apply: (l: BudgetLimits, v: number) => void }[] = [
+  { flag: "cpu", whole: false, apply: (l, v) => (l.cpuMillis = Math.round(v * 1000)) },
+  { flag: "memory", whole: false, apply: (l, v) => (l.memoryMiB = Math.round(v * 1024)) },
+  { flag: "storage", whole: false, apply: (l, v) => (l.storageMiB = Math.round(v * 1024)) },
+  { flag: "max-concurrent", whole: true, apply: (l, v) => (l.maxConcurrent = v) },
+  { flag: "employee-cpu", whole: false, apply: (l, v) => (l.perEmployee.cpuMillis = Math.round(v * 1000)) },
+  { flag: "employee-memory", whole: false, apply: (l, v) => (l.perEmployee.memoryMiB = Math.round(v * 1024)) },
+  { flag: "employee-desk", whole: false, apply: (l, v) => (l.perEmployee.deskStorageMiB = Math.round(v * 1024)) },
+  { flag: "employee-scratch", whole: false, apply: (l, v) => (l.perEmployee.scratchStorageMiB = Math.round(v * 1024)) },
+  { flag: "employee-cache", whole: false, apply: (l, v) => (l.perEmployee.cacheStorageMiB = Math.round(v * 1024)) },
+];
+
+const BUDGET_USAGE = "usage: governance.js budget set (--account=<id> | --all) [--from-capacity] [--cpu=<vCPU>] [--memory=<GiB>] [--storage=<GiB>] [--max-concurrent=<n>] [--employee-cpu=<vCPU>] [--employee-memory=<GiB>] [--employee-desk=<GiB>] [--employee-scratch=<GiB>] [--employee-cache=<GiB>]";
+
+function numberOf(flagName: string, whole: boolean): number {
+  const raw = opt(flagName) as string;
+  const n = Number(raw);
+  const ok = raw.trim() !== "" && Number.isFinite(n) && n > 0 && (!whole || Number.isInteger(n));
+  if (!ok) throw new Refusal(`--${flagName} must be ${whole ? "a whole number of at least 1" : "a number above 0"} (it was "${raw}")`, 1);
+  return n;
+}
+
+// The accounts a budget command is about: --account=<id>, --all (set), or every account (show).
+async function budgetAccounts(s: Opened, all: boolean): Promise<{ id: string; displayName: string }[]> {
+  const account = opt("account");
+  if (account !== null) {
+    if (!UUID.test(account) || account === SYSTEM_ACCOUNT_ID) throw new Refusal("--account must be an account's id (governance.js status lists them)", 1);
+    const a = await s.accounts.get(account);
+    if (a === null) throw new Refusal(`no account ${account}`, 3);
+    return [a];
+  }
+  if (!all) throw new Refusal(BUDGET_USAGE, 1);
+  return s.accounts.customers();
+}
+
+async function hasBudget(s: Opened, accountId: string): Promise<boolean> {
+  return (await s.db.one("SELECT 1 AS x FROM workforce.budgets WHERE account_id = $1", [accountId])) !== null;
+}
+
+async function budgetShow(s: Opened): Promise<number> {
+  const capacity = await s.resources.storedCapacity();
+  if (capacity === null) say("capacity: not read yet -- Orbit Web reads it at the first look at the Office or Settings → Compute & storage, and again at every start");
+  else say(`capacity (${capacity.source}, read ${capacity.checkedAt ?? "at an unknown time"}): total ${amountsLine(capacity.total)}; kept back ${amountsLine(capacity.headroom)}; employees may use ${amountsLine(capacity.usable)}`);
+  for (const a of await budgetAccounts(s, true)) {
+    if (!(await hasBudget(s, a.id))) {
+      say(`account ${a.id} "${a.displayName}": no budget yet (made from the capacity at its first look)`);
+      continue;
+    }
+    const b = await s.resources.budget(a.id);
+    say(`account ${a.id} "${a.displayName}":`);
+    say(`  authorized (${b.authorized.source === "operator" ? "the operator's own numbers" : "follows the host's capacity"}): ${limitsLine(b.authorized)}`);
+    say(`  budget: ${limitsLine(b)}`);
+  }
+  return 0;
+}
+
+async function budgetSet(s: Opened): Promise<number> {
+  const accounts = await budgetAccounts(s, flag("all"));
+  const fromCapacity = flag("from-capacity");
+  const given = LIMIT_FLAGS.filter((f) => opt(f.flag) !== null).map((f) => ({ ...f, value: numberOf(f.flag, f.whole) }));
+  if (!fromCapacity && given.length === 0) throw new Refusal(`${BUDGET_USAGE} -- name at least one number, or --from-capacity`, 1);
+  const capacity = await s.resources.storedCapacity();
+  if (capacity === null) throw new Refusal("the host's capacity was not read yet: open the Office (or Settings → Compute & storage) once, or restart Orbit Web, then run this again", 1);
+  for (const a of accounts) {
+    const { before, after, next } = await s.db.tx(async () => {
+      const current = await s.resources.budget(a.id, true);
+      const { source: _source, ...base } = structuredClone(fromCapacity ? authorizationFrom(capacity) : current.authorized);
+      for (const g of given) g.apply(base, g.value);
+      const authorization: BudgetAuthorization = { ...base, source: given.length > 0 ? "operator" : "capacity" };
+      const moved = await s.resources.reauthorize(a.id, authorization);
+      await record(s, a.id, "settings.privileged.changed", "authorized", { setting: "workforce.budget.authorization", value: `${authorization.source}: ${limitsLine(authorization)}` });
+      return { ...moved, next: authorization };
+    });
+    say(`account ${a.id} "${a.displayName}": authorized ${next.source === "operator" ? "(the operator's own numbers)" : "(follows the host's capacity)"} ${limitsLine(next)}`);
+    say(`  budget before: ${limitsLine(before)}`);
+    say(`  budget now:    ${limitsLine(after)}`);
+  }
+  const u = capacity.usable;
+  const probe = given.length > 0 ? structuredClone(authorizationFrom(capacity)) : null;
+  if (probe !== null) for (const g of given) g.apply(probe, g.value);
+  const above = probe !== null && (probe.cpuMillis > u.cpuMillis || probe.memoryMiB > u.memoryMiB || probe.storageMiB > u.storageMiB || probe.perEmployee.cpuMillis > u.cpuMillis || probe.perEmployee.memoryMiB > u.memoryMiB);
+  if (above) say(`note: this host gives employees ${amountsLine(u)} now; an attempt that needs more than the host has waits for resources, whatever is authorized (more of the host: ORBIT_WEB_CAPACITY_* or a larger host, then a restart).`);
+  return 0;
+}
+
+const BUDGET: Record<string, (s: Opened) => Promise<number>> = { show: budgetShow, set: budgetSet };
+
+async function budget(s: Opened): Promise<number> {
+  const command = BUDGET[process.argv[3] ?? ""];
+  if (command === undefined) throw new Refusal(`usage: governance.js budget ${Object.keys(BUDGET).join(" | ")}`, 1);
+  return command(s);
+}
+
 async function owner(s: Opened): Promise<number> {
   const command = OWNER[process.argv[3] ?? ""];
   if (command === undefined) throw new Refusal(`usage: governance.js owner ${Object.keys(OWNER).join(" | ")}`, 1);
   return command(s);
 }
 
-const COMMANDS: Record<string, (s: Opened) => Promise<number>> = { status, "verify-audit": verifyAudit, "revoke-sessions": revokeSessions, owner };
+const COMMANDS: Record<string, (s: Opened) => Promise<number>> = { status, "verify-audit": verifyAudit, "revoke-sessions": revokeSessions, owner, budget };
 
 async function main(): Promise<number> {
   const command = COMMANDS[process.argv[2] ?? ""];
   if (command === undefined) throw new Refusal(`usage: governance.js ${Object.keys(COMMANDS).join(" | ")}`, 1);
   if (command === owner && OWNER[process.argv[3] ?? ""] === undefined) throw new Refusal(`usage: governance.js owner ${Object.keys(OWNER).join(" | ")}`, 1);
+  if (command === budget && BUDGET[process.argv[3] ?? ""] === undefined) throw new Refusal(`usage: governance.js budget ${Object.keys(BUDGET).join(" | ")}`, 1);
   const s = await open();
   try {
     return await command(s);

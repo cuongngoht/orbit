@@ -24,6 +24,8 @@ interface BuildInfo {
   orbit?: string;
   orbitCommit?: string;
   claude?: string;
+  codex?: string;
+  agy?: string;
   gh?: string;
   git?: string;
   az?: string;
@@ -78,6 +80,8 @@ export class ToolchainService {
         orbit: plugin.version ?? info.orbit ?? null,
         orbitCommit: info.orbitCommit ?? null,
         claude: claude.version ?? info.claude ?? null,
+        codex: info.codex ?? null,
+        agy: info.agy ?? null,
         gh: gh.version ?? info.gh ?? null,
         git: git.version ?? info.git ?? null,
         az: az.version ?? info.az ?? null,

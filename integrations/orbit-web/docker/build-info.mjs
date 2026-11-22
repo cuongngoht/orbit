@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 // A scratch home, removed afterwards: asking a CLI its version must leave nothing in the image.
 const scratch = mkdtempSync(join(tmpdir(), "build-info-"));
-const env = { PATH: process.env.PATH, HOME: scratch, CLAUDE_CONFIG_DIR: scratch, GH_CONFIG_DIR: scratch, DISABLE_AUTOUPDATER: "1" };
+const env = { PATH: process.env.PATH, HOME: scratch, CLAUDE_CONFIG_DIR: scratch, GH_CONFIG_DIR: scratch, CODEX_HOME: scratch, DISABLE_AUTOUPDATER: "1" };
 
 const version = (file, args = ["--version"]) => {
     try {
@@ -23,6 +23,8 @@ const info = {
   orbit: plugin.version ?? null,
   orbitCommit: readFileSync("/opt/orbit/commit", "utf8").trim(),
   claude: version("claude"),
+  codex: version("codex"),
+  agy: version("agy"),
   gh: version("gh"),
   git: version("git"),
   az: version("az", ["version", "--output", "json"]),

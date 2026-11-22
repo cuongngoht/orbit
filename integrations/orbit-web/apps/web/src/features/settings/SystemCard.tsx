@@ -71,6 +71,10 @@ export function SystemCard({ status }: { status: SetupStatus | null }) {
         </Text>
         <Text>Orbit Web</Text>
         <Text className={s.mono}>{v.web}</Text>
+        <Text>OpenAI Codex CLI</Text>
+        <Text className={s.mono}>{v.codex ?? "not in this image"}</Text>
+        <Text>Antigravity CLI</Text>
+        <Text className={s.mono}>{v.agy ?? "not in this image"}</Text>
         <Text>Node.js</Text>
         <Text className={s.mono}>{v.node}</Text>
       </div>

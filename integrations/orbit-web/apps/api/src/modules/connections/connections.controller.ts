@@ -11,19 +11,24 @@
 //   POST   /api/connections/:id/disconnect       the CLI's own logout, the home's login removed
 //   DELETE /api/connections/:id                  -> 204 (409 connection_in_use while an employee runs on it)
 //   PUT    /api/connections/:id/plugins/orbit    { useCase, approved, digest } -- Claude Code only
+//   GET    /api/connections/:id/sign-in          a sign-in from the card (ADR 0068), as this browser may see it
+//   POST   /api/connections/:id/sign-in          starts the CLI's own sign-in (or returns this browser's under way)
+//   POST   /api/connections/:id/sign-in/code     { code } -- Claude Code's code, to the CLI's stdin and nowhere else
+//   POST   /api/connections/:id/sign-in/cancel
 //
 //   GET    /api/claude/models                    the account's models: its default Claude Code connection's catalog
 //   GET    /api/claude/connectors                its claude.ai connectors and MCP servers, with the account's choices
 //   POST   /api/claude/connectors/refresh        read again from its connection's CLI
 //   PUT    /api/claude/connectors                the account's choices
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Put, Req } from "@nestjs/common";
-import { checkUpdateConnectors, type AiConnectionsView, type ConnectorList, type ModelCatalog, type RuntimeConnection } from "@orbit-web/contracts";
+import { checkUpdateConnectors, type AiConnectionsView, type ConnectionSignIn, type ConnectorList, type ModelCatalog, type RuntimeConnection } from "@orbit-web/contracts";
 import type { Request } from "express";
 import { accepted } from "../../common/errors.js";
 import { viewer } from "../../common/request-scope.js";
 import { PrincipalResolver } from "../auth/principals.js";
 import { ClaudeConnectorsService } from "./claude-connectors.service.js";
 import { ClaudeModelsService } from "./claude-models.service.js";
+import { ConnectionSignInService } from "./connection-sign-in.service.js";
 import { ConnectionsService } from "./connections.service.js";
 
 const ifMatchOf = (req: Request): string | undefined => {
@@ -35,6 +40,7 @@ const ifMatchOf = (req: Request): string | undefined => {
 export class ConnectionsController {
   constructor(
     @Inject(ConnectionsService) private readonly connections: ConnectionsService,
+    @Inject(ConnectionSignInService) private readonly signIns: ConnectionSignInService,
     @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
   ) {}
 
@@ -80,6 +86,29 @@ export class ConnectionsController {
   @Put(":id/plugins/orbit")
   plugin(@Req() req: Request, @Param("id") id: string, @Body() body: unknown): Promise<RuntimeConnection> {
     return this.connections.setPlugin(viewer(), this.principals.context(req), id, body);
+  }
+
+  @Get(":id/sign-in")
+  signIn(@Param("id") id: string): Promise<ConnectionSignIn> {
+    return this.signIns.status(viewer(), id);
+  }
+
+  @Post(":id/sign-in")
+  @HttpCode(200)
+  startSignIn(@Req() req: Request, @Param("id") id: string): Promise<ConnectionSignIn> {
+    return this.signIns.start(viewer(), this.principals.context(req), id);
+  }
+
+  @Post(":id/sign-in/code")
+  @HttpCode(200)
+  signInCode(@Param("id") id: string, @Body() body: unknown): Promise<ConnectionSignIn> {
+    return this.signIns.submit(viewer(), id, body);
+  }
+
+  @Post(":id/sign-in/cancel")
+  @HttpCode(200)
+  cancelSignIn(@Param("id") id: string): Promise<ConnectionSignIn> {
+    return this.signIns.cancel(viewer(), id);
   }
 }
 

@@ -126,6 +126,10 @@ export interface AppConfig {
   // The access cookie is marked Secure: set when Orbit Web is reached through an HTTPS proxy.
   secureCookie: boolean;
   maxBudgetUsd: number | null;
+  // Whether a subscription connection may be signed in from its card (ADR 0068): Orbit Web runs the CLI's own sign-in and
+  // relays its URL, Codex's one-time code and the code a person pastes for Claude Code. ORBIT_WEB_SIGN_IN_ON_PAGE=0: only
+  // the terminal's connect.js signs one in.
+  signInOnPage: boolean;
   // `azureGitHelper`: the git credential helper an Azure Repos clone uses (shipped in the image).
   binaries: { claude: string; codex: string; agy: string; gh: string; git: string; az: string; python: string; node: string; azureGitHelper: string };
   // The server's own environment: the only place allow-listed variables are copied from for a child process.
@@ -337,9 +341,10 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
   const extraHosts = hostList(env.ORBIT_WEB_ALLOWED_HOSTS);
   const accessToken = env.ORBIT_WEB_ACCESS_TOKEN && env.ORBIT_WEB_ACCESS_TOKEN.length > 0 ? env.ORBIT_WEB_ACCESS_TOKEN : null;
   const widened = extraHosts.filter((h) => !LOOPBACK_HOSTS.includes(h));
-  if (widened.length > 0 && accessToken === null) {
-    throw new ConfigError(`ORBIT_WEB_ALLOWED_HOSTS names ${widened.join(", ")} beyond this machine: set ORBIT_WEB_ACCESS_TOKEN as well, or Orbit Web would answer anyone who can reach it`);
-  }
+  // Another host name may be answered with or without an access token (ADR 0069): Orbit Web's own accounts are the gate
+  // -- nothing but the sign-in, the setup with a one-time code from the server's terminal, the health check and a shared
+  // chat's link answers without a browser session -- and a token, when set, is a perimeter in front of them. The
+  // localhost-only trial, whose login is public, still answers loopback names alone (trialRefusal).
   if (accessToken !== null && accessToken.length < 16) throw new ConfigError("ORBIT_WEB_ACCESS_TOKEN must be at least 16 characters");
   const port = positiveInt(env.ORBIT_WEB_PORT, 3000, "ORBIT_WEB_PORT");
   const data = dataDirs(absolute(env.ORBIT_WEB_DATA_DIR, "/data", "ORBIT_WEB_DATA_DIR"));
@@ -358,6 +363,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
     accessToken,
     secureCookie: env.ORBIT_WEB_COOKIE_SECURE === "1",
     maxBudgetUsd: budget(env.ORBIT_WEB_MAX_BUDGET_USD),
+    signInOnPage: env.ORBIT_WEB_SIGN_IN_ON_PAGE !== "0",
     binaries: {
       claude: env.ORBIT_WEB_CLAUDE_BIN || "claude",
       codex: env.ORBIT_WEB_CODEX_BIN || "codex",

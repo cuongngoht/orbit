@@ -108,6 +108,20 @@ export interface PerEmployeeCeiling {
   cacheStorageMiB: number;
 }
 
+// Where an account's authorization comes from: the host's usable capacity -- which it follows when the host is read
+// again at a start (a resized host, another pool, ORBIT_WEB_CAPACITY_* changed) -- or the operator's own numbers
+// (`governance.js budget set`), which it keeps until the operator says otherwise. Absent: the capacity (as first made).
+export type AuthorizationSource = "capacity" | "operator";
+
+export interface BudgetAuthorization {
+  cpuMillis: number;
+  memoryMiB: number;
+  storageMiB: number;
+  maxConcurrent: number;
+  perEmployee: PerEmployeeCeiling;
+  source?: AuthorizationSource;
+}
+
 export interface AccountResourceBudget {
   cpuMillis: number;
   memoryMiB: number;
@@ -115,7 +129,7 @@ export interface AccountResourceBudget {
   maxConcurrent: number;
   perEmployee: PerEmployeeCeiling;
   // The operator's authorization: the owner may lower the budget, never raise it above this.
-  authorized: { cpuMillis: number; memoryMiB: number; storageMiB: number; maxConcurrent: number; perEmployee: PerEmployeeCeiling };
+  authorized: BudgetAuthorization;
   version: number;
   updatedAt: string;
 }

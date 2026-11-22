@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# Orbit Web 0.8.0: one image with the official Claude Code CLI, GitHub CLI, the Azure CLI, git, the Orbit plugin (at a pinned commit
-# of this repository), and Orbit Web's NestJS API serving its React app. Built from the REPOSITORY ROOT:
+# Orbit Web 0.8.0: one image with the official Claude Code CLI, OpenAI Codex CLI, Google Antigravity CLI (agy), GitHub
+# CLI, the Azure CLI, git, the Orbit plugin (at a pinned commit of this repository), and Orbit Web's NestJS API serving
+# its React app. Built from the REPOSITORY ROOT:
 #
 #   docker build -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
 #
@@ -10,7 +11,8 @@
 #   docker build --secret id=ca,src=/path/to/ca.pem -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
 #
 # Every input is pinned: the base image by digest, npm packages by package-lock.json and exact versions, the GitHub
-# CLI, tini and CPython release files by SHA-256 per architecture, the Azure CLI by the plugin's own hash-checked lock,
+# CLI, tini and CPython release files by SHA-256 per architecture, the Antigravity CLI's release archive by SHA-512 per
+# architecture, the Azure CLI by the plugin's own hash-checked lock,
 # the plugin by the commit ORBIT_REF names. No credential is
 # needed or kept: a person signs in after the container starts.
 #
@@ -79,12 +81,21 @@ ARG GH_SHA256_ARM64=9e64a623dfc242990aa5d9b3f507111149c4282f66b68eaad1dc79eeb13b
 ARG TINI_VERSION=0.19.0
 ARG TINI_SHA256_AMD64=c5b0666b4cb676901f90dfcb37106783c5fe2077b04590973b885950611b30ee
 ARG TINI_SHA256_ARM64=eae1d3aa50c48fb23b8cbdf4e369d0910dfc538566bfd09df89a774aa84a48b9
+# OpenAI Codex CLI: the official npm package at an exact version (its native binary for this architecture is a
+# dependency the package names, verified by the registry's integrity like every npm package here).
+ARG CODEX_VERSION=0.169.0
+# Google Antigravity CLI (`agy`): the release archive its official installer would fetch for this version
+# (https://antigravity.google/cli/install.sh reads it from its manifest), pinned by the SHA-512 the manifest names.
+ARG AGY_VERSION=1.5.14
+ARG AGY_BUILD=5302690847260672
+ARG AGY_SHA512_AMD64=83311d3f354567612dc16c1ae2ea9b503d6f6833aa4e138d39aa229da3f3bb99b0e4d7cca0bce4796b0060d6a51d8113eb7449ed5dc0e7900bf217107ea5bff9
+ARG AGY_SHA512_ARM64=c9b29bba475f63a1a80161ae93ba72b221c7a586d9851e4d0061546704bab66d6b2760b25d716d191724fc7564f3246456ee151e28aa37af48dbcd72bdc6c463
 RUN --mount=type=secret,id=ca,required=false \
     set -eu; \
     if [ -s /run/secrets/ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/ca CURL_CA_BUNDLE=/run/secrets/ca; fi; \
     case "${TARGETARCH}" in \
-      amd64) GH_SHA="${GH_SHA256_AMD64}"; TINI_SHA="${TINI_SHA256_AMD64}" ;; \
-      arm64) GH_SHA="${GH_SHA256_ARM64}"; TINI_SHA="${TINI_SHA256_ARM64}" ;; \
+      amd64) GH_SHA="${GH_SHA256_AMD64}"; TINI_SHA="${TINI_SHA256_AMD64}"; AGY_SHA="${AGY_SHA512_AMD64}"; AGY_PATH="linux-x64/cli_linux_x64.tar.gz" ;; \
+      arm64) GH_SHA="${GH_SHA256_ARM64}"; TINI_SHA="${TINI_SHA256_ARM64}"; AGY_SHA="${AGY_SHA512_ARM64}"; AGY_PATH="linux-arm/cli_linux_arm64.tar.gz" ;; \
       *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     curl -fsSL -o /tmp/gh.tar.gz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz"; \
@@ -96,9 +107,17 @@ RUN --mount=type=secret,id=ca,required=false \
     echo "${TINI_SHA}  /tmp/tini" | sha256sum -c -; \
     install -m 0755 /tmp/tini /opt/tini; \
     npm install --global --prefix /opt/claude --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; \
+    npm install --global --prefix /opt/codex --no-audit --no-fund "@openai/codex@${CODEX_VERSION}"; \
+    curl -fsSL -o /tmp/agy.tar.gz "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_VERSION}-${AGY_BUILD}/${AGY_PATH}"; \
+    echo "${AGY_SHA}  /tmp/agy.tar.gz" | sha512sum -c -; \
+    mkdir -p /tmp/agy /opt/agy/bin; \
+    tar -xzf /tmp/agy.tar.gz -C /tmp/agy antigravity; \
+    install -m 0755 /tmp/agy/antigravity /opt/agy/bin/agy; \
     /opt/claude/bin/claude --version; \
+    /opt/codex/bin/codex --version; \
+    HOME=/tmp/agy-home /opt/agy/bin/agy --version; \
     /opt/gh/bin/gh --version; \
-    rm -rf /tmp/gh* /tmp/tini /root/.npm
+    rm -rf /tmp/gh* /tmp/tini /tmp/agy* /root/.npm
 
 # --- the Azure CLI, exactly as Orbit's own catalog pins it (catalog/tools.json, azure-cli-private): CPython 3.13.15 from
 # python-build-standalone by SHA-256, then pip over the plugin's own lock -- every distribution and hash named, wheels
@@ -219,6 +238,8 @@ CMD ["sleep", "infinity"]
 # which Orbit Web created, is written by the CLI only.
 FROM ${NODE_IMAGE} AS model-plane
 COPY --from=tools /opt/claude /opt/claude
+COPY --from=tools /opt/codex /opt/codex
+COPY --from=tools /opt/agy /opt/agy
 COPY --from=runtime-deps /opt/orbit-web /opt/orbit-web
 COPY --from=build /src/packages/contracts/dist /opt/orbit-web/packages/contracts/dist
 COPY --from=build /src/packages/governance-core/dist /opt/orbit-web/packages/governance-core/dist
@@ -230,8 +251,11 @@ RUN set -eu; \
     rm -rf /etc/claude-code; \
     test ! -e /etc/claude-code; \
     test -f /opt/orbit-web/apps/api/dist/runner/main.js; \
-    /opt/claude/bin/claude --version
-ENV PATH=/opt/claude/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /opt/claude/bin/claude --version; \
+    /opt/codex/bin/codex --version; \
+    HOME=/tmp/agy-home /opt/agy/bin/agy --version; \
+    rm -rf /tmp/agy-home
+ENV PATH=/opt/claude/bin:/opt/codex/bin:/opt/agy/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_ENV=production \
     HOME=/home/orbit \
     NO_COLOR=1 \
@@ -285,6 +309,8 @@ RUN groupadd --system --gid 10001 orbit \
 COPY --from=tools /opt/tini /usr/local/bin/tini
 COPY --from=tools /opt/gh /opt/gh
 COPY --from=tools /opt/claude /opt/claude
+COPY --from=tools /opt/codex /opt/codex
+COPY --from=tools /opt/agy /opt/agy
 COPY --from=azure /opt/azure-cli /opt/azure-cli
 COPY --from=python /opt/python /opt/python
 COPY --from=plugin /opt/orbit /opt/orbit
@@ -300,8 +326,9 @@ COPY --from=build /src/docker/healthcheck.mjs /src/docker/build-info.mjs /opt/or
 COPY --chmod=0755 integrations/orbit-web/docker/git-credential-azure-cli.mjs /opt/orbit-web/docker/git-credential-azure-cli.mjs
 
 # No CLAUDE_CONFIG_DIR here: every Claude process Orbit Web starts is one AI connection's, and is given that
-# connection's own config home (Settings → AI Connections); a connection is signed in by `cli/connect.js <id>`.
-ENV PATH=/opt/claude/bin:/opt/gh/bin:/opt/azure-cli/bin:/opt/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+# connection's own config home (Settings → AI Connections); a subscription connection is signed in from its card (the
+# page relays the official CLI's own sign-in) or by `cli/connect.js <id>` in a terminal.
+ENV PATH=/opt/claude/bin:/opt/codex/bin:/opt/agy/bin:/opt/gh/bin:/opt/azure-cli/bin:/opt/python/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     NODE_ENV=production \
     HOME=/data/home \
     NO_COLOR=1 \

@@ -14,6 +14,7 @@ import { ClaudeConnectorsService } from "./claude-connectors.service.js";
 import { ClaudeModelsService } from "./claude-models.service.js";
 import { ConnectionHooks } from "./connection-hooks.js";
 import { ClaudeController, ConnectionsController } from "./connections.controller.js";
+import { ConnectionSignInService } from "./connection-sign-in.service.js";
 import { ConnectionsService } from "./connections.service.js";
 import { ConnectionProbe } from "./probe.js";
 import { RunConnections } from "./run-connections.js";
@@ -32,6 +33,7 @@ import { RunConnections } from "./run-connections.js";
     ClaudeModelsService,
     ClaudeConnectorsService,
     ConnectionsService,
+    ConnectionSignInService,
   ],
   controllers: [ConnectionsController, ClaudeController],
   exports: [CredentialStore, ConnectionProbe, ConnectionHooks, RunConnections, ClaudeModelsService, ClaudeConnectorsService, ConnectionsService],

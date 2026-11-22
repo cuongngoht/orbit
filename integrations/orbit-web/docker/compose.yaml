@@ -16,8 +16,9 @@
 #                    Orbit Web alone, on the private `control` network, to requests signed with a shared secret; it
 #                    publishes no port and takes no path, image, mount or privilege from a request.
 #
-# A subscription connection (Settings → AI Connections) is signed in from YOUR terminal, with the unmodified official
-# CLI and that connection's home alone -- the URL and the code never pass through Orbit Web's pages:
+# A subscription connection (Settings → AI Connections) is signed in with the unmodified official CLI and that
+# connection's home alone -- from its card (ADR 0068: the link, and for Claude Code the code you paste back), or from
+# YOUR terminal, where nothing of it passes through Orbit Web's pages (ORBIT_WEB_SIGN_IN_ON_PAGE=0 leaves only this):
 #
 #   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
 #
@@ -104,6 +105,8 @@ services:
       ORBIT_WEB_DATABASE_URL: postgres://orbit:${ORBIT_WEB_DB_PASSWORD:-orbit-local}@postgres:5432/orbit
       # A per-run spending cap for Claude Code, in US dollars (unset: no cap).
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+      # 0: a subscription connection is signed in only from a terminal of the server (connect.js), never from its card.
+      ORBIT_WEB_SIGN_IN_ON_PAGE: ${ORBIT_WEB_SIGN_IN_ON_PAGE:-1}
       # AI employees: every attempt in its own two containers, made by the allocator.
       ORBIT_WEB_SANDBOX: container
       ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171

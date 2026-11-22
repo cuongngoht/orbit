@@ -5,7 +5,9 @@
 //
 // Never offered by any method: a subscription token pasted by hand, a copied `.credentials.json` or `auth.json`, a
 // "setup token" for anybody else's use -- Anthropic: developers "may not collect, store, or intermediate Claude.ai
-// credentials or session tokens". A subscription is signed in by the provider's own CLI, in a terminal, by its owner.
+// credentials or session tokens". A subscription is signed in by the provider's own CLI, by its owner: from its card
+// (ADR 0068: the CLI's sign-in runs on the server and only the code its owner pastes is relayed to its stdin, kept
+// nowhere) or in a terminal of the server.
 import type { AuthMethod, MethodSupport, RuntimeKind } from "@orbit-web/contracts";
 
 const CLAUDE_LEGAL = "https://code.claude.com/docs/en/legal-and-compliance";
@@ -18,7 +20,7 @@ export const METHOD_SUPPORT: readonly MethodSupport[] = [
     runtime: "claude",
     method: "subscription",
     state: "supported",
-    note: "Your own Claude subscription, signed in with the unmodified Claude Code CLI in a terminal of the server -- the URL and the code never pass through Orbit. Anthropic: \"Nor does it prevent an end user from signing in to the unmodified Claude Code binary with their own Claude subscription, including where a platform hosts Claude Code.\" Its usage limits \"assume ordinary, individual usage\": for autonomous employees an API key is recommended.",
+    note: "Your own Claude subscription, signed in with the unmodified Claude Code CLI's own sign-in -- from its card (Orbit Web runs it on the server, shows the link it prints and hands it the code you paste back, keeping none of it) or in a terminal of the server. Anthropic: \"Nor does it prevent an end user from signing in to the unmodified Claude Code binary with their own Claude subscription, including where a platform hosts Claude Code.\" Its usage limits \"assume ordinary, individual usage\": for autonomous employees an API key is recommended.",
     source: CLAUDE_LEGAL,
   },
   {
@@ -39,7 +41,7 @@ export const METHOD_SUPPORT: readonly MethodSupport[] = [
     runtime: "codex",
     method: "subscription",
     state: "supported",
-    note: "ChatGPT sign-in with the Codex CLI's own device flow, in a terminal of the server. OpenAI: ChatGPT sign-in is documented for open-source and locally hosted apps; offering it in a paid or remotely hosted app needs OpenAI's interest form.",
+    note: "ChatGPT sign-in with the Codex CLI's own device flow -- from its card (the link and one-time code it prints are shown there) or in a terminal of the server. OpenAI: ChatGPT sign-in is documented for open-source and locally hosted apps; offering it in a paid or remotely hosted app needs OpenAI's interest form.",
     source: OPENAI,
   },
   {

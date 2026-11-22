@@ -37,6 +37,31 @@ describe("Settings → Compute & storage: what the account's employees may use, 
     expect(rowOf(storage, "Artifacts").textContent).toBe("Artifacts0 MiB256 MiB");
   });
 
+  test("Re-check reads the host again now, and shows what it gives -- and the budget that followed it", async () => {
+    const resized = resourceSummary({ capacity: { ...resourceSummary().capacity, total: { cpuMillis: 16_000, memoryMiB: 32 * 1024, storageMiB: 400 * 1024 }, usable: { cpuMillis: 14_000, memoryMiB: 28 * 1024, storageMiB: 360 * 1024 } } });
+    const api = fakeApi()
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("POST", "/api/office/resources/capacity/check", () => resized);
+    renderLive(<ComputeStorageSection />);
+    const capacity = await screen.findByRole("region", { name: "Infrastructure capacity" });
+    expect(capacity.textContent).toContain("Re-check reads the host again now");
+    await userEvent.click(within(capacity).getByRole("button", { name: "Re-check" }));
+    await waitFor(() => expect(rowOf(within(capacity).getByRole("table", { name: "Capacity" }), "CPU").textContent).toBe("CPU16 vCPU2 vCPU14 vCPU"));
+    const post = api.calls.find((c) => c.method === "POST" && c.path === "/api/office/resources/capacity/check");
+    expect(post?.headers["x-orbit-web"]).toBe("1");
+  });
+
+  test("a Re-check the host cannot answer says why, and changes nothing", async () => {
+    fakeApi()
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("POST", "/api/office/resources/capacity/check", () => withStatus(422, { error: { code: "capacity_unreadable", message: "The sandbox provider (the allocator) did not answer: the host's capacity is left as it was last read." } }));
+    renderLive(<ComputeStorageSection />);
+    const capacity = await screen.findByRole("region", { name: "Infrastructure capacity" });
+    await userEvent.click(within(capacity).getByRole("button", { name: "Re-check" }));
+    expect(await within(capacity).findByText(/did not answer/)).toBeInTheDocument();
+    expect(rowOf(within(capacity).getByRole("table", { name: "Capacity" }), "CPU").textContent).toBe("CPU8 vCPU2 vCPU6 vCPU");
+  });
+
   test("the budget is lowered against the version read, and never offered above the operator's authorization", async () => {
     const api = fakeApi()
       .on("GET", "/api/office/resources", () => resourceSummary())

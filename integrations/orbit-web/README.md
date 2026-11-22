@@ -102,7 +102,9 @@ docker run -d --name orbit-web --hostname orbit-web \
 | check pgvector by hand | `docker compose exec postgres psql -U orbit -d orbit -c "SELECT extversion FROM pg_extension WHERE extname = 'vector'"` |
 | the first administrator's one-time code (`--purpose=new_account` for another account) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code` |
 | a one-time code for a user's new password | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner reset-password --username=<name>` |
-| sign a subscription connection in (the command its card shows) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>` |
+| sign a subscription connection in from a terminal (its card's Sign in does the same from the browser) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>` |
+| what the host gives employees, and each account's authorization | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js budget show` |
+| authorize an account's budget (vCPU, GiB, attempts), or give it back to the host's capacity | `… governance.js budget set --account=<id> [--cpu=2 --memory=8 --employee-cpu=1 …] \| --from-capacity` |
 | stop | `docker compose down` |
 | empty the database and start afresh (refused unless it names the database; `--with-data` also empties Orbit Web's rooms in `/data`) | `docker compose stop orbit-web && docker compose run --rm orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=orbit` |
 | delete every record, chat, workspace and every connection's login | `docker compose down -v` (Orbit Web's, the database's and the allocator's volumes) |
@@ -131,8 +133,9 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_SESSION_HOURS` | `168` | how long a browser's session lasts after its sign-in, at most (hours) |
 | `ORBIT_WEB_SESSION_IDLE_HOURS` | `24` | a session not used for this long ends (hours, at most the above) |
 | `ORBIT_WEB_MAX_BUDGET_USD` | unset | a per-run spending cap passed to Claude Code (`--max-budget-usd`) |
-| `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
-| `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
+| `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); Orbit Web's own sign-in is the gate (ADR 0069), an access token an optional perimeter in front of it |
+| `ORBIT_WEB_ACCESS_TOKEN` | unset | optional token mode (a perimeter before the sign-in, ADR 0069): every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
+| `ORBIT_WEB_SIGN_IN_ON_PAGE` | `1` | `0`: a subscription connection is signed in only in a terminal of the server (`connect.js`); its card shows the command alone and the sign-in routes refuse (ADR 0068) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie and the session's cookies Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: no credential of the server's own is given to any program; each account connects its CLIs ([AI connections](#ai-connections)) |
 | `ORBIT_WEB_TRIAL` | unset | `1`: the localhost-only trial with `admin` / `123456` (`docker/compose.trial.yaml` sets it); refused at start unless only this machine can reach Orbit Web |
@@ -316,16 +319,23 @@ one CLI (a subscription and an API key, say), each labelled, one of them the def
 A connection signs in the provider's own way, and nothing else is accepted as a credential. Each method shows the
 provider's words it rests on, with their source:
 
-- **A subscription** is signed in by its owner, in a terminal of the server, with the unmodified official CLI -- the URL
-  and the code never pass through Orbit Web's pages. The card shows the one command for that connection:
+- **A subscription** is signed in by its owner with the unmodified official CLI's own sign-in, against that
+  connection's home -- **from its card** (ADR 0068): *Add a connection* starts it at once, *Sign in* (or *Reconnect*)
+  starts it again. Orbit Web runs `claude auth login --claudeai` (or `codex login --device-auth`) on the server and
+  shows the browser that started it the link the CLI printed: open it and sign in; for **Claude Code** paste back the
+  code its page shows (it goes to the CLI's stdin and nowhere else), for **OpenAI Codex** enter the one-time code the
+  card shows on OpenAI's page -- nothing comes back. The card turns *Connected* once the CLI's own status names who it
+  is signed in as. Another browser of the account sees that a sign-in is under way and by whom, never its link or code;
+  no link, code or token is kept anywhere (the audit record says that a sign-in started and how it ended). **Or** in a
+  terminal of the server, where nothing of the sign-in passes through Orbit Web's pages -- the card shows the command:
 
   ```bash
   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
   ```
 
-  (`docker compose -f compose.governed.yaml exec …` in the governed deployment). It runs `claude auth login --claudeai`
-  (or `codex login --device-auth`) against that connection's home, in your terminal, then asks the CLI whom it is
-  signed in as and records it. For Claude Code, the hire step quotes Anthropic: the usage limits of the Pro, Max and
+  (`docker compose -f compose.governed.yaml exec …` in the governed deployment); `ORBIT_WEB_SIGN_IN_ON_PAGE=0` leaves
+  only this way. Google Antigravity has no sign-in Orbit Web offers (its CLI has no sign-in command, and its terms do
+  not permit its Google sign-in from another product). For Claude Code, the hire step quotes Anthropic: the usage limits of the Pro, Max and
   Ultra plans "assume ordinary, individual usage of Claude Code and the Agent SDK" -- for autonomous employees an API
   key is recommended.
 - **An API key** (a Claude Console key; an OpenAI key, which Orbit Web hands to `codex login --with-api-key` on its
@@ -351,8 +361,9 @@ stops and is reconciled); a connection an employee runs on cannot be removed.
 
 Chats and research questions run on the account's **default Claude Code connection**. An employee runs on a CLI only
 where its installed version was observed to switch every built-in tool off and take Orbit Web's tools instead (the
-*tool-plane split*): Claude Code does; Codex and Antigravity are shown with the reason they do not yet, and neither CLI
-is in the image.
+*tool-plane split*): Claude Code does; Codex and Antigravity are shown with the reason they do not yet. Both CLIs are in
+the image beside Claude Code (OpenAI Codex CLI from its npm package at an exact version, the Antigravity CLI `agy` from
+its release archive pinned by SHA-512; Settings → System names their versions), so their cards say *Installed*.
 
 ### Claude connectors
 
@@ -627,7 +638,10 @@ writable area is a hard limit, or where the operator accepted measured areas on 
 (`ORBIT_WEB_ACCEPT_SOFT_STORAGE`). **Settings → Compute & storage** shows what this host gives employees (detected or
 configured, less the control plane's limits and a reserve), the account's budget (lowered there; raising it above what
 the operator authorized is refused), what is reserved now, the storage committed and really used, and what runs and
-waits.
+waits. The host is read again at every start and at **Re-check** there (after a resize, or a change of
+`ORBIT_WEB_CAPACITY_*`): an authorization that comes from the capacity follows it -- a budget value that stood at it
+moves, one you lowered stays -- while one the operator set with `governance.js budget set` stays the operator's until
+`--from-capacity` (ADR 0069).
 
 **Network.** A tool plane's only way out is Orbit Web's egress proxy, every connection decided as that attempt under the
 account's policy (Governance → *Employee network access*): **Autonomous**, the default, reaches any public host on ports
@@ -806,6 +820,7 @@ skills, commands and agents still load).
 browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ NestJS API (one origin, /api)
   ├─ PostgreSQL 17 + pgvector (pg, a bounded pool)            (every record: app · research · governance)
   ├─ claude auth … · claude plugin …                       (Claude Code CLI)
+  ├─ codex login … · codex login status · agy --version     (OpenAI Codex CLI, Antigravity CLI: a connection's sign-in)
   ├─ gh auth … · gh api … · gh repo clone                   (GitHub CLI)
   ├─ az login … · az account show · az rest … (Azure DevOps) (Azure CLI, optional)
   ├─ git clone + the one-shot credential helper (Azure Repos) · git init (no repository)
@@ -889,8 +904,9 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
 For one person, on their own machine, by default:
 
 - **Loopback only.** Compose publishes `127.0.0.1:3000`; the API answers only Host names on an allow-list (localhost,
-  127.0.0.1, ::1), which also defeats DNS rebinding. Answering another host name requires `ORBIT_WEB_ACCESS_TOKEN`
-  (Orbit Web refuses to start otherwise); then every API call needs the token, traded once for an HttpOnly,
+  127.0.0.1, ::1), which also defeats DNS rebinding. Another host name is answered with Orbit Web's own sign-in as the
+  gate (below, ADR 0069); `ORBIT_WEB_ACCESS_TOKEN` adds a perimeter in front of it: then every API call needs the
+  token, traded once for an HttpOnly,
   SameSite=Strict cookie. The page asks for it before the sign-in (two steps, said as two), or takes it from an
   **access link**, `https://<host>/#access=<token>`: the fragment never reaches a server or a Referer, and the page
   removes it from the address bar and the history entry before anything else reads the URL. Share such a link as you
@@ -1046,7 +1062,8 @@ For one person, on their own machine, by default:
 | An attempt is blocked: *storage_not_enforceable* | a writable area of the employee is only *measured* on this host: give the allocator a filesystem whose quotas the kernel enforces, or accept measured areas on a protected disk (`ORBIT_WEB_ACCEPT_SOFT_STORAGE=1`) |
 | An employee cannot reach a site | Governance → Employee network access: in Restricted mode only listed hosts are reachable; private and internal addresses never are; the mission's run shows each refused connection |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` in the container's environment are not used | by design: no credential of the server's own reaches a program; add an API-key connection in Settings → AI Connections |
-| `host_not_allowed` (HTTP 421) | open it as http://localhost:3000 or http://127.0.0.1:3000, or set `ORBIT_WEB_ALLOWED_HOSTS` with `ORBIT_WEB_ACCESS_TOKEN` |
+| `host_not_allowed` (HTTP 421) | open it as http://localhost:3000 or http://127.0.0.1:3000, or add the host name to `ORBIT_WEB_ALLOWED_HOSTS` |
+| Hire says *CPU … is above the per-employee limit of 0.05 vCPU* (or a desk above the limit) | the host gives employees little beyond the control plane's own limits: resize it, or set `ORBIT_WEB_CAPACITY_*`, then **Re-check** in Settings → Compute & storage (or restart) -- an authorization that follows the capacity follows it; `governance.js budget set` authorizes other numbers |
 | The repository picker says *Connect* | that source is not connected: Settings → Connectors |
 | GitHub: `x509: certificate signed by unknown authority` | you are behind a TLS-inspecting proxy: mount its CA and set `SSL_CERT_FILE` (and `NODE_EXTRA_CA_CERTS`) to it |
 | GitHub sign-in expired | Connect GitHub again; chats and workspaces stay |

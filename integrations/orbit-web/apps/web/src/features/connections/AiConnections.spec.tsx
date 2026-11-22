@@ -6,7 +6,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
 import { CSRF, authSession } from "../../testing/fixtures";
-import { CONN_CLAUDE, CONN_CLAUDE_KEY, PLUGIN_DIGEST, connection, connectionsView } from "../../testing/officeFixtures";
+import { CONN_CLAUDE, CONN_CLAUDE_KEY, CONN_CODEX, PLUGIN_DIGEST, connection, connectionsView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { AiConnectionsSection } from "./AiConnectionsSection";
 
@@ -68,19 +68,100 @@ describe("Settings → AI Connections: three CLIs, each said as its own CLI says
     expect(caps.textContent).toContain("Run without local tools (employees)");
   });
 
-  test("a subscription not signed in yet shows the one terminal command to run on the server, to copy -- the URL and code never pass through Orbit", async () => {
+  test("where the operator switched signing in from a card off, a subscription shows the one terminal command to run on the server -- nothing of that sign-in passes through Orbit", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    fakeApi().on("GET", "/api/connections", () => connectionsView({ connections: [connection({ auth: "disconnected", identity: null, reason: "No login in this connection's folder yet." })] }));
+    fakeApi().on("GET", "/api/connections", () => connectionsView({ connections: [connection({ auth: "disconnected", identity: null, reason: "No login in this connection's folder yet.", signInHere: false })] }));
     renderLive(<AiConnectionsSection />);
     const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
     expect(within(conn).getByText("Disconnected")).toBeInTheDocument();
     const command = within(conn).getByLabelText("Terminal command");
     expect(command).toHaveTextContent(`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${CONN_CLAUDE}`);
     expect(conn.textContent).toContain("The sign-in URL and code never pass through Orbit");
+    expect(within(conn).queryByRole("region", { name: "Sign in Claude subscription" })).toBeNull();
     await userEvent.click(within(conn).getByRole("button", { name: "Copy" }));
     expect(writeText).toHaveBeenCalledWith(`docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js ${CONN_CLAUDE}`);
     expect(await within(conn).findByRole("button", { name: "Copied" })).toBeInTheDocument();
+  });
+
+  test("Sign in on its card: the CLI's own sign-in runs on the server, its link opens in a new tab, and the code pasted goes back to it", async () => {
+    const URL_ = "https://claude.com/cai/oauth/authorize?code=true&state=s1";
+    const flow = (state: string, over: Record<string, unknown> = {}) => ({ connectionId: CONN_CLAUDE, mine: true, startedBy: "Ann", flow: { state, url: null, code: null, needsCode: false, message: null, startedAt: "2026-11-22T01:00:00.000Z", updatedAt: new Date().toISOString(), ...over } });
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection({ auth: "disconnected", identity: null, reason: "Nobody is signed in in this connection's home." })] }))
+      .on("GET", `/api/connections/${CONN_CLAUDE}/sign-in`, () => flow("idle"))
+      .on("POST", `/api/connections/${CONN_CLAUDE}/sign-in`, () => flow("awaiting_user", { url: URL_, needsCode: true }))
+      .on("POST", `/api/connections/${CONN_CLAUDE}/sign-in/code`, () => flow("connected", { message: "Connected: Claude Code says it is signed in as ann@example.com." }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    const panel = within(conn).getByRole("region", { name: "Sign in Claude subscription" });
+    expect(within(conn).getByLabelText("Terminal command")).toBeInTheDocument();
+    expect(conn.textContent).toContain("Or sign it in from a terminal of the server instead");
+    await userEvent.click(await within(panel).findByRole("button", { name: "Sign in" }));
+    const link = await within(panel).findByRole("link", { name: "Sign-in link" });
+    expect(link).toHaveAttribute("href", URL_);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    const loads = api.calls.filter((c) => c.method === "GET" && c.path === "/api/connections").length;
+    await userEvent.type(within(panel).getByRole("textbox", { name: /Paste the code/ }), "the-code-0123#s1");
+    await userEvent.click(within(panel).getByRole("button", { name: "Send code" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "POST" && c.path.endsWith("/sign-in/code"))?.body).toEqual({ code: "the-code-0123#s1" }));
+    expect(api.calls.find((c) => c.method === "POST" && c.path.endsWith("/sign-in/code"))?.headers["x-orbit-csrf"]).toBe(CSRF);
+    await waitFor(() => expect(api.calls.filter((c) => c.method === "GET" && c.path === "/api/connections").length).toBeGreaterThan(loads), { timeout: 3000 });
+  });
+
+  test("Codex: the link and the one-time code to enter there -- nothing to paste back", async () => {
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ installations: connectionsView().installations.map((i) => (i.runtime === "codex" ? { ...i, state: "installed", version: "0.169.0", detail: null } : i)), connections: [connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", auth: "disconnected", identity: null, plugins: null })] }))
+      .on("GET", `/api/connections/${CONN_CODEX}/sign-in`, () => ({ connectionId: CONN_CODEX, mine: true, startedBy: "Ann", flow: { state: "awaiting_user", url: "https://auth.openai.com/codex/device", code: "VQZB-WOWS4", needsCode: false, message: null, startedAt: null, updatedAt: new Date().toISOString() } }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("OpenAI Codex")).findByRole("listitem", { name: "Connection ChatGPT" });
+    expect(await within(conn).findByLabelText("One-time code")).toHaveTextContent("VQZB-WOWS4");
+    expect(within(conn).getByRole("link", { name: "Sign-in link" })).toHaveAttribute("href", "https://auth.openai.com/codex/device");
+    expect(within(conn).queryByRole("textbox", { name: /Paste the code/ })).toBeNull();
+    expect(conn.textContent).toContain("turns Connected by itself");
+  });
+
+  test("a sign-in another browser started: who, and nothing of its link or code", async () => {
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection({ auth: "disconnected", identity: null })] }))
+      .on("GET", `/api/connections/${CONN_CLAUDE}/sign-in`, () => ({ connectionId: CONN_CLAUDE, mine: false, startedBy: "Bao", flow: { state: "awaiting_user", url: null, code: null, needsCode: false, message: null, startedAt: null, updatedAt: new Date().toISOString() } }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(await within(conn).findByText(/Bao is signing this connection in right now, from another browser/)).toBeInTheDocument();
+    expect(within(conn).queryByRole("link", { name: "Sign-in link" })).toBeNull();
+    expect(within(conn).getByRole("button", { name: "Cancel that sign-in" })).toBeInTheDocument();
+  });
+
+  test("adding a subscription starts its sign-in on its card by itself; Reconnect on a connected one runs it again", async () => {
+    let made = false;
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: made ? [connection({ auth: "disconnected", identity: null })] : [] }))
+      .on("POST", "/api/connections", () => {
+        made = true;
+        return withStatus(201, connection({ auth: "disconnected", identity: null }));
+      })
+      .on("POST", `/api/connections/${CONN_CLAUDE}/sign-in`, () => ({ connectionId: CONN_CLAUDE, mine: true, startedBy: "Ann", flow: { state: "awaiting_user", url: "https://claude.com/cai/oauth/authorize?state=s2", code: null, needsCode: true, message: null, startedAt: null, updatedAt: new Date().toISOString() } }));
+    renderLive(<AiConnectionsSection />);
+    const claude = await card("Claude Code");
+    await userEvent.click(within(claude).getByRole("button", { name: "Add a connection" }));
+    const form = within(claude).getByRole("form", { name: "Add a Claude Code connection" });
+    expect(form.textContent).toContain("Adding it starts its sign-in right away");
+    await userEvent.click(within(form).getByRole("button", { name: "Add connection" }));
+    expect(await within(claude).findByRole("link", { name: "Sign-in link" }, { timeout: 3000 })).toHaveAttribute("href", "https://claude.com/cai/oauth/authorize?state=s2");
+    expect(api.calls.filter((c) => c.method === "POST" && c.path === `/api/connections/${CONN_CLAUDE}/sign-in`)).toHaveLength(1);
+  });
+
+  test("Reconnect on a connected subscription runs its sign-in again, here", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("POST", `/api/connections/${CONN_CLAUDE}/sign-in`, () => ({ connectionId: CONN_CLAUDE, mine: true, startedBy: "Ann", flow: { state: "awaiting_user", url: "https://claude.com/cai/oauth/authorize?state=s3", code: null, needsCode: true, message: null, startedAt: null, updatedAt: new Date().toISOString() } }));
+    renderLive(<AiConnectionsSection />);
+    const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(within(conn).queryByRole("region", { name: "Sign in Claude subscription" })).toBeNull();
+    await userEvent.click(within(conn).getByRole("button", { name: "Reconnect" }));
+    expect(await within(conn).findByRole("link", { name: "Sign-in link" })).toHaveAttribute("href", "https://claude.com/cai/oauth/authorize?state=s3");
+    expect(api.calls.some((c) => c.method === "POST" && c.path === `/api/connections/${CONN_CLAUDE}/sign-in`)).toBe(true);
   });
 
   test("an API key is typed once, sent once, and never shown back", async () => {

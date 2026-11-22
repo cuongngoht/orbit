@@ -10,6 +10,7 @@ import { ResearchInputs } from "../../src/contexts/execution/application/researc
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
+import { filled, routesOf } from "../../src/testing/routes.js";
 import { eventually, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
 
 const FAST = { ORBIT_WEB_SANDBOX_HOST: "127.0.0.1", ORBIT_WEB_WORKER_TICK_MS: "100", ORBIT_WEB_RUN_HEARTBEAT_MS: "300", ORBIT_WEB_RECOVERY_SWEEP_MS: "500", ORBIT_WEB_RUN_LEASE_MS: "2000", ORBIT_WEB_STOP_GRACE_MS: "300" };
@@ -213,5 +214,43 @@ describe("the virtual office, end to end", () => {
     const inbox = (await c.b.get("/api/inbox?state=open")).body as Inbox;
     assert.ok(Array.isArray(inbox.items));
     for (const item of inbox.items.filter((i) => i.kind === "acceptance")) assert.match(item.pin.handoffDigest ?? "", /^[0-9a-f]{64}$/);
+  });
+
+  test("another account reaches nothing of this office: every route under its employee, mission, assignment or artifact is not found, and its lists hold none of it", async () => {
+    const one = async (sql: string) => String((await c.h.sql(sql, [c.h.accountId as string]))[0]?.id ?? "");
+    const dept = await c.b.send("POST", "/api/office/departments", { name: "Finance" });
+    assert.equal(dept.status, 201, JSON.stringify(dept.body));
+    const ids = {
+      employee: await one("SELECT id FROM workforce.employees WHERE account_id = $1 LIMIT 1"),
+      mission: await one("SELECT id FROM workforce.missions WHERE account_id = $1 LIMIT 1"),
+      assignment: await one("SELECT id FROM workforce.assignments WHERE account_id = $1 LIMIT 1"),
+      artifact: await one("SELECT id FROM workforce.artifacts WHERE account_id = $1 LIMIT 1"),
+      department: await one("SELECT id FROM workforce.departments WHERE account_id = $1 LIMIT 1"),
+    };
+    assert.ok(Object.values(ids).every((v) => v !== ""), JSON.stringify(ids));
+    const mallory = await c.h.as("mallory");
+    const under = [["/api/employees/:id", ids.employee], ["/api/missions/:id", ids.mission], ["/api/assignments/:id", ids.assignment], ["/api/artifacts/:id", ids.artifact], ["/api/office/departments/:id", ids.department]] as const;
+    const routes = routesOf(c.h).filter((r) => under.some(([prefix]) => r.path.startsWith(prefix)));
+    assert.ok(routes.length >= 15, `every route under them was read (${routes.length})`);
+    // Each answers exactly what it answers for an id nobody has -- not found, or the same refusal of the body before any
+    // lookup -- so nothing says the record exists, and nothing of it is changed.
+    const ask = (method: string, path: string) => (method === "GET" ? mallory.get(path) : mallory.send(method, path, {}, { "if-match": '"1"' }));
+    for (const r of routes) {
+      const id = (under.find(([prefix]) => r.path.startsWith(prefix)) as readonly [string, string])[1];
+      const foreign = await ask(r.method, filled(r.path, { id, revision: "1" }));
+      const nobody = await ask(r.method, filled(r.path, { id: "00000000-0000-4000-8000-0000000000ff", revision: "1" }));
+      assert.deepEqual([foreign.status, code(foreign)], [nobody.status, code(nobody)], `${r.method} ${r.path}: ${foreign.status} ${JSON.stringify(foreign.body).slice(0, 160)}`);
+      assert.ok(foreign.status === 404 || foreign.status === 400, `${r.method} ${r.path} answered ${foreign.status}`);
+      if (r.method === "GET") assert.equal(foreign.status, 404, `${r.method} ${r.path}`);
+    }
+    const roster = JSON.stringify((await mallory.get("/api/office/roster")).body);
+    const missions = JSON.stringify((await mallory.get("/api/missions?state=open")).body) + JSON.stringify((await mallory.get("/api/missions?state=closed")).body);
+    const inbox = JSON.stringify((await mallory.get("/api/inbox?state=open")).body);
+    for (const id of Object.values(ids)) {
+      assert.ok(!roster.includes(id) && !missions.includes(id) && !inbox.includes(id), `${id} appears to another account`);
+    }
+    // Its own writes cannot name this account's records either: work for this account's employee is not found.
+    const given = await mallory.send("POST", "/api/missions", { goal: "steal", targetEmployeeId: ids.employee, whenBusy: "enqueue", deliverables: [], acceptanceCriteria: [] }, { "idempotency-key": "mallory-key-0001" });
+    assert.equal(given.status, 404, JSON.stringify(given.body));
   });
 });

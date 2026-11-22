@@ -339,6 +339,8 @@ export class TeamService implements OnModuleInit {
   }
 
   async roomHistory(orbitId: string, missionId: string): Promise<TeamRoomChange[]> {
+    // A mission of another account -- or none -- is not found, like every record of another account.
+    if ((await this.db.one("SELECT 1 AS found FROM workforce.missions WHERE account_id = $1 AND id = $2", [orbitId, missionId])) === null) throw missing("The mission");
     const rows = await this.db.query(
       `SELECT c.path, c.sha256, c.size, c.employee_id, e.name, c.assignment_id, c.changed_at FROM workforce.team_room_changes c
        JOIN workforce.team_rooms r ON r.account_id = c.account_id AND r.id = c.room_id

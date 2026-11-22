@@ -261,4 +261,31 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
     assert.equal((claims[2] as { web?: { url: string } }).web?.url, "https://example.com/rates");
     assert.ok(prompts.some((p) => p.includes("S1-invoices-q3")), "inputs are named as the sandbox accepts: [A-Za-z0-9._-]");
   });
+
+  // Last: it disconnects the connection every employee here runs on.
+  test("an AI connection disconnected while its employee works: the attempt is stopped, the work blocked with why, and the employee not ready", async () => {
+    const e = await hire("Vu");
+    const made = await give(e.id, "[slow] work on a connection that goes away");
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    await until(id, (x) => root(x).state === "RUNNING");
+    const gone = await b.send("POST", `/api/connections/${connection.id}/disconnect`, {});
+    assert.equal(gone.status, 200, JSON.stringify(gone.body));
+    const m = await until(id, (x) => root(x).state === "BLOCKED");
+    assert.match(root(m).reason ?? "", /the AI connection it ran on was disconnected/);
+    assert.equal(root(m).lastRun?.state, "failed");
+    const inbox = (await b.get("/api/inbox?state=open")).body as Inbox;
+    assert.ok(inbox.items.some((i) => i.assignmentId === root(m).id && i.kind === "blocked"), "the owner is told");
+    const runs = await h.sql("SELECT stop_requested FROM workforce.runs WHERE account_id = $1 AND assignment_id = $2", [h.accountId as string, root(m).id]);
+    assert.deepEqual(runs.map((r) => r.stop_requested), ["disconnected"]);
+    const compute = await eventually(() => h.sql("SELECT count(*) AS n FROM workforce.compute_reservations c JOIN workforce.runs r ON r.account_id = c.account_id AND r.id = c.run_id WHERE r.employee_id = $1 AND c.released_at IS NULL", [e.id]), (rows) => Number(rows[0]?.n) === 0);
+    assert.equal(Number(compute[0]?.n), 0, "its resources went back");
+    // A retry while it is disconnected runs nothing -- never on another provider -- and says why.
+    const ran = prompts.filter((p) => p.includes("a connection that goes away")).length;
+    const retried = await b.send("POST", `/api/assignments/${root(m).id}/retry`, {}, ifMatch(root(m).version));
+    assert.equal(retried.status, 200, JSON.stringify(retried.body));
+    const again = await until(id, (x) => root(x).state === "BLOCKED" && root(x).attempts === 2);
+    assert.match(root(again).reason ?? "", /not connected|disconnected/i);
+    assert.equal(prompts.filter((p) => p.includes("a connection that goes away")).length, ran, "no CLI was started");
+  });
 });

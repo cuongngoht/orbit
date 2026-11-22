@@ -49,7 +49,7 @@ type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // Why Orbit stops an attempt it is running.
-type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "timeout" | "lost_lease" | "shutdown";
+type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "timeout" | "lost_lease" | "shutdown";
 
 export interface WorkerTimings {
   tickMs: number;
@@ -93,10 +93,13 @@ interface Active {
   done: Promise<void>;
 }
 
+// What a stop request written by the connections' hook asks for: its AI connection was disconnected or removed.
+export const CONNECTION_GONE = "disconnected";
+
 // What a stop request written by Work (`stop_requested`) asks for.
-const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" => {
+const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" => {
   if (requested.startsWith("pause")) return "pause";
-  if (requested === "accepted" || requested === "replaced") return requested;
+  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE) return requested;
   return "cancel";
 };
 
@@ -401,6 +404,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     if (why === "cancel") return { state: "cancelled", detail: "Stopped: the assignment was cancelled.", stoppedFor: "cancel" };
     if (why === "accepted") return { state: "succeeded", detail: "Ended after its hand-in was accepted.", stoppedFor: "cancel" };
     if (why === "replaced") return { state: "cancelled", detail: "Stopped: a newer attempt of the assignment replaced it.", stoppedFor: "cancel" };
+    if (why === "disconnected") return { state: "failed", detail: "Stopped: the AI connection it ran on was disconnected. Connect it again in Settings → AI Connections, then retry.", stoppedFor: null };
     if (why === "timeout") return { state: "failed", detail: `It ran past its limit of ${profile.timeoutMinutes} minutes and was stopped.`, stoppedFor: "timeout" };
     if (why === "shutdown") return { state: "interrupted", detail: "Orbit Web was shut down while this attempt ran: it was stopped. Retry it when Orbit Web is back.", stoppedFor: null };
     return { state: "interrupted", detail: "This worker lost the attempt's lease: another worker reconciles it.", stoppedFor: "recover" };

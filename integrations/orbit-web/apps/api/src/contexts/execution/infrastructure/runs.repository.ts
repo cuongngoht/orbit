@@ -193,6 +193,18 @@ export class RunRepository {
     return (await this.db.query("SELECT * FROM workforce.runs WHERE state = ANY($1) ORDER BY waiting_since, id LIMIT $2", [[...PENDING_RUN_STATES], limit])).map(runOf);
   }
 
+  // Asks every live attempt (starting or running) of an account that runs on one AI connection to stop -- the ones already
+  // asked to stop keep what they were asked for. The ids asked.
+  async requestStopOnConnection(orbitId: string, connectionId: string, reason: string): Promise<string[]> {
+    const rows = await this.db.query(
+      `UPDATE workforce.runs SET stop_requested = $3, updated_at = $4
+       WHERE account_id = $1 AND state IN ('starting', 'running') AND stop_requested IS NULL AND resolved->>'connectionId' = $2
+       RETURNING id`,
+      [orbitId, connectionId, reason, new Date().toISOString()],
+    );
+    return rows.map((r) => String(r.id));
+  }
+
   async withStopRequested(): Promise<RunRecord[]> {
     return (await this.db.query("SELECT * FROM workforce.runs WHERE stop_requested IS NOT NULL AND state IN ('starting', 'running')")).map(runOf);
   }

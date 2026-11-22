@@ -16,6 +16,7 @@ import { GovernanceModule } from "../modules/governance/governance.module.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
 import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.port.js";
 import { SANDBOX_PROVIDER } from "./execution/application/sandbox.port.js";
+import { ConnectionWatch } from "./execution/application/connection-watch.js";
 import { ExecutionWorker } from "./execution/application/execution.worker.js";
 import { ResourcesService } from "./execution/application/resources.service.js";
 import { ResearchInputs } from "./execution/application/research-inputs.js";
@@ -91,6 +92,7 @@ const PROVIDERS: Provider[] = [
   ToolsService,
   WorkspacePublisher,
   ExecutionWorker,
+  ConnectionWatch,
   ModelPlaneEgress,
   { provide: RUN_OUTCOMES, useExisting: MissionsService },
 ];

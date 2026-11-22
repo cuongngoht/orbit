@@ -10,9 +10,10 @@
 #   orbit-web    the control plane: the API and the web app, the GitHub and Azure CLIs' sign-ins, the control plane's
 #                own copies of the repositories, and the egress proxy -- the agent's only way out. Published on this
 #                machine only.
-#   orbit-agent  Claude Code and everything that touches a workspace, started through its runner. It has the Claude
-#                account's configuration, the workspaces, the chats' sessions, Orbit's store and a home -- and none of
-#                the rooms above: they are not mounted. Its network is internal: it reaches the control plane's gateway
+#   orbit-agent  Claude Code and everything that touches a workspace, started through its runner. It has the AI
+#                connections' homes (each account's Claude Code login), the workspaces, the chats' sessions, Orbit's
+#                store and a home -- and none of the rooms above: they are not mounted (an API key stays in the control
+#                plane's credential store and reaches a run's process alone). Its network is internal: it reaches the control plane's gateway
 #                and proxy, and nothing else. Its root file system is read-only.
 #
 # Both run as the same non-root user, with no capability and no Docker socket. The isolation is the mounts, the process
@@ -148,7 +149,9 @@ services:
     tmpfs:
       - /tmp:rw,mode=1777,size=1g
     volumes:
-      - { type: volume, source: orbit-web-data, target: /data/claude, volume: { subpath: claude } }
+      # The AI connections' homes: a chat's Claude Code runs with its account's default connection's home
+      # (/data/connections/<OrbitId>/<connectionId>/). Every account's: this container is shared (README, "The limit").
+      - { type: volume, source: orbit-web-data, target: /data/connections, volume: { subpath: connections } }
       - { type: volume, source: orbit-web-data, target: /data/workspaces, volume: { subpath: workspaces } }
       - { type: volume, source: orbit-web-data, target: /data/sessions, volume: { subpath: sessions } }
       - { type: volume, source: orbit-web-data, target: /data/orbit, volume: { subpath: orbit } }

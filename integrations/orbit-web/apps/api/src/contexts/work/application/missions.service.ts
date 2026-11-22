@@ -11,7 +11,9 @@
 // the scheduler gives the employee its next queued work.
 //
 // RUN OUTCOMES (RunOutcomes, reported by Execution): Work decides what a run's end means for the assignment.
-import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, type OnModuleInit, Optional } from "@nestjs/common";
+import type { MissionRepositoryRequest } from "@orbit-web/contracts";
+import { MISSION_REPOSITORIES, type MissionRepositories, type MissionRepository as ResolvedRepository } from "./mission-repositories.port.js";
 import {
   checkAccept,
   checkAnswer,
@@ -72,6 +74,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
     @Inject(TeamService) private readonly team: TeamService,
+    @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
   onModuleInit(): void {
@@ -109,6 +112,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         const el = await this.eligibility.of(orbitId, req.targetEmployeeId, true);
         if (el === null) throw missing("Employee");
         if (req.workspaceId !== null) await this.sources.check(orbitId, req.workspaceId, req.sourceRevisionIds);
+        const repositories = await this.repositoriesFor(orbitId, req.targetEmployeeId, req.repositories);
         const execution = req.execution === undefined ? el.execution : await this.hiring.executionFor(orbitId, { ...el.execution, ...(req.execution.model !== undefined ? { model: req.execution.model } : {}), ...(req.execution.effort !== undefined ? { effort: req.execution.effort } : {}) });
         const held = await this.assignments.heldBy(orbitId, req.targetEmployeeId);
         if ((held !== null || !el.eligible) && req.whenBusy === "reject") throw await this.busy(orbitId, req.targetEmployeeId, held, el, actor.command.correlationId);
@@ -116,6 +120,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         const mission = Mission.create({ id: randomUUID(), orbitId, title: req.title, goal: req.goal, createdBy: actor.command.actor, acceptanceMode: req.acceptanceMode, acceptanceCriteria: req.acceptanceCriteria, deliverables: req.deliverables, researchWorkspaceId: req.workspaceId, sourceRevisionIds: req.sourceRevisionIds, deadline: req.deadline, priority: req.priority, scheduleId: origin?.scheduleId ?? null, occurrenceId: origin?.occurrenceId ?? null, createdAt: at });
         const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId: req.targetEmployeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at });
         await this.missions.insert(mission);
+        if (repositories.length > 0) await this.repositories?.keep(orbitId, mission.id, repositories, actor.command.actor);
         if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id);
         const claimNow = held === null && el.eligible;
         if (claimNow) a.claim(this.pinOf(el, execution), at);
@@ -307,6 +312,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       brief: { goal: b.goal, deliverables: b.deliverables, acceptanceCriteria: b.acceptanceCriteria, revisions: b.revisions, answers: b.answers },
       deliverables: b.deliverables,
       sources: m === null ? [] : await this.sources.pinned(orbitId, m.data.researchWorkspaceId, m.data.sourceRevisionIds),
+      // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
+      repositories: a.data.parentId === null && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
         canDelegate: profile?.canDelegate === true,
         colleagues: profile?.canDelegate === true ? await this.team.colleagues(orbitId, a.data.employeeId) : [],
@@ -315,6 +322,13 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       },
       employee: { id: a.data.employeeId, name: el?.name ?? "", profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
     };
+  }
+
+  // The repositories a new mission asks for, each held to what its employee may use (none bound: none may be asked).
+  private async repositoriesFor(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[]): Promise<ResolvedRepository[]> {
+    if (asked.length === 0) return [];
+    if (this.repositories === null) throw invalid("repositories_unavailable", "This installation brings no repository into an employee's work.");
+    return this.repositories.resolve(orbitId, employeeId, asked);
   }
 
   async started(actor: Actor, assignmentId: string, fence: number): Promise<void> {

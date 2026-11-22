@@ -205,12 +205,13 @@ function teamText(t: TeamPrompt | undefined): string {
   return out.join("\n\n");
 }
 
-export function promptOf(o: { goal: string; deliverables: { name: string; required: boolean }[]; criteria: string[]; revisions: { criteria: string }[]; answers: { question: string; answer: string }[]; inputs: AttemptSpec["inputs"]; team?: TeamPrompt }): string {
+export function promptOf(o: { repositories?: string[]; goal: string; deliverables: { name: string; required: boolean }[]; criteria: string[]; revisions: { criteria: string }[]; answers: { question: string; answer: string }[]; inputs: AttemptSpec["inputs"]; team?: TeamPrompt }): string {
   return [
     `Goal:\n${o.goal}`,
     o.deliverables.length > 0 ? `Deliverables (write each into /output):\n${o.deliverables.map((d) => `- ${d.name}${d.required ? " (required)" : ""}`).join("\n")}` : "",
     o.criteria.length > 0 ? `Acceptance criteria:\n${o.criteria.map((c) => `- ${c}`).join("\n")}` : "",
     o.inputs.length > 0 ? `Sources you were given (read-only, in /input):\n${o.inputs.map((i) => `- ${i.name}`).join("\n")}` : "",
+    (o.repositories ?? []).length > 0 ? `Repositories you were given (a git bundle of each in /input: clone it, then work in your clone):\n${(o.repositories ?? []).join("\n")}` : "",
     o.revisions.length > 0 ? `The reviewer asked for these changes to your previous hand-in (most recent last):\n${o.revisions.map((r, i) => `${i + 1}. ${r.criteria}`).join("\n")}` : "",
     o.answers.length > 0 ? `Answers you were given:\n${o.answers.map((a) => `Q: ${a.question}\nA: ${a.answer}`).join("\n")}` : "",
     teamText(o.team),

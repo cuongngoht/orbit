@@ -132,7 +132,7 @@ test("a change of an employee names what changes, and a restore the revision it 
 test("a mission: its goal and brief, a title from the goal's first line when none is given, and every default said", () => {
   assert.deepEqual(checkCreateMission({ goal: "Summarise Q3 sales\nwith sources", targetEmployeeId: id(4), deliverables: [{ name: "summary.md" }, { name: "data.csv", required: false }], acceptanceCriteria: [" cites every figure "], deadline: "2026-12-01T09:00:00+07:00" }), {
     ok: true,
-    value: { goal: "Summarise Q3 sales\nwith sources", title: "Summarise Q3 sales", targetEmployeeId: id(4), whenBusy: "reject", workspaceId: null, sourceRevisionIds: [], deliverables: [{ name: "summary.md", required: true }, { name: "data.csv", required: false }], acceptanceCriteria: ["cites every figure"], acceptanceMode: "owner_review", deadline: "2026-12-01T02:00:00.000Z", priority: 5 },
+    value: { goal: "Summarise Q3 sales\nwith sources", title: "Summarise Q3 sales", targetEmployeeId: id(4), whenBusy: "reject", workspaceId: null, sourceRevisionIds: [], repositories: [], deliverables: [{ name: "summary.md", required: true }, { name: "data.csv", required: false }], acceptanceCriteria: ["cites every figure"], acceptanceMode: "owner_review", deadline: "2026-12-01T02:00:00.000Z", priority: 5 },
   });
   const full = checkCreateMission({ goal: "x", title: "X", targetEmployeeId: id(4), whenBusy: "enqueue", workspaceId: id(5), sourceRevisionIds: [id(6), id(6)], deliverables: [], acceptanceCriteria: [], acceptanceMode: "manager_review", deadline: null, priority: 9, execution: { model: "opus", effort: null } });
   assert.deepEqual(full.ok && [full.value.whenBusy, full.value.sourceRevisionIds, full.value.execution, full.value.priority, full.value.deadline], ["enqueue", [id(6)], { model: "opus", effort: null }, 9, null]);
@@ -219,4 +219,14 @@ test("an assignment holds its employee in every state but the queue and the ends
   assert.deepEqual(Object.keys(ASSIGNMENT_STATE_TEXT), [...ASSIGNMENT_STATES]);
   assert.deepEqual(Object.keys(WORK_LABEL_TEXT), [...WORK_LABELS]);
   assert.deepEqual([isIntegrationEventType("SandboxReady"), isIntegrationEventType("Nope"), isIntegrationEventType("toString")], [true, false, false]);
+});
+
+test("a mission's repositories: each one the employee may use, named as the connector lists it, at its branch or the default one", () => {
+  const ok = checkCreateMission({ goal: "g", targetEmployeeId: id(4), repositories: [{ source: "azure", id: "Fabrikam/278d5cd2-584d-4b63-824a-2ba458937249", branch: "develop" }, { source: "github", id: "octo/app" }] });
+  assert.deepEqual(ok.ok && ok.value.repositories, [
+    { source: "azure", id: "Fabrikam/278d5cd2-584d-4b63-824a-2ba458937249", branch: "develop" },
+    { source: "github", id: "octo/app", branch: null },
+  ]);
+  for (const repositories of ["octo/app", [{ source: "gitlab", id: "a/b" }], [{ source: "github", id: "" }], [{ source: "github", id: "a/b", branch: "-x" }], [{ source: "github", id: "a/b", branch: "a..b" }], [{ source: "github", id: "a/b", token: "t" }], [{ source: "github", id: "a/b" }, { source: "github", id: "a/b" }], Array.from({ length: 6 }, (_, i) => ({ source: "github", id: `o/r${i}` }))])
+    has(errorsOf(checkCreateMission({ goal: "g", targetEmployeeId: id(4), repositories })), "repositories must be");
 });

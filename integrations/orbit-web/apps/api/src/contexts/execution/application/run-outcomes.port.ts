@@ -3,6 +3,7 @@
 // for the assignment. Work registers its implementation, so Execution imports nothing of Work.
 import type { EmployeeProfile, RunState } from "@orbit-web/contracts";
 import type { Actor } from "../../shared/application/commands.js";
+import type { AttemptRepository } from "./repository-bundles.port.js";
 
 export interface StagedArtifact {
   name: string;
@@ -53,6 +54,8 @@ export interface AttemptContext {
   deliverables: { name: string; required: boolean }[];
   // The research sources the mission was pinned to, in their labelled order (S1, S2 ...).
   sources: PinnedSource[];
+  // The repositories the mission brings in (the root assignment's attempts only).
+  repositories: AttemptRepository[];
   // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
   // what each handed in, and the mission's team room (null: none).
   team: {

@@ -470,6 +470,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
               <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? "You" : "Its manager"}</dd>
               <dt className={o.dt}>Research sources</dt>
               <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? "None pinned" : `${m.sourceRevisionIds.length} source revision(s) pinned, read-only`}</dd>
+              <dt className={o.dt}>Repositories</dt>
+              <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? "None" : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
               <dt className={o.dt}>Created</dt>
               <dd className={o.dd}>
                 {when(m.createdAt)} by {m.createdBy}

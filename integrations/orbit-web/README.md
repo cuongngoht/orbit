@@ -671,6 +671,14 @@ to do if the employee is busy: *Start now* (a busy employee refuses it, and noth
 current work. An employee holds one piece of work at a time; queued work starts by itself when it is free. A request
 names itself once (`Idempotency-Key`), so sending it twice gives one mission.
 
+Work may also bring **repositories** (at most five): only ones its employee may use on its *Access* tab -- any other is
+refused when the work is given. Every attempt gets a snapshot of each, at its default branch, as a git bundle in `/input`
+(`repo-<name>.bundle`: one commit holding the branch's files, its message naming the commit it was taken at), and is
+told to `git clone` it. Orbit Web clones it itself, bare and one commit deep, with the connector's sign-in, on its own
+side -- the sign-in never reaches the sandbox -- and removes its copy once the attempt has it. A repository the employee
+may no longer use when an attempt starts (its access turned off since), or whose snapshot is larger than an attempt
+takes (48 MiB for all of them), is not brought in, and the employee is told why.
+
 **Each attempt runs in two containers of its own**, made by the allocator for that attempt and removed -- verified gone
 -- when it ends:
 

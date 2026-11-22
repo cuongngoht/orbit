@@ -16,6 +16,7 @@
 //   RECOVER   a run whose lease ran out (its worker died) is taken over: what the provider still has of it is stopped and
 //             removed, and Work is told the attempt was interrupted -- never a second spawn to guess. When the provider
 //             cannot say, the run is `unknown`, the assignment RECOVERING, and a person decides.
+import { REPOSITORY_BUNDLES, type AttemptRepository, type RepositoryBundles, type RepositoryInputs } from "./repository-bundles.port.js";
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { RUNTIME_LABELS, type ExecutionProfile, type ResourceEvidence, type ResourceProfile, type RunState, type SandboxAttestation } from "@orbit-web/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -142,6 +143,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
+    @Optional() @Inject(REPOSITORY_BUNDLES) private readonly bundles: RepositoryBundles | null = null,
     @Optional() @Inject(CONNECTION_SECRETS) private readonly secrets: ConnectionSecrets | null = null,
     // What says whether an OpenAI Codex model is held to Orbit's tools, and gives Orbit's entry for it (observed).
     @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
@@ -227,6 +229,17 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       });
   }
 
+  // What of the mission's repositories this attempt brings in, and what its employee is told of them (a failure is said
+  // there, never a reason the attempt does not start).
+  private async repositoryInputs(run: { orbitId: string; employeeId: string; id: string }, repositories: readonly AttemptRepository[]): Promise<RepositoryInputs> {
+    if (this.bundles === null || repositories.length === 0) return { inputs: [], lines: [] };
+    try {
+      return await this.bundles.prepare(run.orbitId, run.employeeId, run.id, repositories);
+    } catch (err) {
+      return { inputs: [], lines: [`- The repositories could not be brought in (${this.messageOf(err)}): read them through your connector tools instead.`] };
+    }
+  }
+
   private async attempt(entry: Active): Promise<void> {
     const run = await this.runs.get(entry.orbitId, entry.runId);
     if (run === null || run.state !== "starting" || run.leaseOwner !== this.owner || this.provider === null) return;
@@ -267,11 +280,15 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       return this.unstarted(run, actor, prep.plan, { state: "failed", detail: `The employee's desk could not be brought up to date with its accepted work: ${this.messageOf(err)}`, stoppedFor: null });
     }
     let handle: AttemptHandle;
+    // The mission's repositories, as git bundles: read by the provider as it starts the attempt, then released.
+    const repositories = await this.repositoryInputs(run, ctx.repositories);
     try {
       await provider.prepareWorkspace(ids, run.assignmentId, profile.scratchStorageMiB);
-      handle = await provider.startAttempt(spec);
+      handle = await provider.startAttempt({ ...spec, inputs: [...spec.inputs, ...repositories.inputs] });
     } catch (err) {
       return this.failedStart(run, actor, prep.plan, `The sandbox could not be started: ${this.messageOf(err)}`);
+    } finally {
+      await this.bundles?.release(run.id).catch(() => undefined);
     }
     entry.handle = handle;
     await this.runs.set(run.orbitId, run.id, { handle });
@@ -312,7 +329,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID(), modelFile });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: ctx.team.room !== null } }), resolved.profile.webSearch, profile.timeoutMinutes);
+    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: ctx.team.room !== null } }), resolved.profile.webSearch, profile.timeoutMinutes);
     if (ctx.team.room !== null) await this.roomAfter(handle, run, ctx.team.room.id);
     await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
   }

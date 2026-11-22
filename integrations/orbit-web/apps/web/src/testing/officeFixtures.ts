@@ -335,6 +335,7 @@ export function missionDetail(over: Partial<MissionDetail> = {}): MissionDetail 
     deliverables: [{ name: "q3-report.pdf", required: true }],
     workspaceId: null,
     sourceRevisionIds: [],
+    repositories: [],
     planRevision: 1,
     assignments: [a],
     handoffs: [handoff({ id: "4a000000-0000-4000-8000-000000000001", revision: 1, digest: HANDOFF_DIGEST_1, status: "revision_requested", summary: "The Q3 report.", review: { by: "Ann Owner", at: "2026-11-21T08:20:00.000Z", note: "Totals are off" } }), handoff()],

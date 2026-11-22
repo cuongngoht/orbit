@@ -4,7 +4,7 @@
 // behind that work (with a new idempotency key) or walk over to another colleague's desk.
 import { Badge, Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular } from "@fluentui/react-icons";
-import { ASSIGNMENT_STATE_TEXT, WORK_LABEL_TEXT, checkCreateMission, type CreateMissionRequest, type Deliverable, type EmployeeBusyDetails, type EmployeeCard, type MissionAccepted, type WhenBusy } from "@orbit-web/contracts";
+import { ASSIGNMENT_STATE_TEXT, WORK_LABEL_TEXT, checkCreateMission, type CreateMissionRequest, type Deliverable, type EmployeeBusyDetails, type EmployeeCard, type MissionAccepted, type WhenBusy, type MissionRepositoryRequest } from "@orbit-web/contracts";
 import { useRef, useState } from "react";
 import { ConnectionRequired, isConnectionRequired } from "../../components/ApiErrorBar";
 import { DesksIcon, IconBadge, PolicyIcon, QueuedIcon, WorkMissionIcon } from "../../components/SectionIcons";
@@ -12,6 +12,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
 import { Disclosure, WorkLabelBadge, useOfficeStyles, when } from "./parts";
+import { RepositoriesPicker } from "./RepositoriesPicker";
 import { NO_SOURCES, SourcesPicker, type PinnedSources } from "./SourcesPicker";
 import { PixelChibiSvg } from "./PixelOfficeArt";
 import { deskMoodText, personaFor, presenceStatusColor } from "./VirtualDesk";
@@ -222,6 +223,9 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const [deadline, setDeadline] = useState("");
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("reject");
   const [sources, setSources] = useState<PinnedSources>(NO_SOURCES);
+  // The repositories chosen, for the employee chosen (another employee may use others: a change of employee clears them).
+  const [repositories, setRepositories] = useState<{ for: string; list: MissionRepositoryRequest[] }>({ for: "", list: [] });
+  const chosenRepositories = repositories.for === target ? repositories.list : [];
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -247,6 +251,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
       .filter((l) => l.length > 0),
     deadline: deadline ? new Date(deadline).toISOString() : null,
     ...(sources.workspaceId !== null && sources.revisionIds.length > 0 ? { workspaceId: sources.workspaceId, sourceRevisionIds: sources.revisionIds } : {}),
+    ...(chosenRepositories.length > 0 ? { repositories: chosenRepositories } : {}),
   });
 
   const submit = async (mode: WhenBusy) => {
@@ -466,6 +471,8 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 </div>
                 <div className={o.divider} />
                 <SourcesPicker value={sources} onChange={setSources} />
+                <div className={o.divider} />
+                <RepositoriesPicker employeeId={target} employeeName={choices.find((c) => c.id === target)?.name ?? ""} value={chosenRepositories} onChange={(list) => setRepositories({ for: target, list })} />
               </div>
 
               <div className={s.sectionCard}>

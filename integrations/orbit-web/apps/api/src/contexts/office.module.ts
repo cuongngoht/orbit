@@ -12,10 +12,15 @@ import { APP_CONFIG } from "../core/tokens.js";
 import { CredentialStore } from "../infra/connections/credentials.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { ConnectionsModule } from "../modules/connections/connections.module.js";
+import { MissionRepositoryGrants } from "../modules/employee-access/mission-repositories.js";
+import { RepositoryBundler } from "../modules/employee-access/repository-bundler.js";
 import { EmployeeTools } from "../modules/employee-access/employee-tools.js";
 import { EmployeeAccessModule } from "../modules/employee-access/employee-access.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
+import { AttemptInputs } from "./execution/application/attempt-inputs.js";
 import { CONNECTOR_TOOLS } from "./execution/application/connector-tools.port.js";
+import { REPOSITORY_BUNDLES } from "./execution/application/repository-bundles.port.js";
+import { MISSION_REPOSITORIES } from "./work/application/mission-repositories.port.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
 import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.port.js";
 import { SANDBOX_PROVIDER } from "./execution/application/sandbox.port.js";
@@ -108,16 +113,19 @@ export class OfficeModule {
     // The sandbox provider this configuration names (a test overrides it by its token); the connections' keys are read
     // from the Connections context's own credential store.
     const defaults: Provider[] = [
-      ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useFactory: (config: AppConfig, research: ResearchInputs, process: ProcessPort) => sandboxProviderOf(config, (p) => research.read(p), process), inject: [APP_CONFIG, ResearchInputs, AGENT_PROCESS_PORT] }]),
+      ...(bound.has(SANDBOX_PROVIDER) ? [] : [{ provide: SANDBOX_PROVIDER, useFactory: (config: AppConfig, inputs: AttemptInputs, process: ProcessPort) => sandboxProviderOf(config, (p) => inputs.read(p), process), inject: [APP_CONFIG, AttemptInputs, AGENT_PROCESS_PORT] }]),
       ...(bound.has(CONNECTION_SECRETS) ? [] : [{ provide: CONNECTION_SECRETS, useExisting: CredentialStore }]),
       ...(bound.has(CONNECTOR_TOOLS) ? [] : [{ provide: CONNECTOR_TOOLS, useExisting: EmployeeTools }]),
+      // A mission's repositories: held to its employee's grants, and brought into its attempts as git bundles.
+      ...(bound.has(MISSION_REPOSITORIES) ? [] : [{ provide: MISSION_REPOSITORIES, useExisting: MissionRepositoryGrants }]),
+      ...(bound.has(REPOSITORY_BUNDLES) ? [] : [{ provide: REPOSITORY_BUNDLES, useExisting: RepositoryBundler }]),
     ];
     return {
       module: OfficeModule,
       imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
-      providers: [...PROVIDERS, ...defaults, ...bindings],
+      providers: [...PROVIDERS, AttemptInputs, ...defaults, ...bindings],
       controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
-      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs],
+      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs],
     };
   }
 }

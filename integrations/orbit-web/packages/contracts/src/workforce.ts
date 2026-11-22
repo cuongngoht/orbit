@@ -421,6 +421,9 @@ export interface CreateMissionRequest {
   // A research workspace whose sources the work may use, and the revisions it is pinned to.
   workspaceId?: string | null;
   sourceRevisionIds?: string[];
+  // Repositories the work brings in (each one the employee may use on its Access tab): a snapshot of each, at its branch
+  // or the default one, given to every attempt as a git bundle in /input.
+  repositories?: MissionRepositoryRequest[];
   deliverables: Deliverable[];
   acceptanceCriteria: string[];
   acceptanceMode?: AcceptanceMode;
@@ -428,6 +431,23 @@ export interface CreateMissionRequest {
   priority?: number;
   // An override of the employee's own execution profile for this mission (model and effort only).
   execution?: { model?: string; effort?: string | null };
+}
+
+export const MAX_MISSION_REPOSITORIES = 5;
+
+export interface MissionRepositoryRequest {
+  source: "github" | "azure";
+  // As GET /api/repositories names it.
+  id: string;
+  // null: the repository's default branch.
+  branch: string | null;
+}
+
+// A repository a mission brings in, as it was granted.
+export interface MissionRepositoryView {
+  source: "github" | "azure";
+  fullName: string;
+  branch: string | null;
 }
 
 export interface MissionAccepted {
@@ -585,6 +605,8 @@ export interface MissionDetail extends MissionSummary {
   deliverables: Deliverable[];
   workspaceId: string | null;
   sourceRevisionIds: string[];
+  // The repositories it brings in (a git bundle of each in every attempt's /input).
+  repositories: MissionRepositoryView[];
   planRevision: number;
   assignments: AssignmentView[];
   handoffs: HandoffView[];
@@ -1118,14 +1140,36 @@ function deliverablesOf(v: unknown, errors: string[]): Deliverable[] {
 
 const isInstant = (v: unknown): v is string => typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v));
 
+// A branch's name as git takes it: no leading dash, no "..", nothing a ref may not hold.
+// eslint-disable-next-line no-control-regex -- control characters are what is refused
+const BRANCH = /^(?!-)(?!.*\.\.)(?!.*[\u0000-\u0020~^:?*[\\\u007f])(?!.*\/\/)(?!.*\.lock$)[^/][\s\S]{0,199}$/;
+// eslint-disable-next-line no-control-regex -- control characters are what is refused
+const REPO_ID = /^[^\u0000-\u001f\u007f]{1,300}$/;
+
+function repositoriesOf(v: unknown): MissionRepositoryRequest[] | null {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > MAX_MISSION_REPOSITORIES) return null;
+  const out: MissionRepositoryRequest[] = [];
+  for (const r of v) {
+    if (!isRecord(r) || Object.keys(r).some((k) => !["source", "id", "branch"].includes(k))) return null;
+    if ((r.source !== "github" && r.source !== "azure") || typeof r.id !== "string" || !REPO_ID.test(r.id)) return null;
+    const branch = r.branch === undefined || r.branch === null ? null : typeof r.branch === "string" && BRANCH.test(r.branch) && !r.branch.endsWith("/") ? r.branch : undefined;
+    if (branch === undefined || out.some((o) => o.source === r.source && o.id === r.id)) return null;
+    out.push({ source: r.source, id: r.id, branch });
+  }
+  return out;
+}
+
 export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateMissionRequest, "title" | "execution">> & Pick<CreateMissionRequest, "execution"> & { title: string }> {
   if (!isRecord(body)) return NOT_OBJECT;
-  const errors = unknownFields(body, ["goal", "title", "targetEmployeeId", "whenBusy", "workspaceId", "sourceRevisionIds", "deliverables", "acceptanceCriteria", "acceptanceMode", "deadline", "priority", "execution"]);
+  const errors = unknownFields(body, ["goal", "title", "targetEmployeeId", "whenBusy", "workspaceId", "sourceRevisionIds", "repositories", "deliverables", "acceptanceCriteria", "acceptanceMode", "deadline", "priority", "execution"]);
   const goal = text(body.goal, WORKFORCE_LIMITS.goalLength);
   const title = body.title === undefined ? null : line(body.title, WORKFORCE_LIMITS.titleLength);
   const criteria = lines(body.acceptanceCriteria ?? [], WORKFORCE_LIMITS.listItems, WORKFORCE_LIMITS.itemLength);
   const deliverables = deliverablesOf(body.deliverables ?? [], errors);
   const sources = body.sourceRevisionIds ?? [];
+  const repositories = repositoriesOf(body.repositories);
+  if (repositories === null) errors.push(`repositories must be at most ${MAX_MISSION_REPOSITORIES} repositories, each named once: { source: github or azure, id, branch? }`);
   const execution = body.execution;
   if (goal === null) errors.push(`goal must be 1-${WORKFORCE_LIMITS.goalLength} characters`);
   if (body.title !== undefined && title === null) errors.push(`title must be 1-${WORKFORCE_LIMITS.titleLength} printable characters`);
@@ -1152,6 +1196,7 @@ export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateM
     whenBusy: (body.whenBusy as WhenBusy | undefined) ?? "reject",
     workspaceId: (body.workspaceId as string | null | undefined) ?? null,
     sourceRevisionIds: [...new Set(sources as string[])],
+    repositories: repositories ?? [],
     deliverables,
     acceptanceCriteria: criteria as string[],
     acceptanceMode: (body.acceptanceMode as AcceptanceMode | undefined) ?? "owner_review",

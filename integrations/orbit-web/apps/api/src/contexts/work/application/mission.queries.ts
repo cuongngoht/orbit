@@ -2,7 +2,8 @@
 // their last attempt, its handoffs with their artifacts and claims, and its timeline (the outbox journal of the mission,
 // in order) -- and Needs me. Everything is read for the session's account; a record of another account is not found.
 // The office version a page was read at comes with it, so a page can say "data as of" and refresh on `office.changed`.
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
+import { MISSION_REPOSITORIES, type MissionRepositories } from "./mission-repositories.port.js";
 import {
   isWorkforceId,
   type AssignmentAction,
@@ -150,6 +151,7 @@ export class MissionQueries {
     @Inject(DecisionRepository) private readonly decisions: DecisionRepository,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
+    @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
   async list(orbitId: string, q: { state?: string; employee?: string; cursor?: string }): Promise<MissionList> {
@@ -265,6 +267,7 @@ export class MissionQueries {
       deliverables: m.deliverables as MissionDetail["deliverables"],
       workspaceId: sn(m.research_workspace_id),
       sourceRevisionIds: m.source_revision_ids as string[],
+      repositories: ((await this.repositories?.of(orbitId, missionId)) ?? []).map((r) => ({ source: r.source, fullName: r.fullName, branch: r.branch })),
       planRevision: Number(m.plan_revision),
       assignments,
       handoffs,

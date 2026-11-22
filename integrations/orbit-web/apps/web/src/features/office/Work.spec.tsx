@@ -259,3 +259,36 @@ describe("the work and one mission", () => {
     expect(within(memory).getAllByRole("cell").map((c) => c.textContent)).toEqual(["Memory", "2 GiB", "2 GiB", "not reported"]);
   });
 });
+
+describe("a mission with repositories", () => {
+  const AZURE_REPO = { id: "contoso/3f1d2c4b-5a6e-4f70-8a9b-0c1d2e3f4a5b", fullName: "contoso/Platform/api", owner: "contoso", project: "Platform", name: "api" };
+
+  test("only a repository the employee may use is offered; the request names the ones checked", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: true, repositories: [AZURE_REPO], grantedAt: "2026-11-22T00:00:00.000Z" }], knowledge: [] }))
+      .on("POST", "/api/missions", () => withStatus(201, accepted("ASSIGNED")));
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign work" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Fix the export");
+    const group = within(dialog).getByRole("group", { name: "Repositories" });
+    await userEvent.click(await within(group).findByRole("checkbox", { name: "contoso/Platform/api (Azure DevOps)" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
+    expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
+    const post = api.calls.find((c) => c.method === "POST" && c.path === "/api/missions");
+    expect(post?.body).toMatchObject({ goal: "Fix the export", repositories: [{ source: "azure", id: AZURE_REPO.id, branch: null }] });
+  });
+
+  test("an employee that may use no repository says where to let it", async () => {
+    fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, grantedAt: null }], knowledge: [] }));
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
+    const group = within(await screen.findByRole("dialog", { name: "Assign work" })).getByRole("group", { name: "Repositories" });
+    expect(await within(group).findByRole("link", { name: /Access/ })).toHaveAttribute("href", `#/office/employee/${EMP_ANA}/access`);
+  });
+});

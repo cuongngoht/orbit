@@ -1,11 +1,11 @@
 # Orbit Web 0.8.0 -- Docker smoke test
 
-`node tests/docker/smoke.mjs --image=orbit-web:0.8.0 --browser --out=<dir>`, 2026-11-22T00:36Z, on the image built from this branch (`node scripts/build-image.mjs --tag=orbit-web:0.8.0` at d7fec10 -- the commits after it change tests and documents only), with Playwright's Chromium on the same machine. No AI provider's credential was used.
+`node tests/docker/smoke.mjs --image=orbit-web:0.8.0 --browser --out=<dir>`, 2026-11-22T00:45Z, the script at 4e0ae09, on the image built from this branch (`node scripts/build-image.mjs --tag=orbit-web:0.8.0` at d7fec10 -- after it only tests, documents and one source line changed: the team room's 404 for another account's mission), with Playwright's Chromium on the same machine. No AI provider's credential was used.
 
 ```
 PASS  1. the image exists -- orbit-web:0.8.0
 PASS     PostgreSQL with pgvector starts beside it (the pinned image, Orbit Web's role made by the init script) -- pgvector/pgvector:0.8.1-pg17-trixie
-PASS     with no database it does not start -- and keeps nothing anywhere else -- exited 1; [Nest] 6  - 11/22/2026, 12:35:05 AM   ERROR [ExceptionHandler] DatabaseUnavailable [Error]: the database could not be reached (ENOTFOUND)
+PASS     with no database it does not start -- and keeps nothing anywhere else -- exited 1; [Nest] 6  - 11/22/2026, 12:44:20 AM   ERROR [ExceptionHandler] DatabaseUnavailable [Error]: the database could not be reached (ENOTFOUND)
 PASS  2. the container starts
 PASS     ...and reports healthy
 PASS  3. the web UI responds -- HTTP 200
@@ -51,7 +51,7 @@ PASS     ...research included -- workspace listed, source ready, content HTTP 20
 PASS     the source's bytes are in /data/research, kept by their hash -- 1 file(s)
 PASS     signing out ends this browser's session -- logout HTTP 200, then HTTP 401
 PASS     a wrong password is refused, the right one signs the browser in again -- HTTP 401, then HTTP 200
-PASS  12. a trial another machine could reach refuses to start, saying why -- exited 1; [Nest] 7  - 11/22/2026, 12:35:38 AM   ERROR [OrbitWeb] configuration refused: ORBIT_WEB_TRIAL=1 refused: ORBIT_WEB_ALLOWED_HOSTS names orbit.example.com: a trial answers loopback host names only (loca
+PASS  12. a trial another machine could reach refuses to start, saying why -- exited 1; [Nest] 8  - 11/22/2026, 12:44:54 AM   ERROR [OrbitWeb] configuration refused: ORBIT_WEB_TRIAL=1 refused: ORBIT_WEB_ALLOWED_HOSTS names orbit.example.com: a trial answers loopback host names only (loca
 PASS     on this machine alone the trial starts on an empty database, and says its login -- healthy true, trial {"enabled":true,"username":"admin","password":"123456"}
 PASS     ...and admin / 123456 signs in -- HTTP 200
 PASS  13. a real browser: the sign-in page is Orbit Web's own, the trial's login said in a red bar

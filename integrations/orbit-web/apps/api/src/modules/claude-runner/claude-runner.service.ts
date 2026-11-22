@@ -270,7 +270,9 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   }
 
   // Stopped before Claude Code was started: nothing ran, and the run is interrupted -- never completed, never started later.
+  // Nothing runs from here on: a Stop that comes once it reads as interrupted is refused, as for any ended run.
   private async stoppedBeforeStart(session: SessionRecord, runId: string, plan: RunPlan): Promise<void> {
+    this.starting.delete(session.id);
     await this.db.tx(async () => {
       await this.bus.publishSession(session.id, "session.interrupted", { reason: "user_stop", exitCode: null, signal: null }, runId);
       await this.setStatus(session.id, "interrupted", "user_stop", runId);

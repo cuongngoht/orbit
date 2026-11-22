@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Customizations, RuntimeConnection, SetupStatus, SystemUpdates } from "@orbit-web/contracts";
+import type { Customizations, RuntimeConnection, SetupStatus, SystemUpdates, UpdateComponent, UpdateState } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
@@ -163,7 +163,7 @@ describe("Settings: the sections, over the page", () => {
   });
 
   test("System: whether a newer release exists -- each component against its publisher's newest, checked when asked, and how to update without a new Orbit Web", async () => {
-    const row = (component: string, installed: string | null, latest: string | null, state: string, security: boolean | null = null, detail: string | null = null) => ({ component, installed, latest, state, security, detail });
+    const row = (component: UpdateComponent, installed: string | null, latest: string | null, state: UpdateState, security: boolean | null = null, detail: string | null = null) => ({ component, installed, latest, state, security, detail });
     const notYet: SystemUpdates = { checkedAt: null, components: [row("claude", "2.1.328", null, "not_checked", null, "Not checked yet.")], howToUpdate: ["node scripts/update-pins.mjs --apply", "docker compose up -d"] };
     const checked: SystemUpdates = {
       checkedAt: "2026-11-22T08:00:00.000Z",
@@ -173,7 +173,7 @@ describe("Settings: the sections, over the page", () => {
     const api = fakeApi().on("GET", "/api/system/updates", () => notYet).on("POST", "/api/system/updates/check", () => checked);
     show("system", { api });
     const updates = await screen.findByRole("region", { name: "Updates" });
-    expect(within(updates).getByText("Not checked yet.")).toBeInTheDocument();
+    expect(await within(updates).findByText("Not checked yet.")).toBeInTheDocument();
     await userEvent.click(within(updates).getByRole("button", { name: "Check for updates" }));
     expect(await within(updates).findByText("2.1.341")).toBeInTheDocument();
     const rows = within(updates).getAllByRole("row").map((r) => r.textContent ?? "");

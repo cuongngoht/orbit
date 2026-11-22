@@ -25,6 +25,7 @@ const STEPS = [
   { name: "lint", cmd: ["npx", "eslint", "--max-warnings=0", "."] },
   { name: "governance-core unit tests", cmd: ["npm", "run", "test", "-w", "@orbit-web/governance-core"], kind: "node" },
   { name: "contracts unit tests", cmd: ["npm", "run", "test", "-w", "@orbit-web/contracts"], kind: "node" },
+  { name: "scripts tests", cmd: ["node", "--test", "--test-reporter=spec", "scripts/update-pins.test.mjs"], kind: "node" },
   { name: "api compile tests", cmd: ["npm", "run", "test:compile", "-w", "@orbit-web/api"] },
   { name: "api unit tests", cmd: ["npm", "run", "test:unit", "-w", "@orbit-web/api"], kind: "node" },
   { name: "api integration tests (PostgreSQL, mocked processes)", cmd: ["npm", "run", "test:integration", "-w", "@orbit-web/api"], kind: "node" },

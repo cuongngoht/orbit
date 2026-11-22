@@ -263,6 +263,8 @@ export class ResearchRunnerService implements OnModuleInit, BeforeApplicationShu
 
   // Stopped before Claude was started: nothing ran, and the run is interrupted -- never completed, never started later.
   private async stoppedBeforeStart(session: ResearchSessionRecord, runId: string, plan: RunPlan): Promise<void> {
+    // Nothing runs from here on: a Stop that comes once it reads as interrupted is refused, as for any ended run.
+    this.starting.delete(session.id);
     await this.runs.finish(runId, "interrupted", { answerId: null, exitCode: null, signal: null, costUsd: null, inputTokens: null, outputTokens: null, error: null });
     await this.stream.publish(session.id, "research.run.interrupted", { reason: "user_stop" }, runId);
     await this.setStatus(session.id, "interrupted", "user_stop", runId);

@@ -18,7 +18,7 @@ const useStyles = makeStyles({
   mono: { fontFamily: tokens.fontFamilyMonospace, overflowWrap: "anywhere" },
   updates: { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 },
   head: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
-  table: { width: "100%", overflowX: "auto" },
+  updatesTable: { width: "100%", overflowX: "auto" },
   how: { display: "flex", flexDirection: "column", gap: "4px", paddingTop: "8px", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "12px", borderRadius: "10px", backgroundColor: tokens.colorNeutralBackground2 },
 });
 
@@ -58,6 +58,7 @@ function Database({ check }: { check: DatabaseCheck }) {
 
 // One component's word: what the check found, said as plainly as it is known.
 function UpdateState({ u }: { u: ComponentUpdate }) {
+  const s = useStyles();
   if (u.state === "update_available")
     return u.security === true ? (
       <Badge appearance="filled" color="danger" size="small">
@@ -74,7 +75,6 @@ function UpdateState({ u }: { u: ComponentUpdate }) {
         Up to date
       </Badge>
     );
-  const s = useStyles();
   const said = u.detail === "Not checked yet." ? u.detail : `${u.state === "unknown" ? "Couldn't check" : "Not checked"}: ${u.detail ?? "no reason given"}`;
   return <Text className={s.muted}>{said}</Text>;
 }
@@ -118,7 +118,7 @@ function Updates() {
       ) : (
         <>
           <Text className={s.muted}>{summary(u)}</Text>
-          <div className={s.table}>
+          <div className={s.updatesTable}>
             <Table size="small" aria-label="Updates of what this image holds">
               <TableHeader>
                 <TableRow>

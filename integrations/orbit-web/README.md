@@ -130,6 +130,17 @@ the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the
 (never kept in a layer). The image is about 3.5 GB unpacked, a third of it the Azure CLI; build it without the Azure
 CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it is not installed, and the rest works).
 
+**Keeping what the image holds up to date.** Every program the image holds is pinned (`docker/Dockerfile`), and a newer
+release of one does not have to wait for a new Orbit Web. *Settings → System → Updates* says, for each, what is here and
+its publisher's newest release (npm for the two npm CLIs, GitHub's releases for GitHub CLI and the Orbit plugin, PyPI for
+the Azure CLI, nodejs.org for Node.js -- whose own word marks a **security** release): asked when a person checks (at
+most once a minute) and, unless `ORBIT_WEB_UPDATE_CHECK=off`, a minute after start and daily -- plain GETs of public
+feeds, nothing of this installation sent. A publisher that cannot be asked is *Couldn't check*, never *Up to date*. To
+take them: `node scripts/update-pins.mjs` shows what would move (Claude Code and OpenAI Codex to npm's newest, GitHub
+CLI to its newest release with both Linux archives' SHA-256 from that release's checksums file) and says what a person
+moves by hand (the Azure CLI's hashed lock, Antigravity's manifest, the base images' digests, Python's builds);
+`--apply` writes the pins. Then build the images again (above) and `docker compose up -d`.
+
 ### Settings (environment variables)
 
 | variable | default | meaning |

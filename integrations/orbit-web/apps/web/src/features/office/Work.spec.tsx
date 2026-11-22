@@ -267,7 +267,7 @@ describe("a mission with repositories", () => {
     const api = fakeApi()
       .on("GET", "/api/office/roster", () => roster())
       .on("GET", "/api/connections", () => connectionsView())
-      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: true, repositories: [AZURE_REPO], grantedAt: "2026-11-22T00:00:00.000Z" }], knowledge: [] }))
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, write: false, grantedAt: null }, { connector: "azure", enabled: true, repositories: [AZURE_REPO], write: false, grantedAt: "2026-11-22T00:00:00.000Z" }], knowledge: [] }))
       .on("POST", "/api/missions", () => withStatus(201, accepted("ASSIGNED")));
     renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
     await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
@@ -285,7 +285,7 @@ describe("a mission with repositories", () => {
     fakeApi()
       .on("GET", "/api/office/roster", () => roster())
       .on("GET", "/api/connections", () => connectionsView())
-      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, grantedAt: null }], knowledge: [] }));
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, write: false, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, write: false, grantedAt: null }], knowledge: [] }));
     renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
     await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
     const group = within(await screen.findByRole("dialog", { name: "Assign work" })).getByRole("group", { name: "Repositories" });

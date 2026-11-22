@@ -10,6 +10,8 @@ import { Db, jsonParam } from "../../infra/db/db.js";
 export interface LiveGrant {
   // null: every repository the connector's sign-in reaches.
   repositories: GrantedRepository[] | null;
+  // It may also propose writes there (each one the policy's to decide).
+  write: boolean;
   grantedAt: string;
 }
 
@@ -37,8 +39,8 @@ export class ConnectionGrantStore {
     for (const r of rows) {
       const connector = connectorOf(r.operation);
       if (connector === null) continue;
-      const scope = (typeof r.scope === "string" ? JSON.parse(r.scope) : r.scope) as { repositories?: GrantedRepository[] | null };
-      out.set(connector, { repositories: Array.isArray(scope.repositories) ? scope.repositories : null, grantedAt: iso(r.created_at) });
+      const scope = (typeof r.scope === "string" ? JSON.parse(r.scope) : r.scope) as { repositories?: GrantedRepository[] | null; write?: boolean };
+      out.set(connector, { repositories: Array.isArray(scope.repositories) ? scope.repositories : null, write: scope.write === true, grantedAt: iso(r.created_at) });
     }
     return out;
   }
@@ -70,7 +72,7 @@ export class ConnectionGrantStore {
   }
 
   // `repositories` undefined: the connector is turned off for the employee.
-  async replace(accountId: string, employeeId: string, connector: AccessConnector, repositories: GrantedRepository[] | null | undefined, by: string): Promise<void> {
+  async replace(accountId: string, employeeId: string, connector: AccessConnector, repositories: GrantedRepository[] | null | undefined, by: string, write = false): Promise<void> {
     await this.db.tx(async () => {
       await this.db.query(
         `UPDATE workforce.connection_grants SET revoked_at = now(), version = version + 1
@@ -81,7 +83,7 @@ export class ConnectionGrantStore {
       await this.db.query(
         `INSERT INTO workforce.connection_grants (id, account_id, grantee_kind, grantee_id, operation, scope, created_by, created_at)
          VALUES ($1, $2, 'employee', $3, $4, $5::jsonb, $6, now())`,
-        [randomUUID(), accountId, employeeId, operationOf(connector), jsonParam({ repositories }), by],
+        [randomUUID(), accountId, employeeId, operationOf(connector), jsonParam({ repositories, write }), by],
       );
     });
   }

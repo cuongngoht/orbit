@@ -26,6 +26,9 @@ export interface ConnectorAccess {
   enabled: boolean;
   // null: every repository the connector's sign-in reaches; else only these.
   repositories: GrantedRepository[] | null;
+  // It may also write there (a comment, a work item's state) -- each write still decided by the account's policy,
+  // which by default waits for a person's approval.
+  write: boolean;
   grantedAt: string | null;
 }
 
@@ -50,6 +53,8 @@ export interface UpdateConnectorAccess {
   enabled: boolean;
   // null: every repository; else the ids of the repositories chosen (as GET /api/repositories names them).
   repositories: string[] | null;
+  // Absent: reading only.
+  write?: boolean;
 }
 
 export interface UpdateKnowledgeAccess {
@@ -105,9 +110,10 @@ export function checkUpdateEmployeeAccess(body: unknown): Checked<Required<Updat
     const at = `connectors[${i}]`;
     if (!isRecord(c)) {
       errors.push(`${at} must be an object`);
-      return { connector: "github", enabled: false, repositories: null };
+      return { connector: "github", enabled: false, repositories: null, write: false };
     }
-    for (const k of Object.keys(c)) if (!["connector", "enabled", "repositories"].includes(k)) errors.push(`${at}.${k} is not a field of a connector's access`);
+    for (const k of Object.keys(c)) if (!["connector", "enabled", "repositories", "write"].includes(k)) errors.push(`${at}.${k} is not a field of a connector's access`);
+    if (c.write !== undefined && typeof c.write !== "boolean") errors.push(`${at}.write must be true or false`);
     const connector = (ACCESS_CONNECTORS as readonly unknown[]).includes(c.connector) ? (c.connector as AccessConnector) : null;
     if (connector === null) errors.push(`${at}.connector must be one of ${ACCESS_CONNECTORS.join(", ")}`);
     else if (seen.has(connector)) errors.push(`${at}.connector ${connector} is named twice`);
@@ -116,7 +122,7 @@ export function checkUpdateEmployeeAccess(body: unknown): Checked<Required<Updat
     const repos = c.repositories;
     const okRepos = repos === null || (Array.isArray(repos) && repos.length <= MAX_GRANTED_REPOSITORIES && repos.every((r) => typeof r === "string" && r.length > 0 && r.length <= 300 && !CONTROL.test(r)));
     if (!okRepos) errors.push(`${at}.repositories must be null (every repository) or a list of at most ${MAX_GRANTED_REPOSITORIES} repository ids`);
-    return { connector: connector ?? "github", enabled: c.enabled === true, repositories: okRepos ? (repos as string[] | null) : null };
+    return { connector: connector ?? "github", enabled: c.enabled === true, repositories: okRepos ? (repos as string[] | null) : null, write: c.write === true };
   });
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: { connectors, knowledge } };
 }

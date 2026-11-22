@@ -30,19 +30,20 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
   const [enabled, setEnabled] = useState(start.enabled);
   const [every, setEvery] = useState(start.repositories === null);
   const [chosen, setChosen] = useState<string[]>(scopeOf(start) ?? []);
+  const [write, setWrite] = useState(start.write);
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listing = useResource<RepositoryList>(enabled && !every && signedIn ? () => get(`/api/repositories?source=${start.connector}`) : null, [enabled, every, signedIn, start.connector]);
   const scope = enabled ? (every ? null : chosen) : null;
-  const unchanged = enabled === saved.enabled && (!enabled || same(scope, scopeOf(saved)));
+  const unchanged = enabled === saved.enabled && (!enabled || (same(scope, scopeOf(saved)) && write === saved.write));
   const save = async () => {
     setBusy(true);
     setError(null);
     setSaid(false);
     try {
-      const next = await send<EmployeeAccess>("PUT", `/api/employees/${employee.id}/access`, { connectors: [{ connector: start.connector, enabled, repositories: scope }] });
+      const next = await send<EmployeeAccess>("PUT", `/api/employees/${employee.id}/access`, { connectors: [{ connector: start.connector, enabled, repositories: scope, write: enabled && write }] });
       const mine = next.connectors.find((c) => c.connector === start.connector);
       if (mine) setSaved(mine);
       setSaid(true);
@@ -73,6 +74,13 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
           <Radio value="every" label="Every repository this sign-in reaches" />
           <Radio value="chosen" label="Only the repositories chosen" />
         </RadioGroup>
+      )}
+      {enabled && (
+        <Checkbox
+          checked={write}
+          onChange={(_, d) => setWrite(d.checked === true)}
+          label={`Also write: propose comments${start.connector === "azure" ? " and work item states" : ""} -- each one waits for the account's approval (Governance → Approvals) unless its policy allows it`}
+        />
       )}
       {enabled && !every && (
         <>

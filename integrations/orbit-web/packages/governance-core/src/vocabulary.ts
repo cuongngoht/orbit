@@ -75,6 +75,7 @@ export const ACTIONS = {
   "settings.privileged.write": { summary: "Turn on a setting that hands the agent a sign-in or lets a repository's code run.", subject: "credentials", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["setting"] },
   // Git with the remote is the account policy's to decide, for an agent as for a person: allowed, Orbit Web pushes at once;
   // a person approves first, it waits for one approval of exactly that push. Never forced, never the default branch.
+  "connector.write": { summary: "An employee's write through one of the account's connectors -- a comment on a work item or an issue, a work item's state -- carried out by Orbit Web with a sign-in kept on its side.", subject: "tools", enforcement: "boundary", sensitive: true, ceiling: {}, fingerprint: ["connector", "target", "operation", "digest"] },
   "repository.push": { summary: "Git: push the work's branch to its remote repository.", subject: "git", enforcement: "boundary", sensitive: true, ceiling: {}, fingerprint: ["repository", "remote", "ref", "commit", "force", "expectedRemoteOid"] },
   "deployment.production": { summary: "Deploy to a production environment.", subject: "production", enforcement: "none", sensitive: true, ceiling: PROTECTED, fingerprint: ["environment", "target", "revision"] },
   "database.production.migrate": { summary: "Migrate a production database.", subject: "production", enforcement: "none", sensitive: true, ceiling: PROTECTED, fingerprint: ["environment", "target", "revision"] },

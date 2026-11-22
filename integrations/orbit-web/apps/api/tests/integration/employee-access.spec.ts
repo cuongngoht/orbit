@@ -60,6 +60,7 @@ describe("an employee uses the account's connectors", () => {
         answers.query = await t.call("azure_devops_query", { organization: AZURE.organization, project: AZURE.project, wiql: "SELECT [System.Id] FROM WorkItems" });
         answers.folder = await t.call("azure_devops_file", { organization: AZURE.organization, project: AZURE.project, repository: AZURE.name, path: "/docs" });
         answers.document = await t.call("azure_devops_file", { organization: AZURE.organization, project: AZURE.project, repository: AZURE.name, path: "/docs/spec.md" });
+        answers.comment = await t.call("azure_devops_comment", { url: WORK_ITEM_URL, text: "PDF export is in the summary." });
         seen.push({ tools: listed.tools.map((x) => x.name), answers });
         await t.call("write_file", { path: "/output/summary.md", content: "Read.\n" });
         await t.call("submit_handoff", { summary: "Read the work item." });
@@ -119,6 +120,10 @@ describe("an employee uses the account's connectors", () => {
     assert.equal(s.answers.otherProject?.isError, true);
     assert.match(s.answers.otherProject?.text ?? "", /not among the repositories .* let use|not granted/i);
     assert.equal(s.answers.github?.isError, true);
+    // Reading only: no tool that writes is offered, and a write is refused.
+    assert.equal(s.tools.includes("azure_devops_comment"), false);
+    assert.equal(s.answers.comment?.isError, true);
+    assert.match(s.answers.comment?.text ?? "", /write/);
     // A query in a granted project says nothing of another project's work items, whatever the WIQL selected.
     assert.match(s.answers.query?.text ?? "", /42 · User Story · Active · Export the monthly report/);
     assert.equal((s.answers.query?.text ?? "").includes("Secret of another project"), false, s.answers.query?.text);
@@ -142,9 +147,38 @@ describe("an employee uses the account's connectors", () => {
   test("turned off, its next ask is refused and the tools are no longer offered", async () => {
     await accept(first);
     assert.equal((await b.send("PUT", `/api/employees/${employee.id}/access`, { connectors: [{ connector: "azure", enabled: false, repositories: null }] })).status, 200);
-    await work("Read work item 42 again");
+    second = (await work("Read work item 42 again")).id;
     const s = seen.at(-1) as Seen;
     assert.equal(s.tools.includes("azure_devops_work_item"), false);
     assert.equal(s.answers.granted?.isError, true);
+  });
+
+  let second = "";
+
+  test("let write, a comment waits for the owner's approval -- nothing is written until it is approved, then once", async () => {
+    await accept(second);
+    assert.equal((await b.send("PUT", `/api/employees/${employee.id}/access`, { connectors: [{ connector: "azure", enabled: true, repositories: [AZURE_REPOSITORY], write: true }] })).status, 200);
+    assert.equal((await accessOf()).connectors.find((c) => c.connector === "azure")?.write, true);
+    const posted = () => h.fake.calls.filter((c) => c.args.includes("rest") && c.args.includes("post") && c.args.some((a) => a.includes("/_apis/wit/workItems/42/comments")));
+    await work("Comment on work item 42");
+    const s = seen.at(-1) as Seen;
+    assert.ok(s.tools.includes("azure_devops_comment"), s.tools.join(", "));
+    assert.equal(s.answers.comment?.isError, false, s.answers.comment?.text);
+    assert.match(s.answers.comment?.text ?? "", /approv/i);
+    assert.equal(posted().length, 0, "nothing is written before a person approves it");
+    const approvals = ((await b.get("/api/governance/approvals")).body as { approvals: { id: string; action: string; state: string; summary: string; fingerprint: string }[] }).approvals;
+    const asked = approvals.find((a) => a.action === "connector.write" && a.state === "pending");
+    assert.ok(asked !== undefined, JSON.stringify(approvals));
+    assert.match(asked?.summary ?? "", /work item 42/);
+    assert.match(asked?.summary ?? "", /PDF export is in the summary\./);
+    // Approved, it is carried out at once -- by Orbit Web, with its own sign-in.
+    const granted = await b.send("POST", `/api/governance/approvals/${asked?.id}/grant`, { fingerprint: asked?.fingerprint });
+    assert.equal(granted.status, 200, JSON.stringify(granted.body));
+    assert.match(String((granted.body as { outcome: string | null }).outcome), /written/);
+    assert.equal(posted().length, 1, "written once it was approved");
+    assert.ok(posted()[0]?.args.some((a) => a.includes("PDF export is in the summary.")));
+    const again = await b.send("POST", `/api/governance/approvals/${asked?.id}/execute`, {});
+    assert.notEqual(again.status, 200, "an approval is spent once");
+    assert.equal(posted().length, 1);
   });
 });

@@ -17,6 +17,7 @@ import type { GovernanceContext } from "../auth/principal.js";
 import { PolicyService } from "../governance/policy.service.js";
 import { AZURE_DEVOPS_RESOURCE } from "../sources/azure-parse.js";
 import { inScope, parseWorkItemUrl, untrusted, workItemText } from "./connector-text.js";
+import { ConnectorWrites, type ConnectorWrite } from "./connector-writes.js";
 import { ConnectionGrantStore } from "./grants.store.js";
 
 const obj = (properties: Record<string, unknown>, required: string[]): Record<string, unknown> => ({ type: "object", properties, required, additionalProperties: false });
@@ -40,8 +41,19 @@ const AZURE_TOOLS: ToolSpec[] = [
   { name: "azure_devops_file", description: "Read a file, or list a folder, of an Azure DevOps repository you were let use (at a branch; the default one when none).", inputSchema: obj({ organization: str("The organization"), project: str("The project"), repository: str("The repository's name"), path: str("The file, e.g. /docs/spec.md"), branch: str("A branch (optional)") }, ["organization", "project", "repository", "path"]) },
 ];
 
+// What an employee let WRITE may also propose: each write decided by the account's policy (by default, the owner approves
+// that exact write first -- connector-writes.ts).
+const WRITE_TOOLS: Record<AccessConnector, ToolSpec[]> = {
+  github: [{ name: "github_comment", description: "Propose a comment on a GitHub issue or pull request of a repository you were let write to. It is written once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ repository: str("owner/name"), number: int("The issue's or pull request's number"), text: str("The comment (Markdown)") }, ["repository", "number", "text"]) }],
+  azure: [
+    { name: "azure_devops_comment", description: "Propose a comment on an Azure DevOps work item of a project you were let write to, by its URL or by organization, project and id. It is written once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ url: str("The work item's URL"), organization: str("The organization (without a URL)"), project: str("The project (without a URL)"), id: int("The work item's id (without a URL)"), text: str("The comment (HTML or plain text)") }, ["text"]) },
+    { name: "azure_devops_set_state", description: "Propose a new state for an Azure DevOps work item of a project you were let write to (e.g. Active, Resolved, Closed). It is set once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ url: str("The work item's URL"), organization: str("The organization (without a URL)"), project: str("The project (without a URL)"), id: int("The work item's id (without a URL)"), state: str("The state's name, as the work item's process names it") }, ["state"]) },
+  ],
+};
+
 const TOOLS: Record<AccessConnector, ToolSpec[]> = { github: GITHUB_TOOLS, azure: AZURE_TOOLS };
-const NAMES = new Set([...GITHUB_TOOLS, ...AZURE_TOOLS].map((t) => t.name));
+const WRITE_NAMES = new Set([...WRITE_TOOLS.github, ...WRITE_TOOLS.azure].map((t) => t.name));
+const NAMES = new Set([...GITHUB_TOOLS, ...AZURE_TOOLS].map((t) => t.name).concat([...WRITE_NAMES]));
 
 const GITHUB_REPO = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
 const ORGANIZATION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -80,11 +92,12 @@ export class ConnectorBroker implements ConnectorTools {
     @Inject(PROCESS_PORT) private readonly process: ProcessPort,
     @Inject(ConnectionGrantStore) private readonly grants: ConnectionGrantStore,
     @Inject(PolicyService) private readonly policy: PolicyService,
+    @Inject(ConnectorWrites) private readonly writes: ConnectorWrites,
   ) {}
 
   async tools(orbitId: string, employeeId: string): Promise<ToolSpec[]> {
     const live = await this.grants.live(orbitId, employeeId);
-    return [...live.keys()].flatMap((c) => TOOLS[c]);
+    return [...live.entries()].flatMap(([c, g]) => [...TOOLS[c], ...(g.write ? WRITE_TOOLS[c] : [])]);
   }
 
   owns(name: string): boolean {
@@ -99,6 +112,12 @@ export class ConnectorBroker implements ConnectorTools {
       if (grant === undefined) refuse(`You were not let use ${label}: a person lets you on your Access page (Office → your page → Access).`);
       const target = this.targetOf(name, args);
       if (!inScope(grant?.repositories ?? null, target)) refuse(`${this.said(target)} is not among the repositories you were let use on ${label}.`);
+      if (WRITE_NAMES.has(name)) {
+        if (grant?.write !== true) refuse(`You were let read ${label}, not write to it: a person lets you write on your Access page.`);
+        const write = this.writeOf(name, args, target);
+        if (write.connector === "azure") await this.ownItem(write.owner, write.container, write.item);
+        return await this.writes.propose(ctx, write);
+      }
       const resource = connector === "github" ? `github:${target.owner}/${target.name ?? ""}` : `azure-devops:${target.owner}/${target.project ?? ""}`;
       const decision = await this.policy.decide(ctx, { action: "tool.connector", resource, scope: "ACCOUNT_EMPLOYEE", params: { connector: resource } });
       if (decision.verdict !== "allow") refuse(`The account's policy in effect does not let you use ${resource} (${decision.reasonCodes.join(", ") || decision.verdict}; decision ${decision.decisionId}).`);
@@ -107,6 +126,21 @@ export class ConnectorBroker implements ConnectorTools {
       if (err instanceof Refusal) return answer(err.message, true);
       throw err;
     }
+  }
+
+  // A work item is written to only under its own project's address (the API answers any of the organization's).
+  private async ownItem(org: string, project: string, id: number): Promise<void> {
+    const item = await this.az(`${this.base(org, project)}/_apis/wit/workitems/${id}?fields=System.TeamProject&api-version=7.1`);
+    const own = isRecord(item) && isRecord(item.fields) ? String(item.fields["System.TeamProject"] ?? "") : "";
+    if (own.toLowerCase() !== project.toLowerCase()) refuse(`Work item ${id} is not a work item of ${org}/${project}.`);
+  }
+
+  // What a write tool proposes: on which item, and what.
+  private writeOf(name: string, args: Json, t: Target): ConnectorWrite {
+    if (name === "github_comment") return { connector: "github", operation: "comment", owner: t.owner, container: t.name ?? "", item: number(args.number, "number"), value: text(args.text, "text", 8000) };
+    const id = typeof args.url === "string" ? (parseWorkItemUrl(args.url)?.id ?? 0) : number(args.id, "id");
+    if (name === "azure_devops_set_state") return { connector: "azure", operation: "state", owner: t.owner, container: t.project ?? "", item: id, value: named(args.state, "state") };
+    return { connector: "azure", operation: "comment", owner: t.owner, container: t.project ?? "", item: id, value: text(args.text, "text", 8000) };
   }
 
   private said(t: Target): string {
@@ -120,7 +154,7 @@ export class ConnectorBroker implements ConnectorTools {
       if (m === null) return refuse("repository must be owner/name.");
       return { owner: m[1] as string, project: null, name: m[2] as string };
     }
-    if (name === "azure_devops_work_item" && typeof args.url === "string") {
+    if ((name === "azure_devops_work_item" || name === "azure_devops_comment" || name === "azure_devops_set_state") && typeof args.url === "string") {
       const ref = parseWorkItemUrl(args.url);
       if (ref === null) return refuse("url must be an Azure DevOps work item's URL: https://dev.azure.com/<organization>/<project>/_workitems/edit/<id>.");
       return { owner: ref.organization, project: ref.project };

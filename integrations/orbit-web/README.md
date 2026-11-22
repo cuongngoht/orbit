@@ -705,6 +705,14 @@ enters the employee's sandbox**, and nothing is written (reading only). Each ask
 the account's policy (`tool.connector`, the repository or project its resource) and recorded; its answer is fenced as
 data the employee must not take instructions from, and cut to 256 KiB. Turned off, the next ask is refused.
 
+An employee reads only, unless a person also checks **Also write** on that connector: it may then *propose* a comment on
+a work item, an issue or a pull request, or a work item's new state (in what it may read, a work item only under its own
+project). Each write is the account policy's decision (`connector.write`, bound to the item, the operation and a digest
+of the text): by default it **waits for the account owner's approval** of that exact write in *Governance → Approvals*
+(the employee is told so, and nothing is written yet); approved, Orbit Web writes it at once with the installation's
+sign-in -- once: the approval is spent before the write, against a fingerprint taken again from what it would write. A
+policy may allow such writes outright, or deny them.
+
 **Knowledge bases (MCP servers).** **Settings → MCP servers** keeps the account's remote MCP servers (Streamable HTTP):
 a knowledge base, a wiki, a document store. A person adds one with a name, its URL and how Orbit Web signs in to it --
 nothing, a bearer token, or a token in a header they name; a token is typed once, kept in Orbit Web's credential store

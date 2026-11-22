@@ -243,6 +243,7 @@ export function defaultAccountPolicy(accountId: string, deployment: PolicyDeploy
       { id: "raw-secret-access", action: "credential.read_raw", effect: "deny" },
       { id: "privileged-settings", action: "settings.privileged.write", principalType: "human", effect: "allow" },
       { id: "git-push", action: "repository.push", effect: "require_approval" },
+      { id: "connector-write", action: "connector.write", effect: "require_approval" },
       { id: "production-deploy", action: "deployment.production", effect: "deny" },
       { id: "production-migrate", action: "database.production.migrate", effect: "deny" },
       { id: "production-data", action: "data.production.destroy", effect: "deny" },

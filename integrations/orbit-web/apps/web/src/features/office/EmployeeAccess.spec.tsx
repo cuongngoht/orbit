@@ -16,7 +16,7 @@ beforeEach(() => rememberSession(authSession()));
 afterEach(() => rememberSession(null));
 
 const KB_ID = "0b5e2a7c-4d1f-4b8e-9c3a-6f7d8e9a0b1c";
-const off: EmployeeAccess = { employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, grantedAt: null }], knowledge: [] };
+const off: EmployeeAccess = { employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, write: false, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, write: false, grantedAt: null }], knowledge: [] };
 
 describe("one employee's access to the account's connectors", () => {
   test("off until a person lets it -- for the repositories chosen; a connector not signed in says where to sign it in", async () => {
@@ -25,7 +25,7 @@ describe("one employee's access to the account's connectors", () => {
       .on("GET", `/api/employees/${EMP_ANA}/access`, () => off)
       .on("GET", "/api/sources", () => sources("not_connected", "connected"))
       .on("GET", "/api/repositories", (_, url) => ({ source: url.searchParams.get("source"), repositories: [azureRepository()], fetchedAt: "2026-11-22T00:00:00.000Z", partial: false }))
-      .on("PUT", `/api/employees/${EMP_ANA}/access`, (body) => ({ ...off, connectors: [off.connectors[0], { connector: "azure", enabled: true, repositories: [{ id: AZURE_REPOSITORY_ID, fullName: "contoso/Platform/api", owner: "contoso", project: "Platform", name: "api" }], grantedAt: "2026-11-22T00:00:00.000Z" }], _sent: body }));
+      .on("PUT", `/api/employees/${EMP_ANA}/access`, (body) => ({ ...off, connectors: [off.connectors[0], { connector: "azure", enabled: true, repositories: [{ id: AZURE_REPOSITORY_ID, fullName: "contoso/Platform/api", owner: "contoso", project: "Platform", name: "api" }], write: false, grantedAt: "2026-11-22T00:00:00.000Z" }], _sent: body }));
     renderLive(<OfficeView page="employee" item={EMP_ANA} tab="access" go={vi.fn()} account={authAccount()} />);
     const github = await screen.findByRole("region", { name: "GitHub" });
     expect(within(github).getByText(/not connected/i)).toBeInTheDocument();
@@ -38,19 +38,34 @@ describe("one employee's access to the account's connectors", () => {
     await userEvent.click(within(azure).getByRole("radio", { name: "Only the repositories chosen" }));
     await userEvent.click(await within(azure).findByRole("checkbox", { name: "contoso/Platform/api" }));
     await userEvent.click(within(azure).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ connectors: [{ connector: "azure", enabled: true, repositories: [AZURE_REPOSITORY_ID] }] }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ connectors: [{ connector: "azure", enabled: true, repositories: [AZURE_REPOSITORY_ID], write: false }] }));
     expect(await within(azure).findByText(/Saved/)).toBeInTheDocument();
   });
 
   test("on for every repository, it says so", async () => {
     fakeApi()
       .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
-      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ ...off, connectors: [{ connector: "github", enabled: true, repositories: null, grantedAt: "2026-11-22T00:00:00.000Z" }, off.connectors[1]] }))
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ ...off, connectors: [{ connector: "github", enabled: true, repositories: null, write: false, grantedAt: "2026-11-22T00:00:00.000Z" }, off.connectors[1]] }))
       .on("GET", "/api/sources", () => sources("connected", "not_connected"));
     renderLive(<OfficeView page="employee" item={EMP_ANA} tab="access" go={vi.fn()} account={authAccount()} />);
     const github = await screen.findByRole("region", { name: "GitHub" });
     expect(within(github).getByRole("switch")).toBeChecked();
     expect(within(github).getByRole("radio", { name: "Every repository this sign-in reaches" })).toBeChecked();
+  });
+
+  test("reading only, until a person also lets it write -- each write still waiting for the account's approval", async () => {
+    const api = fakeApi()
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({ ...off, connectors: [{ connector: "github", enabled: true, repositories: null, write: false, grantedAt: "2026-11-22T00:00:00.000Z" }, off.connectors[1]] }))
+      .on("GET", "/api/sources", () => sources("connected", "not_connected"))
+      .on("PUT", `/api/employees/${EMP_ANA}/access`, () => ({ ...off, connectors: [{ connector: "github", enabled: true, repositories: null, write: true, grantedAt: "2026-11-22T00:00:00.000Z" }, off.connectors[1]] }));
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab="access" go={vi.fn()} account={authAccount()} />);
+    const github = await screen.findByRole("region", { name: "GitHub" });
+    const write = within(github).getByRole("checkbox", { name: /Also write/ });
+    expect(write).not.toBeChecked();
+    await userEvent.click(write);
+    await userEvent.click(within(github).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ connectors: [{ connector: "github", enabled: true, repositories: null, write: true }] }));
   });
 
   test("knowledge bases: each of the account's MCP servers off until a person turns it on, saved at once", async () => {

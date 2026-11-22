@@ -93,6 +93,16 @@ test("git is the account policy's to decide for an agent: allowed, it pushes; by
   assert.equal(evaluate(policy(withRules([{ id: "push", action: "repository.push", effect: "deny" }])), ask({ action: "repository.push", resource: "github.com/o/r" })).verdict, "deny");
 });
 
+test("an employee's write through a connector waits for one approval by default, in either deployment; the policy may allow or forbid it", () => {
+  for (const deployment of ["single", "governed"] as const) {
+    const r = evaluate(policy(defaultAccountPolicy(ACCOUNT, deployment)), ask({ action: "connector.write", resource: "azure-devops:Fabrikam/Fiber" }));
+    assert.deepEqual([r.verdict, r.enforcement], ["require_approval", "boundary"], deployment);
+  }
+  assert.equal(evaluate(policy(withRules([{ id: "w", action: "connector.write", effect: "allow" }])), ask({ action: "connector.write", resource: "github:o/r" })).verdict, "allow");
+  assert.equal(evaluate(policy(withRules([{ id: "w", action: "connector.write", effect: "deny" }])), ask({ action: "connector.write", resource: "github:o/r" })).verdict, "deny");
+  assert.deepEqual(ACTIONS["connector.write"].fingerprint, ["connector", "target", "operation", "digest"]);
+});
+
 test("a production action is never simply allowed to an agent: the most it gets is one approval", () => {
   for (const action of ["deployment.production", "database.production.migrate", "data.production.destroy"] as const) {
     const most = (ACTIONS[action].ceiling as Partial<Record<string, string>>).agent;

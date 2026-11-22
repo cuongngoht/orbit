@@ -6,6 +6,7 @@ import { GovernanceModule } from "../governance/governance.module.js";
 import { McpServersModule } from "../mcp-servers/mcp-servers.module.js";
 import { SourcesModule } from "../sources/sources.module.js";
 import { ConnectorBroker } from "./connector-broker.js";
+import { ConnectorWrites } from "./connector-writes.js";
 import { EmployeeAccessController } from "./employee-access.controller.js";
 import { EmployeeAccessService } from "./employee-access.service.js";
 import { EmployeeTools } from "./employee-tools.js";
@@ -16,7 +17,7 @@ import { RepositoryBundler } from "./repository-bundler.js";
 
 @Module({
   imports: [GovernanceModule, SourcesModule, McpServersModule, ChangesModule],
-  providers: [ConnectionGrantStore, EmployeeAccessService, ConnectorBroker, KnowledgeBroker, EmployeeTools, MissionRepositoryGrants, RepositoryBundler],
+  providers: [ConnectionGrantStore, EmployeeAccessService, ConnectorBroker, ConnectorWrites, KnowledgeBroker, EmployeeTools, MissionRepositoryGrants, RepositoryBundler],
   controllers: [EmployeeAccessController],
   exports: [EmployeeTools, MissionRepositoryGrants, RepositoryBundler],
 })

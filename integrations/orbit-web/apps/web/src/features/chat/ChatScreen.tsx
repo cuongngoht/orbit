@@ -19,7 +19,7 @@ import { ChangesPanel } from "../changes/ChangesPanel";
 import { Composer } from "../composer/Composer";
 import { catalogOfConnection, ModelCatalogOverride, useModelCatalog } from "../../services/models/ModelCatalog";
 import { useConnections } from "../connections/AiConnectionsSection";
-import { autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
+import { AiPicker, autoModeWith, ModelEffortPicker, ModePicker } from "../composer/RunPickers";
 import { WorkBranchPicker } from "../composer/WorkBranchPicker";
 import { OrbitPanel } from "../orbit/OrbitPanel";
 import { PushButton } from "../push/PushButton";
@@ -362,6 +362,8 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             }
             right={
               <ModelCatalogOverride catalog={catalog}>
+                {/* The AI a chat names is its own for its whole life: said, never offered again. */}
+                {named !== null && <AiPicker choices={[named]} value={named.id} readOnly />}
                 <ModelEffortPicker
                   model={session.model}
                   effort={session.effort}

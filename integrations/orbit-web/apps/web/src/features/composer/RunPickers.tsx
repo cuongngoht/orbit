@@ -1,9 +1,10 @@
-// How a chat runs, in the composer's toolbar: the model and its effort (one menu, the effort a submenu, as in Claude
+// How a chat runs, in the composer's toolbar: the AI it runs on (Claude Code or OpenAI Codex, one of the account's
+// connections) first, then a model of that AI's own and its effort (one menu, the effort a submenu, as in Claude
 // Code), and the mode -- Autonomous (Claude Code's auto mode) or Plan (its plan mode). The models and the efforts each
 // takes are the signed-in account's own (services/models): a model a program gives the account appears for it alone.
 import { Button, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuItemRadio, MenuList, MenuPopover, MenuTrigger, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Checkmark16Regular, ChevronDown12Regular, ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icons";
-import { effortFor, effortLabel, MODE_CHOICES, MODE_LABELS, modelLabel, modelOf, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice } from "@orbit-web/contracts";
+import { effortFor, effortLabel, MODE_CHOICES, MODE_LABELS, modelLabel, modelOf, RUNTIME_LABELS, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice, type RuntimeKind } from "@orbit-web/contracts";
 import { useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import { useViewport } from "../../hooks/useViewport";
@@ -323,6 +324,89 @@ export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: 
               </span>
             </MenuItemRadio>
           ))}
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+}
+
+// One of the account's connections a chat may run on, as the AI picker names it.
+export interface AiChoice {
+  id: string;
+  runtime: RuntimeKind;
+  label: string;
+}
+
+// The AI on the button: its runtime -- and the connection's own label where that runtime has more than one.
+const aiText = (c: AiChoice, all: readonly AiChoice[]): string => (all.filter((x) => x.runtime === c.runtime).length > 1 ? `${RUNTIME_LABELS[c.runtime]} — ${c.label}` : RUNTIME_LABELS[c.runtime]);
+const aiItem = (c: AiChoice): string => `${RUNTIME_LABELS[c.runtime]} — ${c.label}`;
+
+// THE AI A CHAT RUNS ON, chosen before its model: the models offered next are that AI's own. `readOnly`: a chat's AI
+// once it exists (it is the chat's for its whole life).
+export function AiPicker({ choices, value, onChange, readOnly = false }: { choices: readonly AiChoice[]; value: string; onChange?: (id: string) => void; readOnly?: boolean }) {
+  const s = useStyles();
+  const { isMobile } = useViewport();
+  const [open, setOpen] = useState(false);
+  const current = choices.find((c) => c.id === value) ?? choices[0];
+  if (current === undefined) return null;
+  const text = aiText(current, choices);
+  // Said, not offered: the chat's AI is fixed once the chat exists.
+  if (readOnly || onChange === undefined) {
+    return (
+      <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={`AI ${text}`} title="The AI this chat runs on, for its whole life">
+        {text}
+      </Button>
+    );
+  }
+  if (isMobile) {
+    return (
+      <>
+        <Button className={mergeClasses(s.trigger, s.triggerMobile)} appearance="subtle" size="small" aria-label={`AI ${text}`} onClick={() => setOpen(true)}>
+          {text}
+        </Button>
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title="AI · this session">
+          {choices.map((c) => {
+            const selected = c.id === current.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                className={mergeClasses(s.sheetCard, selected && s.sheetCardSelected)}
+                onClick={() => {
+                  onChange(c.id);
+                  setOpen(false);
+                }}
+              >
+                <span className={s.sheetCardMeta}>
+                  <span className={s.sheetCardTitle}>{aiItem(c)}</span>
+                </span>
+                {selected && <Checkmark16Regular />}
+              </button>
+            );
+          })}
+        </ResponsiveSheet>
+      </>
+    );
+  }
+  return (
+    <Menu checkedValues={{ ai: [current.id] }} onCheckedValueChange={(_, d) => d.name === "ai" && d.checkedItems[0] && onChange(d.checkedItems[0])}>
+      <MenuTrigger disableButtonEnhancement>
+        <Button className={s.trigger} appearance="subtle" size="small" icon={<ChevronDown12Regular />} iconPosition="after" aria-label={`AI ${text}`}>
+          {text}
+        </Button>
+      </MenuTrigger>
+      <MenuPopover>
+        <MenuList>
+          <MenuGroup>
+            <MenuGroupHeader>AI · this session</MenuGroupHeader>
+            {choices.map((c) => (
+              <MenuItemRadio key={c.id} name="ai" value={c.id}>
+                {aiItem(c)}
+              </MenuItemRadio>
+            ))}
+          </MenuGroup>
         </MenuList>
       </MenuPopover>
     </Menu>

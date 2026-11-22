@@ -51,25 +51,44 @@ describe("a new session: the composer always at the bottom, and the draft in its
     expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Explain how the CLI parses flags" });
   });
 
-  test("a chat may run on the account's OpenAI Codex connection: its own models, and the chat names it", async () => {
-    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null }, capabilities: capabilities({ toolPlaneSplit: "unknown" }) });
-    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }));
+  // The account's OpenAI Codex connection, connected, with its own models.
+  const codexConnection = () =>
+    connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null }, capabilities: capabilities({ toolPlaneSplit: "unknown" }) });
+  const modelsListed = async () => (await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""));
+
+  test("an account whose only AI is OpenAI Codex: the AI says Codex, the models are Codex's, and the chat names it", async () => {
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [codexConnection()] }));
     show();
-    const runsOn = await screen.findByRole("combobox", { name: "AI connection" });
-    expect(within(runsOn).getAllByRole("option").map((o) => o.textContent)).toEqual(["Claude Code — Claude subscription", "OpenAI Codex — ChatGPT"]);
-    await userEvent.selectOptions(runsOn, CONN_CODEX);
+    expect(await screen.findByRole("button", { name: "AI OpenAI Codex" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
-    const models = (await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""));
-    expect(models).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
+    expect(await modelsListed()).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
     await userEvent.keyboard("{Escape}");
     await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hello Codex{Enter}");
     await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, connectionId: CONN_CODEX, model: "gpt-6.1-sol", effort: "medium", mode: "autonomous", prompt: "Hello Codex" }));
   });
 
-  test("on the default Claude Code connection the chat names none: what it sends is as it was", async () => {
+  test("with Claude Code and OpenAI Codex: the AI is chosen first, then a model of that AI's own", async () => {
+    const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codexConnection()] }));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "AI Claude Code" }));
+    expect(screen.getByText("AI · this session")).toBeInTheDocument();
+    expect(screen.getAllByRole("menuitemradio").map((m) => m.textContent)).toEqual(["Claude Code — Claude subscription", "OpenAI Codex — ChatGPT"]);
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "OpenAI Codex — ChatGPT" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
+    expect(await modelsListed()).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
+    await userEvent.keyboard("{Escape}");
+    // Back to Claude Code: its models again, and the chat names no connection (the default one).
+    await userEvent.click(screen.getByRole("button", { name: "AI OpenAI Codex" }));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Claude Code — Claude subscription" }));
+    expect(await screen.findByRole("button", { name: "Model Sonnet 5.5, effort Medium" })).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hi{Enter}");
+    await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Hi" }));
+  });
+
+  test("on the default Claude Code connection the AI says so, and what the chat sends is as it was", async () => {
     const a = api().on("GET", "/api/connections", () => connectionsView({ connections: [connection()] }));
     show();
-    expect(screen.queryByRole("combobox", { name: "AI connection" })).toBeNull();
+    expect(await screen.findByRole("button", { name: "AI Claude Code" })).toBeInTheDocument();
     await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Hi{Enter}");
     await waitFor(() => expect(created(a)).toEqual({ repository: null, branch: null, model: "sonnet", effort: "medium", mode: "autonomous", prompt: "Hi" }));
   });

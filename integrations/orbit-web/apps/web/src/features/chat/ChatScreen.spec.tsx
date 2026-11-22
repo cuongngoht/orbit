@@ -90,6 +90,8 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", plugins: null, catalog: { source: "account", models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol", checkedAt: null } });
     const a = fakeApi().on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }));
     const { push } = open(sessionDetail({ runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.1-sol" }), a);
+    // Its AI is said before its model, and is the chat's for its whole life.
+    expect(await screen.findByRole("button", { name: "AI OpenAI Codex" })).toBeDisabled();
     await userEvent.click(await screen.findByRole("button", { name: "Model GPT-6.1-Sol, effort Medium" }));
     expect((await screen.findAllByRole("menuitemradio")).map((m) => (m.textContent ?? "").replace(/\d$/, ""))).toEqual(["GPT-6.1-Sol", "GPT-5.5"]);
     await userEvent.keyboard("{Escape}");

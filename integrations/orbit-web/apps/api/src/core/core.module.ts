@@ -16,7 +16,6 @@ import { NodeProcessPort } from "../infra/process/node-process.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { RunnerProcessPort } from "../infra/process/runner-port.js";
 import { AgentFs } from "../infra/process/agent-fs.js";
-import { SignInChannel } from "../infra/egress/sign-in-channel.js";
 import { ApprovalStore, AuditStore, FindingStore, IsolationStore, OverrideStore, ReportStore, ResourceStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { ImageFiles } from "../infra/storage/image-files.js";
 import { EventStore, ImageStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
@@ -99,7 +98,6 @@ export class CoreModule {
         },
         AgentFs,
         // The Claude sign-in's own way out of the agent's container (governed deployment): the sign-in and the proxy share it.
-        SignInChannel,
         { provide: Db, useFactory: () => openDatabase(config) },
         ...STORES.map(store),
         // Chat images' bytes: the control plane's own room, beside the database's data directory.
@@ -109,7 +107,7 @@ export class CoreModule {
         StreamGateway,
         DatabaseCloser,
       ],
-      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, SignInChannel, Db, ...STORES, ImageFiles, EventBus, LiveText, StreamGateway],
+      exports: [APP_CONFIG, PROCESS_PORT, AGENT_PROCESS_PORT, AgentFs, Db, ...STORES, ImageFiles, EventBus, LiveText, StreamGateway],
     };
   }
 }

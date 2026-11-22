@@ -125,8 +125,15 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     return this.isRunning(sessionId) || this.held.has(sessionId);
   }
 
+  // A run whose end is being recorded (its outcome may already be on the stream) is waited for, not refused: a page that
+  // heard the outcome and acts at once finds the session as the outcome left it.
+  private async endRecorded(sessionId: string): Promise<void> {
+    await this.active.get(sessionId)?.ending;
+  }
+
   // Runs `work` while no run may start in this session -- refused while one runs or another change is under way.
   async holding<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
+    await this.endRecorded(sessionId);
     if (this.isRunning(sessionId)) throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");
     if (this.held.has(sessionId)) throw conflict("workspace_busy", "The working branch is already changing.");
     this.held.add(sessionId);
@@ -141,6 +148,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   // images it carries (already claimed for this chat: ImagesService). `startedBy` is the owner whose browser sent it:
   // what the run's records name as its cause.
   async send(sessionId: string, text: string, images: readonly ImageRef[], startedBy: Principal): Promise<RunAccepted> {
+    await this.endRecorded(sessionId);
     const session = await this.sessions.get(sessionId);
     if (!session) throw notFound("Session");
     if (this.isRunning(sessionId) || session.status === "running") throw conflict("run_active", "Claude is still working on this session. Stop it or wait for it to finish.");

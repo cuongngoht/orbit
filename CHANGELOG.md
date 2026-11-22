@@ -296,22 +296,18 @@ plugin it bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 616 deterministic tests (governance-core 33, contracts 21, API unit 167, API integration 218 on a real
-  PostgreSQL 17 with pgvector 0.8.1 -- each harness a database of its own, processes scripted -- and web 177),
-  `scripts/ci.mjs` green from `npm ci`; the plugin's own suite unchanged (5271 tests, 0 failed) and its strict Five Lines
-  check clean. The Docker smoke test (42 checks) starts the image beside the pinned PostgreSQL: the role not a superuser,
-  pgvector enabled, no start without a database, every route closed until a browser finishes Orbit Web's own sign-in
-  (the CLI's account a stand-in), the state, a research source and the browser's session kept across a restart and a new
-  container. The security lab ran the governed deployment for real (22 steps passed; nine attacks PREVENTED, among them
-  reaching the database, becoming the account's owner and rewriting the audit record -- which the database refuses even
-  to Orbit Web's own role; the tenth, another chat's files on the shared agent container's disk, is the stated limit),
-  recorded in `tests/security-lab/results/0.8.0`. Research's definition of done was run in a real Chromium against the
-  local image with a real Claude sign-in BEFORE the move to PostgreSQL and the browser session (a PDF and a pasted text,
-  grounded answers with page-exact citations, a note, a second session on the same sources, a restart, a chat making a
-  Claude Docs document; it found the stop that waited on open streams and the two page faults fixed above), and was not
-  repeated after it. The real acceptance run (`tests/acceptance/real-run.mjs`) now starts beside PostgreSQL and takes the
-  browser sign-in from a person at the terminal: its start was checked, and its real-model turns -- in either deployment
-  -- need a person's Claude sign-in and are not recorded yet.
+- **Checked.** 890 deterministic tests on a real PostgreSQL 17 with pgvector 0.8.1 (`scripts/ci.mjs`: governance-core 45,
+  contracts 54, API unit 266, API integration 280 -- each harness a database of its own, processes scripted, the Office end
+  to end through a fake sandbox provider and a scripted CLI that calls the real tool endpoint -- and web 245), with
+  typecheck, lint and both builds. An employee's attempt in real containers (`npm run test:sandbox`): 18/18 -- limits
+  applied and observed, an OOM kill, the PID limit, the storage quota, the connection's login and another employee's
+  desk unreadable, no way out but the proxy. The Docker smoke test on the image built from this branch, with a real
+  browser (`--browser`): 58/58 -- the setup code used once, the password a scrypt hash, sessions kept across a restart
+  and a new container, the trial refused where another machine could reach it, the Office, AI Connections, Compute &
+  storage and Employee network access in Chromium, seven pages at 320 px. Not run for this release, and said so in
+  `integrations/orbit-web/docs/0.8.0-acceptance.md` (A01-A19): a real CLI with a real model -- no account was available,
+  and the session's own token was not used, so every native row is BLOCKED; the security lab, which still drives the
+  sign-in relay this release removed; backup and restore. The plugin's own suite and archive are unchanged.
 
 ## Orbit Web 0.7.0
 

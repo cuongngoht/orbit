@@ -774,7 +774,7 @@ The tag `v<version>` goes on the merge commit only after `--evidence` says PUBLI
 itself never tags, pushes or publishes. No GitHub workflow gates the plugin; the one scoped exception is Orbit Web's two
 workflows (pull-request checks for `integrations/orbit-web/**`, and its image published by hand behind a reviewer,
 [ADR 0060](docs/adr/0060-orbit-web-a-browser-host-around-the-official-clis.md)). More: [evaluator/README.md](evaluator/README.md),
-[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md), and [CLAUDE.md](CLAUDE.md) for running the campaigns
+[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md), and [AGENTS.md › Claude Code](AGENTS.md#shipping-a-release-from-claude-code-cloud) for running the campaigns
 from a Claude Code cloud session.
 
 ## Further reading

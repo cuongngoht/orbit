@@ -583,18 +583,15 @@ one layer — the screen (`ui`), the call it made (`api`) or the row it wrote (`
   "seen": "live" }
 ```
 
-- **PASS is earned and says what it proved** — `proved ui n · api n · sql n`. No verdict executed is `INCONCLUSIVE`
-  (4); an unreachable database is `BLOCKED` (3), because the product is not broken when a laptop is off the VPN; a case
-  refused before the browser (invalid, a missing parameter, a destructive case without its flag, no signed-in session)
-  is `REFUSED` (2).
-- **A write is witnessed below the screen:** a screen can show a write that never happened, so a case that declares
-  `creates` and rules only on the screen is a finding.
-- **Reports are self-contained:** `--report` writes one HTML page into the store, pictures and the case's JSON inside,
-  and `run-case <that-report.html>` runs the case again.
-- **Self-healing is never "change the test until it passes":** `orbit-failure-analyst` classifies a failure into one of
-  nine causes, only that cause's owner repairs its own artifact (`orbit-dsl-doctor` a case's form, `orbit-map-healer`
-  one locator), and the repair goes back through the engine. Cases an agent writes stay in the store's drafts, even
-  after a PASS, until a person promotes them.
+PASS is earned and says what it proved (`proved ui n · api n · sql n`); no verdict executed is `INCONCLUSIVE` (4); an
+unreachable database is `BLOCKED` (3), since the product is not broken when a laptop is off the VPN; a case refused
+before the browser (invalid, a missing parameter, a destructive case without its flag, no signed-in session) is
+`REFUSED` (2). A screen can show a write that never happened, so a case that declares `creates` and rules only on the
+screen is a finding. `--report` writes one self-contained HTML page into the store, and `run-case <that-report.html>`
+runs the case again. Self-healing is never "change the test until it passes": `orbit-failure-analyst` classifies a
+failure into one of nine causes, and only that cause's owner repairs its own artifact (`orbit-dsl-doctor` a case's form,
+`orbit-map-healer` one locator). Cases an agent writes stay in the store's drafts, even after a PASS, until a person
+promotes them.
 
 ```bash
 node cli/run-case.mjs create-thing NAME=TC-1 --dry      # resolve and print the plan; no browser, no database
@@ -607,32 +604,25 @@ node cli/qa-plan.mjs coverage <plan-id>                 # criterion → scenario
 ### Autonomous QA
 
 `orbit-qa` runs an **investigation** of a live application: the host chooses one next step at a time, as a decision the
-engine judges before anything runs, within the mode the environment allows. What is still owed, why to stop and what a
-finding concludes are derived from the investigation's journal, never from the host's word.
+engine judges before anything runs. What is still owed, why to stop and what a finding concludes are derived from the
+investigation's journal, never from the host's word. Its mode bounds what it may do: `observe` (read only),
+`explore-write` (synthetic `TC-` data; never a destructive control), `security-test` (an authorised tenant-isolation
+matrix), `regression` (accepted cases through `run-case`) or `fixture-write` (generated tests that write, only in a
+task's isolated sandbox, each write under a grant). Every mode but `observe` runs only where a person approved it for
+that environment.
 
-| Mode | What it may do |
-| --- | --- |
-| `observe` | read only: navigate, look, listen to the network, run read-only checks |
-| `explore-write` | create and change synthetic `TC-` data; a destructive control is never touched |
-| `security-test` | an authorised tenant-isolation matrix over approved identities and resources |
-| `regression` | run already-accepted cases through `run-case` |
-| `fixture-write` | generated tests that write — only in the task's isolated sandbox, on the run's own fixture, each write under a grant |
-
-Every mode but `observe` runs only on an environment whose modes a person approved. **Generated tests** go from an
-accepted requirement to a verified outcome: obligations are derived from accepted plans against the frozen system graph;
-the host proposes a design and the engine compiles every verdict and page script from the accepted criteria and fixed
-templates; a frozen version runs only in a task's isolated sandbox (Docker), writing only under a grant minted for its
-fixture; and the host validates what the worker left before anything is recorded. Backends are reached through adapters
-(`orbit.adapter/v1`) in packs a project opts into, each proven by conformance receipts; an operation may declare what
-its request carries ([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)).
-
-A verdict must depend on the application, never on what the design itself causes: every contradiction rule reads a
-design through one model of what it causes (`src/qa/backend/causes.mjs`) and names no operation or shape. Since 0.6.0,
-`NEVER_DECIDED` refuses a design that waits for a schedule to decide while the injected clock never moved, and
-`CLOCK_PASSED` advises when a design moves the clock only to where an earlier test already took it. Security catalogs
-(by default ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and isolation are a
-person's, in Orbit Control ([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)); Orbit
-never calls anything "compliant".
+**Generated tests** go from an accepted requirement to a verified outcome: obligations derived from accepted plans
+against the frozen system graph; a design the host proposes, whose every verdict and page script the engine compiles
+from the accepted criteria and fixed templates; a frozen version run only in a task's isolated sandbox (Docker); and
+what the worker left validated before anything is recorded. Backends are reached through adapters (`orbit.adapter/v1`)
+in packs a project opts into, each proven by conformance receipts
+([ADR 0052](docs/adr/0052-an-adapter-operation-declares-what-its-request-carries.md)). A verdict must depend on the
+application, never on what the design itself causes: every contradiction rule reads one model of what a design causes
+(`src/qa/backend/causes.mjs`) — since 0.6.0, `NEVER_DECIDED` refuses a design that waits on a schedule whose injected
+clock never moved, and `CLOCK_PASSED` advises when it only moves the clock where an earlier test already took it.
+Security catalogs (by default ASVS 5.0.0 L1, labelled with OWASP Top 10 2025 and API Security Top 10 2023), limits and
+isolation are a person's, in Orbit Control
+([ADR 0040](docs/adr/0040-standards-and-policies-are-configured-in-orbit-control.md)); Orbit never says "compliant".
 
 ```bash
 node cli/autonomous-qa.mjs plan --objective="…" --plan=<id> --sandbox=<env-id> --mode=fixture-write

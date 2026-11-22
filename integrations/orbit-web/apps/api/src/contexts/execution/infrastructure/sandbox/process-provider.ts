@@ -15,7 +15,7 @@ import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import type { SandboxProvider } from "../../application/sandbox.port.js";
 import { AllocatorError, checkAttemptSpec, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
-import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
+import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
 import { nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
 
 const MiB = 1024 * 1024;
@@ -192,6 +192,13 @@ export class ProcessSandboxProvider implements SandboxProvider {
     const changed = (r.out.changed as string[] | undefined) ?? [];
     this.writeJson(`${deskArea(ids)}/version`, { version: desk.version + 1, by: assignmentId, from: expected, changed });
     return { published: true, deskVersion: desk.version + 1, changed, reason: null };
+  }
+
+  async deleteEmployee(idsIn: SandboxIds): Promise<{ gone: boolean; detail: string }> {
+    const ids = checkSandboxIds(idsIn);
+    const dir = this.at(employeeDir(ids));
+    rmSync(dir, { recursive: true, force: true });
+    return existsSync(dir) ? { gone: false, detail: "the employee's directory is still there" } : { gone: true, detail: "the employee's directory is gone (read back)" };
   }
 
   async removeWorkspace(idsIn: SandboxIds, assignmentIdIn: string): Promise<{ gone: boolean; detail: string }> {

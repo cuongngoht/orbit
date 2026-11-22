@@ -68,6 +68,15 @@ export class FakeSandboxProvider implements SandboxProvider {
 
   async archiveEmployee(): Promise<void> {}
 
+  // What the test controls: whether a deletion finds nothing left of the employee (false: an attempt's container stays).
+  deleteGone = true;
+  readonly deleted: SandboxIds[] = [];
+
+  async deleteEmployee(ids: SandboxIds): Promise<{ gone: boolean; detail: string }> {
+    this.deleted.push({ ...ids });
+    return this.deleteGone ? { gone: true, detail: "the fake sandbox is gone" } : { gone: false, detail: "1 container(s) of this employee's attempts still exist: they are removed first" };
+  }
+
   async measure(): Promise<AreaState[]> {
     return [];
   }

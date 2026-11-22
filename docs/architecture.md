@@ -600,7 +600,8 @@ On Claude Code every hook below is wired; the other hosts carry fewer of them ([
    (`skills/orbit-release/ship/artifact.mjs`), every held-out run present, the comparisons worked out again, and a
    verdict that is not REGRESSED. PUBLISHABLE, and only then, is the release PR merged and `v<version>` tagged.
 
-How a Claude Code cloud session runs the campaigns is in [AGENTS.md](../AGENTS.md#shipping-a-release-from-claude-code-cloud).
+How a Claude Code cloud session runs the campaigns is in
+[AGENTS.md](../AGENTS.md#shipping-a-release-from-claude-code-cloud).
 
 ## Extension points
 

@@ -18,6 +18,8 @@ import type { AttemptSpec } from "../application/sandbox.port.js";
 
 export const BRIDGE_SERVER = "orbit_tools";
 export const BRIDGE_PREFIX = `mcp__${BRIDGE_SERVER}__`;
+// The one tool every attempt needs: without it an employee can do the work but never hand it in.
+export const HANDOFF_TOOL = `${BRIDGE_PREFIX}submit_handoff`;
 
 type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -77,10 +79,25 @@ export function employeeEnv(base: Record<string, string>, home: string, apiKey: 
 // ones it ships): part of the CLI Orbit Web runs as it is, never read from a disk anybody could write. Recorded, allowed.
 const builtIn = (p: unknown): boolean => isRecord(p) && p.path === "builtin" && typeof p.source === "string" && p.source.endsWith("@builtin");
 
+export interface McpServerState {
+  name: string;
+  status: string;
+}
+
+// The MCP servers an init line names, with the state the CLI gives each (`connected`, `failed`, `pending`, ...).
+export function mcpServersOf(line: Json): McpServerState[] {
+  const servers = Array.isArray(line.mcp_servers) ? line.mcp_servers.filter(isRecord) : [];
+  return servers.filter((s) => typeof s.name === "string").map((s) => ({ name: (s.name as string).slice(0, 120), status: typeof s.status === "string" ? s.status.slice(0, 40) : "unknown" }));
+}
+
 // What the CLI's init line may report, and nothing more: the closed tool list and the bridge's tools; the bridge as the
 // only MCP server; no plugin but the binary's own built-in ones. Anything else: the model plane is not what Orbit Web
 // asked for -- stop it. (Observed on the real 2.1.330 binary with planted user, project and local hooks, an apiKeyHelper
 // and a planted .mcp.json server: none ran, and the init line listed only the bridge's tool and server.)
+//
+// And what it MUST report: the bridge's hand-in tool. Claude Code waits for a stdio server before it starts (2.1.328:
+// still at 8 s), but a server whose tool list failed is `connected` with no tool -- the attempt would then run with
+// nothing to work or hand in with, and end looking like a success.
 export function initViolation(line: Json, webSearch: boolean): string | null {
   const tools = Array.isArray(line.tools) ? line.tools.filter((t): t is string => typeof t === "string") : [];
   const allowed = new Set(closedTools(webSearch));
@@ -92,11 +109,19 @@ export function initViolation(line: Json, webSearch: boolean): string | null {
   const plugins = Array.isArray(line.plugins) ? line.plugins : [];
   const fromDisk = plugins.filter((p) => !builtIn(p));
   if (fromDisk.length > 0) return `The Claude CLI loaded a plugin from disk on the model plane (${fromDisk.map((p) => (isRecord(p) ? String(p.name ?? "?") : String(p))).slice(0, 4).join(", ")}): hooks or servers could run beside the login, so the run was stopped.`;
+  if (!tools.includes(HANDOFF_TOOL)) return bridgeMissing(tools, mcpServersOf(line));
   return null;
 }
 
+function bridgeMissing(tools: string[], servers: McpServerState[]): string {
+  const status = servers.find((s) => s.name === BRIDGE_SERVER)?.status ?? "missing";
+  const listed = tools.filter((t) => t.startsWith(BRIDGE_PREFIX)).length;
+  const state = status !== "connected" ? `orbit_tools: ${status}` : listed === 0 ? "orbit_tools: connected, but none of its tools were listed -- the bridge could not read them from Orbit Web" : "orbit_tools: connected, without submit_handoff";
+  return `Orbit's tools did not reach the model plane (${state}): the employee could neither work nor hand in, so the run was stopped as it started.`;
+}
+
 export interface StreamFacts {
-  init: { model: string | null; version: string | null; sessionId: string | null; tools: string[]; plugins: string[] } | null;
+  init: { model: string | null; version: string | null; sessionId: string | null; tools: string[]; plugins: string[]; mcpServers: McpServerState[] } | null;
   result: { costUsd: number | null; turns: number | null; durationMs: number | null; isError: boolean; subtype: string | null; text: string | null } | null;
   // A tool the model plane called that is not Orbit's (it should have had none): a violation.
   foreignTool: string | null;
@@ -112,7 +137,7 @@ export function foldLine(facts: StreamFacts, line: Json, webSearch: boolean): St
   if (line.type === "system" && line.subtype === "init") {
     const tools = Array.isArray(line.tools) ? line.tools.filter((t): t is string => typeof t === "string") : [];
     const plugins = Array.isArray(line.plugins) ? line.plugins.map((p) => (isRecord(p) ? String(p.name ?? "") : String(p))) : [];
-    return { ...facts, init: { model: typeof line.model === "string" ? line.model : null, version: typeof line.claude_code_version === "string" ? line.claude_code_version : null, sessionId: typeof line.session_id === "string" ? line.session_id : null, tools, plugins } };
+    return { ...facts, init: { model: typeof line.model === "string" ? line.model : null, version: typeof line.claude_code_version === "string" ? line.claude_code_version : null, sessionId: typeof line.session_id === "string" ? line.session_id : null, tools, plugins, mcpServers: mcpServersOf(line) } };
   }
   if (line.type === "assistant" && isRecord(line.message) && Array.isArray(line.message.content)) {
     const allowed = new Set(closedTools(webSearch));

@@ -30,8 +30,25 @@ test("its environment points the CLI at the connection's own home; an API key on
   assert.equal(key.CLAUDE_CODE_OAUTH_TOKEN, undefined);
 });
 
+test("an init line without Orbit's hand-in tool stops the run before the model acts: the bridge listed nothing", () => {
+  // What Claude Code 2.1.328 printed when the bridge's tool list was refused (421 host_not_allowed): the server
+  // `connected`, none of its tools -- the employee could neither work nor hand in, and the run looked like a success.
+  const refused = { type: "system", subtype: "init", tools: ["WebSearch"], mcp_servers: [{ name: "orbit_tools", status: "connected" }], plugins: [] };
+  assert.match(initViolation(refused, true) ?? "", /orbit_tools.*connected.*none of its tools/);
+  assert.match(initViolation({ ...refused, mcp_servers: [{ name: "orbit_tools", status: "failed" }] }, true) ?? "", /orbit_tools: failed/);
+  assert.match(initViolation({ ...refused, mcp_servers: [] }, true) ?? "", /orbit_tools: missing/);
+  // The hand-in tool is the one every attempt needs: the others alone are not enough.
+  assert.match(initViolation({ ...refused, tools: ["WebSearch", "mcp__orbit_tools__shell"] }, true) ?? "", /submit_handoff/);
+  assert.equal(initViolation({ ...refused, tools: ["WebSearch", "mcp__orbit_tools__shell", "mcp__orbit_tools__submit_handoff"] }, true), null);
+});
+
+test("the init line's MCP servers are kept with the facts: the next failure names its cause on the run", () => {
+  const f = foldLine(emptyFacts(), { type: "system", subtype: "init", tools: ["WebSearch"], mcp_servers: [{ name: "orbit_tools", status: "connected" }, { name: 7 }], plugins: [] }, true);
+  assert.deepEqual(f.init?.mcpServers, [{ name: "orbit_tools", status: "connected" }]);
+});
+
 test("the CLI's own init line is held to what it was given: any other tool, MCP server or plugin stops the run", () => {
-  const bridge = ["mcp__orbit_tools__shell", "mcp__orbit_tools__write_file"];
+  const bridge = ["mcp__orbit_tools__shell", "mcp__orbit_tools__submit_handoff"];
   const ok = { type: "system", subtype: "init", tools: [...closedTools(false), ...bridge], mcp_servers: [{ name: "orbit_tools" }], plugins: [] };
   assert.equal(initViolation(ok, false), null);
   assert.match(initViolation({ ...ok, tools: [...ok.tools, "Bash"] }, false) ?? "", /Bash/);

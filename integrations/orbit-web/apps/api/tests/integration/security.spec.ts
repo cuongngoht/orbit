@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { request } from "node:http";
 import { after, before, describe, test } from "node:test";
 import { SIGN_IN_REQUIRED, CSRF_HEADER } from "@orbit-web/contracts";
+import { isAgentPath } from "../../src/infra/security/guards.js";
 import { browserAt, signInBrowser, startHarness, TEST_PASSWORD, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
+import { routesOf } from "../../src/testing/routes.js";
 
 const errorCode = (r: Reply): string | undefined => (r.body as { error?: { code?: string } } | null)?.error?.code;
 
@@ -18,6 +20,28 @@ function rawGet(url: string, host: string): Promise<number> {
     });
     req.on("error", reject);
     req.end();
+  });
+}
+
+// What an employee's tool bridge sends from its model plane: Orbit Web's name on the attempt's network as Host, the
+// Orbit Web header and a JSON body -- and here no run token, so the answer says which gate stopped it.
+function bridgePost(url: string, host: string): Promise<{ status: number; code: string | undefined }> {
+  return new Promise((resolve, reject) => {
+    const req = request(url, { method: "POST", headers: { host, "x-orbit-web": "1", "content-type": "application/json" } }, (res) => {
+      let text = "";
+      res.on("data", (c: Buffer) => (text += c.toString()));
+      res.on("end", () => {
+        let code: string | undefined;
+        try {
+          code = (JSON.parse(text) as { error?: { code?: string } }).error?.code;
+        } catch {
+          code = undefined;
+        }
+        resolve({ status: res.statusCode ?? 0, code });
+      });
+    });
+    req.on("error", reject);
+    req.end("{}");
   });
 }
 
@@ -75,6 +99,23 @@ describe("the default, loopback-only surface", () => {
     const text = JSON.stringify((await h.get("/api/health")).body);
     assert.doesNotMatch(text, /\/data|\/tmp|HOME|token|octo/i);
   });
+
+  // An employee's bridge reaches its tools by Orbit Web's name on the attempt's network (`orbit-web`), never a loopback
+  // name: refused by Host there, the bridge lists no tool, and the employee runs with nothing to work or hand in with.
+  test("an employee's tool bridge reaches its door by Orbit Web's name on the attempt network: its run token decides, not Host", async () => {
+    for (const path of ["/api/runtime/tools/list", "/api/runtime/tools/call"]) {
+      const r = await bridgePost(`${h.url}${path}`, "orbit-web:3000");
+      assert.equal(r.status, 401, path);
+      assert.equal(r.code, "run_token_required", path);
+    }
+  });
+
+  test("every agent door -- every route declared @AgentGateway -- is one the HTTP guards pass to its run token", () => {
+    const doors = routesOf(h).filter((r) => r.agent);
+    assert.ok(doors.some((r) => r.path.startsWith("/api/runtime/tools/")), "the employees' tool endpoint is an agent door");
+    assert.ok(doors.some((r) => r.path.startsWith("/api/agent/")), "the chats' agent gateway is one");
+    for (const r of doors) assert.equal(isAgentPath({ path: r.path }), true, `${r.method} ${r.path}`);
+  });
 });
 
 describe("token mode, for a host name beyond loopback", () => {
@@ -89,6 +130,12 @@ describe("token mode, for a host name beyond loopback", () => {
     owner = await signInBrowser(h.url, "octo", TEST_PASSWORD, jar);
   });
   after(() => h.close());
+
+  test("an employee's tool bridge holds no access token: its door still answers its run token alone", async () => {
+    const r = await bridgePost(`${h.url}/api/runtime/tools/list`, "orbit-web:3000");
+    assert.equal(r.status, 401);
+    assert.equal(r.code, "run_token_required");
+  });
 
   test("the API needs the token, then a browser's own sign-in; health stays open for the container's health check", async () => {
     assert.equal(errorCode(await h.anonymous.get("/api/setup/status")), "access_token_required");

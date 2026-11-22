@@ -478,7 +478,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
         endedAt: new Date().toISOString(),
         detail,
         usage,
-        observed: f === null ? (network === null ? null : { network }) : { cli: f.init === null ? null : { model: f.init.model, version: f.init.version, tools: f.init.tools, plugins: f.init.plugins }, toolCalls: f.toolCalls, webSearches: f.webSearches, exit: watched === null ? null : { code: watched.exit.code, signal: watched.exit.signal }, network },
+        observed: f === null ? (network === null ? null : { network }) : { cli: f.init === null ? null : { model: f.init.model, version: f.init.version, tools: f.init.tools, plugins: f.init.plugins, mcpServers: f.init.mcpServers }, toolCalls: f.toolCalls, webSearches: f.webSearches, exit: watched === null ? null : { code: watched.exit.code, signal: watched.exit.signal }, network },
         modelUsage: f?.result === null || f === null ? null : { costUsd: f.result.costUsd, turns: f.result.turns, durationMs: f.result.durationMs },
       },
       run.fence,

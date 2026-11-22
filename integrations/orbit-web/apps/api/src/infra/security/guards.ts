@@ -10,10 +10,11 @@
 //                 own bytes.
 //   headers       a strict Content-Security-Policy and the usual hardening headers on every response.
 //
-// The AGENT GATEWAY (/api/agent/...) is the one exception to the first three: a governed run reaches it by Orbit Web's
-// name on the agent network (not a loopback Host), without the access token, and from a program rather than a page.
-// It is authenticated by its run's own token instead (modules/governance), which a browser never sends by itself, and
-// answers nothing else.
+// The AGENT DOORS (AGENT_DOORS: a governed chat's gateway, /api/agent/..., and an employee's tool endpoint,
+// /api/runtime/tools/...) are the one exception to the first three: a run reaches them by Orbit Web's name on its own
+// network (not a loopback Host), without the access token, and from a program rather than a page. Each is
+// authenticated by its run's own token instead (modules/auth/principals.ts), which a browser never sends by itself,
+// and answers nothing else.
 import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { MUTATION_HEADER } from "@orbit-web/contracts";
@@ -77,8 +78,18 @@ export const routedPath = (path: string): string => path.toLowerCase().replace(/
 
 const isApi = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/");
 
-// The agent gateway: a governed run's door, authenticated by the run's own token (modules/governance).
-export const isAgentPath = (req: Pick<Request, "path">): boolean => routedPath(req.path).startsWith("/api/agent/");
+// THE AGENT DOORS -- every route declared @AgentGateway, each authenticated by a run's own token and nothing else:
+//   /api/agent/           a governed chat run's gateway (modules/broker)
+//   /api/runtime/tools/   an employee's tool endpoint, reached by its bridge in the model plane (contexts/execution)
+// A run reaches them by Orbit Web's name on its own network (`orbit-web`), never a loopback name, so the Host, access
+// token and page rules -- which are about browsers -- are not theirs. Held whole by the security spec: a route declared
+// @AgentGateway outside these prefixes fails it.
+export const AGENT_DOORS = ["/api/agent/", "/api/runtime/tools/"] as const;
+
+export const isAgentPath = (req: Pick<Request, "path">): boolean => {
+  const path = routedPath(req.path);
+  return AGENT_DOORS.some((door) => path.startsWith(door));
+};
 
 // A shared chat's link (modules/share): READING it is the one thing a link's token opens, before the access token. Its
 // shape and its existence are the share module's to judge, so a token that names no share is not found either way.

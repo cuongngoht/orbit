@@ -904,7 +904,9 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
   `sign_in_required` (one global gate: a route is the owner's unless it is marked public). The Office's routes
   (`/api/office/…`, `/api/employees/…`, `/api/missions/…`, `/api/assignments/…`, `/api/inbox`, `/api/schedules/…`,
   `/api/deliveries/…`, `/api/artifacts/…`) and AI Connections' (`/api/connections/…`) are listed at the head of their
-  controllers; an attempt's tool endpoint (`/api/runtime/tools/list|call`) answers an attempt's own token alone.
+  controllers; an attempt's tool endpoint (`/api/runtime/tools/list|call`) answers an attempt's own token alone. It is
+  an agent door like the chats' gateway (`/api/agent/…`): its bridge reaches it by Orbit Web's name on the attempt's
+  network, so neither the Host allow-list nor the access token applies to it -- its run token does.
 
 ## Security model
 

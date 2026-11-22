@@ -83,7 +83,7 @@ export const codexEnv = (base: Record<string, string>, home: string, apiKey: str
 // One event of `codex exec --json`, folded. A built-in executor that ran on the model plane (a command, a file change), an
 // MCP server other than Orbit's, or a web search the run was not given: a violation (the worker stops it).
 export function codexFold(facts: StreamFacts, line: Json, webSearch: boolean): StreamFacts {
-  if (line.type === "thread.started") return { ...facts, init: { model: null, version: null, sessionId: typeof line.thread_id === "string" ? line.thread_id : null, tools: [], plugins: [] } };
+  if (line.type === "thread.started") return { ...facts, init: { model: null, version: null, sessionId: typeof line.thread_id === "string" ? line.thread_id : null, tools: [], plugins: [], mcpServers: [] } };
   if ((line.type === "item.started" || line.type === "item.completed") && isRecord(line.item)) {
     const item = line.item;
     if (item.type === "command_execution" || item.type === "file_change") return { ...facts, foreignTool: String(item.type) };

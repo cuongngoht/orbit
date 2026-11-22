@@ -88,7 +88,15 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
           await t.call("write_file", { path: "/output/report.md", content: "Done.\n" });
           await t.call("submit_handoff", { summary: "Done." });
         },
-        { init: (tools, prompt) => (prompt.includes("[foreign]") ? { type: "system", subtype: "init", session_id: "s", model: "m", tools: [...tools, "Bash"], mcp_servers: [{ name: "orbit_tools" }], plugins: [], claude_code_version: "2.1.330" } : undefined) },
+        {
+          init: (tools, prompt) =>
+            prompt.includes("[foreign]")
+              ? { type: "system", subtype: "init", session_id: "s", model: "m", tools: [...tools, "Bash"], mcp_servers: [{ name: "orbit_tools" }], plugins: [], claude_code_version: "2.1.330" }
+              : prompt.includes("[no-bridge]")
+                ? // What Claude Code 2.1.328 printed when the bridge's tool list was refused: the server connected, none of its tools.
+                  { type: "system", subtype: "init", session_id: "s", model: "m", tools: tools.filter((t) => !t.startsWith("mcp__orbit_tools__")), mcp_servers: [{ name: "orbit_tools", status: "connected" }], plugins: [], claude_code_version: "2.1.328" }
+                : undefined,
+        },
       ),
     });
   });
@@ -144,6 +152,20 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
     assert.equal(root(m).lastRun?.state, "failed");
     assert.equal(m.handoffs.length, 0, "it handed nothing in");
     assert.ok(sandbox.cli.children.some((c) => c.child.signals.includes("SIGKILL")));
+  });
+
+  test("a model plane whose bridge listed none of Orbit's tools is stopped as it starts: the work is blocked with why, never 'ended without a result'", async () => {
+    const e = await hire("Ninh");
+    const made = await give(e.id, "[no-bridge] anything");
+    const id = (made.body as MissionAccepted).missionId;
+    const m = await until(id, (x) => root(x).state === "BLOCKED");
+    assert.match(root(m).reason ?? "", /Orbit's tools did not reach the model plane \(orbit_tools: connected, but none of its tools were listed/);
+    assert.doesNotMatch(root(m).reason ?? "", /without handing in a result/);
+    assert.equal(root(m).lastRun?.state, "failed");
+    assert.equal(m.handoffs.length, 0, "it handed nothing in");
+    const runs = await h.sql("SELECT observed FROM workforce.runs WHERE account_id = $1 AND employee_id = $2", [h.accountId as string, e.id]);
+    const observed = runs[0]?.observed as { cli: { mcpServers: unknown } } | undefined;
+    assert.deepEqual(observed?.cli.mcpServers, [{ name: "orbit_tools", status: "connected" }], "the run keeps the bridge's state as the CLI said it");
   });
 
   test("two people give one idle employee work at the same instant: exactly one claims it, the other is told who holds it", async () => {

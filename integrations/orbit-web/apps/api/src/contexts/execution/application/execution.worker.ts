@@ -36,7 +36,7 @@ import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../../workforce/infrastructure/connections.reader.js";
 import { emptyFacts, promptOf, systemPromptOf, type StreamFacts } from "../infrastructure/claude-employee.adapter.js";
 import { employeeNetworkOf, type EmployeeNetworkConfig } from "../infrastructure/employee-network.js";
-import { EMPLOYEE_RUNTIMES, type EmployeeRuntime } from "../infrastructure/employee-runtimes.js";
+import { CODEX_MODEL_FILE, EMPLOYEE_RUNTIMES, type EmployeeRuntime } from "../infrastructure/employee-runtimes.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import { AdmissionService } from "./admission.service.js";
 import { CONNECTION_SECRETS, type ConnectionSecrets } from "./connection-secrets.port.js";
@@ -44,6 +44,8 @@ import { ResearchInputs } from "./research-inputs.js";
 import { RUN_OUTCOMES, type AttemptContext, type RunEnd, type RunOutcomes } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type AttemptSpec, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 import { WorkspacePublisher } from "./workspace-publisher.js";
+import { ConnectionProbe } from "../../../modules/connections/probe.js";
+import { posix } from "node:path";
 
 type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -141,6 +143,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     @Optional() @Inject(CONNECTION_SECRETS) private readonly secrets: ConnectionSecrets | null = null,
+    // What says whether an OpenAI Codex model is held to Orbit's tools, and gives Orbit's entry for it (observed).
+    @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
   ) {
     this.timings = workerTimings(config.sourceEnv);
   }
@@ -231,7 +235,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null || !ctx.current || run.stopRequested !== null) return this.unstarted(run, actor, null, { state: "cancelled", detail: "The assignment no longer waits for this attempt (paused, cancelled or replaced).", stoppedFor: notWanted(run.stopRequested) });
     if (!ctx.employee.eligible || ctx.employee.sandboxId === null || ctx.employee.profile === null) return this.unstarted(run, actor, null, { state: "failed", detail: ctx.employee.reason ?? "The employee cannot run work now.", stoppedFor: "refused" });
-    const prep = await this.governance.prepareAssignment({ accountId: run.orbitId, employeeId: run.employeeId, title: ctx.employee.name, assignmentId: run.assignmentId }, run.id, { startedBy: actor.principal, webSearch: run.requested.webSearch === true });
+    const prep = await this.governance.prepareAssignment({ accountId: run.orbitId, employeeId: run.employeeId, title: ctx.employee.name, assignmentId: run.assignmentId }, run.id, { startedBy: actor.principal, webSearch: run.requested.webSearch === true, runtime: run.requested.runtime ?? "claude" });
     if (!prep.ok) return this.unstarted(run, actor, null, { state: "failed", detail: prep.message, stoppedFor: "refused" });
     const resolved = await this.resolve(run.orbitId, run.requested, prep.plan);
     if (typeof resolved === "string") return this.unstarted(run, actor, prep.plan, { state: "failed", detail: resolved, stoppedFor: "refused" });
@@ -301,7 +305,12 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const p = ctx.employee.profile;
     const systemPrompt = systemPromptOf({ name: ctx.employee.name, title: p.title, duties: p.duties, instructions: p.instructions, handoffStandard: p.handoffStandard, reportingRule: p.reportingRule, shell: attestation.shell, shellReason: attestation.shell ? null : attestation.detail, network: NETWORK_TEXT(prep.network), cites: ctx.sources.length > 0 });
     const rt = EMPLOYEE_RUNTIMES[resolved.profile.runtime];
-    const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID() });
+    const modelFile = resolved.modelFile === null ? null : posix.join(handle.modelPlaneCwd, CODEX_MODEL_FILE);
+    if (modelFile !== null && resolved.modelFile !== null) {
+      const written = await this.writeModelFile(handle, modelFile, resolved.modelFile);
+      if (written !== null) return this.settle(entry, run, actor, prep.plan, null, { state: "failed", detail: written, stoppedFor: "refused" });
+    }
+    const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID(), modelFile });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
     const watched = await this.watch(entry, handle, rt, args, env, promptOf({ goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: ctx.team.room !== null } }), resolved.profile.webSearch, profile.timeoutMinutes);
     if (ctx.team.room !== null) await this.roomAfter(handle, run, ctx.team.room.id);
@@ -326,7 +335,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   // The execution asked, held to what the connection's own CLI says now (catalog, efforts, search) and to the policy.
-  private async resolve(orbitId: string, requested: RunRecord["requested"], plan: RunPlan): Promise<{ profile: ExecutionProfile; connection: ConnectionFacts } | string> {
+  private async resolve(orbitId: string, requested: RunRecord["requested"], plan: RunPlan): Promise<{ profile: ExecutionProfile; connection: ConnectionFacts; modelFile: string | null } | string> {
     const runtime = requested.runtime ?? "claude";
     if (EMPLOYEE_RUNTIMES[runtime] === undefined) return `${RUNTIME_LABELS[runtime] ?? runtime} is not a runtime Orbit Web knows.`;
     const connection = requested.connectionId ? await this.connections.get(orbitId, requested.connectionId) : await this.connections.defaultFor(orbitId, runtime);
@@ -339,7 +348,15 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const effort = requested.effort ?? null;
     if (effort !== null && option.efforts.length > 0 && !option.efforts.includes(effort as never)) return `${option.label} does not take the effort level ${effort} any more.`;
     const webSearch = requested.webSearch === true && connection.capabilities.webSearch === "yes" && plan.webTools;
-    return { connection, profile: { runtime, connectionId: connection.id, model: option.id, effort: option.efforts.length === 0 ? null : effort, webSearch, orbitPlugin: false } };
+    // OpenAI Codex: the model's entry, made Orbit's and observed held on the binary installed -- the file its model plane
+    // is given as its catalog (never a run of a model whose tools were not seen).
+    let modelFile: string | null = null;
+    if (runtime === "codex") {
+      const held = this.probe === null ? null : await this.probe.codexEmployeeModel(connection, option.id);
+      if (held === null || held.split !== "yes" || held.file === null) return `OpenAI Codex cannot run ${option.label} for an employee here: ${held?.reason ?? "it was not observed held to Orbit's tools"}.`;
+      modelFile = held.file;
+    }
+    return { connection, modelFile, profile: { runtime, connectionId: connection.id, model: option.id, effort: option.efforts.length === 0 ? null : effort, webSearch, orbitPlugin: false } };
   }
 
   // Runs the CLI to its end: its stream folded into facts, its init line checked, its time limit kept.
@@ -385,6 +402,16 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     clearTimeout(limit);
     splitter.end();
     return { exit, facts, violation, stderr };
+  }
+
+  // Orbit's model catalog entry, written into the model plane beside the CLI (its working directory) by the plane's own
+  // node -- one program run through the plane's runner, given the text in its environment. What went wrong, or null.
+  private async writeModelFile(handle: AttemptHandle, path: string, text: string): Promise<string | null> {
+    const port = (this.provider as SandboxProvider).modelPlane(handle);
+    const child = port.spawn(handle.bridgeCommand.command, ["-e", WRITE_FILE], { cwd: handle.modelPlaneCwd, env: { ...this.modelPlaneBase(handle), ORBIT_FILE: path, ORBIT_CONTENT: text } });
+    child.closeInput();
+    const exit = await child.exited;
+    return exit.code === 0 ? null : `Orbit's model entry could not be written into the model plane (${exit.spawnError ?? (exit.signal !== null ? `stopped by ${exit.signal}` : `exit ${String(exit.code)}`)}): nothing was run.`;
   }
 
   // Orbit asks an attempt to stop: the CLI first (TERM, then KILL after the grace); the planes are removed when it settles.
@@ -462,7 +489,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       await provider.stop(handle, this.timings.graceMs).catch(() => undefined);
       gone = await provider.remove(handle).catch((err: unknown) => ({ gone: false, detail: this.messageOf(err) }));
     }
-    const final = this.withOom(end, oom);
+    const final = this.withOom(end, oom, run.requested.runtime ?? "claude");
     const lost = end.stoppedFor === "recover";
     if (gone.gone) await this.admission.release(run.orbitId, run.id, `attempt ${final.state}`);
     if (lost) return;
@@ -504,10 +531,10 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   // A container the kernel killed for memory: said as such, and the model plane's never charged to the employee.
-  private withOom(end: RunEnd, oom: { modelPlane: boolean; toolPlane: boolean }): RunEnd {
+  private withOom(end: RunEnd, oom: { modelPlane: boolean; toolPlane: boolean }, runtime: string): RunEnd {
     if (end.stoppedFor === "pause" || end.stoppedFor === "cancel") return end;
     if (oom.toolPlane) return { state: "failed", detail: "Out of memory: the sandbox reached the employee's memory limit and the kernel stopped it. Raise the limit (Sandbox & resources) or retry.", stoppedFor: null };
-    if (oom.modelPlane) return { state: "failed", detail: "model_plane_out_of_memory: the AI CLI ran out of memory (not charged to the employee's limits). The operator can raise ORBIT_WEB_MODEL_PLANE_CLAUDE_MEMORY.", stoppedFor: null };
+    if (oom.modelPlane) return { state: "failed", detail: `model_plane_out_of_memory: the AI CLI ran out of memory (not charged to the employee's limits). The operator can raise ORBIT_WEB_MODEL_PLANE_${runtime.toUpperCase()}_MEMORY.`, stoppedFor: null };
     return end;
   }
 
@@ -633,3 +660,6 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
 }
 
 export type { AttemptContext, RunState };
+
+// What the model plane's node runs to write Orbit's model entry: the path and the text from its environment, nothing else.
+const WRITE_FILE = 'require("node:fs").writeFileSync(process.env.ORBIT_FILE, process.env.ORBIT_CONTENT, { mode: 0o600 })';

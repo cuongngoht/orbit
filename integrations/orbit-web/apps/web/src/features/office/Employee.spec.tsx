@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi } from "../../testing/fakeApi";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { EMP_ANA, busyBao, employeeDetail, employeeCard, presets, resourceSummary, roster, runView } from "../../testing/officeFixtures";
+import { CONN_CODEX, EMP_ANA, busyBao, capabilities, connection, connectionsView, employeeDetail, employeeCard, presets, resourceSummary, roster, runView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { OfficeView } from "./OfficeView";
 
@@ -77,6 +77,29 @@ describe("one employee", () => {
     const patch = api.calls.find((c) => c.method === "PATCH");
     expect(patch?.body).toEqual({ profile: { ...old, title: "Bookkeeper" }, basedOn: 1, note: "Restored revision 1" });
     expect(patch?.headers["if-match"]).toBe('"4"');
+  });
+
+  test("how it runs is changed in place: a connection that can run employees, a model of its own catalog, an effort that model takes", async () => {
+    const old = employeeDetail().profile;
+    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { ...connection().catalog, models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }, { id: "gpt-5.5", label: "GPT-5.5", description: null, efforts: [], autoMode: true }], recommended: "gpt-6.1-sol" }, capabilities: capabilities({ webSearch: "yes" }) });
+    const notReady = connection({ id: "c-other", runtime: "codex", label: "Other key", method: "api_key", plugins: null, isDefault: false, capabilities: capabilities({ toolPlaneSplit: "unknown" }) });
+    const api = fakeApi()
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex, notReady] }))
+      .on("PATCH", `/api/employees/${EMP_ANA}`, () => employeeDetail({ profileRevision: 3 }));
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab={null} go={vi.fn()} account={authAccount()} />);
+    const runs = await screen.findByRole("region", { name: "How it runs" });
+    await userEvent.click(within(runs).getByRole("button", { name: "Change how it runs" }));
+    const form = await screen.findByRole("form", { name: "Change how it runs" });
+    const conn = within(form).getByRole("combobox", { name: /^AI connection/ });
+    expect(within(conn).getAllByRole("option").map((o) => o.textContent)).toEqual(["Claude Code — Claude subscription", "OpenAI Codex — ChatGPT"]);
+    await userEvent.selectOptions(conn, CONN_CODEX);
+    const model = within(form).getByRole("combobox", { name: /^Model/ });
+    expect(within(model).getAllByRole("option").map((o) => o.textContent)).toEqual(["GPT-6.1-Sol (recommended)", "GPT-5.5"]);
+    await userEvent.selectOptions(within(form).getByRole("combobox", { name: /^Effort/ }), "high");
+    await userEvent.click(within(form).getByRole("button", { name: "Save how it runs" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(api.calls.find((c) => c.method === "PATCH")?.body).toEqual({ profile: { ...old, execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.1-sol", effort: "high", webSearch: false, orbitPlugin: false } }, note: "Runs on OpenAI Codex — ChatGPT, GPT-6.1-Sol" });
   });
 
   test("employment: each move with its reason, and a suspension says what becomes of the work held", async () => {

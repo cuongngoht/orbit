@@ -33,6 +33,8 @@ export interface EmployeeRunInput {
   bridge: { command: string; args: string[]; env: Record<string, string> };
   systemPrompt: string;
   sessionId: string;
+  // OpenAI Codex only: where the model plane holds Orbit's catalog entry for the model (employee-runtimes.ts).
+  modelFile?: string | null;
 }
 
 // The built-in tools a model plane may have: none that executes, reads or fetches anything locally.

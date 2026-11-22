@@ -129,6 +129,8 @@ describe("a subscription signed in from its card (ADR 0068)", () => {
     let finish: (() => void) | null = null;
     let codexSignedIn = false;
     fake
+      // Never the codex of the machine running the test: a command not faked here is "not installed".
+      .on(program("codex"), { run: { code: null, spawnError: "ENOENT" } })
       .on(program("codex", "--version"), { run: { stdout: "codex-cli 0.169.0\n" } })
       // codex-cli 0.169.0: its status names no account -- its app server does (account/read).
       .on(program("codex", "login", "status"), { run: () => (codexSignedIn ? { stdout: "Logged in using ChatGPT\n" } : { code: 1, stderr: "Not logged in\n" }) })

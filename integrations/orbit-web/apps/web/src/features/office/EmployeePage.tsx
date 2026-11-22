@@ -3,7 +3,7 @@
 // and what its containers use, the resource revisions, and an edit that applies to future attempts), and its employment
 // -- each move with its reason. Every change names the version read; a stale one offers the latest.
 import { Badge, Button, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Select, Spinner, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, Textarea, useRestoreFocusTarget } from "@fluentui/react-components";
-import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortLabel, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
+import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
@@ -11,6 +11,8 @@ import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
 import { office, useOfficeRead } from "./api";
 import { AssignDialog } from "./AssignDialog";
+import { useConnections } from "../connections/AiConnectionsSection";
+import { usableForEmployees } from "./HireWizard";
 import { AsOf, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
 import { ResourceFields, resourceProblems, storageProblem } from "./ResourceFields";
 import { RunDetails } from "./RunDetails";
@@ -62,6 +64,92 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
   );
 }
 
+// HOW AN EMPLOYEE RUNS, changed in place: a connection that can run employees now (the server says which: employeeReady), a
+// model of that connection's own catalog and an effort the model takes. Web search stays on only where the new
+// connection offers it; the Orbit plugin only on the Claude Code connection it was granted on. The server holds the
+// change to the same rules as a hire (an OpenAI Codex model observed held to Orbit's tools, above all).
+function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onCancel: () => void }) {
+  const o = useOfficeStyles();
+  const act = useAction();
+  const connections = useConnections();
+  const x = e.profile.execution;
+  const ready = (connections.data?.connections ?? []).filter(usableForEmployees);
+  const [connectionId, setConnectionId] = useState<string | null>(x.connectionId);
+  const [modelId, setModelId] = useState<string | null>(x.model);
+  const [effortId, setEffortId] = useState<string | null>(x.effort);
+  const connection = ready.find((c) => c.id === connectionId) ?? ready[0] ?? null;
+  const models = connection?.catalog.models ?? [];
+  const model = models.find((m) => m.id === modelId) ?? models.find((m) => m.id === connection?.catalog.recommended) ?? models[0] ?? null;
+  const effort = model === null || model.efforts.length === 0 ? null : effortId !== null && model.efforts.includes(effortId) ? effortId : effortFor(model, "medium");
+  const save = () =>
+    act.run(async () => {
+      if (connection === null || model === null) return;
+      const execution = { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch: x.webSearch && connection.capabilities.webSearch === "yes", orbitPlugin: x.orbitPlugin && connection.runtime === "claude" && connection.id === x.connectionId };
+      onSaved(await office.updateEmployee(e, { profile: { ...e.profile, execution }, note: `Runs on ${RUNTIME_LABELS[connection.runtime]} — ${connection.label}, ${model.label}` }));
+    });
+  if (connections.data === null) return <Spinner size="tiny" label="Reading your AI connections…" />;
+  return (
+    <form
+      aria-label="Change how it runs"
+      className={o.formGrid}
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        void save();
+      }}
+    >
+      <Field label="AI connection" hint="Only a connection that can run employees now is offered (Settings → AI Connections says why another cannot).">
+        <Select
+          value={connection?.id ?? ""}
+          onChange={(_, d) => {
+            setConnectionId(d.value);
+            setModelId(null);
+            setEffortId(null);
+          }}
+        >
+          {ready.map((c) => (
+            <option key={c.id} value={c.id}>
+              {`${RUNTIME_LABELS[c.runtime]} — ${c.label}`}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Model" hint="From this connection's own catalog.">
+        <Select
+          value={model?.id ?? ""}
+          onChange={(_, d) => {
+            setModelId(d.value);
+            setEffortId(null);
+          }}
+        >
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+              {connection?.catalog.recommended === m.id ? " (recommended)" : ""}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Effort" hint={model && model.efforts.length === 0 ? "This model takes no effort level." : "How thoroughly it works."}>
+        <Select value={effort ?? ""} disabled={model === null || model.efforts.length === 0} onChange={(_, d) => setEffortId(d.value)}>
+          {model?.efforts.length === 0 && <option value="">No effort level</option>}
+          {(model?.efforts ?? []).map((v) => (
+            <option key={v} value={v}>
+              {effortLabel(v)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div>
+        <Button type="submit" appearance="primary" disabled={act.busy || connection === null || model === null}>
+          Save how it runs
+        </Button>{" "}
+        <Button onClick={onCancel}>Cancel</Button>
+      </div>
+      <ProblemBar problem={act.problem} />
+    </form>
+  );
+}
+
 function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
   const o = useOfficeStyles();
   const act = useAction();
@@ -78,10 +166,26 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
       onSaved(await office.updateEmployee(e, { profile: old.profile, basedOn: revision, note: `Restored revision ${revision}` }));
     });
   const x = p.execution;
+  const [changing, setChanging] = useState(false);
   return (
     <>
       <section className={o.card} aria-label="How it runs">
         <Text weight="semibold">How it runs</Text>
+        {!changing && (
+          <Button size="small" onClick={() => setChanging(true)}>
+            Change how it runs
+          </Button>
+        )}
+        {changing && (
+          <RunsOnForm
+            e={e}
+            onSaved={(d) => {
+              setChanging(false);
+              onSaved(d);
+            }}
+            onCancel={() => setChanging(false)}
+          />
+        )}
         <dl className={o.dl}>
           <dt className={o.dt}>Runtime</dt>
           <dd className={o.dd}>{RUNTIME_LABELS[x.runtime]}</dd>

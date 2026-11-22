@@ -22,6 +22,9 @@ import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../inf
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { parseModelCatalog, PROBE_ARGS, PROBE_REQUEST } from "./claude-models.js";
 import { CODEX_BUNDLED_MODELS_ARGS, CODEX_MODELS_REQUEST, codexModelsOf, parseBundledCodexModels } from "./codex-models.js";
+import { CODEX_BRIDGE_MAIN, observeCodexSplit, type CodexSplit } from "./codex-split.js";
+import { neutralizedCodexModel } from "../../contexts/execution/infrastructure/employee-runtimes.js";
+import { sha256 } from "../../infra/accounts/stores.js";
 import { supportOf } from "./methods.js";
 import {
   chatgptUnnamed,
@@ -47,6 +50,11 @@ const MODELS_TIMEOUT_MS = 20_000;
 // How long Codex's app server has to name the account it is signed in as.
 const CODEX_ACCOUNT_TIMEOUT_MS = 15_000;
 const MODELS_OUTPUT_BYTES = 2 * 1024 * 1024;
+// `codex debug models`: every model's whole entry, instructions included.
+const RAW_MODELS_OUTPUT_BYTES = 8 * 1024 * 1024;
+// How long an account's raw Codex entries are used before they are read again, and how long one observation may take.
+const RAW_MODELS_MS = 10 * 60_000;
+const OBSERVATION_TIMEOUT_MS = 90_000;
 // How long what a CLI said about its installation is used before it is asked again.
 const INSTALLATION_MS = 10 * 60_000;
 
@@ -69,6 +77,9 @@ export class ConnectionProbe {
   private readonly installed = new Map<RuntimeKind, { at: number; value: Promise<RuntimeInstallation> }>();
   private readonly helps = new Map<string, Promise<string | null>>();
   private readonly codexHelps = new Map<string, Promise<CodexHelp | null>>();
+  // A connection's raw Codex entries (by connection), and every observation made (by version and Orbit's entry's digest).
+  private readonly codexEntries = new Map<string, { at: number; value: Promise<Map<string, Record<string, unknown>> | null> }>();
+  private readonly observations = new Map<string, Promise<CodexSplit>>();
 
   constructor(private readonly d: ProbeDeps) {}
 
@@ -163,7 +174,8 @@ export class ConnectionProbe {
     const said = await this.read(c, installation);
     const held = said.auth === "connected" ? await this.hold(c, said) : this.unlinked(c, said);
     const catalog = held.auth === "connected" ? await this.catalog(c, at) : noCatalog(at);
-    const status: ConnectionStatus = { authState: held.auth, reason: held.reason, reasonCode: held.reasonCode, identity: held.identity, identityKey: held.identityKey, catalog, capabilities, checkedAt: at };
+    const split = c.runtime === "codex" && catalog.source === "account" && catalog.recommended !== null ? await this.codexEmployeeModel(c, catalog.recommended) : null;
+    const status: ConnectionStatus = { authState: held.auth, reason: held.reason, reasonCode: held.reasonCode, identity: held.identity, identityKey: held.identityKey, catalog, capabilities: split === null ? capabilities : { ...capabilities, toolPlaneSplit: split.split }, checkedAt: at };
     try {
       return (await this.d.connections.setStatus(c.accountId, c.id, status)) ?? c;
     } catch (err) {
@@ -275,6 +287,48 @@ export class ConnectionProbe {
     return bundled === null ? noCatalog(at) : { source: "fallback", models: bundled.models, recommended: bundled.recommended, checkedAt: at };
   }
 
+  // AN EMPLOYEE'S CODEX MODEL: Orbit's entry for `model` (its account's own entry, read from that connection's CLI and
+  // made Orbit's: neutralizedCodexModel), and whether the installed binary was observed to hold a model plane running it
+  // to Orbit's tools (codex-split.ts) -- observed once per version and entry. `file`: what the model plane is given as
+  // its model catalog, only when held.
+  async codexEmployeeModel(c: { id: string; runtime: RuntimeKind; home: string }, model: string): Promise<CodexSplit & { file: string | null }> {
+    const installation = await this.installation("codex", INSTALLATION_MS);
+    if (installation.state !== "installed") return { split: "unknown", reason: "OpenAI Codex is not installed here", file: null };
+    const entries = await this.rawCodexEntries(c);
+    const own = entries?.get(model) ?? null;
+    if (own === null) return { split: "unknown", reason: `Codex did not give the catalog entry of ${model} for this connection`, file: null };
+    const entry = neutralizedCodexModel(own);
+    const file = JSON.stringify({ models: [entry] });
+    const key = `${installation.version ?? ""}:${sha256(file)}`;
+    let observed = this.observations.get(key);
+    if (observed === undefined) {
+      observed = this.observeCodex(model, entry);
+      this.observations.set(key, observed);
+      // An observation that could not be made is asked again next time.
+      void observed.then((o) => (o.split === "unknown" ? this.observations.delete(key) : undefined));
+    }
+    const verdict = await observed;
+    return { ...verdict, file: verdict.split === "yes" ? file : null };
+  }
+
+  private observeCodex(model: string, entry: Record<string, unknown>): Promise<CodexSplit> {
+    const scratchParent = join(this.d.config.data.home, "codex-probe");
+    mkdirSync(scratchParent, { recursive: true, mode: 0o700 });
+    const { CODEX_HOME: _home, ...env } = codexEnv(this.d.config, scratchParent);
+    return observeCodexSplit({ process: this.d.process, codex: this.binaryOf("codex"), node: process.execPath, bridge: CODEX_BRIDGE_MAIN, scratchParent, env, timeoutMs: OBSERVATION_TIMEOUT_MS }, { model, entry }).catch((err: unknown) => ({ split: "unknown" as const, reason: `the observation failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) }));
+  }
+
+  // `codex debug models` in that connection's home: every model's whole entry, as its account's catalog has it.
+  private rawCodexEntries(c: { id: string; runtime: RuntimeKind; home: string }): Promise<Map<string, Record<string, unknown>> | null> {
+    const known = this.codexEntries.get(c.id);
+    if (known !== undefined && Date.now() - known.at <= RAW_MODELS_MS) return known.value;
+    const value = this.d.process
+      .run(this.binaryOf("codex"), ["debug", "models"], { cwd: this.d.config.data.home, env: codexEnv(this.d.config, ensureHome(this.d.config, c.home, c.runtime)), timeoutMs: MODELS_TIMEOUT_MS, maxOutputBytes: RAW_MODELS_OUTPUT_BYTES })
+      .then((r) => (succeeded(r) ? rawEntriesOf(r.stdout) : null));
+    this.codexEntries.set(c.id, { at: Date.now(), value });
+    return value;
+  }
+
   private async askVersion(runtime: RuntimeKind): Promise<RuntimeInstallation> {
     const label = RUNTIME_SPECS[runtime].label;
     const env = runtime === "claude" ? claudeEnv(this.d.config, neutralClaudeDir(this.d.config)) : runtime === "codex" ? codexEnv(this.d.config, this.d.config.data.home) : agyEnv(this.d.config, this.d.config.data.home);
@@ -283,5 +337,17 @@ export class ConnectionProbe {
     const value: RuntimeInstallation = { runtime, state: reading.state, version: reading.version, detail: reading.detail, checkedAt: new Date().toISOString() };
     await this.d.installations.set({ ...value, checkedAt: value.checkedAt as string }).catch(() => undefined);
     return value;
+  }
+}
+
+// `codex debug models`' answer: each entry by its slug (null when it printed no catalog).
+function rawEntriesOf(stdout: string): Map<string, Record<string, unknown>> | null {
+  try {
+    const json = JSON.parse(stdout) as { models?: unknown };
+    if (!Array.isArray(json.models)) return null;
+    const entries = json.models.filter((m): m is Record<string, unknown> => typeof m === "object" && m !== null && typeof (m as { slug?: unknown }).slug === "string");
+    return new Map(entries.map((m) => [m.slug as string, m]));
+  } catch {
+    return null;
   }
 }

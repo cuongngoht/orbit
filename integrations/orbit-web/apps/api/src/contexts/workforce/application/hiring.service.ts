@@ -31,6 +31,7 @@ import { conflictWith, missing, stale, unprocessable } from "../../shared/domain
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { Employee, managerCycle, type EmploymentMove } from "../domain/employee.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../infrastructure/connections.reader.js";
+import { ConnectionProbe } from "../../../modules/connections/probe.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository } from "../infrastructure/repositories.js";
 
 // What happens to the assignment an employee holds when its employment is suspended or archived: the Work context's
@@ -58,6 +59,8 @@ export class HiringService {
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
+    // What says whether an OpenAI Codex model is held to Orbit's tools on the binary installed (observed).
+    @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
   ) {}
 
   useHeldWork(port: HeldWorkPort): void {
@@ -232,6 +235,11 @@ export class HiringService {
     // A runtime whose model plane cannot be held to Orbit's tools runs no employee (said now, not at its first run).
     const refusal = EMPLOYEE_RUNTIMES[asked.runtime].refusal(connection);
     if (refusal !== null) throw unprocessable("runtime_cannot_run_employees", refusal, { runtime: asked.runtime });
+    // OpenAI Codex: the model asked must itself be observed held (its own catalog entry decides which tools it gets).
+    if (asked.runtime === "codex") {
+      const held = this.probe === null ? null : await this.probe.codexEmployeeModel(connection, asked.model);
+      if (held?.split !== "yes") throw unprocessable("runtime_cannot_run_employees", `OpenAI Codex cannot run ${asked.model} for an employee here: ${held?.reason ?? "it was not observed held to Orbit's tools"}.`, { runtime: asked.runtime });
+    }
     const model = modelOf({ source: "account", models: connection.catalog.models, recommended: connection.catalog.recommended ?? "", detail: null }, asked.model);
     if (model === null) throw unprocessable("model_not_offered", `${asked.model} is not a model this connection offers (it offers ${connection.catalog.models.map((m) => m.id).join(", ")}).`, { models: connection.catalog.models.map((m) => m.id) });
     if (model.efforts.length === 0 && asked.effort !== null) throw unprocessable("effort_not_offered", `${model.label} takes no effort level.`);

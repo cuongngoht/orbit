@@ -374,7 +374,16 @@ stops and is reconciled); a connection an employee runs on cannot be removed.
 
 Chats and research questions run on the account's **default Claude Code connection**. An employee runs on a CLI only
 where its installed version was observed to switch every built-in tool off and take Orbit Web's tools instead (the
-*tool-plane split*): Claude Code does; Codex and Antigravity are shown with the reason they do not yet. Both CLIs are in
+*tool-plane split*). Claude Code does: its `--help` lists the flags, and the CLI's own first line is checked on every
+run. **OpenAI Codex** does when its binary is SEEN doing it: Orbit Web stands in for the model provider for one turn on
+the loopback, runs `codex exec` exactly as an employee's model plane runs it -- every feature that runs, writes or reads
+locally switched off, Orbit's bridge the one MCP server (required, its tools approved), and the model's own catalog
+entry made Orbit's (no patch tool, no code mode, no sub-agents, no tool search, text only, given to the CLI as
+`model_catalog_json`, which then is its whole catalog) -- and reads every tool the request offers the model, then asks
+for the image viewer once to see it refuse. Only a model observed that way is offered (the observation is kept per
+binary version and entry; *Re-check* makes it for the recommended model, a hire for the model chosen), and the run is
+stopped at the first item that is not Orbit's tools, a message or the search it was given. Antigravity is shown with the
+reason it does not. Both CLIs are in
 the image beside Claude Code (OpenAI Codex CLI from its npm package at an exact version, the Antigravity CLI `agy` from
 its release archive pinned by SHA-512; Settings → System names their versions), so their cards say *Installed*.
 

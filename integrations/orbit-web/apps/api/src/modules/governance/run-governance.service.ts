@@ -32,12 +32,16 @@ import { AuditService } from "./audit.service.js";
 import { IsolationService } from "./isolation.service.js";
 import { PolicyService, type Decision } from "./policy.service.js";
 import { GovernedResources } from "./resources.service.js";
+import type { RuntimeKind } from "@orbit-web/contracts";
 
 // How long a run's token may live at most (a run ends sooner; its token ends with it).
 const RUN_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 // The agent profiles a run is bound as.
 export const CHAT_AGENT = "claude-code";
+
+// How the audit record names the CLI an employee's attempt ran.
+const AUDIT_RUNTIME: Record<RuntimeKind, string> = { claude: "claude-code", codex: "openai-codex", agy: "google-antigravity" };
 export const RESEARCH_AGENT = "claude-research";
 export const EMPLOYEE_AGENT = "orbit-employee";
 
@@ -196,7 +200,7 @@ export class RunGovernanceService implements OnApplicationBootstrap {
   // employee it works for (resource kind `employee`). Its token is the tool bridge's credential and the egress proxy's
   // (each connection decided as this run); it opens neither the agent gateway nor any owner route. Whether the account's
   // policy obliges isolation is returned: the worker holds the attempt to it once the sandbox's attestation is known.
-  async prepareAssignment(subject: { accountId: string; employeeId: string; title: string; assignmentId: string }, runId: string, o: { startedBy: Principal; webSearch: boolean }): Promise<PreparedAssignment> {
+  async prepareAssignment(subject: { accountId: string; employeeId: string; title: string; assignmentId: string }, runId: string, o: { startedBy: Principal; webSearch: boolean; runtime?: RuntimeKind }): Promise<PreparedAssignment> {
     const { accountId, employeeId } = subject;
     const ctx = contextOf({ kind: "system", id: "run-start", accountId });
     const scope: EnforcementScope = RUN_SCOPES.assignment;
@@ -223,7 +227,8 @@ export class RunGovernanceService implements OnApplicationBootstrap {
         isolation: "not_applicable",
         revision: effective.record.revision,
       };
-      await this.audit.record(actx, { type: "run.started", outcome: "started", workspaceId: employeeId, data: { scope, runtime: "claude-code", runtimeVersion: this.runtimeVersion, mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy } });
+      const runtime = o.runtime ?? "claude";
+      await this.audit.record(actx, { type: "run.started", outcome: "started", workspaceId: employeeId, data: { scope, runtime: AUDIT_RUNTIME[runtime], runtimeVersion: runtime === "claude" ? this.runtimeVersion : ((await this.toolchain.get()).versions[runtime] ?? null), mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy } });
       return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: networkOf(effective.constitution) };
     });
   }

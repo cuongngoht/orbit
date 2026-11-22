@@ -333,8 +333,8 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
           )}
           <Text size={200}>
             {c.auth === "connected"
-              ? `Sign in again with the same account (${c.identity ?? "the one it has"}): another account makes this connection Authentication required until it is disconnected.`
-              : `Sign in with ${label}'s own sign-in: Orbit Web runs it on the server for this connection, and shows you its link${c.runtime === "codex" ? " and the one-time code to enter there" : ", then takes the code its page shows"}. The login stays in this connection's folder; nothing of it is kept anywhere else.`}
+              ? `Sign in again with the same account (${c.identity ?? "the one it has"}).`
+              : `Sign in with your ${c.runtime === "codex" ? "ChatGPT" : "Claude"} account: you get a link to open${c.runtime === "codex" ? " and a code to enter there" : ", then paste back the code it shows"}.`}
           </Text>
           <div className={s.actions}>
             <Button className={s.action} appearance="primary" icon={<Key16Regular />} disabled={busy} onClick={() => void start()}>
@@ -373,7 +373,7 @@ function TerminalCommand({ command, secondary }: { command: string; secondary: b
     <div className={s.form}>
       <Text size={200}>
         {secondary
-          ? "Or sign it in from a terminal of the server instead: run this command there and follow what it says (nothing of that sign-in passes through this page). Then press Re-check."
+          ? "Run this in a terminal of the server and follow what it says, then press Re-check."
           : "A subscription is signed in by the provider's own CLI, in a terminal of the server: run this command there and follow what it says. The sign-in URL and code never pass through Orbit. This card turns Connected once the CLI's own status names who it is signed in as — then press Re-check."}
       </Text>
       <div className={s.command}>
@@ -531,6 +531,8 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<"disconnect" | "delete" | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
+  // The terminal's way, for whoever prefers it: folded away where the card signs in by itself.
+  const [terminal, setTerminal] = useState(false);
   const [key, setKey] = useState("");
   const path = `/api/connections/${encodeURIComponent(c.id)}`;
   const act = async (work: () => Promise<unknown>) => {
@@ -584,7 +586,15 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       {c.method === "subscription" && c.signInHere && (c.auth !== "connected" || reconnecting) && (
         <SignIn c={c} autoStart={autoSignIn || reconnecting} onStarted={onAutoSignIn} onChanged={onChanged} onClose={reconnecting ? () => setReconnecting(false) : null} />
       )}
-      {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && <TerminalCommand command={c.terminalCommand} secondary={c.signInHere} />}
+      {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && !c.signInHere && <TerminalCommand command={c.terminalCommand} secondary={false} />}
+      {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && c.signInHere && (
+        <>
+          <Link as="button" className={s.muted} onClick={() => setTerminal((v) => !v)} aria-expanded={terminal}>
+            {terminal ? "Hide the terminal command" : "Use the server's terminal instead"}
+          </Link>
+          {terminal && <TerminalCommand command={c.terminalCommand} secondary />}
+        </>
+      )}
       {c.method === "api_key" && reconnecting && (
         <form
           className={s.form}

@@ -15,13 +15,31 @@ import { ensureHome } from "../../infra/connections/homes.js";
 import { ConnectionStore, InstallationStore, type ConnectionRecord, type ConnectionStatus } from "../../infra/connections/stores.js";
 import { pgCode, UNIQUE_VIOLATION } from "../../infra/db/db.js";
 import { agyEnv, claudeEnv, codexEnv, neutralClaudeDir } from "../../infra/process/env.js";
-import { endedHow, succeeded, type ProcessPort } from "../../infra/process/process.port.js";
+import { LineSplitter } from "../../infra/process/lines.js";
+import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { parseModelCatalog, PROBE_ARGS, PROBE_REQUEST } from "./claude-models.js";
 import { supportOf } from "./methods.js";
-import { claudeCapabilities, otherCapabilities, parseClaudeStatus, readClaudeStatus, readCodexStatus, readVersion, RUNTIME_SPECS, UNKNOWN_CAPABILITIES, type StatusReading } from "./runtimes.js";
+import {
+  chatgptUnnamed,
+  claudeCapabilities,
+  CODEX_ACCOUNT_REQUEST,
+  codexAccountOf,
+  codexAccountReading,
+  otherCapabilities,
+  parseClaudeStatus,
+  readClaudeStatus,
+  readCodexStatus,
+  readVersion,
+  RUNTIME_SPECS,
+  UNKNOWN_CAPABILITIES,
+  type CodexAccount,
+  type StatusReading,
+} from "./runtimes.js";
 
 const MODELS_TIMEOUT_MS = 20_000;
+// How long Codex's app server has to name the account it is signed in as.
+const CODEX_ACCOUNT_TIMEOUT_MS = 15_000;
 const MODELS_OUTPUT_BYTES = 2 * 1024 * 1024;
 // How long what a CLI said about its installation is used before it is asked again.
 const INSTALLATION_MS = 10 * 60_000;
@@ -137,10 +155,44 @@ export class ConnectionProbe {
     if (r.spawnError === "ENOENT") return { ...none, auth: "error", reason: `${spec.label} is not installed on this server.`, reasonCode: "not_installed" };
     if (r.spawnError !== null || r.timedOut) return { ...none, auth: "error", reason: `${spec.label}'s status ${endedHow(r)}.`, reasonCode: null };
     const key = c.method === "api_key" ? this.d.credentials.read(c.credentialRef) : null;
-    if (c.runtime === "codex") return { ...readCodexStatus(r, c.method, key), reasonCode: null };
+    if (c.runtime === "codex") return this.codexReading(c, r, key);
     const parsed = parseClaudeStatus(r.stdout.trim());
     if (parsed === null) return { ...none, auth: "error", reason: redactSecrets(`claude auth status gave no answer Orbit Web could read (${endedHow(r)}): ${tail(r.stderr, 2)}`).slice(0, 300), reasonCode: null };
     return { ...readClaudeStatus(parsed, c.method, key), reasonCode: null };
+  }
+
+  // Codex: its status -- and, for a ChatGPT sign-in its status names nobody in, the account its own app server names.
+  private async codexReading(c: ConnectionRecord, r: RunResult, key: string | null): Promise<Reading> {
+    const said = readCodexStatus(r, c.method, key);
+    if (c.method !== "subscription" || !chatgptUnnamed(r)) return { ...said, reasonCode: null };
+    const account = await this.codexAccount(c);
+    return { ...(account !== null ? codexAccountReading(account) : said), reasonCode: null };
+  }
+
+  // `codex app-server`'s `account/read` (runtimes.ts), in that connection's home. The server answers only while its input
+  // stays open: a spawn, ended at the answer, at its exit, or at the deadline (then nothing is named).
+  private codexAccount(c: ConnectionRecord): Promise<CodexAccount | null> {
+    return new Promise((resolve) => {
+      let finished = false;
+      const handle = this.d.process.spawn(this.binaryOf("codex"), ["app-server"], { cwd: this.d.config.data.home, env: this.envOf(c) });
+      const finish = (account: CodexAccount | null): void => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(deadline);
+        handle.closeInput();
+        handle.kill("SIGTERM");
+        resolve(account);
+      };
+      const deadline = setTimeout(() => finish(null), CODEX_ACCOUNT_TIMEOUT_MS);
+      deadline.unref();
+      const splitter = new LineSplitter((line) => {
+        const account = codexAccountOf(line);
+        if (account !== undefined) finish(account);
+      });
+      handle.onStdout((chunk) => splitter.push(chunk));
+      handle.onExit(() => finish(null));
+      handle.write(CODEX_ACCOUNT_REQUEST);
+    });
   }
 
   // A connected reading, held to ONE IDENTITY, ONE ACCOUNT and to the identity this connection was linked to.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RunResult } from "../../infra/process/process.port.js";
 import { mayCreate, METHOD_SUPPORT, supportOf } from "./methods.js";
-import { claudeCapabilities, keyIdentity, parseClaudeStatus, readClaudeStatus, readCodexStatus, readVersion, UNKNOWN_CAPABILITIES, type ClaudeCliStatus } from "./runtimes.js";
+import { chatgptUnnamed, claudeCapabilities, CODEX_ACCOUNT_REQUEST, codexAccountOf, codexAccountReading, keyIdentity, parseClaudeStatus, readClaudeStatus, readCodexStatus, readVersion, UNKNOWN_CAPABILITIES, type ClaudeCliStatus } from "./runtimes.js";
 
 const cli = (over: Partial<ClaudeCliStatus>): ClaudeCliStatus => ({ loggedIn: false, authMethod: null, apiProvider: null, email: null, orgId: null, orgName: null, subscriptionType: null, ...over });
 const ran = (over: Partial<RunResult>): RunResult => ({ code: 0, signal: null, spawnError: null, stdout: "", stderr: "", timedOut: false, truncated: false, ...over });
@@ -75,4 +75,23 @@ test("which methods are offered, and on what evidence: Antigravity's Google sign
   assert.match(supportOf("codex", "subscription").note, /interest form/);
   assert.equal(supportOf("claude", "cloud").state, "blocked");
   for (const m of METHOD_SUPPORT) assert.equal(mayCreate(m.runtime, m.method), m.state === "supported" || (m.runtime === "claude" && m.method === "cloud"), `${m.runtime}/${m.method}`);
+});
+
+test("a ChatGPT sign-in Codex's status names nobody in is named by its own app server (account/read), email and workspace", () => {
+  assert.equal(chatgptUnnamed(ran({ stdout: "Logged in using ChatGPT\n" })), true, "codex-cli 0.169.0 names no account");
+  assert.equal(chatgptUnnamed(ran({ stdout: "Logged in using ChatGPT (octo@example.com)\n" })), false);
+  assert.equal(chatgptUnnamed(ran({ stderr: "Not logged in\n", code: 1 })), false);
+  const asked = CODEX_ACCOUNT_REQUEST.trim().split("\n").map((l) => JSON.parse(l) as { method: string; params?: { refreshToken?: boolean } });
+  assert.deepEqual(asked.map((m) => m.method), ["initialize", "initialized", "account/read"]);
+  assert.equal(asked[2]?.params?.refreshToken, false, "no token is refreshed to answer");
+  // What codex-cli 0.169.0's app server answered (the email and ids replaced).
+  const answer = '{"id":1,"result":{"account":{"type":"chatgpt","email":"Octo@Example.com","planType":"team","workspaceName":"Octo Org"},"userId":"user-1","requiresOpenaiAuth":true,"workspaceRouting":{"chatgptAccountId":"ws-1","backendOrigin":"https://chatgpt.com","accountRoutingOverride":"NO_CONSTRAINT"}}}';
+  const account = codexAccountOf(answer);
+  assert.deepEqual(account, { email: "octo@example.com", workspace: "Octo Org", workspaceId: "ws-1" });
+  assert.deepEqual(codexAccountReading(account as NonNullable<typeof account>), { auth: "connected", reason: null, identity: "octo@example.com (Octo Org)", identityKey: "chatgpt:octo@example.com|ws-1" });
+  assert.equal(codexAccountOf('{"method":"account/updated","params":{"authMode":"chatgpt"}}'), undefined, "not the answer");
+  assert.equal(codexAccountOf('{"id":0,"result":{"userAgent":"x"}}'), undefined);
+  assert.equal(codexAccountOf("not json"), undefined);
+  assert.equal(codexAccountOf('{"id":1,"result":{"account":null,"requiresOpenaiAuth":true}}'), null, "signed out: nobody");
+  assert.equal(codexAccountOf('{"id":1,"result":{"account":{"type":"apiKey"}}}'), null, "an API key is no ChatGPT account");
 });

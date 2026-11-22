@@ -7,8 +7,9 @@
 //
 //   Claude Code   `claude --version`; `claude auth status --json` (CLAUDE_CONFIG_DIR=<home>/claude); `claude --help`
 //   OpenAI Codex  `codex --version`; `codex login status` (CODEX_HOME=<home>/codex) -- it prints its answer, and names an
-//                 API key only masked (sk-…ABCDE) and a ChatGPT sign-in without an account: so a ChatGPT sign-in is
-//                 connected only once its status names the account
+//                 API key only masked (sk-…ABCDE) and a ChatGPT sign-in without an account (codex-cli 0.169.0: "Logged
+//                 in using ChatGPT"): so a ChatGPT sign-in is named by the CLI's own app server, `account/read`
+//                 (`codex app-server`, its JSON-RPC: the account's email, its workspace and the workspace's id)
 //   Antigravity   `agy --version`; it documents no status command: its connections are not offered (methods.ts)
 import { CLAUDE_ACCOUNT_METHOD, type AuthMethod, type AuthState, type Capability, type InstallationState, type RuntimeCapabilities, type RuntimeKind } from "@orbit-web/contracts";
 import { endedHow, type RunResult } from "../../infra/process/process.port.js";
@@ -117,6 +118,50 @@ export function readCodexStatus(r: RunResult, method: AuthMethod, apiKey: string
     return reading("connected", null, email, `chatgpt:${email}`);
   }
   return reading("error", "codex login status said nothing Orbit Web could read.");
+}
+
+// Whether `codex login status` says a ChatGPT sign-in is there but names no account: then its app server is asked.
+export const chatgptUnnamed = (r: RunResult): boolean => /logged in using chatgpt/i.test(`${r.stdout}\n${r.stderr}`) && EMAIL.exec(`${r.stdout}\n${r.stderr}`) === null;
+
+// What `codex app-server` is asked (one line each, JSON-RPC over stdio): initialize, initialized, then account/read
+// without refreshing a token. It answers only while its input stays open (probe.ts keeps it open until the answer).
+export const CODEX_ACCOUNT_REQUEST = `${[
+  { method: "initialize", id: 0, params: { clientInfo: { name: "orbit_web", title: "Orbit Web", version: "0.8.0" } } },
+  { method: "initialized" },
+  { method: "account/read", id: 1, params: { refreshToken: false } },
+]
+  .map((m) => JSON.stringify(m))
+  .join("\n")}\n`;
+
+export interface CodexAccount {
+  email: string;
+  workspace: string | null;
+  // The ChatGPT workspace's id: another workspace of the same email is another identity.
+  workspaceId: string | null;
+}
+
+const recordOf = (v: unknown): Record<string, unknown> | null => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+
+// One line the app server printed: the answer to account/read (`undefined`: not that answer) -- the ChatGPT account it
+// names, or null when it names none (signed out, or an API key).
+export function codexAccountOf(line: string): CodexAccount | null | undefined {
+  let msg: Record<string, unknown> | null;
+  try {
+    msg = recordOf(JSON.parse(line));
+  } catch {
+    return undefined;
+  }
+  if (msg === null || msg.id !== 1) return undefined;
+  const result = recordOf(msg.result);
+  const account = recordOf(result?.account);
+  const email = account?.type === "chatgpt" ? text(account.email) : null;
+  if (email === null) return null;
+  return { email: email.toLowerCase(), workspace: text(account?.workspaceName), workspaceId: text(recordOf(result?.workspaceRouting)?.chatgptAccountId) };
+}
+
+// A ChatGPT sign-in its app server named: connected as that email, in that workspace.
+export function codexAccountReading(a: CodexAccount): StatusReading {
+  return reading("connected", null, a.workspace !== null ? `${a.email} (${a.workspace})` : a.email, `chatgpt:${a.email}|${a.workspaceId ?? ""}`);
 }
 
 // ---- what the binary can do (observed on THIS binary) ---------------------------------------------------------------

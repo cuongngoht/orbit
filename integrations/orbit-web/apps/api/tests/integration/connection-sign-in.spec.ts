@@ -130,7 +130,17 @@ describe("a subscription signed in from its card (ADR 0068)", () => {
     let codexSignedIn = false;
     fake
       .on(program("codex", "--version"), { run: { stdout: "codex-cli 0.169.0\n" } })
-      .on(program("codex", "login", "status"), { run: () => (codexSignedIn ? { stdout: "Logged in using ChatGPT (octo@example.com)\n" } : { code: 1, stderr: "Not logged in\n" }) })
+      // codex-cli 0.169.0: its status names no account -- its app server does (account/read).
+      .on(program("codex", "login", "status"), { run: () => (codexSignedIn ? { stdout: "Logged in using ChatGPT\n" } : { code: 1, stderr: "Not logged in\n" }) })
+      .on(program("codex", "app-server"), {
+        spawn: (child) => {
+          child.onSignal((signal) => child.exit(null, signal));
+          child.onInput((text) => {
+            if (!text.includes('"account/read"')) return;
+            setImmediate(() => child.stdout(`${JSON.stringify({ id: 1, result: { account: { type: "chatgpt", email: "octo@example.com", planType: "team", workspaceName: "Octo Org" }, workspaceRouting: { chatgptAccountId: "ws-1" } } })}\n`));
+          });
+        },
+      })
       .on(program("codex", "login", "--device-auth"), {
         spawn: (child) => {
           child.stdout(CODEX_DEVICE);
@@ -153,7 +163,9 @@ describe("a subscription signed in from its card (ADR 0068)", () => {
     (finish as unknown as () => void)();
     await eventually(() => signInOf(h, c.id), (v) => v.flow.state === "connected");
     const after = ok<RuntimeConnection>(await h.get(`/api/connections/${c.id}`));
-    assert.deepEqual([after.auth, after.identity], ["connected", "octo@example.com"]);
+    assert.deepEqual([after.auth, after.identity], ["connected", "octo@example.com (Octo Org)"]);
+    const server = fake.callsOf(program("codex", "app-server")).at(-1) as Call;
+    assert.equal(server.env.CODEX_HOME, join(h.config.data.connections, h.accountId as string, c.id, "codex"), "asked in that connection's home");
   });
 
   test("an API-key connection, Antigravity and another account's connection are not signed in from a card", async () => {

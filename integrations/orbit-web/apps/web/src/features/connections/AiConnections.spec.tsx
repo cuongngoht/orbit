@@ -95,8 +95,12 @@ describe("Settings → AI Connections: three CLIs, each said as its own CLI says
     renderLive(<AiConnectionsSection />);
     const conn = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
     const panel = within(conn).getByRole("region", { name: "Sign in Claude subscription" });
-    expect(within(conn).getByLabelText("Terminal command")).toBeInTheDocument();
-    expect(conn.textContent).toContain("Or sign it in from a terminal of the server instead");
+    expect(within(conn).queryByLabelText("Terminal command")).toBeNull();
+    await userEvent.click(within(conn).getByRole("button", { name: "Use the server's terminal instead" }));
+    expect(within(conn).getByLabelText("Terminal command")).toHaveTextContent(`connect.js ${CONN_CLAUDE}`);
+    await userEvent.click(within(conn).getByRole("button", { name: "Hide the terminal command" }));
+    expect(within(conn).queryByLabelText("Terminal command")).toBeNull();
+    expect(panel.textContent).toContain("Sign in with your Claude account");
     await userEvent.click(await within(panel).findByRole("button", { name: "Sign in" }));
     const link = await within(panel).findByRole("link", { name: "Sign-in link" });
     expect(link).toHaveAttribute("href", URL_);

@@ -23,6 +23,7 @@ describe("a team: a manager delegates, reviews and integrates", () => {
   const sandbox = new FakeSandboxProvider();
   const said: Record<string, string[]> = {};
   const ids: Record<string, string> = {};
+  let draftReviews = 0;
 
   const hire = async (name: string, canDelegate = false): Promise<EmployeeDetail> => {
     const model = connection.catalog.models[0];
@@ -52,6 +53,34 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     sandbox.cli.on(program("claude"), {
       spawn: scriptedEmployee(async (t: ToolCaller) => {
         const p = t.prompt;
+        // A lead that asks its part for a revision once, then accepts it and integrates.
+        if (p.includes("[team2]") && !p.includes("The parts you gave your team")) {
+          const r = await t.call("delegate", { parts: [{ key: "draft", employee: "Oanh", title: "Draft", goal: "[part:draft] Write the draft.", deliverables: ["draft.md"], criteria: ["Has the totals"] }] });
+          note("Mai2", r.text);
+          return;
+        }
+        if (p.includes("[team2]")) {
+          draftReviews += 1;
+          note("Mai2", p);
+          if (draftReviews === 1) {
+            const r = await t.call("review_unit", { part: "draft", decision: "revise", criteria: "Add the totals." });
+            note("Mai2", r.text);
+            return;
+          }
+          const r = await t.call("review_unit", { part: "draft", decision: "accept" });
+          note("Mai2", r.text);
+          const draft = await t.call("read_file", { path: "/input/unit-draft-draft.md" });
+          await t.call("write_file", { path: "/output/report.md", content: `# Report\n${draft.text}` });
+          await t.call("submit_handoff", { summary: "Integrated the revised draft." });
+          return;
+        }
+        if (p.includes("[part:draft]")) {
+          note("Oanh2", p);
+          const revised = p.includes("Add the totals.");
+          await t.call("write_file", { path: "/output/draft.md", content: revised ? "Draft v2 with totals: 2,000,000 VND.\n" : "Draft v1.\n" });
+          await t.call("submit_handoff", { summary: revised ? "Added the totals." : "First draft." });
+          return;
+        }
         if (p.includes("[badplan]")) {
           const r = await t.call("delegate", { parts: [{ key: "a", employee: "Nam", title: "A", goal: "a", waits_for: ["b"] }, { key: "b", employee: "Oanh", title: "B", goal: "b", waits_for: ["a"] }] });
           note("badplan", r.text);
@@ -159,6 +188,28 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     assert.equal(m.assignments.length, 1, "no part was made");
     const cancelled = await b.send("POST", `/api/assignments/${byKey(m, null).id}/cancel`, { reason: "done" }, { "if-match": `"${byKey(m, null).version}"` });
     assert.equal(cancelled.status, 200, JSON.stringify(cancelled.body));
+  });
+
+  test("a lead asks its part for a revision: the part's first hand-in never completes it, its employee works again, and the lead integrates the revised one", async () => {
+    const made = await b.send("POST", "/api/missions", { title: "Draft with a revision", goal: "[team2] A report from a draft.", targetEmployeeId: ids.Mai, whenBusy: "reject", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: [] }, key());
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    const m = await eventually(() => mission(id), (x) => byKey(x, null)?.state === "AWAITING_ACCEPTANCE", 30_000);
+    const part = byKey(m, "draft");
+    assert.equal(part.employeeId, ids.Oanh);
+    assert.equal(part.state, "COMPLETED");
+    assert.equal(part.handoffRevision, 2, "the part handed in twice");
+    assert.equal(part.reworkCount, 1);
+    const partHandoffs = m.handoffs.filter((h) => h.assignmentId === part.id).sort((x, y) => x.revision - y.revision);
+    assert.deepEqual(partHandoffs.map((h) => `${h.revision}:${h.status}`), ["1:revision_requested", "2:accepted"], "the first hand-in was sent back, never accepted");
+    // The part's second attempt was told what to change; the lead reviewed twice and integrated the revised draft.
+    assert.ok((said.Oanh2 ?? []).some((p) => p.includes("The reviewer asked for these changes") && p.includes("Add the totals.")));
+    assert.equal(draftReviews, 2);
+    const handed = m.handoffs.find((h) => h.assignmentId === byKey(m, null).id);
+    assert.deepEqual(handed?.artifacts.map((a) => a.name), ["report.md"]);
+    const root = byKey(m, null);
+    const ok = await b.send("POST", `/api/assignments/${root.id}/accept`, { handoffDigest: handed?.digest }, { "if-match": `"${root.version}"` });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
   });
 
   test("an attempt of a mission without a team has no team room", async () => {

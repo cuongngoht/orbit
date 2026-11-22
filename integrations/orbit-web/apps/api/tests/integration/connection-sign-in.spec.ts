@@ -136,11 +136,17 @@ describe("a subscription signed in from its card (ADR 0068)", () => {
         spawn: (child) => {
           child.onSignal((signal) => child.exit(null, signal));
           child.onInput((text) => {
-            if (!text.includes('"account/read"')) return;
-            setImmediate(() => child.stdout(`${JSON.stringify({ id: 1, result: { account: { type: "chatgpt", email: "octo@example.com", planType: "team", workspaceName: "Octo Org" }, workspaceRouting: { chatgptAccountId: "ws-1" } } })}\n`));
+            if (text.includes('"account/read"')) setImmediate(() => child.stdout(`${JSON.stringify({ id: 1, result: { account: { type: "chatgpt", email: "octo@example.com", planType: "team", workspaceName: "Octo Org" }, workspaceRouting: { chatgptAccountId: "ws-1" } } })}\n`));
+            // The models this account's picker offers (codex-cli 0.169.0's model/list, shortened).
+            const effort = (reasoningEffort: string) => ({ reasoningEffort, description: reasoningEffort });
+            const model = (id: string, name: string, isDefault: boolean, efforts: string[]) => ({ id, model: id, displayName: name, description: `${name}.`, hidden: false, isDefault, supportedReasoningEfforts: efforts.map(effort), defaultReasoningEffort: "medium" });
+            if (text.includes('"model/list"')) setImmediate(() => child.stdout(`${JSON.stringify({ id: 2, result: { data: [model("gpt-6.1-sol", "GPT-6.1-Sol", true, ["low", "medium", "high", "xhigh"]), model("gpt-6-luna", "GPT-6-Luna", false, ["low", "medium"])], nextCursor: null } })}\n`));
           });
         },
       })
+      .on(program("codex", "--help"), { run: { stdout: "Commands:\n  exec              Run Codex non-interactively [aliases: e]\n  login             Manage login\n" } })
+      .on(program("codex", "exec", "--help"), { run: { stdout: "Commands:\n  resume  Resume a previous session by id or pick the most recent with --last\nOptions:\n      --json\n          Print events to stdout as JSONL\n" } })
+      .on(program("codex", "exec", "--skip-git-repo-check"), { run: { code: 1, stderr: "Error loading config.toml: unknown variant `?`, expected one of `disabled`, `cached`, `indexed`, `live`\nin `web_search`\n" } })
       .on(program("codex", "login", "--device-auth"), {
         spawn: (child) => {
           child.stdout(CODEX_DEVICE);
@@ -166,6 +172,18 @@ describe("a subscription signed in from its card (ADR 0068)", () => {
     assert.deepEqual([after.auth, after.identity], ["connected", "octo@example.com (Octo Org)"]);
     const server = fake.callsOf(program("codex", "app-server")).at(-1) as Call;
     assert.equal(server.env.CODEX_HOME, join(h.config.data.connections, h.accountId as string, c.id, "codex"), "asked in that connection's home");
+    // Connected, its models are the ones its own CLI offers this account, and what it can do is what its binary says.
+    assert.equal(after.catalog.source, "account");
+    assert.deepEqual(after.catalog.models.map((m) => [m.id, m.efforts.join("/")]), [["gpt-6.1-sol", "low/medium/high/xhigh"], ["gpt-6-luna", "low/medium"]]);
+    assert.equal(after.catalog.recommended, "gpt-6.1-sol");
+    assert.deepEqual(
+      [after.capabilities.start, after.capabilities.stream, after.capabilities.resume, after.capabilities.usage, after.capabilities.webSearch, after.capabilities.toolPlaneSplit],
+      ["yes", "yes", "yes", "yes", "yes", "unknown"],
+    );
+    // Read from the account, but its model plane not yet observed held to Orbit's tools: no employee runs on it yet.
+    assert.deepEqual(after.employeeReady, { ready: false, reason: "its model plane is not held to Orbit's tools (Run without local tools: unknown)" });
+    const asked = fake.callsOf(program("codex", "exec", "--skip-git-repo-check")).at(-1) as Call;
+    assert.notEqual(asked.env.CODEX_HOME, server.env.CODEX_HOME, "the web search modes are asked in a scratch home, never a connection's");
   });
 
   test("an API-key connection, Antigravity and another account's connection are not signed in from a card", async () => {

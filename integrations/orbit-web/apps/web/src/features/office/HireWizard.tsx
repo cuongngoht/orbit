@@ -99,10 +99,11 @@ const list = (text: string): string[] =>
     .map((x) => x.trim())
     .filter((x) => x.length > 0);
 
-// A connection an employee may run on: connected, and its models read from the account (never a fallback list).
-export const usableForEmployees = (c: RuntimeConnection): boolean => c.auth === "connected" && c.catalog.source === "account" && c.catalog.models.length > 0;
+// A connection an employee may run on, as the server says it (employeeReadiness): connected, its models read from the
+// account (never a fallback list), and its model plane observed held to Orbit's tools.
+export const usableForEmployees = (c: RuntimeConnection): boolean => c.employeeReady.ready;
 
-const whyNot = (c: RuntimeConnection): string => (c.auth !== "connected" ? `not connected (${c.reason ?? "its CLI says it is not signed in"})` : c.catalog.source !== "account" ? "its models were not read from the account" : "its account offers no model");
+const whyNot = (c: RuntimeConnection): string => c.employeeReady.reason ?? "it cannot run employees";
 
 // The Orbit plugin may be asked for an employee only on Claude Code, with the owner's grant for employees on exactly the
 // plugin's current version.

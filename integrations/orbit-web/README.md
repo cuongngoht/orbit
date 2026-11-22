@@ -362,8 +362,12 @@ version); *Connected* only when the CLI's own status, run against that connectio
 the time shown); *Disconnected*; *Authentication required* (signed out, expired, or another identity than the one
 linked); *Connection error*. A provider identity is connected to one account at a time: connecting it to a second is
 refused (`identity_already_connected`). Each card also shows the CLI's version, the identity, the **models** and
-**effort levels** read from the account (a fallback list is labelled as such and never used for an employee), the
-runtime's capabilities as observed, and, for Claude Code, the **Orbit plugin**: loaded only for the use cases you
+**effort levels** read from the account (a fallback list is labelled as such and never used for an employee) -- Claude
+Code's from its control protocol, OpenAI Codex's from its own app server's `model/list` (the models its picker offers
+that account; when it cannot answer, the catalog bundled in the binary, labelled fallback), none for Antigravity, which
+has no command that lists them -- the runtime's capabilities as observed (Claude Code's from its `--help`; Codex's from
+its help and the web search modes its configuration takes, asked in a scratch home where nothing is signed in), whether
+an employee can run on it and why not, and, for Claude Code, the **Orbit plugin**: loaded only for the use cases you
 approved (chats, employees), and only for the plugin's exact digest you saw -- an upgraded plugin waits for you again.
 *Re-check* asks the CLI now; *Disconnect* runs the CLI's own logout and removes the home's login (work running on it
 stops and is reconciled); a connection an employee runs on cannot be removed.

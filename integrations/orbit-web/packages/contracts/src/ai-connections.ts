@@ -107,6 +107,13 @@ export interface PluginGrantView {
   revision: number;
 }
 
+// Whether a connection can run AI employees: connected, its models read from the account, and its model plane observed held
+// to Orbit's tools (`reason`: why not, in words a person can act on).
+export interface EmployeeReadiness {
+  ready: boolean;
+  reason: string | null;
+}
+
 export interface ConnectionCatalog {
   // `account`: the CLI's own catalog read for this connection. `fallback`: a labelled list for chats only -- an
   // employee never runs on it. `none`: nothing is known.
@@ -142,6 +149,8 @@ export interface RuntimeConnection {
   plugins: PluginGrantView | null;
   // How many employees run on it (a disconnect stops their new work).
   employees: number;
+  // Whether an employee can be hired on it and run with it now, and why not (the reason a person acts on).
+  employeeReady: EmployeeReadiness;
   version: number;
   createdAt: string;
 }

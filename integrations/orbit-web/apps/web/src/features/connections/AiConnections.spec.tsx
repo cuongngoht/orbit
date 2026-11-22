@@ -250,6 +250,29 @@ describe("Settings → AI Connections: three CLIs, each said as its own CLI says
     expect(screen.getByText(/To hire employees, connect at least one CLI/)).toBeInTheDocument();
   });
 
+  test("no model list says why, by runtime: not connected yet, its CLI not answering, or a CLI that lists none", async () => {
+    const installed = connectionsView().installations.map((i) => ({ ...i, state: "installed" as const, version: "1", detail: null }));
+    const none = { source: "none" as const, models: [], recommended: null, checkedAt: "2026-11-22T03:41:00.000Z" };
+    fakeApi().on("GET", "/api/connections", () =>
+      connectionsView({
+        installations: installed,
+        connections: [
+          connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", auth: "connected", identity: "octo@example.com", plugins: null, catalog: none }),
+          connection({ id: "c-agy", runtime: "agy", label: "Gemini", method: "cloud", auth: "disconnected", identity: null, plugins: null, catalog: none }),
+          connection({ auth: "disconnected", identity: null, catalog: none }),
+        ],
+      }),
+    );
+    renderLive(<AiConnectionsSection />);
+    const codex = await within(await card("OpenAI Codex")).findByRole("listitem", { name: "Connection ChatGPT" });
+    expect(codex.textContent).toContain("Its CLI did not say which models this connection may use: Re-check.");
+    expect(codex.textContent).not.toMatch(/once it is connected/);
+    const agy = await within(await card("Google Antigravity")).findByRole("listitem", { name: "Connection Gemini" });
+    expect(agy.textContent).toContain("Google Antigravity has no command that lists its models: none is read.");
+    const claude = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    expect(claude.textContent).toContain("Its models are read from its CLI once it is connected.");
+  });
+
   test("the office's notification that connections changed reads them again", async () => {
     const api = fakeApi().on("GET", "/api/connections", () => connectionsView());
     renderLive(<AiConnectionsSection />);

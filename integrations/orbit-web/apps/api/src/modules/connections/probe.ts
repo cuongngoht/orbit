@@ -8,7 +8,9 @@
 //   account above all -- is `auth_required` with `identity_already_connected`, and is never used.
 //   THE IDENTITY LINKED. Once connected, a connection is that identity's until it is disconnected: a CLI that names
 //   another one is `auth_required` (`identity_changed`); a login that is gone is `auth_required` (`login_ended`).
-import { FALLBACK_CATALOG, type ConnectionCatalog, type ConnectionReason, type RuntimeCapabilities, type RuntimeInstallation, type RuntimeKind } from "@orbit-web/contracts";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { FALLBACK_CATALOG, type ConnectionCatalog, type ConnectionReason, type ModelCatalog, type RuntimeCapabilities, type RuntimeInstallation, type RuntimeKind } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
 import { CredentialStore } from "../../infra/connections/credentials.js";
 import { ensureHome } from "../../infra/connections/homes.js";
@@ -19,6 +21,7 @@ import { LineSplitter } from "../../infra/process/lines.js";
 import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { parseModelCatalog, PROBE_ARGS, PROBE_REQUEST } from "./claude-models.js";
+import { CODEX_BUNDLED_MODELS_ARGS, CODEX_MODELS_REQUEST, codexModelsOf, parseBundledCodexModels } from "./codex-models.js";
 import { supportOf } from "./methods.js";
 import {
   chatgptUnnamed,
@@ -26,7 +29,10 @@ import {
   CODEX_ACCOUNT_REQUEST,
   codexAccountOf,
   codexAccountReading,
+  codexCapabilities,
+  CODEX_WEB_SEARCH_PROBE,
   otherCapabilities,
+  type CodexHelp,
   parseClaudeStatus,
   readClaudeStatus,
   readCodexStatus,
@@ -62,6 +68,7 @@ export interface ProbeDeps {
 export class ConnectionProbe {
   private readonly installed = new Map<RuntimeKind, { at: number; value: Promise<RuntimeInstallation> }>();
   private readonly helps = new Map<string, Promise<string | null>>();
+  private readonly codexHelps = new Map<string, Promise<CodexHelp | null>>();
 
   constructor(private readonly d: ProbeDeps) {}
 
@@ -103,9 +110,11 @@ export class ConnectionProbe {
     return value;
   }
 
-  // What the binary can do, from its own `--help` (Claude Code; read once per version).
+  // What the binary can do, from what it says of itself (read once per version): Claude Code's `--help`; Codex's help and
+  // the web search modes its configuration takes (runtimes.ts).
   async capabilities(installation: RuntimeInstallation): Promise<RuntimeCapabilities> {
     if (installation.state !== "installed") return { ...UNKNOWN_CAPABILITIES, start: "no" };
+    if (installation.runtime === "codex") return codexCapabilities(await this.codexHelp(installation.version ?? ""));
     if (installation.runtime !== "claude") return otherCapabilities(true);
     const key = installation.version ?? "";
     let help = this.helps.get(key);
@@ -116,6 +125,27 @@ export class ConnectionProbe {
       this.helps.set(key, help);
     }
     return claudeCapabilities(await help);
+  }
+
+  // Codex's help and its web search modes, asked once per version in a scratch home of its own -- never a connection's:
+  // nothing there is signed in, and the probe stops at the configuration, before any model.
+  private codexHelp(version: string): Promise<CodexHelp | null> {
+    let help = this.codexHelps.get(version);
+    if (help === undefined) {
+      help = this.askCodexHelp();
+      this.codexHelps.set(version, help);
+    }
+    return help;
+  }
+
+  private async askCodexHelp(): Promise<CodexHelp | null> {
+    const scratch = join(this.d.config.data.home, "codex-probe");
+    mkdirSync(scratch, { recursive: true, mode: 0o700 });
+    const ask = (args: string[], input?: string) => this.d.process.run(this.binaryOf("codex"), args, { cwd: this.d.config.data.home, env: codexEnv(this.d.config, scratch), timeoutMs: this.d.config.limits.commandTimeoutMs, ...(input !== undefined ? { input } : {}) });
+    const [top, exec, web] = await Promise.all([ask(["--help"]), ask(["exec", "--help"]), ask(CODEX_WEB_SEARCH_PROBE, "")]);
+    if (!succeeded(top) || !succeeded(exec)) return null;
+    const said = `${web.stdout}\n${web.stderr}`;
+    return { top: top.stdout, exec: exec.stdout, webSearch: web.spawnError === null && !web.timedOut && /web_search/.test(said) ? said : null };
   }
 
   // Codex with an API key: the key is handed to `codex login --with-api-key` on its standard input, and Codex keeps the
@@ -169,29 +199,35 @@ export class ConnectionProbe {
     return { ...(account !== null ? codexAccountReading(account) : said), reasonCode: null };
   }
 
-  // `codex app-server`'s `account/read` (runtimes.ts), in that connection's home. The server answers only while its input
-  // stays open: a spawn, ended at the answer, at its exit, or at the deadline (then nothing is named).
+  // `codex app-server`'s `account/read` (runtimes.ts), in that connection's home.
   private codexAccount(c: ConnectionRecord): Promise<CodexAccount | null> {
+    return this.askAppServer(c, CODEX_ACCOUNT_REQUEST, codexAccountOf, CODEX_ACCOUNT_TIMEOUT_MS);
+  }
+
+  // One question to `codex app-server` in that connection's home: what `pick` reads off the line that answers it (`undefined`:
+  // not that line). The server answers only while its input stays open: a spawn, ended at the answer, at its exit, or at
+  // the deadline (then null).
+  private askAppServer<T>(c: ConnectionRecord, request: string, pick: (line: string) => T | null | undefined, timeoutMs: number): Promise<T | null> {
     return new Promise((resolve) => {
       let finished = false;
       const handle = this.d.process.spawn(this.binaryOf("codex"), ["app-server"], { cwd: this.d.config.data.home, env: this.envOf(c) });
-      const finish = (account: CodexAccount | null): void => {
+      const finish = (answer: T | null): void => {
         if (finished) return;
         finished = true;
         clearTimeout(deadline);
         handle.closeInput();
         handle.kill("SIGTERM");
-        resolve(account);
+        resolve(answer);
       };
-      const deadline = setTimeout(() => finish(null), CODEX_ACCOUNT_TIMEOUT_MS);
+      const deadline = setTimeout(() => finish(null), timeoutMs);
       deadline.unref();
       const splitter = new LineSplitter((line) => {
-        const account = codexAccountOf(line);
-        if (account !== undefined) finish(account);
+        const answer = pick(line);
+        if (answer !== undefined) finish(answer);
       });
       handle.onStdout((chunk) => splitter.push(chunk));
       handle.onExit(() => finish(null));
-      handle.write(CODEX_ACCOUNT_REQUEST);
+      handle.write(request);
     });
   }
 
@@ -215,15 +251,28 @@ export class ConnectionProbe {
     return { ...r, identity: c.identityKey !== null ? c.identity : null, identityKey: c.identityKey };
   }
 
-  // The models this connection may use, as its own CLI says (Claude Code's control protocol; no model is called). When
-  // the CLI cannot be asked: the fallback list, labelled as such (never one an employee runs on). Codex and Antigravity:
-  // none, until a catalog of theirs is verified.
+  // The models this connection may use, as its own CLI says (Claude Code's control protocol; Codex's app server,
+  // codex-models.ts; no model is called). When the CLI cannot be asked: a fallback list, labelled as such (never one an
+  // employee runs on). Antigravity documents no way to list its models: none.
   private async catalog(c: ConnectionRecord, at: string): Promise<ConnectionCatalog> {
+    if (c.runtime === "codex") return this.codexCatalog(c, at);
     if (c.runtime !== "claude") return noCatalog(at);
     const r = await this.d.process.run(this.binaryOf("claude"), PROBE_ARGS, { cwd: this.d.config.data.home, env: this.envOf(c), input: PROBE_REQUEST, timeoutMs: MODELS_TIMEOUT_MS, maxOutputBytes: MODELS_OUTPUT_BYTES });
     const parsed = r.spawnError === null && !r.timedOut ? parseModelCatalog(r.stdout) : null;
     if (parsed === null) return { source: "fallback", models: FALLBACK_CATALOG.models, recommended: FALLBACK_CATALOG.recommended, checkedAt: at };
     return { source: "account", models: parsed.models, recommended: parsed.recommended, checkedAt: at };
+  }
+
+  // Codex: its app server's model/list in the connection's home -- or, when it cannot answer, the catalog bundled in the
+  // binary (offline, in a scratch home), labelled fallback.
+  private async codexCatalog(c: ConnectionRecord, at: string): Promise<ConnectionCatalog> {
+    const listed = await this.askAppServer<ModelCatalog>(c, CODEX_MODELS_REQUEST, codexModelsOf, MODELS_TIMEOUT_MS);
+    if (listed !== null) return { source: "account", models: listed.models, recommended: listed.recommended, checkedAt: at };
+    const scratch = join(this.d.config.data.home, "codex-probe");
+    mkdirSync(scratch, { recursive: true, mode: 0o700 });
+    const r = await this.d.process.run(this.binaryOf("codex"), CODEX_BUNDLED_MODELS_ARGS, { cwd: this.d.config.data.home, env: codexEnv(this.d.config, scratch), timeoutMs: MODELS_TIMEOUT_MS, maxOutputBytes: MODELS_OUTPUT_BYTES });
+    const bundled = succeeded(r) ? parseBundledCodexModels(r.stdout) : null;
+    return bundled === null ? noCatalog(at) : { source: "fallback", models: bundled.models, recommended: bundled.recommended, checkedAt: at };
   }
 
   private async askVersion(runtime: RuntimeKind): Promise<RuntimeInstallation> {

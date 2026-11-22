@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RunResult } from "../../infra/process/process.port.js";
 import { mayCreate, METHOD_SUPPORT, supportOf } from "./methods.js";
-import { chatgptUnnamed, claudeCapabilities, CODEX_ACCOUNT_REQUEST, codexAccountOf, codexAccountReading, keyIdentity, parseClaudeStatus, readClaudeStatus, readCodexStatus, readVersion, UNKNOWN_CAPABILITIES, type ClaudeCliStatus } from "./runtimes.js";
+import { chatgptUnnamed, claudeCapabilities, CODEX_ACCOUNT_REQUEST, codexCapabilities, codexAccountOf, codexAccountReading, keyIdentity, parseClaudeStatus, readClaudeStatus, readCodexStatus, readVersion, UNKNOWN_CAPABILITIES, type ClaudeCliStatus } from "./runtimes.js";
 
 const cli = (over: Partial<ClaudeCliStatus>): ClaudeCliStatus => ({ loggedIn: false, authMethod: null, apiProvider: null, email: null, orgId: null, orgName: null, subscriptionType: null, ...over });
 const ran = (over: Partial<RunResult>): RunResult => ({ code: 0, signal: null, spawnError: null, stdout: "", stderr: "", timedOut: false, truncated: false, ...over });
@@ -94,4 +94,20 @@ test("a ChatGPT sign-in Codex's status names nobody in is named by its own app s
   assert.equal(codexAccountOf("not json"), undefined);
   assert.equal(codexAccountOf('{"id":1,"result":{"account":null,"requiresOpenaiAuth":true}}'), null, "signed out: nobody");
   assert.equal(codexAccountOf('{"id":1,"result":{"account":{"type":"apiKey"}}}'), null, "an API key is no ChatGPT account");
+});
+
+// What codex-cli 0.169.0 prints (the lines read, as printed): its commands, its exec's, and its config's answer to a
+// web_search mode it does not know -- asked in a scratch home: nothing signs in, nothing reaches a model.
+const CODEX_TOP = ["Commands:", "  exec              Run Codex non-interactively [aliases: e]", "  review            Run a code review non-interactively", "  login             Manage login"].join("\n");
+const CODEX_EXEC = ["Commands:", "  resume  Resume a previous session by id or pick the most recent with --last", "  review  Run a code review against the current repository", "Options:", "  -m, --model <MODEL>", "      --json", "          Print events to stdout as JSONL"].join("\n");
+const CODEX_WEB_SEARCH = "Error loading config.toml: unknown variant `?`, expected one of `disabled`, `cached`, `indexed`, `live`\nin `web_search`\n";
+
+test("Codex's capabilities are read off the installed binary: its exec, its JSON stream, resume, and the web search its config takes", () => {
+  assert.deepEqual(codexCapabilities({ top: CODEX_TOP, exec: CODEX_EXEC, webSearch: CODEX_WEB_SEARCH }), { start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit: "unknown", pluginObservation: "no" });
+  const noJson = codexCapabilities({ top: CODEX_TOP, exec: CODEX_EXEC.replace("      --json\n", ""), webSearch: CODEX_WEB_SEARCH });
+  assert.deepEqual([noJson.stream, noJson.usage], ["no", "no"], "without --json nothing streams and nothing is counted");
+  assert.equal(codexCapabilities({ top: CODEX_TOP, exec: CODEX_EXEC, webSearch: "Error loading config.toml: unknown field `web_search`" }).webSearch, "no");
+  assert.equal(codexCapabilities({ top: CODEX_TOP, exec: CODEX_EXEC, webSearch: null }).webSearch, "unknown", "not asked: not known");
+  assert.equal(codexCapabilities({ top: "Commands:\n  login  Manage login", exec: "", webSearch: null }).start, "no");
+  assert.deepEqual(codexCapabilities(null), UNKNOWN_CAPABILITIES, "nothing read: nothing claimed");
 });

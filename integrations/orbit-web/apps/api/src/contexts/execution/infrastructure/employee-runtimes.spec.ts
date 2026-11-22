@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RuntimeCapabilities } from "@orbit-web/contracts";
-import { AGY_RUNTIME, CLAUDE_RUNTIME, CODEX_RUNTIME, codexArgs, codexEnv, codexFold, emptyFacts } from "./employee-runtimes.js";
+import { AGY_RUNTIME, CLAUDE_RUNTIME, CODEX_RUNTIME, codexArgs, codexEnv, codexFold, emptyFacts, employeeReadiness } from "./employee-runtimes.js";
 
 const caps = (toolPlaneSplit: RuntimeCapabilities["toolPlaneSplit"]): RuntimeCapabilities => ({ start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit, pluginObservation: "yes" });
 const input = { model: "gpt-5.5", effort: "high", webSearch: false, bridge: { command: "node", args: ["/opt/orbit-web/bridge/main.js"], env: { ORBIT_TOOL_URL: "http://orbit-web/api/runtime/tools", ORBIT_RUN_TOKEN: "t" } }, systemPrompt: "You are Ana.", sessionId: "s" };
@@ -11,6 +11,18 @@ test("an employee runs only where the installed CLI was OBSERVED to hold its mod
   assert.match(CLAUDE_RUNTIME.refusal({ label: "Claude", capabilities: caps("unknown") }) ?? "", /cannot run an AI employee here/);
   assert.match(CODEX_RUNTIME.refusal({ label: "Codex", capabilities: caps("unknown") }) ?? "", /patch and exec tools/);
   assert.match(AGY_RUNTIME.refusal({ label: "AGY", capabilities: caps("yes") }) ?? "", /no non-interactive mode/);
+});
+
+test("whether a connection can run employees is ONE answer, with the reason a person acts on: connected, read from the account, held to Orbit's tools", () => {
+  const catalog = { source: "account" as const, models: [{ id: "m", label: "M", description: null, efforts: [], autoMode: true }], recommended: "m", checkedAt: null };
+  const of = (over: Partial<Parameters<typeof employeeReadiness>[0]>) => employeeReadiness({ runtime: "claude", label: "Claude", auth: "connected", reason: null, catalog, capabilities: caps("yes"), ...over });
+  assert.deepEqual(of({}), { ready: true, reason: null });
+  assert.deepEqual(of({ auth: "auth_required", reason: "The login expired." }), { ready: false, reason: "not connected (The login expired.)" });
+  assert.deepEqual(of({ catalog: { ...catalog, source: "fallback" } }), { ready: false, reason: "its models were not read from the account" });
+  assert.deepEqual(of({ catalog: { ...catalog, models: [] } }), { ready: false, reason: "its account offers no model" });
+  assert.deepEqual(of({ capabilities: caps("unknown") }), { ready: false, reason: "its model plane is not held to Orbit's tools (Run without local tools: unknown)" });
+  assert.deepEqual(of({ runtime: "codex", label: "ChatGPT", capabilities: caps("unknown") }), { ready: false, reason: "its model plane is not held to Orbit's tools (Run without local tools: unknown)" });
+  assert.equal(of({ runtime: "agy", label: "Gemini" }).ready, false, "Antigravity runs no employee, whatever it says");
 });
 
 test("Codex's model plane, as documented: exec --json, read-only, never asking, its shell tool off, Orbit's bridge its MCP server", () => {

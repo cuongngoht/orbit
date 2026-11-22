@@ -186,9 +186,40 @@ export function claudeCapabilities(help: string | null): RuntimeCapabilities {
   };
 }
 
-// Codex and Antigravity: nothing is claimed that was not observed. Codex documents switching its shell tool off
-// (`features.shell_tool=false`) but nothing for its patch and exec tools; Antigravity documents only deny rules: the
-// tool plane cannot be split from either, so it stays unknown.
+// What OpenAI Codex's binary says of itself: its commands (`codex --help`), its exec's (`codex exec --help`), and what its
+// configuration answers to a web_search mode it does not know (asked in a scratch home: it lists the modes it takes,
+// and stops before any sign-in or model). A run is `codex exec --json`, its stream the JSONL events (a turn's usage
+// with them), resumed by `codex exec resume`, cancelled by a signal (Codex interrupts its turn). Plugins are not
+// observed. The tool plane split is not read from help at all: an employee's model plane is held by what the binary is
+// SEEN to offer a model (Phase 4), never by a list of switches -- so it stays unknown here.
+export interface CodexHelp {
+  top: string;
+  exec: string;
+  webSearch: string | null;
+}
+
+export function codexCapabilities(help: CodexHelp | null): RuntimeCapabilities {
+  if (help === null) return UNKNOWN_CAPABILITIES;
+  const json = has(help.exec, "--json");
+  const modes = help.webSearch === null ? null : /web_search/.test(help.webSearch) && /`live`/.test(help.webSearch) && /`disabled`/.test(help.webSearch);
+  return {
+    start: yes(has(help.top, "exec")),
+    stream: yes(json),
+    cancel: "yes",
+    resume: yes(has(help.exec, "resume")),
+    usage: yes(json),
+    webSearch: modes === null ? "unknown" : yes(modes),
+    toolPlaneSplit: "unknown",
+    pluginObservation: "no",
+  };
+}
+
+// What Codex's config is asked to show which web_search modes it takes: an unknown one, in a scratch home, with nothing
+// signed in -- it refuses the configuration and names the modes, before anything else.
+export const CODEX_WEB_SEARCH_PROBE = ["exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "-c", 'web_search="?"', "-"];
+
+// Antigravity: nothing is claimed that was not observed. It documents only deny rules: the tool plane cannot be split
+// from it, so it stays unknown.
 export const otherCapabilities = (installed: boolean): RuntimeCapabilities => ({ ...UNKNOWN_CAPABILITIES, start: installed ? "unknown" : "no" });
 
 // ---- per runtime ----------------------------------------------------------------------------------------------------------

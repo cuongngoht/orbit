@@ -100,9 +100,19 @@ export const notSetUp = (): Roster => roster({ office: null, departments: [], em
 
 export const capabilities = (over: Partial<RuntimeCapabilities> = {}): RuntimeCapabilities => ({ start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit: "yes", pluginObservation: "yes", ...over });
 
+// What the server says of a connection's readiness for employees (employee-runtimes.ts employeeReadiness), for a fixture
+// that does not say it itself: connected, read from the account, with a model, its model plane held to Orbit's tools.
+function readinessOf(c: Omit<RuntimeConnection, "employeeReady">): RuntimeConnection["employeeReady"] {
+  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})` };
+  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account" };
+  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model" };
+  if (c.runtime === "agy" || c.capabilities.toolPlaneSplit !== "yes") return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})` };
+  return { ready: true, reason: null };
+}
+
 // A Claude Code subscription connection, connected, with its account's catalog and the Orbit plugin approved for employees.
 export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnection {
-  return {
+  const made: Omit<RuntimeConnection, "employeeReady"> = {
     id: CONN_CLAUDE,
     runtime: "claude",
     label: "Claude subscription",
@@ -132,6 +142,7 @@ export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnec
     createdAt: "2026-11-20T00:00:00.000Z",
     ...over,
   };
+  return { ...made, employeeReady: over.employeeReady ?? readinessOf(made) };
 }
 
 export function connectionsView(over: Partial<AiConnectionsView> = {}): AiConnectionsView {

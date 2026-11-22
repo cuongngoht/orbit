@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { CONN_CLAUDE, CONN_CODEX, DEPT_LEGAL, connection, connectionsView, employeeDetail, presets, resourceSummary, roster } from "../../testing/officeFixtures";
+import { CONN_CLAUDE, CONN_CODEX, DEPT_LEGAL, capabilities, connection, connectionsView, employeeDetail, presets, resourceSummary, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { NETWORK_DISCLOSURE } from "./parts";
 import { OfficeView } from "./OfficeView";
@@ -201,5 +201,21 @@ describe("hiring an employee, in five steps", () => {
     expect(within(dialog).queryByRole("switch")).toBeNull();
     expect(dialog.textContent).toContain("Orbit plugin: not approved for employees on this connection.");
     expect(dialog.textContent).toContain("Web search: not offered");
+  });
+  test("a connected Codex with its account's models is offered only once its model plane is held to Orbit's tools: until then, said why", async () => {
+    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "subscription", plugins: null, isDefault: true, catalog: { ...connection().catalog, models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium"], autoMode: true }], recommended: "gpt-6.1-sol" }, capabilities: capabilities({ toolPlaneSplit: "unknown" }) });
+    fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }))
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("GET", "/api/office/resource-presets", () => presets())
+      .on("GET", "/api/office/templates", () => []);
+    const { dialog } = await open();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Cam");
+    await next(dialog);
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Department" }), DEPT_LEGAL);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Role title/ }), "Researcher");
+    await next(dialog);
+    expect(await within(dialog).findByRole("radio", { name: /OpenAI Codex — ChatGPT: its model plane is not held to Orbit's tools \(Run without local tools: unknown\)/ })).toBeDisabled();
   });
 });

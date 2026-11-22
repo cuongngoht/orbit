@@ -10,7 +10,7 @@
 //           binary or account here). Its documented switches turn its shell tool off but not its patch and exec tools,
 //           so its capability stays "unknown" and its employees are refused, with that reason, until a version can.
 //   agy     Google Antigravity: no non-interactive mode Orbit Web could hold to its tools is documented: refused.
-import type { RuntimeKind } from "@orbit-web/contracts";
+import type { AuthState, ConnectionCatalog, EmployeeReadiness, RuntimeCapabilities, RuntimeKind } from "@orbit-web/contracts";
 import type { ConnectionFacts } from "../../workforce/infrastructure/connections.reader.js";
 import { emptyFacts, employeeArgs, employeeEnv, foldLine, initViolation, type EmployeeRunInput, type StreamFacts } from "./claude-employee.adapter.js";
 
@@ -130,5 +130,17 @@ export const AGY_RUNTIME: EmployeeRuntime = {
 };
 
 export const EMPLOYEE_RUNTIMES: Record<RuntimeKind, EmployeeRuntime> = { claude: CLAUDE_RUNTIME, codex: CODEX_RUNTIME, agy: AGY_RUNTIME };
+
+// WHETHER A CONNECTION CAN RUN EMPLOYEES, and the reason a person acts on when it cannot -- one answer for the page that
+// offers it (AI Connections, Hire) and the same facts hire and dispatch hold a run to (usable + the runtime's refusal):
+// connected, its models read from the account (never a fallback list), and its model plane observed held to Orbit's
+// tools.
+export function employeeReadiness(c: { runtime: RuntimeKind; label: string; auth: AuthState; reason: string | null; catalog: ConnectionCatalog; capabilities: RuntimeCapabilities }): EmployeeReadiness {
+  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})` };
+  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account" };
+  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model" };
+  if (EMPLOYEE_RUNTIMES[c.runtime].refusal(c) !== null) return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})` };
+  return { ready: true, reason: null };
+}
 
 export { emptyFacts };

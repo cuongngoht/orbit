@@ -408,6 +408,14 @@ function Capabilities({ caps }: { caps: RuntimeCapabilities }) {
   );
 }
 
+// Why a connection has no model list: a CLI that lists none (Antigravity), one not connected yet, or a connected one whose
+// CLI did not answer the last check.
+function noCatalogText(c: RuntimeConnection): string {
+  if (c.runtime === "agy") return `${RUNTIME_LABELS[c.runtime]} has no command that lists its models: none is read.`;
+  if (c.auth !== "connected") return "Its models are read from its CLI once it is connected.";
+  return "Its CLI did not say which models this connection may use: Re-check.";
+}
+
 function Catalog({ c }: { c: RuntimeConnection }) {
   const s = useStyles();
   const cat = c.catalog;
@@ -416,7 +424,7 @@ function Catalog({ c }: { c: RuntimeConnection }) {
       ? `Models from your account, read ${when(cat.checkedAt)}.`
       : cat.source === "fallback"
         ? "A fallback list, not read from your account: chats may use it, employees never do."
-        : "No model list was read yet: Re-check once it is connected.";
+        : noCatalogText(c);
   return (
     <div>
       <Text size={200} className={s.muted}>

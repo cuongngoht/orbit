@@ -1,7 +1,7 @@
 // GATHER-STYLE REAL-TIME COMPANY OFFICE FLOOR: one physical walker per employee moving smoothly with directional
 // facing & 2-frame walking stride along real doorway/hallway routes between their desk, Pantry lounge, and Director's Office.
 import { Button, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Dismiss16Regular, ErrorCircle16Regular, MoreHorizontal16Regular, TaskListLtr20Regular, Warning16Regular } from "@fluentui/react-icons";
+import { ErrorCircle16Regular, MoreHorizontal16Regular, Warning16Regular } from "@fluentui/react-icons";
 import type { AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBadge, OfficeIcon } from "../../components/SectionIcons";
@@ -19,7 +19,7 @@ import {
   PixelPlantSvg,
   PixelQuestBubble,
 } from "./PixelOfficeArt";
-import { deskMoodText, presenceKindOf } from "./VirtualDesk";
+import { presenceKindOf } from "./VirtualDesk";
 
 interface FloorGroup {
   department: Department | null;
@@ -38,46 +38,6 @@ function roomAccentFor(label: string) {
   let h = 0;
   for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
   return ROOM_ACCENTS[h % ROOM_ACCENTS.length]!;
-}
-
-function dialogueSpeech(e: EmployeeCard, walker?: WalkerState): string {
-  const title = e.holding?.title;
-  if (walker?.zone === "pantry" && e.workLabel === "ready") {
-    return "“Grabbing a coffee in the Pantry before heading back to my desk. Ready whenever you have a brief!”";
-  }
-  if (walker?.walking) {
-    return "“Just walking down the hallway right now — happy to chat or take a new assignment!”";
-  }
-  if (e.workLabel === "waiting_review") {
-    return title
-      ? `“I walked over to your office with ‘${title}’ — ready for your opinion and review! Or want to assign the next task?”`
-      : "“Came by the Director's Office — I have work ready for your review!”";
-  }
-  if (e.workLabel === "waiting_info") {
-    return title
-      ? `“Stopped by the Director's desk to ask your thoughts on ‘${title}’. Take a quick look or queue another brief?”`
-      : "“I popped into the Director's Office to ask a quick question!”";
-  }
-  if (presenceKindOf(e.workLabel) === "waiting") {
-    return title
-      ? `“Waiting at the Director's Office regarding ‘${title}’. Want to inspect it or hand over another brief?”`
-      : "“Waiting at the Director's Office for a quick check-in.”";
-  }
-  if (e.workLabel === "working") {
-    return title
-      ? `“Focused at my desk on ‘${title}’. Want to check progress or queue something behind it?”`
-      : "“Typing away at my desk! Want to queue the next brief?”";
-  }
-  if (e.workLabel === "ready") {
-    return "“Spinning my pen at the desk and taking coffee breaks in the Pantry. Ready whenever you have a new brief!”";
-  }
-  if (e.workLabel === "paused") {
-    return "“Resting on the Pantry sofa while paused. Resume or hand me a brief anytime!”";
-  }
-  if (e.workLabel === "not_ready") {
-    return `“Desk is offline (${e.notReadyReason ?? "needs connection/setup"}). Check my desk profile?”`;
-  }
-  return "“Standing by in the office — ready whenever you are!”";
 }
 
 function measureWaypoints(root: HTMLElement): WaypointMap {
@@ -375,21 +335,25 @@ const useStyles = makeStyles({
   },
   desksGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 265px), 1fr))",
-    gap: "12px",
+    gridTemplateColumns: "repeat(auto-fill, minmax(128px, 150px))",
+    rowGap: "26px",
+    columnGap: "14px",
+    justifyContent: "flex-start",
     minWidth: 0,
+    "@media (max-width: 480px)": { gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" },
   },
   deskArticle: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    paddingTop: "10px",
-    paddingRight: "12px",
-    paddingBottom: "12px",
-    paddingLeft: "12px",
-    borderRadius: "12px",
-    backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    alignItems: "center",
+    gap: "4px",
+    paddingTop: "2px",
+    paddingRight: "2px",
+    paddingBottom: "2px",
+    paddingLeft: "2px",
+    borderRadius: "0",
+    backgroundColor: "transparent",
+    ...shorthands.border("0", "none", "transparent"),
     minWidth: 0,
   },
   deskStageBtn: {
@@ -397,51 +361,46 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "center",
     gap: "2px",
-    paddingTop: "10px",
-    paddingRight: "8px",
-    paddingBottom: "10px",
-    paddingLeft: "8px",
+    paddingTop: "4px",
+    paddingRight: "4px",
+    paddingBottom: "4px",
+    paddingLeft: "4px",
     borderRadius: "10px",
-    backgroundColor: "var(--orbit-card-bg)",
-    ...shorthands.border("1.5px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: "transparent",
+    ...shorthands.border("0", "none", "transparent"),
     cursor: "pointer",
     fontFamily: "inherit",
     color: tokens.colorNeutralForeground1,
     width: "100%",
-    transitionProperty: "border-color, box-shadow",
+    transitionProperty: "background-color",
     transitionDuration: "140ms",
     ":hover": {
-      ...shorthands.borderColor(tokens.colorBrandStroke1),
-      boxShadow: tokens.shadow4,
+      backgroundColor: "rgba(91, 88, 212, 0.08)",
     },
     ":focus-visible": {
       ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
       outlineOffset: "2px",
     },
   },
-  deskStageSelected: {
-    ...shorthands.borderColor(tokens.colorBrandStroke1),
-    boxShadow: "0 0 0 2px rgba(91, 88, 212, 0.22)",
-  },
   chairAnchorWrap: {
     position: "relative",
     width: "100%",
-    height: "54px",
+    height: "44px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "flex-end",
   },
   awayNote: {
-    fontSize: "10.5px",
+    fontSize: "10px",
     color: tokens.colorNeutralForeground3,
-    paddingTop: "2px",
-    paddingRight: "8px",
-    paddingBottom: "2px",
-    paddingLeft: "8px",
+    paddingTop: "1px",
+    paddingRight: "7px",
+    paddingBottom: "1px",
+    paddingLeft: "7px",
     borderRadius: "9999px",
     backgroundColor: tokens.colorNeutralBackground2,
-    marginBottom: "6px",
+    marginBottom: "4px",
   },
   walkersLayer: {
     position: "absolute",
@@ -483,9 +442,6 @@ const useStyles = makeStyles({
       borderRadius: "8px",
     },
   },
-  walkerSelected: {
-    filter: "drop-shadow(0 0 8px rgba(91, 88, 212, 0.5))",
-  },
   empNameBtn: {
     paddingLeft: 0,
     paddingRight: 0,
@@ -495,7 +451,7 @@ const useStyles = makeStyles({
     minHeight: "auto",
     justifyContent: "flex-start",
     fontWeight: 600,
-    fontSize: tokens.fontSizeBase300,
+    fontSize: tokens.fontSizeBase200,
     textAlign: "left",
     overflowWrap: "anywhere",
     height: "auto",
@@ -503,12 +459,13 @@ const useStyles = makeStyles({
   holdingBox: {
     display: "flex",
     flexDirection: "column",
-    gap: "3px",
-    paddingTop: "7px",
-    paddingRight: "10px",
-    paddingBottom: "7px",
-    paddingLeft: "10px",
-    borderRadius: "9px",
+    gap: "2px",
+    width: "100%",
+    paddingTop: "4px",
+    paddingRight: "7px",
+    paddingBottom: "4px",
+    paddingLeft: "7px",
+    borderRadius: "7px",
     backgroundColor: "var(--orbit-card-bg)",
     borderTopWidth: "1px",
     borderRightWidth: "1px",
@@ -519,66 +476,9 @@ const useStyles = makeStyles({
     borderRightColor: tokens.colorNeutralStroke2,
     borderBottomColor: tokens.colorNeutralStroke2,
     borderLeftColor: tokens.colorBrandStroke1,
+    fontSize: "10.5px",
     minWidth: 0,
   },
-  dialoguePanel: {
-    position: "relative",
-    zIndex: 15,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "16px",
-    flexWrap: "wrap",
-    paddingTop: "12px",
-    paddingRight: "16px",
-    paddingBottom: "12px",
-    paddingLeft: "14px",
-    borderRadius: "14px",
-    backgroundColor: "var(--orbit-card-bg)",
-    ...shorthands.border("2px", "solid", tokens.colorBrandStroke1),
-    boxShadow: tokens.shadow16,
-    minWidth: 0,
-  },
-  dialogueLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    flexGrow: 1,
-    flexBasis: "340px",
-    minWidth: 0,
-  },
-  portraitFrame: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "62px",
-    height: "62px",
-    borderRadius: "12px",
-    backgroundColor: "var(--orbit-rug-pantry)",
-    ...shorthands.border("1.5px", "solid", "var(--orbit-wall-outer)"),
-    flexShrink: 0,
-  },
-  dialogueActions: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    flexWrap: "wrap",
-    flexShrink: 0,
-  },
-  keyCap: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "17px",
-    height: "17px",
-    borderRadius: "9999px",
-    fontSize: "10px",
-    fontWeight: 800,
-    lineHeight: 1,
-    flexShrink: 0,
-  },
-  keyPrimary: { backgroundColor: "rgba(255, 255, 255, 0.24)", color: "#ffffff" },
-  keySecondary: { backgroundColor: tokens.colorNeutralBackground3, color: tokens.colorNeutralForeground2 },
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
@@ -607,7 +507,7 @@ export function OfficeFloorMap({
   const walkersRef = useRef<WalkerState[]>([]);
   const [measured, setMeasured] = useState(false);
   const [walkers, setWalkers] = useState<WalkerState[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const simItems: SimEmployee[] = useMemo(() => {
     let slot = 0;
@@ -623,15 +523,15 @@ export function OfficeFloorMap({
   }, [groups]);
 
   const simItemsRef = useRef(simItems);
-  const selectedIdRef = useRef(selectedId);
+  const hoveredIdRef = useRef(hoveredId);
 
   useEffect(() => {
     simItemsRef.current = simItems;
   }, [simItems]);
 
   useEffect(() => {
-    selectedIdRef.current = selectedId;
-  }, [selectedId]);
+    hoveredIdRef.current = hoveredId;
+  }, [hoveredId]);
 
   useEffect(() => {
     const root = buildingRef.current;
@@ -648,7 +548,7 @@ export function OfficeFloorMap({
       if (walkersRef.current.length === 0) {
         walkersRef.current = simItemsRef.current.map((item) => createWalker(item, nextWps));
       } else {
-        walkersRef.current = resnapIdleWalkers(stepWalkers(walkersRef.current, simItemsRef.current, nextWps, 0, selectedIdRef.current), nextWps);
+        walkersRef.current = resnapIdleWalkers(stepWalkers(walkersRef.current, simItemsRef.current, nextWps, 0, hoveredIdRef.current), nextWps);
       }
       setWalkers(walkersRef.current);
       setMeasured(true);
@@ -674,7 +574,7 @@ export function OfficeFloorMap({
     const tick = (now: number) => {
       const dtMs = Math.min(64, Math.max(0, now - lastTs));
       lastTs = now;
-      walkersRef.current = stepWalkers(walkersRef.current, simItemsRef.current, wpsRef.current, dtMs, selectedIdRef.current);
+      walkersRef.current = stepWalkers(walkersRef.current, simItemsRef.current, wpsRef.current, dtMs, hoveredIdRef.current);
       renderAccumMs += dtMs;
       if (renderAccumMs >= 32) {
         renderAccumMs = 0;
@@ -691,9 +591,7 @@ export function OfficeFloorMap({
   }, [simItems]);
 
   const allEmployees = simItems.map((i) => i.employee);
-  const selected = allEmployees.find((e) => e.id === selectedId) ?? null;
   const walkerById = new Map(walkers.map((w) => [w.id, w]));
-  const selectedWalker = selected ? walkerById.get(selected.id) : undefined;
 
   // When an active walker gets clicked cleanly by desk stage, also sync any immediate route updates
   const directorName = account?.displayName?.trim() || "You";
@@ -861,7 +759,6 @@ export function OfficeFloorMap({
               ) : (
                 <div className={s.desksGrid} style={{ padding: "8px", borderRadius: "12px", backgroundColor: accent.tint }}>
                   {g.employees.map((e) => {
-                    const isSelected = selected?.id === e.id;
                     const w = walkerById.get(e.id);
                     const atDeskNow = !measured || (w ? w.zone === "desk" && w.path.length === 0 : true);
                     const awayReason = w?.walking
@@ -880,10 +777,12 @@ export function OfficeFloorMap({
                       <article key={e.id} className={s.deskArticle} aria-label={e.name}>
                         <button
                           type="button"
-                          className={mergeClasses(s.deskStageBtn, isSelected && s.deskStageSelected)}
-                          aria-label={`Talk to ${e.name} at ${roomName} desk`}
-                          title={`${e.name} — ${e.holding ? e.holding.title : deskMoodText(e.workLabel)}`}
-                          onClick={() => setSelectedId((cur) => (cur === e.id ? null : e.id))}
+                          className={s.deskStageBtn}
+                          aria-label={`Assign work to ${e.name}`}
+                          disabled={e.employment === "archived"}
+                          title={e.employment === "archived" ? e.name : `Click to assign work to ${e.name}`}
+                          onClick={() => onAssign(e.id)}
+                          {...restore}
                         >
                           <div className={s.chairAnchorWrap}>
                             <span
@@ -899,7 +798,7 @@ export function OfficeFloorMap({
                                     name={e.name}
                                     workLabel={e.workLabel}
                                     activity={e.workLabel === "ready" ? "pen-spin" : e.workLabel === "working" ? "typing" : "asking"}
-                                    size={40}
+                                    size={38}
                                   />
                                 </div>
                               </>
@@ -919,36 +818,35 @@ export function OfficeFloorMap({
                           />
                         </button>
 
-                        <div className={o.between}>
+                        <div className={o.between} style={{ gap: "4px", width: "100%" }}>
                           <Button className={s.empNameBtn} appearance="transparent" onClick={() => onOpenEmployee(e.id)}>
                             {e.name}
                           </Button>
                           <WorkLabelBadge label={e.workLabel} />
                         </div>
 
-                        <Text size={200} className={mergeClasses(s.muted, o.wrap)}>
-                          {e.title}
-                          {e.kind === "assistant" ? ` · temporary assistant${e.expiresAt ? ` until ${when(e.expiresAt)}` : ""}` : ""}
-                        </Text>
+                        {e.kind === "assistant" && (
+                          <Text size={100} className={mergeClasses(s.muted, o.wrap)}>
+                            temporary assistant{e.expiresAt ? ` until ${when(e.expiresAt)}` : ""}
+                          </Text>
+                        )}
 
                         {e.holding && (
                           <div className={s.holdingBox}>
-                            <Text size={200} className={o.wrap}>
-                              Holding:{" "}
+                            <Text size={100} className={o.wrap}>
                               <Link as="button" onClick={() => onOpenMission(e.holding?.missionId ?? "")}>
                                 {e.holding.title}
-                              </Link>{" "}
-                              <span className={s.muted}>since {when(e.holding.since)}</span>
+                              </Link>
                             </Text>
                             {e.queued > 0 && (
-                              <Text size={200} className={s.muted}>
+                              <Text size={100} className={s.muted}>
                                 {e.queued} queued behind it
                               </Text>
                             )}
                           </div>
                         )}
                         {!e.holding && e.queued > 0 && (
-                          <Text size={200} className={s.muted}>
+                          <Text size={100} className={s.muted}>
                             {e.queued} queued behind it
                           </Text>
                         )}
@@ -962,25 +860,6 @@ export function OfficeFloorMap({
                             Connection: {e.connectionWarning}
                           </Callout>
                         )}
-
-                        <div className={o.divider} />
-                        <div className={o.between}>
-                          <Text size={200} className={s.muted}>
-                            Updated {when(e.updatedAt)}
-                          </Text>
-                          <Button
-                            className={o.touch}
-                            size="small"
-                            appearance={e.workLabel === "ready" ? "primary" : "secondary"}
-                            icon={<TaskListLtr20Regular />}
-                            disabled={e.employment === "archived"}
-                            onClick={() => onAssign(e.id)}
-                            aria-label={`Assign work to ${e.name}`}
-                            {...restore}
-                          >
-                            Assign work
-                          </Button>
-                        </div>
                       </article>
                     );
                   })}
@@ -997,7 +876,7 @@ export function OfficeFloorMap({
           {walkers.map((w) => {
             const e = allEmployees.find((emp) => emp.id === w.id);
             if (!e) return null;
-            const isSelected = selected?.id === e.id;
+            const isHovered = hoveredId === e.id;
             const iconText = w.walking
               ? "🚶"
               : w.path.length > 0 || w.zone === "hallway"
@@ -1011,13 +890,15 @@ export function OfficeFloorMap({
               <button
                 key={w.id}
                 type="button"
-                className={mergeClasses(s.walkerBtn, isSelected && s.walkerSelected)}
+                className={s.walkerBtn}
                 aria-label={`Talk to ${e.name}`}
-                title={`${e.name} — ${w.walking ? "Walking" : deskMoodText(e.workLabel)}`}
-                style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -74%)` }}
-                onClick={() => setSelectedId((cur) => (cur === e.id ? null : e.id))}
+                title={e.employment === "archived" ? `${e.name} — Open profile` : `Click to assign work to ${e.name}`}
+                style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -76%)` }}
+                onMouseEnter={() => setHoveredId(e.id)}
+                onMouseLeave={() => setHoveredId((cur) => (cur === e.id ? null : cur))}
+                onClick={() => (e.employment === "archived" ? onOpenEmployee(e.id) : onAssign(e.id))}
               >
-                {!w.walking && <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />}
+                <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
                 <PixelChibiSvg
                   name={e.name}
                   workLabel={e.workLabel}
@@ -1025,97 +906,17 @@ export function OfficeFloorMap({
                   facing={w.facing}
                   walking={w.walking}
                   stride={w.stride}
-                  size={40}
+                  size={38}
                 />
                 <GatherNamePill
                   name={e.name}
                   dotColor={dotColorOf(e.workLabel)}
                   iconText={iconText}
-                  selected={isSelected}
+                  selected={isHovered}
                 />
               </button>
             );
           })}
-        </div>
-      )}
-
-      {/* Interactive Switch-Style NPC Desk Dialogue Bar */}
-      {selected && (
-        <div className={s.dialoguePanel} role="region" aria-label={`Desk chat with ${selected.name}`}>
-          <div className={s.dialogueLeft}>
-            <div className={s.portraitFrame}>
-              <PixelChibiSvg
-                name={selected.name}
-                workLabel={selected.workLabel}
-                activity={selectedWalker?.activity ?? (presenceKindOf(selected.workLabel) === "waiting" ? "asking" : selected.workLabel === "ready" ? "coffee" : "typing")}
-                size={48}
-              />
-            </div>
-            <div className={o.stack}>
-              <div className={o.row}>
-                <Text weight="semibold" size={400}>
-                  {selected.name}
-                </Text>
-                <Text size={200} className={s.muted}>
-                  {selected.title}
-                </Text>
-                <span aria-hidden>
-                  <WorkLabelBadge label={selected.workLabel} />
-                </span>
-              </div>
-              <Text size={300}>{dialogueSpeech(selected, selectedWalker)}</Text>
-            </div>
-          </div>
-
-          <div className={s.dialogueActions}>
-            <Button
-              type="button"
-              appearance="primary"
-              icon={<TaskListLtr20Regular />}
-              disabled={selected.employment === "archived"}
-              onClick={() => {
-                const id = selected.id;
-                setSelectedId(null);
-                onAssign(id);
-              }}
-            >
-              <span className={mergeClasses(s.keyCap, s.keyPrimary)} style={{ marginRight: "6px" }} aria-hidden>
-                A
-              </span>
-              Assign work
-            </Button>
-            {selected.holding && (
-              <Button
-                type="button"
-                appearance="secondary"
-                onClick={() => {
-                  const mid = selected.holding?.missionId;
-                  setSelectedId(null);
-                  if (mid) onOpenMission(mid);
-                }}
-              >
-                <span className={mergeClasses(s.keyCap, s.keySecondary)} style={{ marginRight: "6px" }} aria-hidden>
-                  B
-                </span>
-                Open current work
-              </Button>
-            )}
-            <Button
-              type="button"
-              appearance="secondary"
-              onClick={() => {
-                const id = selected.id;
-                setSelectedId(null);
-                onOpenEmployee(id);
-              }}
-            >
-              <span className={mergeClasses(s.keyCap, s.keySecondary)} style={{ marginRight: "6px" }} aria-hidden>
-                Y
-              </span>
-              Desk profile
-            </Button>
-            <Button type="button" appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label="Close desk dialogue" onClick={() => setSelectedId(null)} />
-          </div>
         </div>
       )}
     </div>

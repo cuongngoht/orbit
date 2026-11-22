@@ -1,8 +1,7 @@
 // GATHER-STYLE 2.5D PIXEL OFFICE ART: crisp pixel-grid employees (director suit, typing, asking at director's desk,
 // sipping coffee in Pantry, spinning a pen), modern company desks, executive suite, Pantry lounge, and bookshelves.
-import { tokens } from "@fluentui/react-components";
 import type { WorkLabel } from "@orbit-web/contracts";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { personaFor, presenceKindOf } from "./VirtualDesk";
 
 export type ChibiActivity = "default" | "director" | "typing" | "asking" | "coffee" | "pen-spin";
@@ -244,6 +243,101 @@ const shortTitle = (text: string, max = 20): string => {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 };
 
+function ThoughtCloud({
+  borderColor = "#cbd5e1",
+  duration = "2s",
+  maxWidth = "148px",
+  children,
+}: {
+  borderColor?: string;
+  duration?: string;
+  maxWidth?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "center",
+        animationName: "orbit-thought-float",
+        animationDuration: duration,
+        animationIterationCount: "infinite",
+        animationTimingFunction: "ease-in-out",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          padding: "3px 9px",
+          borderRadius: "14px",
+          backgroundColor: "#ffffff",
+          border: `1.5px solid ${borderColor}`,
+          boxShadow: "0 2px 6px rgba(15, 23, 42, 0.1)",
+          maxWidth,
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            top: "-4px",
+            left: "7px",
+            width: "10px",
+            height: "6px",
+            borderRadius: "9999px",
+            backgroundColor: "#ffffff",
+            borderTop: `1.5px solid ${borderColor}`,
+            borderLeft: `1px solid ${borderColor}`,
+            pointerEvents: "none",
+          }}
+        />
+        <span
+          style={{
+            position: "absolute",
+            top: "-5px",
+            right: "8px",
+            width: "12px",
+            height: "7px",
+            borderRadius: "9999px",
+            backgroundColor: "#ffffff",
+            borderTop: `1.5px solid ${borderColor}`,
+            borderRight: `1px solid ${borderColor}`,
+            pointerEvents: "none",
+          }}
+        />
+        <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: "4px", minWidth: 0 }}>{children}</span>
+      </div>
+      <span
+        style={{
+          width: "5px",
+          height: "5px",
+          borderRadius: "9999px",
+          backgroundColor: "#ffffff",
+          border: `1.2px solid ${borderColor}`,
+          marginTop: "1px",
+          marginRight: "6px",
+        }}
+      />
+      <span
+        style={{
+          width: "3px",
+          height: "3px",
+          borderRadius: "9999px",
+          backgroundColor: "#ffffff",
+          border: `1px solid ${borderColor}`,
+          marginTop: "1px",
+          marginRight: "11px",
+        }}
+      />
+    </div>
+  );
+}
+
 export function PixelQuestBubble({
   workLabel,
   title = null,
@@ -255,36 +349,19 @@ export function PixelQuestBubble({
 
   if (kind === "waiting") {
     return (
-      <div
-        aria-hidden="true"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "5px",
-          padding: "2px 7px",
-          borderRadius: "8px",
-          backgroundColor: "#ffffff",
-          border: "1.8px solid #d97706",
-          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.14)",
-          animationName: "orbit-thought-float",
-          animationDuration: "1.4s",
-          animationIterationCount: "infinite",
-          animationTimingFunction: "ease-in-out",
-          maxWidth: "150px",
-        }}
-      >
+      <ThoughtCloud borderColor="#d97706" duration="1.4s" maxWidth="150px">
         <span
           style={{
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            width: "14px",
-            height: "14px",
-            borderRadius: "4px",
+            width: "13px",
+            height: "13px",
+            borderRadius: "9999px",
             backgroundColor: "#f59e0b",
             color: "#ffffff",
             fontWeight: 900,
-            fontSize: "10.5px",
+            fontSize: "9.5px",
             lineHeight: 1,
             flexShrink: 0,
           }}
@@ -292,34 +369,17 @@ export function PixelQuestBubble({
           !
         </span>
         {title && (
-          <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#1f1e1b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {shortTitle(title, 18)}
+          <span style={{ fontSize: "10px", fontWeight: 700, color: "#1f1e1b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {shortTitle(title, 16)}
           </span>
         )}
-      </div>
+      </ThoughtCloud>
     );
   }
 
   if (kind === "working") {
     return (
-      <div
-        aria-hidden="true"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "5px",
-          padding: "2px 8px",
-          borderRadius: "9999px",
-          backgroundColor: "var(--orbit-card-bg)",
-          border: `1.5px solid ${tokens.colorBrandStroke1}`,
-          boxShadow: tokens.shadow2,
-          animationName: "orbit-thought-float",
-          animationDuration: "1.9s",
-          animationIterationCount: "infinite",
-          animationTimingFunction: "ease-in-out",
-          maxWidth: "148px",
-        }}
-      >
+      <ThoughtCloud borderColor="#6366f1" duration="1.8s" maxWidth="148px">
         <span
           style={{
             width: "9px",
@@ -333,9 +393,9 @@ export function PixelQuestBubble({
             borderRightStyle: "solid",
             borderBottomStyle: "solid",
             borderLeftStyle: "solid",
-            borderRightColor: tokens.colorBrandStroke1,
-            borderBottomColor: tokens.colorBrandStroke1,
-            borderLeftColor: tokens.colorBrandStroke1,
+            borderRightColor: "#6366f1",
+            borderBottomColor: "#6366f1",
+            borderLeftColor: "#6366f1",
             borderTopColor: "transparent",
             flexShrink: 0,
             animationName: "orbit-spin",
@@ -344,35 +404,43 @@ export function PixelQuestBubble({
             animationTimingFunction: "linear",
           }}
         />
-        <span style={{ fontSize: "10.5px", fontWeight: 700, color: tokens.colorNeutralForeground1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {shortTitle(title || "Working…", 18)}
+        <span style={{ fontSize: "10px", fontWeight: 700, color: "#1e293b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {shortTitle(title || "Working…", 16)}
         </span>
-      </div>
+      </ThoughtCloud>
     );
   }
 
   if (kind === "paused" || kind === "offline") {
     return (
-      <div
-        aria-hidden="true"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          padding: "1px 6px",
-          borderRadius: "6px",
-          backgroundColor: "var(--orbit-card-bg)",
-          border: `1px solid ${tokens.colorNeutralStroke1}`,
-          fontSize: "10px",
-          fontWeight: 700,
-          color: tokens.colorNeutralForeground3,
-        }}
-      >
-        {kind === "paused" ? "zZz" : "! off"}
-      </div>
+      <ThoughtCloud borderColor="#94a3b8" duration="2.4s" maxWidth="80px">
+        <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#64748b", lineHeight: 1 }}>
+          {kind === "paused" ? "zZz" : "! off"}
+        </span>
+      </ThoughtCloud>
     );
   }
 
-  return null;
+  return (
+    <ThoughtCloud borderColor="#cbd5e1" duration="2.2s" maxWidth="72px">
+      {[0, 1, 2].map((idx) => (
+        <span
+          key={idx}
+          style={{
+            width: "3.5px",
+            height: "3.5px",
+            borderRadius: "9999px",
+            backgroundColor: "#64748b",
+            animationName: "orbit-dot-pulse",
+            animationDuration: "1.4s",
+            animationDelay: `${idx * 0.22}s`,
+            animationIterationCount: "infinite",
+            animationTimingFunction: "ease-in-out",
+          }}
+        />
+      ))}
+    </ThoughtCloud>
+  );
 }
 
 export function PixelDirectorDeskSvg() {
@@ -475,7 +543,7 @@ export function PixelModernDeskSvg({
           : "#a1a1aa";
 
   return (
-    <svg width="88" height="36" viewBox="0 0 44 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <svg width="74" height="30" viewBox="0 0 44 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
       {/* Ergonomic dark swivel chair peeking */}
       <rect x="17" y="1" width="10" height="4" fill="#334155" />
       <rect x="18" y="2" width="8" height="2" fill="#475569" />

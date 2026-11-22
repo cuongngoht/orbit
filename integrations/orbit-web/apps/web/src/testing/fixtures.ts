@@ -120,7 +120,7 @@ export const TRIAL: TrialMode = { enabled: true, username: "admin", password: "1
 
 // GET /api/auth/status: by default this browser is signed in.
 export function authStatus(over: Partial<AuthStatus> = {}): AuthStatus {
-  return { state: "signed_in", session: authSession(), user: authUser(), account: authAccount(), trial: NO_TRIAL, ...over };
+  return { state: "signed_in", session: authSession(), user: authUser(), account: authAccount(), trial: NO_TRIAL, setupCode: null, ...over };
 }
 
 // A browser with no session (the installation has its first administrator).

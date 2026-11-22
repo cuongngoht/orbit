@@ -72,6 +72,13 @@ Web's role (a login, **not** a superuser) and its database, and enables pgvector
 (of two browsers, one wins). With it you choose the username (`admin` by default) and a password, and give your full
 name, your company's name and its time zone ([Sign in](#sign-in-orbit-webs-own-accounts)).
 
+**A test installation's standing code.** Where the first administrator is made again and again (every reset of a test
+installation), put `ORBIT_WEB_SETUP_CODE=<8-64 characters>` in `.env`: while nobody is set up, the setup page shows that
+code already filled in, and it makes the first administrator -- never another account or a reset password, and nothing
+once an administrator exists. It is never stored, so it survives every reset; Orbit Web says at start that it is set.
+While nobody is set up, whoever can open the page can use it: leave it unset wherever that matters, and the one-time
+code above is the only way in again.
+
 **A trial on this machine** skips the code: `docker compose -f compose.yaml -f compose.trial.yaml up -d --build` turns
 trial mode on, with the account `admin` / `123456` made at the first start, a red bar on every page until its password
 is changed, and the port published on 127.0.0.1 alone. Because that password is public, Orbit Web refuses to start in
@@ -138,6 +145,7 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_SIGN_IN_ON_PAGE` | `1` | `0`: a subscription connection is signed in only in a terminal of the server (`connect.js`); its card shows the command alone and the sign-in routes refuse (ADR 0068) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie and the session's cookies Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: no credential of the server's own is given to any program; each account connects its CLIs ([AI connections](#ai-connections)) |
+| `ORBIT_WEB_SETUP_CODE` | unset | a test installation's standing setup code (8-64 characters): the setup page fills it in until the first administrator exists; never stored ([Run it](#run-it)) |
 | `ORBIT_WEB_TRIAL` | unset | `1`: the localhost-only trial with `admin` / `123456` (`docker/compose.trial.yaml` sets it); refused at start unless only this machine can reach Orbit Web |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | turns on **Claude Code's telemetry** (OpenTelemetry) and names the collector; a signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT` does too. Unset, nothing is exported |

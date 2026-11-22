@@ -105,3 +105,11 @@ test("a trial starts only where nobody else can reach it -- and says which condi
   }
   assert.equal(trial({ ORBIT_WEB_ALLOWED_HOSTS: "localhost,127.0.0.1" })().identity.trial, true, "naming loopback names again widens nothing");
 });
+
+test("a standing setup code is the operator's: off unless set, held to a printed code's length, kept as typed", () => {
+  assert.equal(loadConfig({}).identity.setupCode, null);
+  assert.equal(loadConfig({ ORBIT_WEB_SETUP_CODE: "" }).identity.setupCode, null, "an empty variable is no code");
+  assert.equal(loadConfig({ ORBIT_WEB_SETUP_CODE: "  ORBIT-TEST-SETUP-2026 " }).identity.setupCode, "ORBIT-TEST-SETUP-2026");
+  assert.throws(() => loadConfig({ ORBIT_WEB_SETUP_CODE: "short" }), ConfigError);
+  assert.throws(() => loadConfig({ ORBIT_WEB_SETUP_CODE: "x".repeat(65) }), ConfigError);
+});

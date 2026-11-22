@@ -107,6 +107,9 @@ export interface AuthStatus {
   user: AuthUser | null;
   account: AuthAccount | null;
   trial: TrialMode;
+  // A test installation's standing setup code (ORBIT_WEB_SETUP_CODE), for the setup page to fill in: only while nobody
+  // is set up (`setup_required`), null otherwise and wherever the operator set none.
+  setupCode: string | null;
 }
 
 export interface LoginRequest {

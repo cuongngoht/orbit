@@ -11,6 +11,7 @@ import {
   INVALID_CREDENTIALS,
   MUTATION_HEADER,
   PRECONDITION_REQUIRED,
+  SETUP_ALREADY_DONE,
   SETUP_CODE_INVALID,
   SIGN_IN_REQUIRED,
   STALE_VERSION,
@@ -45,6 +46,7 @@ describe("the first administrator: one code, two browsers, one account", () => {
   test("before it, the status says setup is needed and every route but the public ones answers 401", async () => {
     const status = (await h.anonymous.get("/api/auth/status")).body as AuthStatus;
     assert.deepEqual([status.state, status.session, status.user, status.trial.enabled], ["setup_required", null, null, false]);
+    assert.equal(status.setupCode, null, "no standing code unless the operator set one: the setup needs a printed code");
     const open = new Set(["GET /api/health", "POST /api/access", "GET /api/auth/status", "POST /api/auth/login", "POST /api/auth/setup", "GET /api/shared/:token"]);
     const routes = routesOf(h);
     assert.deepEqual(routes.filter((r) => r.open).map((r) => `${r.method} ${r.path}`).sort(), [...open].sort(), "nothing else is public");
@@ -79,6 +81,48 @@ describe("the first administrator: one code, two browsers, one account", () => {
     assert.equal(winner.user?.shareAddress, `${winner.user?.username}@users.orbit.local`, "no verified email: shared with by username");
     const [made] = await h.sql("SELECT event_type, data->>'setting' AS setting FROM audit_events WHERE account_id = $1 AND event_type = 'settings.privileged.changed'", [winner.account?.orbitId ?? null]);
     assert.deepEqual(made, { event_type: "settings.privileged.changed", setting: "identity.setup_code.first_admin" }, "the code's use is in the account's audit record");
+  });
+});
+
+// A test installation's operator sets ONE standing code (ORBIT_WEB_SETUP_CODE): the setup page shows it filled in, it
+// survives every reset (it lives in the environment, not the database), and it makes the first administrator alone.
+describe("a standing setup code: a test installation's first administrator, filled in on the page", () => {
+  const STANDING = "ORBIT-TEST-SETUP-2026";
+  let h: Harness;
+  before(async () => (h = await startHarness({ signIn: false, env: { ORBIT_WEB_SETUP_CODE: STANDING } })));
+  after(() => h.close());
+
+  test("while nobody is set up, the status hands the page the standing code to fill in", async () => {
+    const status = (await h.anonymous.get("/api/auth/status")).body as AuthStatus;
+    assert.equal(status.state, "setup_required");
+    assert.equal(status.setupCode, STANDING);
+  });
+
+  test("it makes the first administrator, uses up nothing, and the audit record says it was the standing code", async () => {
+    const r = await browserAt(h.url).send("POST", "/api/auth/setup", { ...SETUP, code: "orbit test setup 2026" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const made = r.body as AuthStatus;
+    assert.equal(made.state, "signed_in");
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM setup_codes"))[0]?.n, 0, "nothing is stored or consumed");
+    const [audit] = await h.sql("SELECT data->>'setting' AS setting, data->>'value' AS value FROM audit_events WHERE account_id = $1 AND event_type = 'settings.privileged.changed' AND data->>'setting' = 'identity.setup_code.first_admin'", [made.account?.orbitId ?? null]);
+    assert.match(String(audit?.value), /standing/);
+  });
+
+  test("once an administrator exists, the page is given no code and the standing code makes nothing more", async () => {
+    const status = (await h.anonymous.get("/api/auth/status")).body as AuthStatus;
+    assert.equal(status.state, "signed_out");
+    assert.equal(status.setupCode, null);
+    const again = await browserAt(h.url).send("POST", "/api/auth/setup", { ...SETUP, username: "second", code: STANDING });
+    assert.equal(again.status, 409);
+    assert.equal(code(again), SETUP_ALREADY_DONE);
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM accounts WHERE kind = 'customer'"))[0]?.n, 1);
+  });
+
+  test("a printed one-time code still makes another account beside it", async () => {
+    const printed = await plantCode(h, "new_account");
+    const r = await browserAt(h.url).send("POST", "/api/auth/setup", { ...SETUP, username: "second", code: printed });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM accounts WHERE kind = 'customer'"))[0]?.n, 2);
   });
 });
 

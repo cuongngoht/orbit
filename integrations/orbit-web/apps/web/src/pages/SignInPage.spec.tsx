@@ -77,6 +77,21 @@ describe("the sign-in page: Orbit's own sign-in", () => {
     expect(api.calls[0]?.body).toEqual({ code: "ABCD-EFGH-1234", username: "admin", password: "violet harbour lantern", fullName: "Ann Owner", companyName: "Octo & Co", timezone: "Asia/Ho_Chi_Minh", contactEmail: null });
   });
 
+  test("a test installation's standing setup code is filled in for the first administrator, and sent as it is", async () => {
+    const api = fakeApi().on("POST", "/api/auth/setup", () => authStatus());
+    const onStatus = vi.fn();
+    renderUi(<SignInPage status={setupRequired({ setupCode: "ORBIT-TEST-SETUP-2026" })} onStatus={onStatus} onReload={vi.fn()} />);
+    const field = screen.getByRole("textbox", { name: /^Setup code/ });
+    expect(field).toHaveValue("ORBIT-TEST-SETUP-2026");
+    expect(screen.getByText(/standing setup code \(ORBIT_WEB_SETUP_CODE\), filled in/)).toBeInTheDocument();
+    await userEvent.type(screen.getByRole("textbox", { name: /Full name/ }), "Ann Owner");
+    await userEvent.type(screen.getByLabelText(/^Password\W*$/), "violet harbour lantern");
+    await userEvent.type(screen.getByLabelText(/Repeat the password/), "violet harbour lantern");
+    await userEvent.click(screen.getByRole("button", { name: "Create the administrator" }));
+    await waitFor(() => expect(onStatus).toHaveBeenCalled());
+    expect(api.calls[0]?.body).toMatchObject({ code: "ORBIT-TEST-SETUP-2026", username: "admin", fullName: "Ann Owner" });
+  });
+
   test("a trial installation says its login in a red bar, and says to change it", () => {
     fakeApi();
     renderUi(<SignInPage status={signedOut({ trial: TRIAL })} onStatus={vi.fn()} onReload={vi.fn()} />);

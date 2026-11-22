@@ -70,6 +70,8 @@ interface Opened {
   codes: SetupCodeStore;
   sessions: BrowserSessionStore;
   resources: ResourcesService;
+  // Whether the installation has a standing setup code (ORBIT_WEB_SETUP_CODE): the setup page fills it in.
+  standingSetupCode: boolean;
 }
 
 async function open(): Promise<Opened> {
@@ -88,7 +90,7 @@ async function open(): Promise<Opened> {
   }
   // No sandbox provider here: the terminal reads the capacity Orbit Web last read (at its start), and never measures this
   // process's own host in its place.
-  return { db, audit: new AuditStore(db), accounts: new AccountStore(db), users: new UserStore(db), codes: new SetupCodeStore(db), sessions: new BrowserSessionStore(db), resources: new ResourcesService(config, db, null) };
+  return { db, audit: new AuditStore(db), accounts: new AccountStore(db), users: new UserStore(db), codes: new SetupCodeStore(db), sessions: new BrowserSessionStore(db), resources: new ResourcesService(config, db, null), standingSetupCode: config.identity.setupCode !== null };
 }
 
 // `accountId` null: the deployment's own chain (the system account's).
@@ -123,7 +125,8 @@ async function checkChain(s: Opened, accountId: string | null): Promise<{ ok: bo
 
 async function status(s: Opened): Promise<number> {
   const accounts = await s.accounts.customers();
-  say(accounts.length === 0 ? "accounts: none yet -- set up the first administrator: governance.js owner setup-code" : `accounts: ${accounts.length}`);
+  const how = s.standingSetupCode ? "the setup page fills in the standing code (ORBIT_WEB_SETUP_CODE)" : "governance.js owner setup-code";
+  say(accounts.length === 0 ? `accounts: none yet -- set up the first administrator: ${how}` : `accounts: ${accounts.length}`);
   for (const a of accounts) {
     const users = await s.users.ofAccount(a.id);
     const open = await s.sessions.openOfAccount(a.id, new Date().toISOString());

@@ -107,6 +107,9 @@ services:
       ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
       # 0: a subscription connection is signed in only from a terminal of the server (connect.js), never from its card.
       ORBIT_WEB_SIGN_IN_ON_PAGE: ${ORBIT_WEB_SIGN_IN_ON_PAGE:-1}
+      # A test installation's standing setup code (8-64 characters), filled in on the setup page until the first
+      # administrator exists. Unset (the default): only a code printed by `governance.js owner setup-code` sets it up.
+      ORBIT_WEB_SETUP_CODE: ${ORBIT_WEB_SETUP_CODE:-}
       # AI employees: every attempt in its own two containers, made by the allocator.
       ORBIT_WEB_SANDBOX: container
       ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171

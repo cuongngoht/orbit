@@ -40,6 +40,11 @@ describe("the first administrator, from a code printed in a terminal", () => {
     const s = run("status");
     assert.equal(s.status, 0, s.stderr);
     assert.match(s.stdout, /accounts: none yet -- set up the first administrator: governance\.js owner setup-code/);
+    // A test installation's standing code: the terminal says where it is used instead.
+    const standing = spawnSync(process.execPath, ["--disable-warning=ExperimentalWarning", CLI, "status"], { env: { PATH: process.env.PATH, ORBIT_WEB_DATA_DIR: h.dataDir, ORBIT_WEB_DATABASE_URL: h.database.url, ORBIT_WEB_SETUP_CODE: "ORBIT-TEST-SETUP-2026" }, encoding: "utf8" });
+    assert.equal(standing.status, 0, standing.stderr);
+    assert.match(standing.stdout, /accounts: none yet -- set up the first administrator: the setup page fills in the standing code \(ORBIT_WEB_SETUP_CODE\)/);
+    assert.doesNotMatch(standing.stdout, /ORBIT-TEST-SETUP-2026/, "the terminal never prints the code itself");
   });
 
   test("owner setup-code prints the code once; kept only as its hash; it makes the account, and works once", async () => {

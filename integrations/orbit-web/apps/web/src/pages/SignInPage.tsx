@@ -84,9 +84,10 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
   );
 }
 
-function SetupForm({ onStatus }: { onStatus: (s: AuthStatus) => void }) {
+// `standing`: a test installation's standing setup code (ORBIT_WEB_SETUP_CODE), filled in for the first administrator.
+function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; standing: string | null }) {
   const s = useSignInStyles();
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(standing ?? "");
   const [username, setUsername] = useState("admin");
   const [fullName, setFullName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -127,7 +128,11 @@ function SetupForm({ onStatus }: { onStatus: (s: AuthStatus) => void }) {
         void submit();
       }}
     >
-      <Field label="One-time setup code" required hint="Printed on the server by node dist/cli/governance.js owner setup-code — valid for 30 minutes, and used once.">
+      <Field
+        label={standing !== null ? "Setup code" : "One-time setup code"}
+        required
+        hint={standing !== null ? "This installation's standing setup code (ORBIT_WEB_SETUP_CODE), filled in for you: it makes the first administrator only." : "Printed on the server by node dist/cli/governance.js owner setup-code — valid for 30 minutes, and used once."}
+      >
         <Input value={code} autoComplete="one-time-code" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
       </Field>
       <Field label="Username" required hint="Lower-case letters, digits, dots, dashes or underscores, starting with a letter.">
@@ -194,7 +199,7 @@ export function SignInPage({ status, onStatus, onReload }: { status: AuthStatus;
           </Text>
         </div>
         <section className={s.card} aria-label={setup ? "Set up the first administrator" : "Sign in to Orbit Web"}>
-          {setup ? <SetupForm onStatus={onStatus} /> : <LoginForm onStatus={onStatus} onReload={onReload} />}
+          {setup ? <SetupForm onStatus={onStatus} standing={status.setupCode ?? null} /> : <LoginForm onStatus={onStatus} onReload={onReload} />}
         </section>
         <Text size={200} className={s.foot}>
           Orbit Web {ORBIT_WEB_VERSION}

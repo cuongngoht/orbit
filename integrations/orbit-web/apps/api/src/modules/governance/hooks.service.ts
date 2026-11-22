@@ -24,7 +24,7 @@ import { RevisionsService } from "./revisions.service.js";
 
 export function IDENTITY_AUDIT(e: IdentityEvent): { type: AuditEventType; outcome: string; data: Record<string, string | boolean> } {
   if (e.kind === "login_refused") return { type: "authz.denied", outcome: "refused", data: { route: "POST /api/auth/login", cause: e.cause, action: "auth.login" } };
-  if (e.kind === "setup_code_used") return { type: "settings.privileged.changed", outcome: "used", data: { setting: `identity.setup_code.${e.purpose}`, value: "used" } };
+  if (e.kind === "setup_code_used") return { type: "settings.privileged.changed", outcome: "used", data: { setting: `identity.setup_code.${e.purpose}`, value: e.standing === true ? "used: the standing code (ORBIT_WEB_SETUP_CODE)" : "used" } };
   if (e.kind === "password_changed") return { type: "settings.privileged.changed", outcome: e.how, data: { setting: "identity.password", value: e.how } };
   if (e.kind === "profile_changed") return { type: "settings.privileged.changed", outcome: "changed", data: { setting: "identity.profile", value: e.fields.join(",") } };
   if (e.kind === "account_changed") return { type: "settings.privileged.changed", outcome: "changed", data: { setting: "identity.account", value: e.fields.join(",") } };

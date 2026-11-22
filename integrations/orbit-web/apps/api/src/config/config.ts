@@ -112,6 +112,10 @@ export interface IdentityConfig {
   // ORBIT_WEB_TRIAL=1: a localhost-only trial, pre-seeded with the account `admin` / `123456` (refused at start anywhere
   // else: trialRefusal).
   trial: boolean;
+  // ORBIT_WEB_SETUP_CODE: a test installation's STANDING setup code -- shown filled in on the setup page while nobody is
+  // set up, it makes the first administrator alone and is never stored or used up (so it survives every reset). Unset:
+  // only a code printed on the server (`governance.js owner setup-code`) sets an installation up.
+  setupCode: string | null;
 }
 
 export interface AppConfig {
@@ -317,6 +321,15 @@ function defaultWebDist(): string | null {
   return existsSync(join(candidate, "index.html")) ? candidate : null;
 }
 
+// ORBIT_WEB_SETUP_CODE: the standing setup code as the operator wrote it (trimmed), held to the length a printed one
+// may have -- the setup page sends it back as one.
+function standingSetupCode(raw: string | undefined): string | null {
+  const code = (raw ?? "").trim();
+  if (code === "") return null;
+  if (code.length < 8 || code.length > 64) throw new ConfigError("ORBIT_WEB_SETUP_CODE must be 8 to 64 characters");
+  return code;
+}
+
 // ORBIT_WEB_TRIAL: "1" turns the localhost-only trial on; unset, empty or "0" leaves it off.
 function trialFlag(raw: string | undefined): boolean {
   if (raw === undefined || raw === "" || raw === "0") return false;
@@ -388,6 +401,6 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
       statementTimeoutMs: 60_000,
     },
     session: sessionConfig(env),
-    identity: { kdf: { ...PRODUCTION_KDF }, trial },
+    identity: { kdf: { ...PRODUCTION_KDF }, trial, setupCode: standingSetupCode(env.ORBIT_WEB_SETUP_CODE) },
   };
 }

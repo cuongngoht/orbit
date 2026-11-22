@@ -4,6 +4,8 @@
 //   setup      the first administrator -- or another account, or a user's new password -- from a ONE-TIME CODE an
 //              operator printed in a terminal of the server (`cli/governance.js owner setup-code | reset-password`). The
 //              code is kept as a hash and used by ONE conditional update: of two browsers with the same code, one gets it.
+//              A test installation may instead have a STANDING code (ORBIT_WEB_SETUP_CODE): the status hands it to the
+//              setup page while nobody is set up, it makes the first administrator alone, and nothing of it is stored.
 //   login      counted against the throttle FIRST (throttle.ts), then the password compared with its slow hash (an
 //              unknown username is compared with a dummy one, so neither the answer nor its time says which part was
 //              wrong). Success issues a new session (the old one of this browser is revoked).
@@ -30,7 +32,7 @@ import {
   type AuthStatus,
   type AuthUser,
 } from "@orbit-web/contracts";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { accepted, ApiError } from "../../common/errors.js";
@@ -92,11 +94,18 @@ export class IdentityService {
       const user = await this.users.get(owner.userId);
       const account = await this.accountStore.get(owner.accountId);
       if (user !== null && account !== null) {
-        return { state: "signed_in", session: { orbitId: owner.accountId, userId: owner.userId, csrfToken: owner.csrfToken, expiresAt: owner.expiresAt }, user: userView(user), account: accountView(account), trial };
+        return { state: "signed_in", session: { orbitId: owner.accountId, userId: owner.userId, csrfToken: owner.csrfToken, expiresAt: owner.expiresAt }, user: userView(user), account: accountView(account), trial, setupCode: null };
       }
     }
     const state = (await this.users.count()) === 0 ? "setup_required" : "signed_out";
-    return { state, session: null, user: null, account: null, trial };
+    return { state, session: null, user: null, account: null, trial, setupCode: state === "setup_required" ? this.config.identity.setupCode : null };
+  }
+
+  // Whether a code is the installation's standing one (compared as a printed code is: without dashes, spaces and case).
+  private isStanding(hash: string): boolean {
+    const standing = this.config.identity.setupCode;
+    if (standing === null) return false;
+    return timingSafeEqual(Buffer.from(setupCodeHash(standing)), Buffer.from(hash));
   }
 
   // A SIGN-IN. Counted first; then compared; then a new session.
@@ -140,13 +149,15 @@ export class IdentityService {
     if (found?.purpose === "reset_password") return this.reset(body, hash, found.userId as string, client);
     const req = accepted(checkSetup(body));
     await this.throttle.attempt([{ key: setupKey(client.address), rule: SETUP_RULE }], now);
-    if (found === null) throw invalidCode();
+    const standing = found === null && code.length > 0 && this.isStanding(hash);
+    if (found === null && !standing) throw invalidCode();
     const passwordHash = await hashPassword(req.password, this.config.identity.kdf);
     const issued = await this.db.tx(async () => {
       // One setup at a time: two first-administrator codes used at once make one account, never two.
       await this.db.query("SELECT pg_advisory_xact_lock(hashtextextended('orbit-web:setup', 0))");
       const userId = randomUUID();
-      const used = await this.codes.consume(hash, new Date().toISOString(), userId);
+      // The standing code is never used up: it makes the first administrator, and nothing once one exists.
+      const used = standing ? { purpose: "first_admin" } : await this.codes.consume(hash, new Date().toISOString(), userId);
       if (used === null) throw invalidCode();
       if (used.purpose === "first_admin" && (await this.accountStore.anyCustomer())) {
         throw new ApiError(HttpStatus.CONFLICT, SETUP_ALREADY_DONE, "The first administrator is set up already: sign in, or ask an operator for a code that makes another account.");
@@ -156,7 +167,7 @@ export class IdentityService {
         { id: userId, username: req.username, fullName: req.fullName, passwordHash, mustChangePassword: false, trialWaiver: false },
         "setup_code",
       );
-      await this.hooks.identity(systemContext("setup", made.account.id), { kind: "setup_code_used", purpose: used.purpose as "first_admin" | "new_account" });
+      await this.hooks.identity(systemContext("setup", made.account.id), { kind: "setup_code_used", purpose: used.purpose as "first_admin" | "new_account", standing });
       return this.accounts.issue(made.user, { previousToken: client.previousToken, userAgent: client.userAgent });
     });
     await this.throttle.clear(setupKey(client.address));

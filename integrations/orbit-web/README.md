@@ -1,17 +1,27 @@
 # Orbit Web 0.8.0
 
-A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin, in one Docker image.
+A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin -- and, from 0.8.0, a
+**virtual office of AI employees** -- in Docker.
 
-Run it (the image beside PostgreSQL), open http://localhost:3000 and **sign in with your own Claude account** -- it is
-Orbit Web's sign-in, asked of each browser before anything else opens, with nothing to register and no password of
-Orbit Web's own. Your Claude identity is your account here: its chats, research and governance are yours, and nobody
-else's. The workspace then opens at once, laid out like Claude Code: a sidebar (New
-session, Search, Customize, your chats, your account) and the composer always at the bottom. Start a chat from a
-repository on **GitHub** or **Azure DevOps** -- or from none, in an empty workspace of its own -- pick the model
-(Opus 5.5, Fable 5.2, Sonnet 5.5, Haiku 5.5), the effort (Low to Max) and the mode (**Autonomous** or **Plan**), and
-ask. Claude Code runs with Orbit, as the Claude account you signed in with, in that chat's own workspace, with the
-repository's own skills, commands and agents; the page streams what it writes and every tool it runs, shows the files
-it changed (read from git) and what Orbit says about the work.
+Run it (the image beside PostgreSQL and the allocator), open http://localhost:3000 and **sign in to Orbit Web**: its own
+accounts, a username and a password, independent of every AI CLI. The first administrator is set up with a one-time
+code the server's terminal prints ([Sign in](#sign-in-orbit-webs-own-accounts)); a localhost-only trial starts with
+`admin` / `123456`. Then **Settings → AI Connections** connects the CLIs your account works with -- Claude Code, OpenAI
+Codex, Google Antigravity -- each with a login or an API key of its own: never the server's, never another account's
+([AI connections](#ai-connections)). Then:
+
+- **Chat / Coding**, laid out like Claude Code: a sidebar (New session, Search, Customize, your chats, the Office, your
+  account) and the composer always at the bottom. Start a chat from a repository on **GitHub** or **Azure DevOps** -- or
+  from none, in an empty workspace of its own -- pick the model (Opus 5.5, Fable 5.2, Sonnet 5.5, Haiku 5.5), the effort
+  (Low to Max) and the mode (**Autonomous** or **Plan**), and ask. Claude Code runs with Orbit on your account's Claude
+  Code connection, in that chat's own workspace, with the repository's own skills, commands and agents; the page streams
+  what it writes and every tool it runs, shows the files it changed (read from git) and what Orbit says about the work.
+- **[Research](#research)**: your documents and pages, asked in conversation, every answer cited to a frozen passage.
+- **[The Office](#the-office-ai-employees)**: hire AI employees -- a CLI, a model and an effort each, and a personal
+  sandbox with limits of its own -- give them work, and review what they hand in. Every attempt runs in two containers of
+  its own; you request a revision or accept, and the employee takes its next work. Work may pin research sources, be
+  split across a team, or recur on a schedule.
+- **[Governance](#governance)**: each account's policy, approvals and hash-chained audit record.
 
 Docker is the only thing to install. Orbit Web keeps its records in **PostgreSQL 17 with pgvector** (the compose
 files run the pinned `pgvector/pgvector:0.8.1-pg17` image beside it). The image holds:
@@ -29,23 +39,50 @@ files run the pinned `pgvector/pgvector:0.8.1-pg17` image beside it). The image 
 
 `GET /api/setup/status` (and Settings → System) reports every one of these versions, the Orbit commit included.
 
+An AI employee's attempts are made of three more images, built from the same Dockerfile (its targets) and never pulled
+or built by Orbit Web itself: **workstation**, the tool plane -- the same pinned Debian base with git, a C toolchain, the
+pinned CPython with pip and venv, Node and npm, and jq, as one non-root user with no sudo --, **model-plane** -- the CLI
+that holds a connection's login (Claude Code as pinned above) with Orbit Web's runner and tool bridge, and no
+`/etc/claude-code` -- and **storage-helper**, the filesystem tools the allocator uses for the employees' storage quotas.
+
 ## Run it
 
 ```bash
 cd integrations/orbit-web/docker
 printf 'ORBIT_WEB_DB_PASSWORD=%s\nORBIT_WEB_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > .env
+(umask 027 && openssl rand -hex 32 > allocator.secret) && sudo chown 0:10001 allocator.secret
+(cd ../../.. && for t in workstation model-plane storage-helper; do
+  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.0" . ; done)
 docker compose up -d --build        # builds from the repository root; the plugin is `git archive HEAD`
-open http://localhost:3000
+docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code
+open http://localhost:3000          # "Set up Orbit Web", with the code printed above
 ```
 
-Two services start: **postgres** (PostgreSQL with pgvector, on an internal network only Orbit Web joins, never published
-on this machine) and **orbit-web**, which waits for it, migrates it and refuses to start without it -- it never falls
-back to anything else. The first start of the database volume runs `docker/postgres/init/10-orbit.sh`: it creates Orbit
+Three services start: **postgres** (PostgreSQL with pgvector, on an internal network only Orbit Web joins, never
+published on this machine); **orbit-web**, which waits for it, migrates it and refuses to start without it -- it never
+falls back to anything else; and **orbit-allocator**, the only holder of the Docker socket, which makes the two
+containers of each attempt of an AI employee and keeps the employees' storage. The allocator answers Orbit Web alone, on
+a private network, to requests signed with `allocator.secret` (readable by root and uid 10001 only), publishes no port,
+and takes no image, path, mount or privilege from a request ([The Office](#the-office-ai-employees)). The first start of the database volume runs `docker/postgres/init/10-orbit.sh`: it creates Orbit
 Web's role (a login, **not** a superuser) and its database, and enables pgvector there. Set the two passwords in `.env`
 (URL-safe characters) **before** that first start; without a `.env` the compose files fall back to local-only defaults.
 
+**The first administrator.** A new installation's page offers only *Set up Orbit Web*, which takes a one-time code:
+`governance.js owner setup-code` (above) prints it once -- it is kept only as its hash, lasts 30 minutes and is used once
+(of two browsers, one wins). With it you choose the username (`admin` by default) and a password, and give your full
+name, your company's name and its time zone ([Sign in](#sign-in-orbit-webs-own-accounts)).
+
+**A trial on this machine** skips the code: `docker compose -f compose.yaml -f compose.trial.yaml up -d --build` turns
+trial mode on, with the account `admin` / `123456` made at the first start, a red bar on every page until its password
+is changed, and the port published on 127.0.0.1 alone. Because that password is public, Orbit Web refuses to start in
+trial mode unless only this machine can reach it -- loopback host names, no access token, the single deployment, no
+public origin, no Secure cookie setting -- and names the condition that failed. Never use it for anything another
+person can reach.
+
 Or with `docker run` (the published image, once a release exists), against a PostgreSQL of your own where pgvector is
-enabled (`CREATE EXTENSION vector;` once, as a superuser):
+enabled (`CREATE EXTENSION vector;` once, as a superuser) -- without an allocator, AI employees then run on the
+development-only `process` provider, which has no container, no limit, no isolation and no shell, and says so on every
+attempt:
 
 ```bash
 docker run -d --name orbit-web --hostname orbit-web \
@@ -63,16 +100,23 @@ docker run -d --name orbit-web --hostname orbit-web \
 | the database: schema version and pgvector | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js status` |
 | migrate without starting (Orbit Web also migrates at every start) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js migrate` |
 | check pgvector by hand | `docker compose exec postgres psql -U orbit -d orbit -c "SELECT extversion FROM pg_extension WHERE extname = 'vector'"` |
+| the first administrator's one-time code (`--purpose=new_account` for another account) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code` |
+| a one-time code for a user's new password | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner reset-password --username=<name>` |
+| sign a subscription connection in (the command its card shows) | `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>` |
 | stop | `docker compose down` |
-| delete every record, chat, workspace and every sign-in | `docker compose down -v` (both volumes) |
+| empty the database and start afresh (refused unless it names the database; `--with-data` also empties Orbit Web's rooms in `/data`) | `docker compose stop orbit-web && docker compose run --rm orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=orbit` |
+| delete every record, chat, workspace and every connection's login | `docker compose down -v` (Orbit Web's, the database's and the allocator's volumes) |
+| delete the employees' storage (the allocator made it) | `docker compose run --rm --entrypoint node orbit-allocator /opt/orbit-web/apps/api/dist/allocator/main.js destroy-storage --confirm=orbit-web-workforce` |
 
-**Upgrading from an earlier Orbit Web (SQLite).** Orbit Web 0.8.0 starts with an empty PostgreSQL database: the chats,
-research and governance records of the SQLite files (`/data/app/orbit-web.db`, `/data/governance/governance.db`) are
-**not imported**, and nothing deletes them -- they stay in the data volume until you remove them yourself. The
-workspaces on disk and the CLIs' sign-ins are kept.
+**A fresh start.** 0.8.0 is Orbit Web's initial schema, and it starts from an empty database: nothing of an earlier Orbit
+Web is imported -- not the SQLite files of an older one (`/data/app/orbit-web.db`, `/data/governance/governance.db` stay
+in the data volume until you remove them), and not the Claude CLI's sign-in in `/data/claude` (each account connects its
+own CLIs). A database a development build of 0.8.0 migrated is refused at start, with the command that empties it
+(`db.js reset`, above), or remove the volumes.
 
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<commit>] [--ca-file=<pem>]` (from this
-directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root). `--ref` picks
+directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the employees'
+images are the same Dockerfile's `--target workstation`, `model-plane` and `storage-helper`). `--ref` picks
 the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the download steps as a BuildKit secret
 (never kept in a layer). The image is about 3.5 GB unpacked, a third of it the Azure CLI; build it without the Azure
 CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it is not installed, and the rest works).
@@ -90,7 +134,8 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); **requires** `ORBIT_WEB_ACCESS_TOKEN` |
 | `ORBIT_WEB_ACCESS_TOKEN` | unset | token mode: every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie and the session's cookies Secure (behind an HTTPS proxy) |
-| `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: Orbit Web signs in with a Claude account only and gives no credential variable to any program; the sign-in page names the ones it ignored |
+| `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: no credential of the server's own is given to any program; each account connects its CLIs ([AI connections](#ai-connections)) |
+| `ORBIT_WEB_TRIAL` | unset | `1`: the localhost-only trial with `admin` / `123456` (`docker/compose.trial.yaml` sets it); refused at start unless only this machine can reach Orbit Web |
 | `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, `HTTPS_PROXY`, `NO_PROXY` | unset | passed to the CLIs, for a proxy or a private CA (`REQUESTS_CA_BUNDLE` is the Azure CLI's) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | turns on **Claude Code's telemetry** (OpenTelemetry) and names the collector; a signal's own `OTEL_EXPORTER_OTLP_<SIGNAL>_ENDPOINT` does too. Unset, nothing is exported |
 | `OTEL_EXPORTER_OTLP_HEADERS` | unset | the collector's token, as OTLP headers (`Authorization=Bearer …`) |
@@ -107,6 +152,20 @@ CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it i
 | `ORBIT_WEB_RESEARCH_URL_IMPORT` | `on` | Research: `off` refuses importing sources from URLs at all (the server never fetches a page) |
 | `ORBIT_WEB_RESEARCH_INGEST_CONCURRENCY` | `2` | Research: how many sources are read and indexed at once (1-8) |
 | `ORBIT_WEB_RESEARCH_CONTEXT_CHARS` | `24000` | Research: how much retrieved text one question gives the model, at most (2000-200000 characters) |
+| `ORBIT_WEB_SANDBOX` | `container` with an allocator, else `process` | [the Office](#the-office-ai-employees): where an employee's attempts run -- `container` (two containers each, made by the allocator; both compose files) or `process` (development only: no container, no limit, no isolation, no shell) |
+| `ORBIT_WEB_ALLOCATOR_URL` / `ORBIT_WEB_ALLOCATOR_SECRET_FILE` | -- | the allocator (`http://orbit-allocator:7171`) and the shared secret both sides read (at least 32 characters) |
+| `ORBIT_WEB_SANDBOX_HOST` | `orbit-web` | the name an attempt reaches Orbit Web by, on the attempt's own networks (its egress proxies and the tool endpoint) |
+| `ORBIT_WEB_CAPACITY_CPU` / `_MEMORY` / `_STORAGE` | detected | what employees' containers may use in all, instead of what the allocator detects |
+| `ORBIT_WEB_CAPACITY_RESERVE_CPU` / `_MEMORY` / `_STORAGE` | `10%` | the OS's and the container runtime's reserve: an amount (`1`, `2g`) or a share |
+| `ORBIT_WEB_CONTROL_PLANE_LIMITS` | the compose files' | the control plane's own fixed limits (`name:cpus:memory,…`), taken from what employees may use |
+| `ORBIT_WEB_MODEL_PLANE_<CLAUDE\|CODEX\|AGY>_CPU` / `_MEMORY` | per runtime | what one attempt's model plane reserves beside the employee's own limits |
+| `ORBIT_WEB_ACCEPT_SOFT_STORAGE` | `0` | `1`: a shell may run where storage areas are only measured, and only while the host's disk is protected |
+| `ORBIT_WEB_WORKFORCE_POOL_SIZE` / `_PREALLOCATE` | `20g` / `1` | the loop-backed pool the employees' storage lives in, where this host's kernel enforces its quotas |
+| `ORBIT_WEB_ATTEMPT_SUBNETS` | Docker's own pools | IPv4 ranges (CIDR) the attempts' internal networks -- two per running attempt, a /28 each -- are cut from |
+| `ORBIT_WEB_SANDBOX_EGRESS_PORT` / `ORBIT_WEB_MODEL_EGRESS_PORT` | `3128` / `3129` | the employees' egress proxy (a tool plane's only way out) and the model planes' (the AI providers' hosts, port 443 only) |
+| `ORBIT_WEB_MODEL_EGRESS_HOSTS` | unset | more hosts a model plane may reach, comma-separated (a provider's endpoint of your own) |
+| `ORBIT_WEB_EGRESS_MAX_CONNECTIONS_PER_RUN` | `256` | the proxy's own cap on one run's connections at once, always on |
+| `ORBIT_WEB_AGING_MINUTES` / `ORBIT_WEB_STARVATION_GUARD_MINUTES` | `30` / `60` | admission: how fast waiting work gains priority, and how long a large attempt may be passed by smaller ones before freed capacity is kept for it |
 
 **Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
 Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
@@ -125,13 +184,16 @@ database.
 
 ## Persistent storage
 
-Every RECORD lives in PostgreSQL (the compose files' `orbit-web-postgres` volume), in three schemas: `app` -- accounts,
-their Claude identities, browser sessions (as hashes), settings, chats with their messages, event journal, runs, shares
-and images' records, who owns each chat and who it is shared with; `research` -- workspaces, sources and their immutable
-revisions, the extracted text of every revision and its full-text index, research sessions, their runs, citations, notes
-and findings; `governance` -- each account's policy revisions and overrides, run bindings, approvals, findings'
-resolutions, reports, isolation checks and the hash-chained **audit record**, one chain per account (deleting a chat or a
-research workspace never removes its audit). pgvector is enabled in it; nothing stores a vector yet.
+Every RECORD lives in PostgreSQL (the compose files' `orbit-web-postgres` volume), in four schemas: `app` -- accounts
+(each with its OrbitId), their users, browser sessions and one-time codes (as hashes), settings, the AI connections and
+their plugin grants, chats with their messages, event journal, runs, shares and images' records; `research` --
+workspaces, sources and their immutable revisions, the extracted text of every revision and its full-text index,
+research sessions, their runs, citations, notes and findings; `governance` -- each account's policy revisions and
+overrides, run bindings, approvals, findings' resolutions, reports, isolation checks and the **audit record**, one chain per account (deleting a chat or a research workspace never removes its audit); `workforce`
+-- the office: departments, employees with their profile and resource revisions, personal sandboxes,
+missions, assignments, handoffs and artifacts' records, runs with their resources, usage and network log, the
+account's compute and storage budget, team rooms, schedules, occurrences, deliveries, and the office's event journal. Every table carries the account it belongs to; the
+deployment's own records belong to a reserved system account. pgvector is enabled in it; nothing stores a vector yet.
 
 Everything else a person creates lives in the volume mounted at `/data`, owned by the image's non-root user (`orbit`,
 uid 10001) and private to it (mode 0700):
@@ -140,7 +202,7 @@ uid 10001) and private to it (mode 0700):
 |---|---|---|
 | `/data/app/images/` | the images chat messages carried (pasted, dropped or picked), each a file named by an id the server made; an upload no chat claims is removed after a day, and a chat's images go with the chat | Orbit Web |
 | `/data/research/workspaces/<workspace>/objects/` | the files research sources were read from (uploads, URL snapshots, pasted texts), each named by its SHA-256 -- never by a name a person typed -- and stored once per workspace | Orbit Web |
-| `/data/claude` | the Claude CLI's sign-in -- Orbit Web's own sign-in -- Claude Code's native session state, and the plugins a project declared once installed (`CLAUDE_CONFIG_DIR`, set for the whole image) | Claude Code |
+| `/data/connections/<OrbitId>/<connectionId>/` | each AI connection's own home: its CLI's login and state, the plugins a project declared once installed (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, Antigravity's settings), written by that CLI alone | the CLI |
 | `/data/github` | GitHub CLI's sign-in (`GH_CONFIG_DIR`, stored in plain text: a container has no keyring) | GitHub CLI |
 | `/data/azure` | the Azure CLI's sign-in (`AZURE_CONFIG_DIR`; its token cache is a plain file for the same reason) | Azure CLI |
 | `/data/orbit` | Orbit's machine store (`ORBIT_STORE_DIR`) | Orbit |
@@ -149,14 +211,19 @@ uid 10001) and private to it (mode 0700):
 | `/data/sessions/<session>/runs/` | a masked, bounded copy of each run's stream, for troubleshooting | Orbit Web |
 | `/data/home` | the user's home (caches the agent's tools make) | — |
 | `/data/repos/<session>.git` | Orbit Web's own bare copy of a chat's repository: what a push is made from (and, governed, what the workspace is cloned and fetched from) | git |
-| `/data/control` | the control plane's own room: its HOME for the CLIs it runs with a credential (governed) and a push's bundles in passing | Orbit Web |
+| `/data/control` | the control plane's own room: its HOME for the CLIs it runs with a credential (governed), a push's bundles in passing, and `credentials/` -- an API-key connection's key, one 0600 file each, never mounted where an agent runs | Orbit Web |
 
-In the governed deployment the agent's container mounts only `claude`, `workspaces`, `sessions`, `orbit` and `home` (and
-`repos` read-only); a run's log is kept in `/data/app/run-logs/` instead of `/data/sessions/<session>/runs/`. `research`
+In the governed deployment the agent's container mounts only `connections`, `workspaces`, `sessions`, `orbit` and `home`
+(and `repos` read-only); a run's log is kept in `/data/app/run-logs/` instead of `/data/sessions/<session>/runs/`. `research`
 is the control plane's alone: the isolation check requires it to be absent from the agent's container (a research run is
 given the passages it needs on its standard input, never a path).
 
-"Stored locally" means on the Orbit server -- in this volume, wherever the container runs (on Azure, on the disk
+The employees' areas -- each desk and toolbox, dependency cache, attempt scratch and team room -- are the allocator's,
+in the `orbit-web-workforce` volume (and, where this host's kernel enforces quotas, a loop-backed pool in
+`orbit-web-workforce-store`), never in `/data` and never mounted in Orbit Web's container; an employee's accepted
+deliverables are artifacts, kept in the control plane by their hash.
+
+"Stored locally" means on the Orbit server -- in these volumes, wherever the containers run (on Azure, on the disk
 attached there) -- not on a person's laptop, and never in a browser or a repository.
 
 ### Back up and restore
@@ -177,7 +244,9 @@ docker compose start orbit-web
 To restore, stop Orbit Web, restore the dump into an empty database where pgvector is enabled
 (`pg_restore -U orbit -d orbit --clean --if-exists < …dump`), empty the volume and unpack the archive into it with the
 owner kept (`tar -C /data --same-owner -xzf …`, as root in the helper container), then start it. A backup holds the CLIs'
-sign-ins (`/data/claude`, `/data/github`, `/data/azure`) and every research document: keep it as you would those. The
+sign-ins (`/data/connections`, `/data/github`, `/data/azure`), the API keys (`/data/control/credentials`) and every research
+document: keep it as you would those. The employees' storage is the allocator's volume: back it up the same way, beside
+the database, while no attempt runs. The
 database and `/data/research` go together -- the database names research's files by hash, and the files are nothing
 without it.
 
@@ -185,79 +254,124 @@ A restart keeps all of it. A run that was going when the container stopped is sh
 is never started again by itself. Keep `hostname: orbit-web` (or `--hostname orbit-web`): Orbit's store names its
 runtime room after the host name. A bind mount instead of the named volume must be writable by uid 10001.
 
-## Sign in: your Claude account is Orbit Web's sign-in
+## Sign in: Orbit Web's own accounts
 
-Orbit Web opens on **Sign in to Orbit Web** and on nothing else, in each browser. The page starts `claude auth login
---claudeai` by itself and shows the whole URL the CLI printed, to open in a new tab or copy with *Copy link* (for another
-browser); sign in there with your Claude account, copy the code the page shows, and paste it into Orbit Web, which writes
-it to that one process's stdin -- nothing else. Once `claude auth status` reports the Claude account (`authMethod:
-"claude.ai"`), the page exchanges that verified sign-in for **this browser's session**, and the workspace opens. A
-sign-in you cancelled, or one that failed or timed out, is not started again by itself: *Continue with Claude* does it.
+Orbit Web opens on its own sign-in, in each browser, and on nothing else: a **username and a password** of Orbit Web's,
+independent of every AI CLI. Signing in starts no provider's login, and a CLI's login opens nothing here.
 
-- **The sign-in is the browser's, not the server's.** The CLI being signed in already -- from a terminal, from another
-  browser -- signs no browser in: a browser without a session runs the official flow itself. A sign-in belongs to the
-  browser that started it (an HttpOnly cookie holds its nonce): another browser polling the page sees nothing of it,
-  cannot send its code, cancel it or take the session it ends with. The CLI signs in one at a time: while one browser's
-  sign-in is under way, another's waits (*Another browser has a Claude sign-in under way*).
-- **No registration, no password.** Your verified Claude identity -- the CLI's account email in the organization it names
-  by id -- is your **account**: found, or made the first time you sign in, with its own workspaces, research and
-  governance (and a default policy) from that moment. A business name is optional, set any time in **Settings →
-  Account**. Two organizations of one email are two accounts; nothing is merged because an email matches.
+- **The first administrator** is set up with a one-time code from the server's terminal (`governance.js owner
+  setup-code`, [Run it](#run-it)). Until then the page offers only *Set up Orbit Web*: the code, a username (`admin` by
+  default), a password, your full name, your company's name and its time zone -- and the browser is signed in. Each
+  further account is set up the same way (`owner setup-code --purpose=new_account`). An account is a tenant, its id the
+  **OrbitId**, and every record Orbit Web keeps belongs to one.
+- **Passwords** have at least 12 characters, never contain the username, are not one or two characters repeated, not a
+  keyboard or number sequence and not one of the commonest passwords. They are kept as scrypt hashes (N = 2^17, r = 8,
+  p = 1, a salt each). A forgotten one: `owner reset-password --username=<name>` prints a one-time code that sets a new
+  one.
+- **Guessing is slowed down.** Every attempt is counted -- against the username typed, whether anybody has it, and
+  against the client's address (hashed) -- before the password is checked: a few are free, then each waits a delay that
+  doubles (429 `too_many_attempts`, with Retry-After), and a user who keeps failing is locked for a while that grows.
+  Which count held an attempt back, and whether the username exists, is never said.
 - **The session.** An HttpOnly, SameSite=Strict cookie (Secure behind HTTPS with `ORBIT_WEB_COOKIE_SECURE=1`); Orbit Web
-  keeps only its hash. It is replaced at every sign-in, lasts `ORBIT_WEB_SESSION_HOURS` (7 days) and ends after
-  `ORBIT_WEB_SESSION_IDLE_HOURS` (24 hours) unused; every change the page makes carries its CSRF token.
-- **Always required, and enforced by the API, not only by the page.** Until this browser has a session, every route but
-  `GET /api/health`, `POST /api/access` (token mode), the sign-in itself and a shared chat's link answers 401
-  `claude_sign_in_required` and runs nothing: no settings, no chats, no streams, no GitHub or Azure sign-in.
-- **Only a Claude account.** An API key, a token, or an Anthropic Console sign-in is not one: the page says so and stays
-  on the sign-in. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are never given to Claude
-  Code (it would use one before the account you signed in with); a container started with one is told it is ignored.
-- **Sign out.** *Sign out* (the account menu at the bottom of the sidebar) ends this browser's session; the account and
-  its other browsers stay signed in. **Settings → Account** also lists the account's signed-in browsers (end any of
-  them) and *Sign the account out everywhere*: every browser, and `claude auth logout` -- refused while Claude Code works
-  for the account or a workspace is being prepared: stop it (or wait) first. Your records are kept for the next sign-in.
-- **One Claude identity per Orbit Web at a time**: the runtime's CLI holds one sign-in. When another account signs in,
-  every browser of the account before is signed out and its open pages stop hearing anything at once; if the CLI is
-  signed in as somebody else from a terminal, the next request of the account before ends its sessions the same way.
-  A sign-in that would change the CLI's account is refused while Claude works for an account, so no run changes identity
-  mid-way.
+  keeps only its hash. A new one at every sign-in; it lasts `ORBIT_WEB_SESSION_HOURS` (7 days) and ends after
+  `ORBIT_WEB_SESSION_IDLE_HOURS` (24 hours) unused; every change the page makes carries its CSRF token. Changing the
+  password ends the user's other sessions. **Settings → Account** lists the open sessions (end any of them) and *Sign
+  out everywhere*; from a terminal, `owner revoke-sessions [--username=<name>]`.
+- **Always required, and enforced by the API, not only by the page.** Until a browser has a session, every route but
+  `GET /api/health`, `GET /api/auth/status`, the sign-in and the setup, `POST /api/access` (token mode) and a shared
+  chat's link answers 401 and runs nothing.
+- **No AI connection is needed to sign in or to look around.** The Office and its departments, Research's sources and
+  Governance work without one; a chat, a research question and an employee's work need one, and say so with a link to
+  Settings → AI Connections.
 
-### Each Claude account its own
+**Trial mode** (`compose.trial.yaml`, [Run it](#run-it)) adds one account, `admin` / `123456`, made once at the first
+start and never reset: the sign-in page shows it, a red bar on every page asks for a new password until it is changed,
+and every start in trial mode is written in the deployment's audit record. The password rules are waived for that seed
+alone; changing the password ends the waiver.
 
-What a browser shows is its account's: the chats and research workspaces it made, and those another account shared with
-its email. Every record carries the account that owns it -- and the database holds each message, passage, citation and
-governance record to its parent's account -- so a chat or a research workspace of another account answers 404 through
-every route under it; the sidebar, the customizations and the page's live notifications reach the account's own pages
-(and those of the emails it shared with) and no other. No request names its account: it is always the session's.
-**Share** (a chat's header, or a research workspace's) names the emails of other Claude accounts that may open it: they
-read it and carry on with it as themselves; only its owner deletes it, shares it on, makes a public link or governs it.
-Settings (preferences, the privileged switches, connector choices) are each account's. This separates accounts at the
-API and in the rows, not on disk (see [the limit](#security-model)); the GitHub and Azure CLIs' sign-ins are the
-installation's.
+### Each account its own
 
-**The models are the account's too.** At every sign-in Orbit Web asks the account's own Claude CLI which models it may
-use and which effort levels each takes (its control protocol's `initialize`: restricted, no tool, no model called), so
-a model a program gives an account -- a research preview, say -- appears for that account alone, and a model it cannot
-use is not offered. Chats, research sessions and Settings' defaults are held to that list; picking a model whose
-effort levels do not include the one chosen moves the effort to one it takes; a model that takes no effort level is given
-none. When the CLI cannot be asked, the default list is shown (*Model · this session* says so) and the CLI decides.
+What a browser shows is its account's: the chats and research workspaces it made, those another user shared with it,
+its office and its governance. Every table carries the account it belongs to (`account_id`, the OrbitId: a test reads
+the database's catalog and holds every table to it), and the database holds each child to its parent's account
+(composite foreign keys), so a record of another account answers 404 through every route under it. The deployment's
+own records belong to a reserved system account that never signs in. No request names its account: it is always the
+session's.
+
+**Share** (a chat's header, or a research workspace's) names other **users** of this Orbit Web -- by username, or by an
+email that is that user's verified email (an unverified email names nobody) -- who read it and carry on with it as
+themselves; only its owner deletes it, shares it on, makes a public link or governs it. Settings are each account's.
+This separates accounts at the API and in the rows: a chat's agent is not isolated on disk ([the
+limit](#security-model)), an employee's attempts are ([the Office](#the-office-ai-employees)).
+
+## AI connections
+
+**Settings → AI Connections** has a card for each CLI Orbit Web can run -- **Claude Code**, **OpenAI Codex** and **Google
+Antigravity** -- and under each the account's connections to it. A connection is the **account's**: its CLI keeps its
+login in a home of its own on the server, `/data/connections/<OrbitId>/<connectionId>/` (`CLAUDE_CONFIG_DIR`,
+`CODEX_HOME`, Antigravity's settings), written by that CLI alone, mounted into that connection's model-plane containers
+and never into an employee's sandbox, and never read for another account. An account may hold several connections of
+one CLI (a subscription and an API key, say), each labelled, one of them the default.
+
+A connection signs in the provider's own way, and nothing else is accepted as a credential. Each method shows the
+provider's words it rests on, with their source:
+
+- **A subscription** is signed in by its owner, in a terminal of the server, with the unmodified official CLI -- the URL
+  and the code never pass through Orbit Web's pages. The card shows the one command for that connection:
+
+  ```bash
+  docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>
+  ```
+
+  (`docker compose -f compose.governed.yaml exec …` in the governed deployment). It runs `claude auth login --claudeai`
+  (or `codex login --device-auth`) against that connection's home, in your terminal, then asks the CLI whom it is
+  signed in as and records it. For Claude Code, the hire step quotes Anthropic: the usage limits of the Pro, Max and
+  Ultra plans "assume ordinary, individual usage of Claude Code and the Agent SDK" -- for autonomous employees an API
+  key is recommended.
+- **An API key** (a Claude Console key; an OpenAI key, which Orbit Web hands to `codex login --with-api-key` on its
+  standard input) is entered in the browser once and kept by the server's credential store -- one file each under
+  `/data/control/credentials`, mode 0600, never in a connection's home, a route's answer, a log or an event -- and
+  given to that connection's process alone.
+- **A cloud provider** (Amazon Bedrock, Google Vertex AI, Microsoft Foundry, for Claude Code) can be saved and is shown
+  *blocked*: documented by Claude Code, not verified on this installation, never used.
+- **Never accepted**: a subscription token pasted by hand, a copied `.credentials.json` or `auth.json`, a "setup token"
+  for anybody else's use. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` in the server's own
+  environment are given to no program.
+
+**Status, each read from the CLI and never inferred**: *Installed* or *Not installed* (the binary runs and names its
+version); *Connected* only when the CLI's own status, run against that connection's home, names the identity (read at
+the time shown); *Disconnected*; *Authentication required* (signed out, expired, or another identity than the one
+linked); *Connection error*. A provider identity is connected to one account at a time: connecting it to a second is
+refused (`identity_already_connected`). Each card also shows the CLI's version, the identity, the **models** and
+**effort levels** read from the account (a fallback list is labelled as such and never used for an employee), the
+runtime's capabilities as observed, and, for Claude Code, the **Orbit plugin**: loaded only for the use cases you
+approved (chats, employees), and only for the plugin's exact digest you saw -- an upgraded plugin waits for you again.
+*Re-check* asks the CLI now; *Disconnect* runs the CLI's own logout and removes the home's login (work running on it
+stops and is reconciled); a connection an employee runs on cannot be removed.
+
+Chats and research questions run on the account's **default Claude Code connection**. An employee runs on a CLI only
+where its installed version was observed to switch every built-in tool off and take Orbit Web's tools instead (the
+*tool-plane split*): Claude Code does; Codex and Antigravity are shown with the reason they do not yet, and neither CLI
+is in the image.
 
 ### Claude connectors
 
-**Settings → Claude connectors** lists what Claude may use as the signed-in account: the connectors it connected at
-claude.ai (Claude Docs, Gmail, Drive …) and the MCP servers of the plugins installed for it -- each with its state
-(*Connected*, *Sign in at claude.ai* until you do, *Failed*) and two boxes: **Chat** and **Research**. A box checked
-lets Claude use that connector there, as far as the account's policy allows (each checked connector is a decision of
-`tool.connector` when a run starts); unchecked, it is denied by name. Every connector is checked for both until you
-uncheck it. The list is the account's own Claude CLI's answer (its control protocol's `mcp_status`, no model called),
-read at every sign-in and with *Read again*; the choices are that account's alone. In the governed deployment a run
-reaches no connector. A connector acts as your account -- it reads and writes in that service -- so in research, where
-your sources are documents Claude reads, check only what you want research to act with.
+**Settings → Claude connectors** lists what Claude may use as the account's default Claude Code connection: the
+connectors that account connected at claude.ai (Claude Docs, Gmail, Drive …) and the MCP servers of the plugins
+installed for it -- each with its state (*Connected*, *Sign in at claude.ai* until you do, *Failed*) and two boxes:
+**Chat** and **Research**. A box checked lets Claude use that connector there, as far as the account's policy allows
+(each checked connector is a decision of `tool.connector` when a run starts); unchecked, it is denied by name. Every
+connector is checked for both until you uncheck it. The list is the connection's own CLI's answer (its control
+protocol's `mcp_status`, no model called), read with *Read again*; the choices are that account's alone. In the
+governed deployment a run reaches no connector. A connector acts as your account -- it reads and writes in that service
+-- so in research, where your sources are documents Claude reads, check only what you want research to act with.
 
 ## Use it
 
-No connector is needed to start: once you are signed in, the chat is open. **New session** offers two kinds: **Chat /
-Coding** (the default, below) and **[Research](#research)**.
+A chat runs on your account's default Claude Code connection: connect one first ([AI connections](#ai-connections));
+until then the composer says so, with a link. No source connector is needed. **New session** offers two kinds: **Chat /
+Coding** (the default, below) and **[Research](#research)**. The **[Office](#the-office-ai-employees)** has its own entry in
+the sidebar.
 
 1. **New session** (the sidebar, or the empty page you land on): write what to do in the composer at the bottom.
    Enter sends; Shift+Enter is a new line. **`/` at the start of a message lists the skills and commands** the chat
@@ -277,7 +391,7 @@ Coding** (the default, below) and **[Research](#research)**.
    starts the chat in an empty repository of its own (`git init`, one empty commit to start from), for a question, a
    prototype or anything that needs no code yet.
 3. **How it runs** -- on the right. **Model · Effort**: *Model · this session* lists the models your account may use
-   ([above](#each-claude-account-its-own); by default Opus 5.5, Fable 5.2, Sonnet 5.5 and Haiku 5.5 -- the CLI's own
+   (read from its connection, [above](#ai-connections); by default Opus 5.5, Fable 5.2, Sonnet 5.5 and Haiku 5.5 -- the CLI's own
    aliases `opus`, `fable`, `sonnet`, `haiku`), and *Effort* the levels the chosen model takes -- Low, Medium
    (recommended), High, Extra and Max (`--effort low|medium|high|xhigh|max`: higher effort is more thorough, takes longer
    and uses your limits faster). A model auto mode is not available with plans only. **Mode**:
@@ -292,7 +406,7 @@ Coding** (the default, below) and **[Research](#research)**.
 4. **Sending the first message creates the chat** and opens it. Orbit Web prepares its workspace, step by step in the
    chat: the clone (GitHub with `gh repo clone`; Azure DevOps with `git clone`, see Connectors) or the empty repository,
    a branch of its own (`orbit-web/<id>`, so the branch you picked is never written), a local commit identity (GitHub's
-   name and noreply address, the Azure account's user, or -- with no repository -- the Claude account's address), Orbit
+   name and noreply address, the Azure account's user, or -- with no repository -- your email in Settings → Account), Orbit
    seated in it, and **what the repository brings** (below). Then it sends your message.
 5. **In the chat**, Claude's text streams as it is written and every tool call shows its real input and output; a
    subagent's calls sit under the Agent call that started them. **Stop** interrupts the run (SIGINT to its process
@@ -319,7 +433,7 @@ Coding** (the default, below) and **[Research](#research)**.
 
 **Share** (the chat's header) makes a read-only link to the conversation as it is now: `https://<host>/#/share/<token>`
 (32 random bytes, in the fragment, so no server or Referer sees it). Anyone with the link reads it -- without the access
-token or a Claude account -- and sees nothing else of Orbit Web: not the workspace, its files, the changes, Orbit's
+token or an Orbit Web account -- and sees nothing else of Orbit Web: not the workspace, its files, the changes, Orbit's
 record or your other chats. It is a snapshot: what comes after is in it only once you press *Update to now* (the same
 link). Tools are shown by their title (`$ npm test`, `Edit sum.mjs`) unless you include what they did -- their input
 and output, which may hold the repository's code; every text is masked by token shape again. *Stop sharing* ends the
@@ -466,14 +580,96 @@ revision of the workspace stores the same bytes -- its file; citations that quot
 deleted source. Deleting a workspace (its owner types its name back to confirm) removes everything it holds, rows and
 files; it is refused while one of its sessions is answering.
 
+## The Office: AI employees
+
+**Office** in the sidebar is a virtual office: departments, the employees in them, the work they hold, what needs you
+(*Needs me*), and recurring work (*Schedule*). Looking at it needs no AI connection; hiring needs one connected CLI
+whose models were read from your account.
+
+**Hire** takes five steps: *Identity* (a name, optionally from a template) → *Department & role* (title, duties,
+instructions, skills, a handoff standard, and **Team lead** if it may give parts of its work to colleagues) → *AI
+runtime, model & effort* (a connected connection, a model and an effort from that connection's own catalog, the
+runtime's own web search where it has one, the Orbit plugin where you granted it for employees) → *Personal sandbox &
+resources* (a preset, or your own CPU, memory, desk storage, scratch, cache, processes and minutes per attempt, beside
+the account's budget) → *Review & hire*. An employee starts on probation unless you say why not. Its **Personal
+Sandbox** -- a desk and a toolbox that last across its work, with quotas -- is prepared first; no container runs while
+it is idle, and an idle employee reserves no CPU or memory. A hire is refused above a per-employee limit or the
+account's storage budget, and never because CPU or memory are busy right now: its work then waits.
+
+**Give work** (*Assign work*): a goal, the deliverables (file names), what makes the result acceptable, a deadline,
+optionally **research sources** -- sources of one research workspace, each pinned at the revision it is at -- and what
+to do if the employee is busy: *Start now* (a busy employee refuses it, and nothing is created) or *Queue it* behind its
+current work. An employee holds one piece of work at a time; queued work starts by itself when it is free. A request
+names itself once (`Idempotency-Key`), so sending it twice gives one mission.
+
+**Each attempt runs in two containers of its own**, made by the allocator for that attempt and removed -- verified gone
+-- when it ends:
+
+- the **tool plane**, the employee's workstation: its desk copied in as `/work` (with its toolbox), `/output` for what it
+  hands in, `/input` read-only (the pinned research revisions and, for a team lead, its parts' accepted deliverables),
+  `/cache`, a small `/tmp`, and for a team the mission's `/team` room. Inside it the employee has an unrestricted shell:
+  it builds, tests, installs dependencies, and writes scripts and skills in its toolbox, which its next work finds
+  again. It holds no credential, has no capability or privilege, a read-only root, and the employee's CPU, memory,
+  process and time limits.
+- the **model plane**: the AI CLI with that connection's login, and nothing else. Every built-in tool of the CLI is off;
+  its only tools are Orbit Web's (read, write and list files, run a command, hand in, ask you a question …), each
+  carried out in the tool plane through Orbit Web's tool endpoint, under the attempt's own token. The CLI's first line
+  must report exactly those tools, servers and plugins: anything else stops the attempt before it acts
+  (`isolation_not_established`), and it is never retried with more.
+
+**Resources.** An attempt reserves its CPU and memory (its limits plus its model plane's) when it is admitted, and gives
+them back only once its containers are gone. With no room now -- in the account's budget or on this host -- its work
+**waits for resources** and starts by itself; one that can never fit as configured is **unschedulable**, said with the
+numbers in *Needs me*. Admission is fair across accounts (the least-served account first), ages work that waits, and
+lets a small attempt pass a large one only for so long. Each storage area is reported as a *hard limit* (the kernel
+refuses a write past it, proven by writing past it), *measured only*, or *not enforced*; a shell runs only where every
+writable area is a hard limit, or where the operator accepted measured areas on a protected disk
+(`ORBIT_WEB_ACCEPT_SOFT_STORAGE`). **Settings → Compute & storage** shows what this host gives employees (detected or
+configured, less the control plane's limits and a reserve), the account's budget (lowered there; raising it above what
+the operator authorized is refused), what is reserved now, the storage committed and really used, and what runs and
+waits.
+
+**Network.** A tool plane's only way out is Orbit Web's egress proxy, every connection decided as that attempt under the
+account's policy (Governance → *Employee network access*): **Autonomous**, the default, reaches any public host on ports
+80 and 443; **Restricted** reaches only the hosts you list. Private, loopback, link-local and cloud-metadata addresses
+are refused in both, after every name is resolved and at every redirect. A model plane reaches its AI provider's own
+hosts (port 443) and Orbit Web's tool endpoint, nothing else. Every connection of an attempt is kept in its network log.
+*In Autonomous mode an employee can send the data of its assignment to any public website. Use Restricted mode, or do
+not give it data that must not leave.* -- the Hire, Assign and Governance pages say it too.
+
+**Review.** The employee hands in a summary, its deliverables (stored by hash and verified when read) and its claims --
+each *supported* only when a pinned source holds the very words it quotes, or marked *web, not pinned* with its URL.
+**Needs me** lists what waits for you: a result to review, a question to answer, blocked or unschedulable work, a
+delivery to settle. **Request revision** (saying what must change) gives the work back to the same employee for a new
+attempt; **Accept** completes it -- naming the exact revision you read, so a newer one, or a page that moved since, is
+refused rather than overwritten -- publishes the work to the employee's desk and frees the employee for its next work.
+Pause, resume, cancel and retry are there too, each against the version you read. Disconnecting the AI connection an
+employee runs on stops its running attempt and blocks the work, saying why; nothing switches to another provider by
+itself.
+
+**A team.** A team lead's assignment may be split: its plan gives up to eight parts to colleagues, each with a goal,
+deliverables and criteria of its own, and what it waits for -- a plan whose parts wait for each other in a circle is
+refused whole, and nothing of it is made. The parts share the mission's **team room** (`/team`), and every change to
+it is kept with whose attempt made it (the mission's *Team room* tab). A part starts once the parts it waits for are
+accepted; the lead reviews each part as it is handed in -- accepting it, or asking its colleague for a revision --,
+reads the accepted parts' deliverables under `/input`, and hands the integrated result in to you.
+
+**Recurring work** (*Schedule*): daily, weekly, monthly or quarterly, at a local time in a time zone (a time a clock
+change skips or repeats is resolved by a stated rule), makes one mission per period whoever asks; what happens to the
+periods missed while Orbit Web was down is yours to choose (the latest, each, or none). An accepted result is
+delivered -- to *Needs me*, or to an external channel this installation does not have yet, where it waits *for a
+channel*. A delivery is *sent* only with a receipt; one that may or may not have reached its receiver is settled by a
+person.
+
 ## Governance
 
-Governance is the **account's**, and you -- the person signed in -- are its **owner**. Open **Governance** in the sidebar:
-there is no second sign-in, no operator, no password, no organization to create and no code to enter. It shows what your
+Governance is the **account's**, and you -- the account's owner, signed in -- govern it. Open **Governance** in the
+sidebar: there is no second sign-in, no operator and no organization to create. It shows what your
 account owns and nothing of another account's.
 
-- **What it governs.** Two groups: **Workspaces** (your chats, and their runs) and **Research** (your research
-  workspaces, their sessions, sources and runs). Each resource shows the policy that applies to it -- inherited from the
+- **What it governs.** **Workspaces** (your chats, and their runs), **Research** (your research workspaces, their
+  sessions, sources and runs) and the **Office** (hiring, giving and delegating work, publishing an employee's work,
+  deliveries -- each an action of the policy, and every attempt bound to its account and employee). Each resource shows the policy that applies to it -- inherited from the
   account, or narrowed by an override --, its runs under way, its approvals waiting and its recent activity. A resource
   that was deleted stays listed: what governed it stays on record.
 - **The policy.** Your account starts with a **default policy**, published the moment the account is made, fitting the
@@ -509,8 +705,13 @@ account owns and nothing of another account's.
 - **Privileged switches**: turning on *Let Claude Code push … with this GitHub sign-in*, *… use this Azure sign-in* or
   *Run project plugins* is the owner's (and the account policy's decision); turning one off needs nobody. A request from
   anything else -- the agent's shell included -- is refused and recorded.
+- **Employee network access** (Policy): **Autonomous** (the default: any public host on ports 80 and 443) or
+  **Restricted** (only the hosts you list, exact or `*.domain`), part of the policy document, so a change is drafted,
+  validated, shown with its risk -- Restricted → Autonomous is a high-risk change -- confirmed and published, and applies
+  to the next connection of a running attempt. Private and internal addresses are never reachable in either mode.
 - **From a terminal**: `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js status |
-  verify-audit [--account=<id>] | revoke-sessions --account=<id>`.
+  verify-audit [--account=<id> | --deployment] | owner setup-code | owner reset-password --username=<name> | owner
+  revoke-sessions [--username=<name>] | revoke-sessions --account=<id> | --all`.
 
 ## Connectors: GitHub and Azure DevOps
 
@@ -586,15 +787,12 @@ The same image as two containers, beside **postgres** (PostgreSQL with pgvector)
 joins: the agent's container cannot reach the database and holds none of its credentials. **orbit-web**, the control
 plane: the API and the page, the CLIs' sign-ins, Orbit Web's copies of the repositories and the **egress proxy**. **orbit-agent**: Claude Code and every
 program that touches a workspace, started by the control plane through a runner. The agent's container mounts the
-Claude configuration, the workspaces, the sessions, Orbit's store and a home -- and the repositories' copies read-only
--- on a read-only root; it has no database, no governance record and no sign-in of GitHub or Azure to read.
+AI connections' homes (each account's Claude Code login), the workspaces, the sessions, Orbit's store and a home -- and the repositories' copies read-only
+-- on a read-only root; it has no database, no governance record, no API key and no sign-in of GitHub or Azure to read.
 Its network is internal: it reaches the control plane's agent gateway and proxy and nothing else, and public names do
 not resolve. Every connection it makes leaves through the proxy as a decision of the policy of the account whose run it is
-(each account starts with this deployment's strict default), never to an address off the public internet. One exception, fixed: the Claude
-sign-in (`claude auth login`, which runs in the agent's container and is not a run) holds a channel of its own while it
-runs -- the Claude account's hosts (`api.anthropic.com`, `platform.claude.com`, `claude.ai`, port 443) and nothing
-else, each connection recorded (`egress.sign_in`) -- so Orbit Web can be signed in before any account exists, and no
-policy can lock it out of its own sign-in. The control plane never writes or runs anything in a directory the
+(each account starts with this deployment's strict default), never to an address off the public internet. A connection's sign-in never runs
+there: it runs in the control plane, from the operator's terminal ([AI connections](#ai-connections)). The control plane never writes or runs anything in a directory the
 agent can write. Before every strict run Orbit Web checks the agent's container (Governance → Overview shows what was
 checked) and records it.
 
@@ -629,10 +827,10 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
   <opus|fable|sonnet|haiku> --effort <low|medium|high|xhigh|max> --plugin-dir /opt/orbit/plugin [--plugin-dir <project
   plugin> …] (--session-id <id> | --resume <id>) --permission-mode <auto|plan> --allowedTools
   Read,Edit,Write,Glob,Grep,Bash,Skill,Agent,TodoWrite --disallowedTools "Bash(git push:*)" "Bash(gh:*)" "Bash(git
-  credential:*)" "Bash(git config --global:*)" ["Bash(az:*)"] "Read(//data/claude/**)" "Edit(//data/claude/**)" …
+  credential:*)" "Bash(git config --global:*)" ["Bash(az:*)"] "Read(//data/connections/**)" "Edit(//data/connections/**)" …
   [WebFetch WebSearch] --append-system-prompt "<what this workspace allows>" --setting-sources user
   [--strict-mcp-config] [--settings '{"enabledPlugins":…}'] [--max-budget-usd <n>]`, the prompt on stdin, cwd the
-  workspace. `--strict-mcp-config` only in a run governance holds: a chat reaches the signed-in account's claude.ai
+  workspace. `--strict-mcp-config` only in a run governance holds: a chat reaches its connection's claude.ai
   connectors (Claude Docs, where Claude makes its documents, among them) and the MCP servers of the user's settings
   and of the plugins loaded. With GitHub's
   switch on, `"Bash(git push:*)" "Bash(gh:*)"` give way to `"Bash(gh auth:*)" "Bash(gh repo delete:*)" …`. The
@@ -680,8 +878,11 @@ browser ── React + Fluent UI v9 ── HTTP + two SSE streams ──▶ Nest
   `GET /api/sessions/:id/verification`, `GET /api/sessions/:id/project`; `GET /api/customizations`; `GET /api/events`
   (SSE); `GET /api/setup/status`; `GET|PATCH /api/settings`; `POST /api/access` (token mode). Errors are
   `{ "error": { "code", "message" } }`. Until this browser has a session, every route but `GET /api/health`,
-  `POST /api/access`, the `/api/claude/status|login…|session` routes and a shared chat's link answers 401
-  `claude_sign_in_required` (one global gate: a route is the owner's unless it is marked public).
+  `POST /api/access`, `GET /api/auth/status`, `POST /api/auth/login|setup` and a shared chat's link answers 401
+  `sign_in_required` (one global gate: a route is the owner's unless it is marked public). The Office's routes
+  (`/api/office/…`, `/api/employees/…`, `/api/missions/…`, `/api/assignments/…`, `/api/inbox`, `/api/schedules/…`,
+  `/api/deliveries/…`, `/api/artifacts/…`) and AI Connections' (`/api/connections/…`) are listed at the head of their
+  controllers; an attempt's tool endpoint (`/api/runtime/tools/list|call`) answers an attempt's own token alone.
 
 ## Security model
 
@@ -690,18 +891,19 @@ For one person, on their own machine, by default:
 - **Loopback only.** Compose publishes `127.0.0.1:3000`; the API answers only Host names on an allow-list (localhost,
   127.0.0.1, ::1), which also defeats DNS rebinding. Answering another host name requires `ORBIT_WEB_ACCESS_TOKEN`
   (Orbit Web refuses to start otherwise); then every API call needs the token, traded once for an HttpOnly,
-  SameSite=Strict cookie. The page asks for it before the Claude sign-in (two steps, said as two), or takes it from an
+  SameSite=Strict cookie. The page asks for it before the sign-in (two steps, said as two), or takes it from an
   **access link**, `https://<host>/#access=<token>`: the fragment never reaches a server or a Referer, and the page
   removes it from the address bar and the history entry before anything else reads the URL. Share such a link as you
   would the token. Put it behind an authenticated HTTPS reverse proxy before exposing it anywhere else.
-- **A browser's Claude sign-in gates the API.** Until THIS browser finished a sign-in with a Claude account and holds
-  the session it was exchanged for, one global gate answers 401 to every route but the health check, the access token,
-  the sign-in and a shared chat's link, before any program runs -- the runtime's CLI being signed in opens nothing by
-  itself, and there is no "first visitor becomes owner". A sign-in flow belongs to the browser that started it (an
-  HttpOnly nonce cookie); its session is an HttpOnly, SameSite=Strict cookie the server keeps only the hash of, rotated at
-  every sign-in, with a lifetime, an idle limit and a CSRF token every change carries; when the account stops being the
-  CLI's (a sign-out, another account, a terminal), its sessions and streams end at once. It adds to the loopback rule and
-  the access token -- a perimeter, never an identity -- and replaces neither.
+- **A browser's session gates the API.** Until THIS browser signed in with a username and a password of Orbit Web's and
+  holds the session it was given, one global gate answers 401 to every route but the health check, the sign-in status,
+  the sign-in and setup, the access token and a shared chat's link, before any program runs -- and an AI CLI's login
+  opens nothing by itself. The first administrator needs a one-time code only the server's terminal prints (kept as its
+  hash, short-lived, used once); passwords are scrypt hashes; every attempt is counted, per username and per address,
+  before a password is checked. The session is an HttpOnly, SameSite=Strict cookie the server keeps only the hash of,
+  rotated at every sign-in, with a lifetime, an idle limit and a CSRF token every change carries. It adds to the
+  loopback rule and the access token -- a perimeter, never an identity -- and replaces neither. Trial mode's public
+  password is refused anywhere but on this machine.
 - **Changes need proof of origin**: every POST/PUT/PATCH/DELETE needs the `X-Orbit-Web` header (a cross-site page
   cannot send it without a CORS preflight, which is never answered), the session's CSRF token (`X-Orbit-Csrf`), a
   matching Origin when the browser sends one, and a JSON body; bodies are limited to 256 KB. An API answer is never
@@ -714,9 +916,11 @@ For one person, on their own machine, by default:
   modes, titles, prompts); a repository opens only if its source lists it, and its clone URL comes from that listing;
   a workspace path is built only from a server-made id and checked to resolve inside `/data/workspaces`; a diff is
   served only for a path git listed as changed.
-- **Credentials stay with the CLIs.** Orbit Web never reads, stores or sends a token (but for the telemetry collector's
-  token, which whoever runs the container puts in its environment and Orbit Web hands to Claude Code alone, so it can
-  export): it never runs `gh auth token`,
+- **Credentials stay with the CLIs.** A CLI's login lives in its connection's home and nowhere else; Orbit Web never
+  reads, stores or sends a token -- but for an AI connection's API key, which a person gave it for that purpose and which
+  it keeps in its credential store (0600, outside every mount) and hands to that connection's process alone, and the
+  telemetry collector's token, which whoever runs the container puts in its environment and Orbit Web hands to Claude
+  Code alone, so it can export: it never runs `gh auth token`,
   never puts a credential in a remote URL or a git config, never passes a token variable to Claude Code and tells it
   where GitHub's or Azure's sign-in is only when you turn that on, and gives no program Claude Code's own credential variables
   (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`). The one place a token is asked for is the
@@ -729,8 +933,8 @@ For one person, on their own machine, by default:
   where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
   repositories that declare them.
 - **Claude connectors** (the owner's decision, ADR 0064; [above](#claude-connectors)): a chat and a research session
-  reach the signed-in account's connectors -- Claude Docs, where Claude makes its documents, and whatever else the
-  account connected at claude.ai (mail, files, chat …) -- each as far as that account's person checked it for chats and
+  reach the connectors of the account's default Claude Code connection -- Claude Docs, where Claude makes its documents,
+  and whatever else that Claude account connected at claude.ai (mail, files, chat …) -- each as far as that account's person checked it for chats and
   for research; an unchecked one is denied by name (`--disallowedTools mcp__<connector>`), in every mode. What the account
   can do in a service, Claude can do there too: in an Autonomous chat each call is reviewed by auto mode's classifier,
   like any tool's; in research a checked connector is allowed by name and nothing else is (`dontAsk`), so the guard there
@@ -746,10 +950,10 @@ For one person, on their own machine, by default:
   `nosniff` with `default-src 'none'`). Claude Code is given it as base64 in one stream-json message on stdin; events and
   logs keep its id, never its bytes. The image goes to Claude (Anthropic) with the words.
 - **A shared chat's link** opens one read-only snapshot and nothing else: `GET /api/shared/<token>` is the one route the
-  access gate and the Claude sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
+  access gate and the sign-in gate let through, the token (32 random bytes, in the URL's fragment) names one
   share, and the snapshot holds the conversation alone -- tools by their title unless their owner shares what they did,
   every text masked again, no id of the chat -- served `no-store` and `noindex`.
-- **Each account its own** ([above](#each-claude-account-its-own)): every record carries its account, and the database
+- **Each account its own** ([above](#each-account-its-own)): every record carries its account, and the database
   holds each child to its parent's account (composite foreign keys); a chat or a research workspace answers only the
   account that owns it and the accounts it was shared with; any other gets 404, on every route under it (a test reads
   every route the application declares and holds each one). No request names its account: it is the session's.
@@ -765,7 +969,20 @@ For one person, on their own machine, by default:
   and protected action, approvals spent once and decided by a person only, and a hash-chained audit record per account
   that no deletion reaches. An agent is never the owner: no request it can make -- with its run's token or without --
   reaches a governance route, turns a credential switch on, or approves anything; every attempt is refused and recorded.
-- **The image**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no Docker socket, no credential in any layer.
+- **AI employees** ([above](#the-office-ai-employees)): each attempt is two containers of its own, made by the allocator
+  from fixed images, a fixed mount list and the employee's limits -- none of them taken from a request. The tool plane
+  (the employee's shell) holds no credential, has no capability or privilege, a read-only root and no Docker socket, and
+  sees only its own desk, scratch, inputs, cache and its mission's team room; the model plane holds one connection's
+  login, with every built-in tool of the CLI off, and acts only through Orbit Web's tool endpoint under the attempt's own
+  token (which opens nothing else: not the agent gateway, not an owner's route). The CLI's first line is checked, and a
+  tool, server or plugin it was not given stops the attempt. Each plane reaches the outside only through a proxy of Orbit
+  Web's: the tool plane under the account's network policy, never a private address; the model plane its provider's
+  hosts. What an attempt hands in is checked (deliverables by hash, claims by quote against the pinned sources), never
+  taken on its word. Every claim on a resource -- CPU, memory, storage -- is reserved before it runs and released only
+  once its containers are verified gone.
+- **The images**: a non-root user, `cap_drop: ALL`, `no-new-privileges`, no credential in any layer; Orbit Web's own
+  container has no Docker socket -- the allocator, a container of its own on a private network with no published port,
+  alone holds it.
 
 **The limit, said plainly.**
 
@@ -786,11 +1003,21 @@ For one person, on their own machine, by default:
   account's configuration is necessarily readable by the agent, and the model API is reachable by design. The
   isolation check is the agent container's own answer: a check of the wiring, not proof against a runner the agent has
   taken over. The audit chain is tamper evidence on this host, not proof against whoever controls the host.
+- **AI employees.** The isolation of an attempt is Docker's: the allocator holds the Docker socket, so whoever controls
+  the allocator controls this host -- it is root with no capability, answers only requests signed with the shared
+  secret, and takes nothing a caller could turn into a mount, an image or a privilege. The model plane's login is
+  readable by the CLI that uses it, which is the provider's own program. A storage area said *measured only* can be
+  filled past its quota until it is noticed: a shell runs on one only when the operator accepted it. In Autonomous mode
+  an employee can send the data of its assignment to any public website. In the governed deployment, the one agent
+  container mounts every account's AI connection homes, as it mounts every workspace: run accounts that must not see
+  each other as separate deployments.
 - **Research.** The passages a question retrieves are sent to Claude (Anthropic). A research run's restrictions are the
   Claude CLI's own flags, not an operating system's: in the single deployment it runs as the same user as everything
   else in the container. Accounts are separated at the API and in the rows, not on disk -- in the single deployment a
-  chat's agent can read the files of another account's workspace -- and the CLIs' sign-ins and the Claude CLI's own
-  files are the installation's: accounts on one Orbit Web are not tenants of an isolated system. Sharing has no read-only
+  chat's agent can read the files of another account's workspace, and every account's AI connection homes are in its
+  container (its deny rules are defence in depth, not isolation) -- and the GitHub and Azure CLIs' sign-ins are the
+  installation's: for chats, accounts on one Orbit Web are not tenants of an isolated system. An employee's attempts are
+  isolated per attempt (above). Sharing has no read-only
   level.
 - Open repositories you trust, keep *Run project plugins* off unless you trust them too, keep the port on loopback, and
   disconnect a source when you are done.
@@ -803,14 +1030,23 @@ For one person, on their own machine, by default:
 | Orbit Web exits at start: *the database could not be reached* / *refused the connection* | PostgreSQL is not up or the URL is wrong: `docker compose ps postgres`, `docker compose logs postgres`; the passwords in `.env` must be the ones the database volume was first made with (they are set once, at its first start) |
 | *pgvector is not enabled in this database* | as a superuser of that database: `CREATE EXTENSION vector;` (the compose files' init script does it on a new volume) |
 | *The database schema is at version N; this build needs M* / *migrated by a newer build* | run the matching build, or `cli/db.js migrate` with this one; a database a newer build migrated is never written by an older one |
-| Every browser was signed out | another account signed in, the account was signed out everywhere, or the Claude CLI was signed in as somebody else from a terminal: sign in again |
-| *Another browser has a Claude sign-in under way* | the CLI signs in one at a time: wait for it to finish (or time out), then *Continue with Claude* |
+| The page offers only *Set up Orbit Web* | nobody is set up yet: `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code`, then use the code within 30 minutes |
+| A password is forgotten | `… governance.js owner reset-password --username=<name>` prints a one-time code; *Set up Orbit Web* with it sets a new password |
+| `too_many_attempts` (HTTP 429) | too many failed sign-ins for that username or from that address: wait the time the page says (it doubles with each failure) |
+| Every browser of a user was signed out | the password was changed, *Sign out everywhere* was used, or `owner revoke-sessions` ran: sign in again |
+| Orbit Web refuses to start: *ORBIT_WEB_TRIAL=1 refused: …* | trial mode runs only where nobody else can reach it: the message names what to remove (an allowed host, an access token, the governed deployment, a public origin or the Secure cookie setting) |
+| *This database was created by a development build of 0.8.0* | 0.8.0 starts from an empty database: `db.js reset --confirm=<database name>` (Orbit Web stopped), or remove the volumes |
 | The chats and governance of an earlier Orbit Web are gone after upgrading | by design: 0.8.0 starts on an empty PostgreSQL database and imports nothing from the SQLite files, which stay in the data volume |
+| *Connect Claude Code (or another CLI) in Settings → AI Connections first* | a chat, a research question and an employee's work run on your account's own connection: add one, and sign it in (the card shows the terminal command for a subscription) |
+| A connection says *Authentication required* | its login ended, was signed out, or its CLI now names another identity: sign it in again (*Reconnect*); one identity is connected to one account at a time |
+| *Hire* is disabled: *Connect an AI CLI first* | no connection is connected with its models read from your account: Settings → AI Connections, then *Re-check* |
+| An employee's work *waits for resources* | the account's budget or this host has no CPU or memory free now: it starts by itself when an attempt ends; Settings → Compute & storage shows what is reserved |
+| Work is *unschedulable* | as configured it can never fit (above the budget, a per-employee limit or what this host has): Needs me says the numbers; edit the employee's resources, or ask the operator to raise the authorization |
+| An attempt is blocked: *isolation not established* | the CLI's first line reported a tool, server or plugin it was not given (a managed setting, a plugin): it is never retried with more; look at the model-plane image and the connection's home |
+| An attempt is blocked: *storage_not_enforceable* | a writable area of the employee is only *measured* on this host: give the allocator a filesystem whose quotas the kernel enforces, or accept measured areas on a protected disk (`ORBIT_WEB_ACCEPT_SOFT_STORAGE=1`) |
+| An employee cannot reach a site | Governance → Employee network access: in Restricted mode only listed hosts are reachable; private and internal addresses never are; the mission's run shows each refused connection |
+| `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` in the container's environment are not used | by design: no credential of the server's own reaches a program; add an API-key connection in Settings → AI Connections |
 | `host_not_allowed` (HTTP 421) | open it as http://localhost:3000 or http://127.0.0.1:3000, or set `ORBIT_WEB_ALLOWED_HOSTS` with `ORBIT_WEB_ACCESS_TOKEN` |
-| Claude sign-in never finishes | its message says why; *Continue with Claude* starts it again. A terminal sign-in (`docker exec -it orbit-web claude auth login --claudeai`) signs the CLI in, not a browser: the page still asks this browser to finish a sign-in |
-| The page asks to sign in although the container was started with `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` | by design: Orbit Web signs in with a Claude account only and ignores those variables; sign in on the page |
-| "… which is not a Claude account" | the Claude CLI was signed in some other way (an Anthropic Console account, a key): *Continue with Claude* replaces it with your Claude account |
-| *Sign the account out everywhere* is refused | a chat is running or its workspace is being prepared: stop it (or wait), then sign out (*Sign out* of this browser alone is never refused) |
 | The repository picker says *Connect* | that source is not connected: Settings → Connectors |
 | GitHub: `x509: certificate signed by unknown authority` | you are behind a TLS-inspecting proxy: mount its CA and set `SSL_CERT_FILE` (and `NODE_EXTRA_CA_CERTS`) to it |
 | GitHub sign-in expired | Connect GitHub again; chats and workspaces stay |
@@ -856,11 +1092,13 @@ npm run dev -w @orbit-web/web  # the app on :5173, /api proxied to :3000
 |---|---|---|
 | unit | `packages/contracts/src/*.spec.ts`, `apps/api/src/**/*.spec.ts` | the event catalog and bus, parsers (GitHub, Azure DevOps), the stream mapper (plans included), redaction, argv (model, effort, mode, plugins), the project reader's bounds and its instructions-only copy, state machines, path rules |
 | database | `apps/api/tests/integration/{database,events}.spec.ts` | on a real PostgreSQL with pgvector: an empty database migrated, a second run changing nothing, a changed migration refused, savepoints, after-commit only after a commit, concurrent writers never sharing a number, the journal replayed while events keep coming (none lost, none twice), a database that cannot be reached refused (no fallback) |
-| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP and both SSE streams, each harness on a PostgreSQL database of its own, with claude, gh and `az rest` scripted; git and Orbit's CLIs run for real; chats with and without a repository, Azure DevOps listing and clone (no credential in `.git/config`), a repository's skills and plugins, the browser sign-in (its nonce, the exchange, rotation, CSRF, sign-out) and its gate over every route the application declares, a Stop that comes before Claude Code was started (the run interrupted, nothing started) |
-| web | `apps/web/src/**/*.spec.tsx` | the sign-in page, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel; governance: the account's overview, its policy edited, reviewed and confirmed by its owner (the risk acknowledged above low), Workspaces and Research with their overrides, approvals, decisions, audit, findings, reports, and Push asked for and approved by the chat's owner; research: the kind chooser, the sidebar's kinds and filter, the three panels at each width, selection, uploads, citations that open their passage, notes, the stream folded without doubling |
-| accounts | `apps/api/tests/integration/accounts.spec.ts` | an account per verified identity (made once however many sign-ins race, never merged by email), each account's own chats through every route under one, a switch of account ending the other's sessions and streams, an account id in a request never deciding, sharing by email and what only an owner does, a run token never a person, the model catalog per account |
+| integration, mocked processes | `apps/api/tests/integration/*.spec.ts` | the real API over HTTP and both SSE streams, each harness on a PostgreSQL database of its own, with claude, gh and `az rest` scripted; git and Orbit's CLIs run for real; chats with and without a repository, Azure DevOps listing and clone (no credential in `.git/config`), a repository's skills and plugins, Orbit Web's own sign-in (the setup code used once, passwords, the throttle, rotation, CSRF, sign-out, trial mode and its refusals) and its gate over every route the application declares, AI connections (each account's own home, methods, status, one identity per account, disconnect), a Stop that comes before Claude Code was started (the run interrupted, nothing started) |
+| web | `apps/web/src/**/*.spec.tsx` | the sign-in and setup pages, AI Connections, the Office (Overview, the five-step Hire with its budget, Assign with sources and the busy answer, Work, a mission's handoffs, review, parts and team room, Needs me, Schedule, an employee's sandbox and resources), Compute & storage, Employee network access, the workspace (sidebar, a new session and its pickers, the app stream), an open chat (streaming, tools, Stop, the plan card), Settings (connectors and their device sign-ins, Code, Skills, Plugins), the diff and the Orbit panel; governance: the account's overview, its policy edited, reviewed and confirmed by its owner (the risk acknowledged above low), Workspaces and Research with their overrides, approvals, decisions, audit, findings, reports, and Push asked for and approved by the chat's owner; research: the kind chooser, the sidebar's kinds and filter, the three panels at each width, selection, uploads, citations that open their passage, notes, the stream folded without doubling |
+| accounts | `apps/api/tests/integration/{accounts,identity,trial,database}.spec.ts` | local accounts and users, each account's own chats through every route under one, an account id in a request never deciding, sharing by username or verified email and what only an owner does, a run token never a person, the model catalog per account's connection; every table carrying its account (read from the database's catalog), the system account, the fresh start and `db.js reset` |
+| office | `apps/api/src/contexts/**/*.spec.ts`, `apps/api/tests/integration/office*.spec.ts` | the Office end to end over HTTP on PostgreSQL, with a fake sandbox provider and a scripted CLI that calls the real tool endpoint: hire, assign (claimed, queued, busy, replayed), hand in, request revision, accept, the next work from the desk; stale versions and handoffs refused; pause, cancel, a question and its answer, a model plane reporting a tool it was not given, two claims of one employee at once, a lost lease recovered once, unschedulable then admitted, schedules and deliveries, a research mission's claims checked by quote, a connection disconnected mid-attempt; a team's plan, its waits, its room and the lead's review; admission fairness, the state machines and the runtime adapters as pure rules |
+| sandbox | `apps/api/tests/sandbox/sandbox.spec.ts` (`npm run test:sandbox -w @orbit-web/api`, needs Docker and the three employee images) | an attempt in real containers: limits applied (`docker inspect`) and observed (the cgroup files) and behaving (an OOM kill, a fork loop stopped), storage refusing a write past its quota (or said to be measured only, with why), the connection's login and another employee's desk invisible from the tool plane, no way out but the proxy, removal read back |
 | research | `apps/api/src/modules/research/**/*.spec.ts`, `apps/api/tests/integration/research*.spec.ts` | PDF, Word, HTML, Markdown and text read (pages, headings, encodings, a scanned PDF, a ZIP bomb), chunks and their places, what is refused (type, size, names, paths), URL import and SSRF (loopback, metadata, private ranges, IPv6 carrying IPv4, redirects, DNS answers, a drip-fed head), revisions and retries; retrieval only from the selected sources; the run's profile (no tool), a tool reported or used, prompt injection kept as data, secrets masked, citations verified and opening their passage, notes and findings, governance untouched, accounts kept apart through every research route, stop and restart interrupted and never run again |
-| Docker | `tests/docker/smoke.mjs` | the image builds, starts beside the pinned PostgreSQL (its role not a superuser, pgvector enabled), refuses to start without a database and keeps nothing elsewhere, serves, holds the four programs, a loadable plugin and the Azure Repos credential helper, opens on the Claude sign-in with every other route closed, signs a browser in through Orbit Web's own flow (the CLI's account a stand-in), and persists the state and the session across restarts |
+| Docker | `tests/docker/smoke.mjs` | the image builds, starts beside the pinned PostgreSQL (its role not a superuser, pgvector enabled), refuses to start without a database and keeps nothing elsewhere, serves, holds the four programs, a loadable plugin and the Azure Repos credential helper, opens on Orbit Web's own sign-in with every other route closed, sets the first administrator up with a code from its terminal, and persists the state and the session across restarts |
 | governance | `packages/governance-core/src/*.spec.ts`, `apps/api/tests/integration/governance-*.spec.ts`, `apps/api/src/runner/*.spec.ts`, `apps/api/src/infra/egress/*.spec.ts` | the decision, lifecycle, impact, approvals, audit chain and auditor as pure rules; the account's owner publishing alone, overrides that only narrow, a published revision immutable in the database, accounts kept apart through every governance read and export, concurrent audit appends keeping the chain; chat and research runs decided under the account's policy, the gateway and pushes to GitHub (a local remote) and Azure DevOps; the runner, the isolation check and the egress proxy |
 | security lab | `tests/security-lab/run.mjs` | the governed deployment for real (Docker, beside its PostgreSQL): the 22-step demonstration -- a browser signed in through Orbit Web's own flow as the account's owner, its policy tightened and confirmed by that owner alone, an override, a push approved once, a restart, a sign-out -- and ten attacks from the agent's own container (its policy, the account's owner, the database, the audit record among them), each verdict read outside the agent; results in `results/0.8.0` |
 | real | `tests/acceptance/` | one capped real run with a real Claude model; see its README |

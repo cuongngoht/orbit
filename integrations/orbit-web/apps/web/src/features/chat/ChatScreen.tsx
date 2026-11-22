@@ -5,7 +5,7 @@
 // Orbit says.
 import { Badge, Button, MessageBar, MessageBarBody, OverlayDrawer, Spinner, Tab, TabList, Text, ToggleButton, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowDown16Regular, Dismiss20Regular, DocumentBulletList20Regular, Info20Regular, Navigation20Regular } from "@fluentui/react-icons";
-import { ACCEPTS_MESSAGES, chatImagePath, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
+import { ACCEPTS_MESSAGES, chatImagePath, RUNTIME_LABELS, type SessionDetail, type SessionSummary, type UpdateSessionRequest } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { SessionStatusBadge } from "../../components/StatusBadge";
@@ -158,6 +158,8 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
   const connections = useConnections();
   const named = detail.data?.connectionId ? ((connections.data?.connections ?? []).find((c) => c.id === detail.data?.connectionId) ?? null) : null;
   const catalog = named !== null ? catalogOfConnection(named) : accountCatalog;
+  // The AI the chat runs on, said for every chat: the connection it named, else its own runtime (the default Claude Code).
+  const ai = named ?? (detail.data ? { id: detail.data.connectionId ?? "default", runtime: detail.data.runtime, label: RUNTIME_LABELS[detail.data.runtime] } : null);
 
   // The header (title, preferences, status, working branch) is read again whenever the chat's status changes, or its
   // working branch moved (in this tab or another).
@@ -363,7 +365,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             right={
               <ModelCatalogOverride catalog={catalog}>
                 {/* The AI a chat names is its own for its whole life: said, never offered again. */}
-                {named !== null && <AiPicker choices={[named]} value={named.id} readOnly />}
+                {ai !== null && <AiPicker choices={[ai]} value={ai.id} readOnly />}
                 <ModelEffortPicker
                   model={session.model}
                   effort={session.effort}

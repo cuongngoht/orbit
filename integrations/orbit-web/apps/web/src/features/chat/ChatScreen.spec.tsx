@@ -40,6 +40,8 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     const toolbar = screen.getByRole("toolbar", { name: "How this chat runs" });
     expect(within(toolbar).getByText("octo/sum-fixture")).toBeInTheDocument();
     expect(within(toolbar).getByText("main → orbit-web/0b6c2f5e")).toBeInTheDocument();
+    // The AI it runs on comes first, said and never offered again: a chat on the default connection is Claude Code's.
+    expect(within(toolbar).getByRole("button", { name: "AI Claude Code" })).toBeDisabled();
     expect(within(toolbar).getByRole("button", { name: "Model Sonnet 5.5, effort Medium" })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: "Mode Autonomous" })).toBeInTheDocument();
   });

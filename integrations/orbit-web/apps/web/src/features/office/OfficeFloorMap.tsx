@@ -1,13 +1,12 @@
-// GATHER-STYLE UNIFIED VIRTUAL COMPANY FLOOR: one complete architectural company plan on warm hardwood planks
-// with partitioned walls & doorways -- Top Wing (Director's Office where teammates bring questions/reviews + Pantry &
-// Lounge for resting with coffee/ping-pong) connected via the Main Hallway to Integrated Department Work Rooms below
-// (modern desks, loading monitors, thought bubbles, pen-spinning idle animations, and desk actions).
+// GATHER-STYLE REAL-TIME COMPANY OFFICE FLOOR: one physical walker per employee moving smoothly with directional
+// facing & 2-frame walking stride along real doorway/hallway routes between their desk, Pantry lounge, and Director's Office.
 import { Button, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { Dismiss16Regular, ErrorCircle16Regular, MoreHorizontal16Regular, TaskListLtr20Regular, Warning16Regular } from "@fluentui/react-icons";
 import type { AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBadge, OfficeIcon } from "../../components/SectionIcons";
 import type { DepartmentEdit } from "./DepartmentDialogs";
+import { createWalker, resnapIdleWalkers, stepWalkers, type SimEmployee, type WalkerState, type WaypointMap } from "./officeSim";
 import { Callout, WorkLabelBadge, useOfficeStyles, when } from "./parts";
 import {
   GatherNamePill,
@@ -41,8 +40,14 @@ function roomAccentFor(label: string) {
   return ROOM_ACCENTS[h % ROOM_ACCENTS.length]!;
 }
 
-function dialogueSpeech(e: EmployeeCard): string {
+function dialogueSpeech(e: EmployeeCard, walker?: WalkerState): string {
   const title = e.holding?.title;
+  if (walker?.zone === "pantry" && e.workLabel === "ready") {
+    return "“Grabbing a coffee in the Pantry before heading back to my desk. Ready whenever you have a brief!”";
+  }
+  if (walker?.walking) {
+    return "“Just walking down the hallway right now — happy to chat or take a new assignment!”";
+  }
   if (e.workLabel === "waiting_review") {
     return title
       ? `“I walked over to your office with ‘${title}’ — ready for your opinion and review! Or want to assign the next task?”`
@@ -64,10 +69,10 @@ function dialogueSpeech(e: EmployeeCard): string {
       : "“Typing away at my desk! Want to queue the next brief?”";
   }
   if (e.workLabel === "ready") {
-    return "“Taking a breather in the Pantry with coffee — and twirling my pen at my desk. Ready whenever you have a new brief!”";
+    return "“Spinning my pen at the desk and taking coffee breaks in the Pantry. Ready whenever you have a new brief!”";
   }
   if (e.workLabel === "paused") {
-    return "“Stepped into the Pantry to rest while paused. Resume or hand me a brief anytime!”";
+    return "“Resting on the Pantry sofa while paused. Resume or hand me a brief anytime!”";
   }
   if (e.workLabel === "not_ready") {
     return `“Desk is offline (${e.notReadyReason ?? "needs connection/setup"}). Check my desk profile?”`;
@@ -75,8 +80,33 @@ function dialogueSpeech(e: EmployeeCard): string {
   return "“Standing by in the office — ready whenever you are!”";
 }
 
+function measureWaypoints(root: HTMLElement): WaypointMap {
+  const base = root.getBoundingClientRect();
+  const map: WaypointMap = {};
+  root.querySelectorAll<HTMLElement>("[data-wp]").forEach((el) => {
+    const key = el.dataset.wp;
+    if (!key) return;
+    const r = el.getBoundingClientRect();
+    map[key] = {
+      x: r.left + r.width / 2 - base.left,
+      y: r.top + r.height / 2 - base.top,
+    };
+  });
+  return map;
+}
+
+function dotColorOf(label: WorkLabel): string {
+  const k = presenceKindOf(label);
+  if (k === "working") return "#6366f1";
+  if (k === "ready") return "#16a34a";
+  if (k === "waiting") return "#f59e0b";
+  if (k === "offline") return "#ef4444";
+  return "#9ca3af";
+}
+
 const useStyles = makeStyles({
   building: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     gap: "12px",
@@ -136,11 +166,12 @@ const useStyles = makeStyles({
   },
   dot: { width: "7px", height: "7px", borderRadius: "9999px", flexShrink: 0 },
   topWing: {
+    position: "relative",
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
     gap: "14px",
     minWidth: 0,
-    "@media (max-width: 820px)": { gridTemplateColumns: "1fr" },
+    "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
   },
   execRoom: {
     position: "relative",
@@ -169,7 +200,7 @@ const useStyles = makeStyles({
     paddingLeft: "12px",
     borderRadius: "12px",
     backgroundColor: "var(--orbit-rug-exec)",
-    minHeight: "106px",
+    minHeight: "108px",
     minWidth: 0,
   },
   pantryCarpet: {
@@ -184,8 +215,27 @@ const useStyles = makeStyles({
     paddingLeft: "12px",
     borderRadius: "12px",
     backgroundColor: "var(--orbit-rug-pantry)",
-    minHeight: "106px",
+    minHeight: "108px",
     minWidth: 0,
+  },
+  pantryAnchorsZone: {
+    position: "relative",
+    flexGrow: 1,
+    minWidth: "150px",
+    height: "74px",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  visitorsCluster: {
+    position: "relative",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "space-around",
+    gap: "12px",
+    flexGrow: 1,
+    minWidth: "130px",
+    height: "74px",
   },
   roomTitleBar: {
     display: "flex",
@@ -255,68 +305,8 @@ const useStyles = makeStyles({
     alignItems: "center",
     gap: "2px",
   },
-  visitorsCluster: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: "10px",
-    flexWrap: "wrap",
-    flexGrow: 1,
-    justifyContent: "flex-end",
-    minWidth: 0,
-  },
-  pantryPeople: {
-    display: "flex",
-    alignItems: "flex-end",
-    gap: "10px",
-    flexWrap: "wrap",
-    flexGrow: 1,
-    justifyContent: "center",
-    minWidth: 0,
-  },
-  npcFloorBtn: {
-    display: "inline-flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "2px",
-    paddingTop: "4px",
-    paddingRight: "6px",
-    paddingBottom: "4px",
-    paddingLeft: "6px",
-    borderRadius: "10px",
-    ...shorthands.border("1.5px", "solid", "transparent"),
-    backgroundColor: "transparent",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    color: tokens.colorNeutralForeground1,
-    transitionProperty: "transform, background-color, border-color",
-    transitionDuration: "140ms",
-    ":hover": {
-      backgroundColor: tokens.colorNeutralBackground1Hover,
-      ...shorthands.borderColor(tokens.colorBrandStroke1),
-      transform: "translateY(-2px)",
-    },
-    ":focus-visible": {
-      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
-      outlineOffset: "2px",
-    },
-  },
-  npcSelected: {
-    backgroundColor: tokens.colorBrandBackground2,
-    ...shorthands.borderColor(tokens.colorBrandStroke1),
-  },
-  roamA: {
-    animationName: "orbit-roam-a",
-    animationDuration: "6.5s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "ease-in-out",
-  },
-  roamB: {
-    animationName: "orbit-roam-b",
-    animationDuration: "7.5s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "ease-in-out",
-  },
   hallway: {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -333,11 +323,19 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground2,
     minWidth: 0,
   },
+  anchorDot: {
+    position: "relative",
+    width: "2px",
+    height: "2px",
+    pointerEvents: "none",
+  },
   departmentsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 310px), 1fr))",
-    gap: "14px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    rowGap: "36px",
+    columnGap: "24px",
     minWidth: 0,
+    "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
   },
   deptRoom: {
     position: "relative",
@@ -377,7 +375,7 @@ const useStyles = makeStyles({
   },
   desksGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 275px), 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 265px), 1fr))",
     gap: "12px",
     minWidth: 0,
   },
@@ -399,9 +397,9 @@ const useStyles = makeStyles({
     flexDirection: "column",
     alignItems: "center",
     gap: "2px",
-    paddingTop: "8px",
+    paddingTop: "10px",
     paddingRight: "8px",
-    paddingBottom: "8px",
+    paddingBottom: "10px",
     paddingLeft: "8px",
     borderRadius: "10px",
     backgroundColor: "var(--orbit-card-bg)",
@@ -423,7 +421,70 @@ const useStyles = makeStyles({
   },
   deskStageSelected: {
     ...shorthands.borderColor(tokens.colorBrandStroke1),
-    backgroundColor: tokens.colorBrandBackground2,
+    boxShadow: "0 0 0 2px rgba(91, 88, 212, 0.22)",
+  },
+  chairAnchorWrap: {
+    position: "relative",
+    width: "100%",
+    height: "54px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  awayNote: {
+    fontSize: "10.5px",
+    color: tokens.colorNeutralForeground3,
+    paddingTop: "2px",
+    paddingRight: "8px",
+    paddingBottom: "2px",
+    paddingLeft: "8px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    marginBottom: "6px",
+  },
+  walkersLayer: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    pointerEvents: "none",
+    zIndex: 12,
+    overflow: "hidden",
+  },
+  walkerBtn: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    pointerEvents: "auto",
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "2px",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    ...shorthands.border("0", "none", "transparent"),
+    backgroundColor: "transparent",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    color: tokens.colorNeutralForeground1,
+    willChange: "transform",
+    transitionProperty: "filter",
+    transitionDuration: "140ms",
+    ":hover": {
+      filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.22))",
+    },
+    ":focus-visible": {
+      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
+      outlineOffset: "3px",
+      borderRadius: "8px",
+    },
+  },
+  walkerSelected: {
+    filter: "drop-shadow(0 0 8px rgba(91, 88, 212, 0.5))",
   },
   empNameBtn: {
     paddingLeft: 0,
@@ -461,6 +522,8 @@ const useStyles = makeStyles({
     minWidth: 0,
   },
   dialoguePanel: {
+    position: "relative",
+    zIndex: 15,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -519,15 +582,6 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
-function dotColorOf(label: WorkLabel): string {
-  const k = presenceKindOf(label);
-  if (k === "working") return "#6366f1";
-  if (k === "ready") return "#16a34a";
-  if (k === "waiting") return "#f59e0b";
-  if (k === "offline") return "#ef4444";
-  return "#9ca3af";
-}
-
 export function OfficeFloorMap({
   groups,
   filter,
@@ -548,18 +602,115 @@ export function OfficeFloorMap({
   const s = useStyles();
   const o = useOfficeStyles();
   const restore = useRestoreFocusTarget();
+  const buildingRef = useRef<HTMLDivElement>(null);
+  const wpsRef = useRef<WaypointMap>({});
+  const walkersRef = useRef<WalkerState[]>([]);
+  const [measured, setMeasured] = useState(false);
+  const [walkers, setWalkers] = useState<WalkerState[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const allEmployees = groups.flatMap((g) => g.employees);
-  const selected = allEmployees.find((e) => e.id === selectedId) ?? null;
+  const simItems: SimEmployee[] = useMemo(() => {
+    let slot = 0;
+    const out: SimEmployee[] = [];
+    for (const g of groups) {
+      const deptKey = g.department?.id ?? "unassigned";
+      for (const e of g.employees) {
+        const isWaiting = presenceKindOf(e.workLabel) === "waiting";
+        out.push({ employee: e, deptKey, visitorSlot: isWaiting ? slot++ : 0 });
+      }
+    }
+    return out;
+  }, [groups]);
 
-  const directorName = account?.fullName?.trim() || "You";
-  const waitingVisitors = allEmployees.filter((e) => presenceKindOf(e.workLabel) === "waiting");
-  const pantryGuests = allEmployees.filter((e) => e.workLabel === "ready" || e.workLabel === "paused");
-  const deskWorkers = allEmployees.filter((e) => e.workLabel === "working");
+  const simItemsRef = useRef(simItems);
+  const selectedIdRef = useRef(selectedId);
+
+  useEffect(() => {
+    simItemsRef.current = simItems;
+  }, [simItems]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    const root = buildingRef.current;
+    if (!root) return;
+
+    const syncMeasure = () => {
+      const rect = root.getBoundingClientRect();
+      if (rect.width < 100) {
+        setMeasured(false);
+        return false;
+      }
+      const nextWps = measureWaypoints(root);
+      wpsRef.current = nextWps;
+      if (walkersRef.current.length === 0) {
+        walkersRef.current = simItemsRef.current.map((item) => createWalker(item, nextWps));
+      } else {
+        walkersRef.current = resnapIdleWalkers(stepWalkers(walkersRef.current, simItemsRef.current, nextWps, 0, selectedIdRef.current), nextWps);
+      }
+      setWalkers(walkersRef.current);
+      setMeasured(true);
+      return true;
+    };
+
+    const ok = syncMeasure();
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => syncMeasure());
+      ro.observe(root);
+    }
+
+    const reducedMotion = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!ok || reducedMotion) {
+      return () => ro?.disconnect();
+    }
+
+    let rafId = 0;
+    let lastTs = performance.now();
+    let renderAccumMs = 0;
+
+    const tick = (now: number) => {
+      const dtMs = Math.min(64, Math.max(0, now - lastTs));
+      lastTs = now;
+      walkersRef.current = stepWalkers(walkersRef.current, simItemsRef.current, wpsRef.current, dtMs, selectedIdRef.current);
+      renderAccumMs += dtMs;
+      if (renderAccumMs >= 32) {
+        renderAccumMs = 0;
+        setWalkers(walkersRef.current);
+      }
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      ro?.disconnect();
+    };
+  }, [simItems]);
+
+  const allEmployees = simItems.map((i) => i.employee);
+  const selected = allEmployees.find((e) => e.id === selectedId) ?? null;
+  const walkerById = new Map(walkers.map((w) => [w.id, w]));
+  const selectedWalker = selected ? walkerById.get(selected.id) : undefined;
+
+  // When an active walker gets clicked cleanly by desk stage, also sync any immediate route updates
+  const directorName = account?.displayName?.trim() || "You";
+
+  const pantryCount = measured
+    ? walkers.filter((w) => w.zone === "pantry" && !w.walking).length
+    : allEmployees.filter((e) => e.workLabel === "ready" || e.workLabel === "paused").length;
+  const walkingCount = measured ? walkers.filter((w) => w.walking).length : 0;
+  const deskCount = measured
+    ? walkers.filter((w) => w.zone === "desk" && !w.walking).length
+    : allEmployees.filter((e) => e.workLabel === "working").length;
+  const directorCount = measured
+    ? walkers.filter((w) => w.zone === "director" && !w.walking).length
+    : allEmployees.filter((e) => presenceKindOf(e.workLabel) === "waiting").length;
 
   return (
-    <div className={s.building}>
+    <div ref={buildingRef} className={s.building}>
       {/* Compact Company Floor HUD */}
       <div className={s.topHud}>
         <div className={s.hudLeft}>
@@ -570,25 +721,28 @@ export function OfficeFloorMap({
           <span className={s.hudPillGroup} aria-hidden>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#16a34a" }} />
-              {pantryGuests.length} in Pantry
+              {pantryCount} in Pantry
             </span>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#6366f1" }} />
-              {deskWorkers.length} at desk
+              {deskCount} at desk
             </span>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#f59e0b" }} />
-              {waitingVisitors.length} at Director&apos;s Office
+              {directorCount} at Director&apos;s Office
             </span>
+            {walkingCount > 0 && <span className={s.hudStat}>🚶 {walkingCount} walking</span>}
           </span>
         </div>
         <Text size={100} className={s.muted} aria-hidden>
-          Click any teammate to chat or hand over a brief
+          Click any teammate to pause &amp; talk
         </Text>
       </div>
 
-      {/* Top Wing: Director's Office (Executive Chair & Ask Opinions) + Pantry & Chill Lounge */}
+      {/* Top Wing: Director's Office (left) & Pantry & Lounge (right) */}
       <div className={s.topWing}>
+        <span data-wp="hall-aisle" style={{ position: "absolute", left: "50%", top: 0, width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
+
         <div className={s.execRoom} aria-label="Director's Office">
           <div className={s.roomTitleBar} aria-hidden>
             <span className={s.roomTag}>
@@ -596,7 +750,7 @@ export function OfficeFloorMap({
               <span>Director&apos;s Office</span>
             </span>
             <Text size={100} className={s.muted}>
-              {waitingVisitors.length > 0 ? `${waitingVisitors.length} asking opinion` : "Ask opinion & review"}
+              {directorCount > 0 ? `${directorCount} asking opinion` : "Ask opinion & review"}
             </Text>
           </div>
           <div className={s.execCarpet}>
@@ -611,29 +765,16 @@ export function OfficeFloorMap({
               </div>
             </div>
             <div className={s.visitorsCluster}>
-              {waitingVisitors.length > 0 ? (
-                waitingVisitors.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    className={mergeClasses(s.npcFloorBtn, selected?.id === v.id && s.npcSelected)}
-                    aria-label={`Greet ${v.name} at Director's desk`}
-                    title={`${v.name} — ${v.holding ? v.holding.title : deskMoodText(v.workLabel)}`}
-                    onClick={() => setSelectedId((cur) => (cur === v.id ? null : v.id))}
-                  >
-                    <PixelQuestBubble workLabel={v.workLabel} title={v.holding?.title ?? null} />
-                    <PixelChibiSvg name={v.name} workLabel={v.workLabel} activity="asking" size={38} />
-                    <GatherNamePill name={v.name} dotColor="#f59e0b" />
-                  </button>
-                ))
-              ) : (
-                <Text size={100} className={s.muted} aria-hidden>
+              <span data-wp="director-visitor-0" style={{ position: "relative", width: "2px", height: "44px" }} aria-hidden />
+              <span data-wp="director-visitor-1" style={{ position: "relative", width: "2px", height: "44px" }} aria-hidden />
+              {directorCount === 0 && (
+                <Text size={100} className={s.muted} style={{ position: "absolute", right: "2px", bottom: "2px" }} aria-hidden>
                   Teammates walk here when they need your input.
                 </Text>
               )}
             </div>
           </div>
-          <span className={s.doorwayBottom} aria-hidden />
+          <span className={s.doorwayBottom} data-wp="director-door" aria-hidden />
         </div>
 
         <div className={s.execRoom} aria-label="Pantry Lounge">
@@ -643,58 +784,48 @@ export function OfficeFloorMap({
               <span>Pantry &amp; Lounge</span>
             </span>
             <Text size={100} className={s.muted}>
-              {pantryGuests.length > 0 ? `${pantryGuests.length} resting` : "Coffee & break area"}
+              {pantryCount > 0 ? `${pantryCount} resting` : "Coffee & break area"}
             </Text>
           </div>
           <div className={s.pantryCarpet}>
             <PixelPantryLoungeSvg />
-            <div className={s.pantryPeople}>
-              {pantryGuests.length > 0 ? (
-                pantryGuests.map((g, idx) => (
-                  <div key={g.id} className={g.workLabel === "ready" ? (idx % 2 === 0 ? s.roamA : s.roamB) : undefined}>
-                    <button
-                      type="button"
-                      className={mergeClasses(s.npcFloorBtn, selected?.id === g.id && s.npcSelected)}
-                      aria-label={`Greet ${g.name} in Pantry`}
-                      title={`${g.name} is taking a coffee break in the Pantry — click to talk & assign work`}
-                      onClick={() => setSelectedId((cur) => (cur === g.id ? null : g.id))}
-                    >
-                      <PixelChibiSvg name={g.name} workLabel={g.workLabel} activity="coffee" size={36} />
-                      <GatherNamePill name={g.name} dotColor={g.workLabel === "ready" ? "#16a34a" : "#9ca3af"} iconText="☕" />
-                    </button>
-                  </div>
-                ))
-              ) : (
+            <div className={s.pantryAnchorsZone}>
+              <span data-wp="pantry-coffee" style={{ position: "absolute", left: "18%", bottom: "16px", width: 0, height: 0 }} aria-hidden />
+              <span data-wp="pantry-sofa" style={{ position: "absolute", left: "50%", bottom: "14px", width: 0, height: 0 }} aria-hidden />
+              <span data-wp="pantry-pingpong" style={{ position: "absolute", left: "82%", bottom: "16px", width: 0, height: 0 }} aria-hidden />
+              {pantryCount === 0 && (
                 <Text size={100} className={s.muted} aria-hidden>
-                  Coffee is fresh — teammates relax here when free.
+                  Coffee is fresh — teammates walk here between tasks.
                 </Text>
               )}
             </div>
           </div>
-          <span className={s.doorwayBottom} aria-hidden />
+          <span className={s.doorwayBottom} data-wp="pantry-door" aria-hidden />
         </div>
       </div>
 
-      {/* Central Hardwood Hallway connecting all rooms */}
+      {/* Central Hardwood Hallway */}
       <div className={s.hallway} aria-hidden>
         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
           <PixelPlantSvg variant="green" />
           <span>← Director&apos;s Office · Main Company Hallway · Pantry →</span>
         </span>
+        <span data-wp="hall-center" className={s.anchorDot} />
         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
           <span>Departments ↓</span>
           <PixelPlantSvg variant="autumn" />
         </span>
       </div>
 
-      {/* Bottom Wing: Integrated Partitioned Department Rooms (replacing the redundant list below) */}
+      {/* Bottom Wing: Integrated Partitioned Department Rooms */}
       <div className={s.departmentsGrid}>
         {groups.map((g) => {
+          const deptKey = g.department?.id ?? "unassigned";
           const roomName = g.department?.name ?? "Unassigned";
           const accent = roomAccentFor(roomName);
           return (
-            <section key={g.department?.id ?? "unassigned"} className={s.deptRoom} aria-label={roomName}>
-              <span className={s.doorwayTop} aria-hidden />
+            <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
+              <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
               <div className={s.roomTitleBar}>
                 <div className={o.row}>
                   <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
@@ -730,9 +861,21 @@ export function OfficeFloorMap({
               ) : (
                 <div className={s.desksGrid} style={{ padding: "8px", borderRadius: "12px", backgroundColor: accent.tint }}>
                   {g.employees.map((e) => {
-                    const kind = presenceKindOf(e.workLabel);
                     const isSelected = selected?.id === e.id;
-                    const deskActivity = e.workLabel === "ready" ? "pen-spin" : kind === "working" ? "typing" : kind === "waiting" ? "asking" : "default";
+                    const w = walkerById.get(e.id);
+                    const atDeskNow = !measured || (w ? w.zone === "desk" && w.path.length === 0 : true);
+                    const awayReason = w?.walking
+                      ? "Walking in office…"
+                      : w && w.path.length > 0
+                        ? "In corridor 💬"
+                        : w?.zone === "pantry"
+                          ? "In Pantry ☕"
+                          : w?.zone === "director"
+                            ? "At Director's Office ↑"
+                            : w?.zone === "hallway"
+                              ? "In corridor 💬"
+                              : null;
+
                     return (
                       <article key={e.id} className={s.deskArticle} aria-label={e.name}>
                         <button
@@ -742,15 +885,37 @@ export function OfficeFloorMap({
                           title={`${e.name} — ${e.holding ? e.holding.title : deskMoodText(e.workLabel)}`}
                           onClick={() => setSelectedId((cur) => (cur === e.id ? null : e.id))}
                         >
-                          <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
-                          <div style={{ marginBottom: "-8px" }}>
-                            <PixelChibiSvg name={e.name} workLabel={e.workLabel} activity={deskActivity} size={42} />
+                          <div className={s.chairAnchorWrap}>
+                            <span
+                              data-wp={`desk-${e.id}`}
+                              style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
+                              aria-hidden
+                            />
+                            {!measured ? (
+                              <>
+                                <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
+                                <div style={{ marginBottom: "-8px" }}>
+                                  <PixelChibiSvg
+                                    name={e.name}
+                                    workLabel={e.workLabel}
+                                    activity={e.workLabel === "ready" ? "pen-spin" : e.workLabel === "working" ? "typing" : "asking"}
+                                    size={40}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              !atDeskNow &&
+                              awayReason && (
+                                <span className={s.awayNote} aria-hidden>
+                                  {awayReason}
+                                </span>
+                              )
+                            )}
                           </div>
-                          <PixelModernDeskSvg workLabel={e.workLabel} occupied penSpinning={e.workLabel === "ready"} />
-                          <GatherNamePill
-                            name={e.name}
-                            dotColor={dotColorOf(e.workLabel)}
-                            iconText={e.workLabel === "ready" ? "✏️" : kind === "waiting" ? "↑" : undefined}
+                          <PixelModernDeskSvg
+                            workLabel={e.workLabel}
+                            occupied={atDeskNow}
+                            penSpinning={atDeskNow && e.workLabel === "ready"}
                           />
                         </button>
 
@@ -826,6 +991,54 @@ export function OfficeFloorMap({
         })}
       </div>
 
+      {/* Single Live Physical Walkers Overlay (never clones employees!) */}
+      {measured && walkers.length > 0 && (
+        <div className={s.walkersLayer}>
+          {walkers.map((w) => {
+            const e = allEmployees.find((emp) => emp.id === w.id);
+            if (!e) return null;
+            const isSelected = selected?.id === e.id;
+            const iconText = w.walking
+              ? "🚶"
+              : w.path.length > 0 || w.zone === "hallway"
+                ? "💬"
+                : w.zone === "pantry"
+                  ? "☕"
+                  : e.workLabel === "ready" && w.zone === "desk"
+                    ? "✏️"
+                    : undefined;
+            return (
+              <button
+                key={w.id}
+                type="button"
+                className={mergeClasses(s.walkerBtn, isSelected && s.walkerSelected)}
+                aria-label={`Talk to ${e.name}`}
+                title={`${e.name} — ${w.walking ? "Walking" : deskMoodText(e.workLabel)}`}
+                style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -74%)` }}
+                onClick={() => setSelectedId((cur) => (cur === e.id ? null : e.id))}
+              >
+                {!w.walking && <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />}
+                <PixelChibiSvg
+                  name={e.name}
+                  workLabel={e.workLabel}
+                  activity={w.activity}
+                  facing={w.facing}
+                  walking={w.walking}
+                  stride={w.stride}
+                  size={40}
+                />
+                <GatherNamePill
+                  name={e.name}
+                  dotColor={dotColorOf(e.workLabel)}
+                  iconText={iconText}
+                  selected={isSelected}
+                />
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Interactive Switch-Style NPC Desk Dialogue Bar */}
       {selected && (
         <div className={s.dialoguePanel} role="region" aria-label={`Desk chat with ${selected.name}`}>
@@ -834,7 +1047,7 @@ export function OfficeFloorMap({
               <PixelChibiSvg
                 name={selected.name}
                 workLabel={selected.workLabel}
-                activity={presenceKindOf(selected.workLabel) === "waiting" ? "asking" : selected.workLabel === "ready" ? "coffee" : "typing"}
+                activity={selectedWalker?.activity ?? (presenceKindOf(selected.workLabel) === "waiting" ? "asking" : selected.workLabel === "ready" ? "coffee" : "typing")}
                 size={48}
               />
             </div>
@@ -850,7 +1063,7 @@ export function OfficeFloorMap({
                   <WorkLabelBadge label={selected.workLabel} />
                 </span>
               </div>
-              <Text size={300}>{dialogueSpeech(selected)}</Text>
+              <Text size={300}>{dialogueSpeech(selected, selectedWalker)}</Text>
             </div>
           </div>
 

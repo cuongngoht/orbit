@@ -199,50 +199,50 @@ a,
     transform: translate(0px, 0px);
   }
   12% {
-    transform: translate(12px, -3px);
+    transform: translate(7px, -2.5px);
   }
   25% {
-    transform: translate(26px, 0px);
+    transform: translate(14px, 0px);
   }
   37% {
-    transform: translate(40px, -3px);
+    transform: translate(7px, -2.5px);
   }
   50% {
-    transform: translate(54px, 0px);
+    transform: translate(0px, 0px);
   }
   62% {
-    transform: translate(40px, -3px);
+    transform: translate(-7px, -2.5px);
   }
   75% {
-    transform: translate(26px, 0px);
+    transform: translate(-14px, 0px);
   }
   87% {
-    transform: translate(12px, -3px);
+    transform: translate(-7px, -2.5px);
   }
 }
 
 @keyframes orbit-roam-b {
   0%,
   100% {
-    transform: translate(44px, 0px);
+    transform: translate(0px, 0px);
   }
   15% {
-    transform: translate(26px, -3px);
+    transform: translate(-8px, -2.5px);
   }
   30% {
-    transform: translate(8px, 0px);
+    transform: translate(-14px, 0px);
   }
   45% {
-    transform: translate(-10px, -3px);
+    transform: translate(-6px, -2.5px);
   }
   60% {
-    transform: translate(-22px, 0px);
+    transform: translate(4px, 0px);
   }
   75% {
-    transform: translate(-4px, -3px);
+    transform: translate(14px, -2.5px);
   }
   90% {
-    transform: translate(22px, 0px);
+    transform: translate(6px, 0px);
   }
 }
 

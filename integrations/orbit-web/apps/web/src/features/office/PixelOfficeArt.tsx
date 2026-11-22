@@ -22,15 +22,23 @@ function hairFor(name: string) {
   return PIXEL_HAIRS[h % PIXEL_HAIRS.length]!;
 }
 
+export type ChibiFacing = "front" | "left" | "right";
+
 export function PixelChibiSvg({
   name,
   workLabel,
   activity = "default",
+  facing = "front",
+  walking = false,
+  stride = 0,
   size = 50,
 }: {
   name: string;
   workLabel: WorkLabel;
   activity?: ChibiActivity;
+  facing?: ChibiFacing;
+  walking?: boolean;
+  stride?: 0 | 1;
   size?: number;
 }) {
   const p = personaFor(name);
@@ -42,14 +50,18 @@ export function PixelChibiSvg({
   const shirtTrim = isDirector ? "#f8fafc" : p.shirtTrim;
   const shirtShade = isDirector ? "#132640" : p.shirtShade;
 
-  const wantBob = activity === "typing" || (activity === "default" && kind === "working");
-  const wantWave = activity === "asking" || (activity === "default" && kind === "waiting");
+  const wantBob = !walking && (activity === "typing" || (activity === "default" && kind === "working"));
+  const wantWave = !walking && (activity === "asking" || (activity === "default" && kind === "waiting"));
 
-  const animStyle: CSSProperties | undefined = wantBob
-    ? { animationName: "orbit-chibi-bob", animationDuration: "0.75s", animationIterationCount: "infinite", animationTimingFunction: "steps(2, end)" }
-    : wantWave
-      ? { animationName: "orbit-chibi-wave", animationDuration: "1.8s", animationIterationCount: "infinite", animationTimingFunction: "ease-in-out", transformOrigin: "8px 16px" }
-      : undefined;
+  const animStyle: CSSProperties | undefined = walking
+    ? { transform: `translateY(${stride === 1 ? -1 : 0}px)` }
+    : wantBob
+      ? { animationName: "orbit-chibi-bob", animationDuration: "0.75s", animationIterationCount: "infinite", animationTimingFunction: "steps(2, end)" }
+      : wantWave
+        ? { animationName: "orbit-chibi-wave", animationDuration: "1.8s", animationIterationCount: "infinite", animationTimingFunction: "ease-in-out", transformOrigin: "8px 16px" }
+        : undefined;
+
+  const lookDx = facing === "left" ? -1 : facing === "right" ? 1 : 0;
 
   return (
     <svg
@@ -63,6 +75,18 @@ export function PixelChibiSvg({
       {/* Ground shadow */}
       <rect x="4" y="16" width="8" height="1.5" fill="#1e1b18" opacity="0.2" />
 
+      {/* Subtle heel dust puff when walking */}
+      {walking && (
+        <rect
+          x={facing === "left" ? 12.5 : facing === "right" ? 1.5 : stride === 0 ? 2 : 12.5}
+          y={15}
+          width="2"
+          height="1.5"
+          fill="#d6ccc0"
+          opacity="0.7"
+        />
+      )}
+
       <g style={animStyle}>
         {/* Hair */}
         <rect x="4" y="1" width="8" height="2" fill={hair.main} />
@@ -74,21 +98,21 @@ export function PixelChibiSvg({
         {/* Face */}
         <rect x="4" y="4" width="8" height="5" fill={p.skin} />
         <rect x="4" y="3" width="8" height="1" fill={hair.main} />
-        <rect x="5" y="4" width="2" height="1" fill={hair.shade} />
-        <rect x="10" y="4" width="1" height="1" fill={hair.shade} />
+        <rect x={5 + lookDx} y="4" width="2" height="1" fill={hair.shade} />
+        <rect x={10 + lookDx} y="4" width="1" height="1" fill={hair.shade} />
 
-        {/* Eyes + rosy cheeks */}
-        {kind === "paused" && activity !== "director" ? (
+        {/* Eyes + rosy cheeks (shifted toward facing direction) */}
+        {kind === "paused" && !walking && activity !== "director" ? (
           <>
-            <rect x="5" y="6" width="2" height="1" fill="#231c18" />
-            <rect x="9" y="6" width="2" height="1" fill="#231c18" />
+            <rect x={5 + lookDx} y="6" width="2" height="1" fill="#231c18" />
+            <rect x={9 + lookDx} y="6" width="2" height="1" fill="#231c18" />
           </>
         ) : (
           <>
-            <rect x="5" y="6" width="1" height="1" fill="#1b1817" />
-            <rect x="10" y="6" width="1" height="1" fill="#1b1817" />
-            <rect x="4" y="7" width="1" height="1" fill="#f472b6" opacity="0.55" />
-            <rect x="11" y="7" width="1" height="1" fill="#f472b6" opacity="0.55" />
+            <rect x={5 + lookDx} y="6" width="1" height="1" fill="#1b1817" />
+            <rect x={10 + lookDx} y="6" width="1" height="1" fill="#1b1817" />
+            <rect x={4 + lookDx} y="7" width="1" height="1" fill="#f472b6" opacity="0.55" />
+            <rect x={11 + lookDx} y="7" width="1" height="1" fill="#f472b6" opacity="0.55" />
           </>
         )}
 
@@ -99,11 +123,15 @@ export function PixelChibiSvg({
         <rect x="4" y="12" width="8" height="2" fill={shirtShade} />
 
         {/* Hands / Activity props */}
-        {wantWave ? (
+        {walking ? (
+          <>
+            <rect x="3" y={stride === 0 ? 9 : 11} width="1" height="3" fill={p.skin} />
+            <rect x="12" y={stride === 0 ? 11 : 9} width="1" height="3" fill={p.skin} />
+          </>
+        ) : wantWave ? (
           <>
             <rect x="2" y="7" width="2" height="2" fill={shirt} />
             <rect x="2" y="6" width="1" height="1" fill={p.skin} />
-            {/* Notepad held in other hand when asking Director */}
             <rect x="12" y="10" width="2" height="3" fill={p.skin} />
             {activity === "asking" && <rect x="13" y="9" width="2.5" height="3" fill="#fef3c7" />}
           </>
@@ -111,7 +139,6 @@ export function PixelChibiSvg({
           <>
             <rect x="3" y="10" width="1" height="3" fill={p.skin} />
             <rect x="12" y="10" width="1" height="2" fill={p.skin} />
-            {/* Tiny Pantry mug + rising steam */}
             <rect x="13" y="10" width="2.5" height="2.5" fill="#f8fafc" />
             <rect x="13.5" y="10" width="1.5" height="0.8" fill="#78350f" />
             <rect
@@ -127,7 +154,6 @@ export function PixelChibiSvg({
           <>
             <rect x="3" y="10" width="1" height="3" fill={p.skin} />
             <rect x="12" y="10" width="1" height="2" fill={p.skin} />
-            {/* Playful twirling pen above right hand! */}
             <g style={{ transformOrigin: "14px 9.5px", animationName: "orbit-pen-spin", animationDuration: "1.2s", animationIterationCount: "infinite", animationTimingFunction: "linear" }}>
               <rect x="12" y="9" width="4" height="1" fill="#4f46e5" />
               <rect x="15.2" y="9" width="1" height="1" fill="#f59e0b" />
@@ -143,16 +169,27 @@ export function PixelChibiSvg({
         {/* Glasses accessory */}
         {p.accessory === 1 && (
           <>
-            <rect x="4" y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
-            <rect x="9" y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
+            <rect x={4 + lookDx} y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
+            <rect x={9 + lookDx} y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
           </>
         )}
 
-        {/* Legs & shoes */}
-        <rect x="5" y="14" width="2" height="2" fill="#334155" />
-        <rect x="9" y="14" width="2" height="2" fill="#334155" />
-        <rect x="4" y="15" width="3" height="1.5" fill="#1e293b" />
-        <rect x="9" y="15" width="3" height="1.5" fill="#1e293b" />
+        {/* Alternating walking stride vs standing legs */}
+        {walking ? (
+          <>
+            <rect x={stride === 0 ? 4.5 : 5} y={stride === 0 ? 13.2 : 14} width="2" height="2" fill="#334155" />
+            <rect x={stride === 1 ? 9.5 : 9} y={stride === 1 ? 13.2 : 14} width="2" height="2" fill="#334155" />
+            <rect x={stride === 0 ? 3.8 : 4.5} y={stride === 0 ? 14.3 : 15} width="3" height="1.5" fill="#1e293b" />
+            <rect x={stride === 1 ? 9.5 : 9} y={stride === 1 ? 14.3 : 15} width="3" height="1.5" fill="#1e293b" />
+          </>
+        ) : (
+          <>
+            <rect x="5" y="14" width="2" height="2" fill="#334155" />
+            <rect x="9" y="14" width="2" height="2" fill="#334155" />
+            <rect x="4" y="15" width="3" height="1.5" fill="#1e293b" />
+            <rect x="9" y="15" width="3" height="1.5" fill="#1e293b" />
+          </>
+        )}
       </g>
     </svg>
   );
@@ -163,11 +200,13 @@ export function GatherNamePill({
   dotColor,
   suffix,
   iconText,
+  selected = false,
 }: {
   name: string;
   dotColor: string;
   suffix?: string;
   iconText?: string;
+  selected?: boolean;
 }) {
   return (
     <span
@@ -185,7 +224,7 @@ export function GatherNamePill({
         lineHeight: 1.3,
         whiteSpace: "nowrap",
         maxWidth: "136px",
-        boxShadow: "0 1px 3px rgba(0, 0, 0, 0.22)",
+        boxShadow: selected ? "0 0 0 2px #6366f1, 0 2px 6px rgba(0, 0, 0, 0.28)" : "0 1px 3px rgba(0, 0, 0, 0.22)",
       }}
     >
       <span style={{ width: "6px", height: "6px", borderRadius: "9999px", backgroundColor: dotColor, flexShrink: 0 }} />

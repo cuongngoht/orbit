@@ -405,9 +405,13 @@ governed deployment a run reaches no connector. A connector acts as your account
 A chat runs on your account's default Claude Code connection: connect one first ([AI connections](#ai-connections));
 until then the composer says so, with a link. With another connection connected (an **OpenAI Codex** one, say), the new
 chat's composer offers *AI connection*: the chat runs on the one chosen for its whole life, with that connection's own
-models and efforts. A chat on Codex runs `codex exec --json` in the chat's workspace, in that connection's own home,
-inside Codex's own sandbox -- *Autonomous* may write in the workspace (its commands have no network), *Plan* only reads;
-what the account's policy does not allow it does not have (no execution: no shell) -- with no configuration of
+models and efforts. A chat on Codex runs `codex exec --json` in the chat's workspace, in that connection's own home.
+Its commands run only CONFINED: where Codex's own sandbox starts on this server (`codex sandbox -- true`, asked once), a
+permission profile lets them read the system but nothing of Orbit Web's data -- no account's sign-ins, keys or
+workspaces -- except the chat's own room (written in *Autonomous*, read in *Plan*), with no network; where it cannot
+start (a container without user namespaces, as the default Docker setup is), the chat gets no shell at all, answers,
+and says so. What the account's policy does not allow it does not have (no execution: no shell); a spending cap
+(`ORBIT_WEB_MAX_BUDGET_USD`), which Codex cannot be held to, refuses its runs. It runs with no configuration of
 anybody's, no MCP server (Claude's connectors and the Orbit plugin are Claude Code's) and none of Codex's apps, plugins,
 hooks, browser or desktop tools; each message resumes the thread the first one started, and its images are files beside
 the workspace it is named. No source connector is needed. **New session** offers two kinds: **Chat /
@@ -1047,9 +1051,9 @@ For one person, on their own machine, by default:
   among it) and use them. The environment scrub, the deny rules, auto mode's classifier, `--setting-sources user` and the
   private directories are **defence in depth, not isolation**, and nothing calls it isolated because records carry an
   account; a policy that requires isolation refuses runs here. With GitHub's switch on, Claude Code pushes and opens pull
-  requests as you by design. A chat on **OpenAI Codex** has no deny rule by path at all: its sandbox keeps its commands'
-  writes in the workspace and their network off, but they read what this container's user can read -- the connection's
-  own Codex login included.
+  requests as you by design. A chat on **OpenAI Codex** runs commands only under Codex's own sandbox with Orbit Web's
+  permission profile (nothing of `/data` but its own room, no network) -- checked on the binary: a command asked to read
+  another account's sign-in gets "Operation not permitted" -- and none at all where that sandbox cannot start.
 - **The governed deployment** (`docker/compose.governed.yaml`) holds at the container: the database (and its
   network), the sign-ins and the control plane's room are not in the agent's container, and its only way out is the
   proxy (the security lab,

@@ -28,6 +28,18 @@ export interface CodexChatOptions {
   threadId: string | null;
   // The message's images, as files the CLI reads.
   images: string[];
+  // Where Codex's own sandbox runs on this host: its commands may read everything but `denied` (Orbit Web's data:
+  // every account's sign-ins, keys and workspaces), and of that only the chat's own `room` -- written in Autonomous,
+  // read in Plan. Null: no sandbox here, so its commands cannot run at all (they fail before they start).
+  confine: { denied: string[]; room: string[] } | null;
+}
+
+// Codex's permission profile for a chat (`[permissions]`, an allow-list: what is not named is not reachable).
+function confinement(o: CodexChatOptions): string[] {
+  if (o.confine === null) return [];
+  const access = o.mode === "plan" || !o.execute ? "read" : "write";
+  const entries = [`"/"="read"`, ...o.confine.denied.map((p) => `${toml(p)}="none"`), ...o.confine.room.map((p) => `${toml(p)}=${toml(access)}`)];
+  return ["-c", `permissions={orbit_chat={filesystem={${entries.join(",")}}}}`, "-c", 'default_permissions="orbit_chat"'];
 }
 
 export function codexChatArgs(o: CodexChatOptions): string[] {
@@ -45,11 +57,16 @@ export function codexChatArgs(o: CodexChatOptions): string[] {
     "-c",
     "mcp_servers={}",
     ...(o.note !== null ? ["-c", `developer_instructions=${toml(o.note)}`] : []),
+    ...confinement(o),
     ...[...CODEX_CHAT_FEATURES_OFF, ...(o.execute ? [] : ["shell_tool", "unified_exec"])].flatMap((f) => ["--disable", f]),
     ...o.images.flatMap((p) => ["-i", p]),
   ];
-  // `--sandbox` is the parent's option; the rest are resume's own.
-  return o.threadId === null ? ["exec", "--sandbox", sandbox, ...own, "-"] : ["exec", "--sandbox", sandbox, "resume", ...own, o.threadId, "-"];
+  // `--sandbox` is the parent's option; the rest are resume's own. Confined, there is none: an explicit sandbox mode
+  // takes the place of the permission profile (seen on codex-cli 0.169.0: with `--sandbox workspace-write` beside the
+  // profile, a command read the path the profile denied), so the profile alone decides -- it also keeps their
+  // network off.
+  const parent = o.confine === null ? ["exec", "--sandbox", sandbox] : ["exec"];
+  return o.threadId === null ? [...parent, ...own, "-"] : [...parent, "resume", ...own, o.threadId, "-"];
 }
 
 type Json = Record<string, unknown>;

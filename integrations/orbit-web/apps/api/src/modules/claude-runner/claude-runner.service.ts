@@ -17,7 +17,7 @@
 import { type BeforeApplicationShutdown, Inject, Injectable, Logger, type OnModuleInit } from "@nestjs/common";
 import { ACCEPTS_MESSAGES, effortFor, modelOf, RUNTIME_LABELS, type AnySessionEvent, type ImageRef, type RunAccepted, type SessionStatus } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
-import { createWriteStream, mkdirSync, writeFileSync, type WriteStream } from "node:fs";
+import { createWriteStream, mkdirSync, realpathSync, writeFileSync, type WriteStream } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
 import { EventBus } from "../../core/events/event-bus.js";
@@ -243,6 +243,12 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
         return await this.refuse(session, runId, `Governance could not decide this run, so it did not start: ${message(err)}`);
       }
       if (this.stopRequested.has(session.id)) return await this.stoppedBeforeStart(session, runId, decided.plan);
+      // OpenAI Codex takes no spending cap: where one is set, its runs are refused rather than left uncapped.
+      if (connection.connection.runtime === "codex" && this.config.maxBudgetUsd !== null) {
+        await this.refuse(session, runId, `A spending cap is set for each run (ORBIT_WEB_MAX_BUDGET_USD), and OpenAI Codex cannot be held to it: this chat cannot run here.`);
+        await this.governance.finished(decided.plan, runId, "failed", null);
+        return;
+      }
       try {
         await this.start((await this.sessions.get(session.id)) ?? session, input, runId, decided.plan, decided.connectors, connection);
       } catch (err) {
@@ -356,10 +362,32 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const prefs = await this.settings.get(session.accountId);
     const option = modelOf(await this.models.catalogFor(session.accountId, connection.connection), session.model);
     const effort = option !== null && option.efforts.length === 0 ? null : session.effort;
-    const args = codexChatArgs({ model: session.model, effort, mode: session.mode, webTools: prefs.webTools && plan.webTools, execute: plan.execute, note: plan.note, threadId: resume ? session.claudeSessionId : null, images: input.images ?? [] });
+    // Where Codex's own sandbox runs here, its commands reach nothing of Orbit Web's data -- no account's sign-ins, keys
+    // or workspaces -- but this chat's own room; where it cannot, they cannot run at all, and the chat is told.
+    const sandbox = await this.codexSandboxRuns();
+    const confine = sandbox ? { denied: [real(this.config.data.root)], room: [...new Set([real(dirname(session.workspacePath)), "/tmp", real("/tmp")])] } : null;
+    if (!sandbox) await this.bus.publishSession(session.id, "run.notice", { kind: "info", message: "OpenAI Codex's sandbox cannot start on this server: its commands cannot run here (it still answers). An operator lets them run by allowing user namespaces where Orbit Web runs." }, runId);
+    // Unconfined, it runs nothing: no shell, read-only -- whatever kept the profile from being confirmed.
+    const args = codexChatArgs({ model: session.model, effort, mode: session.mode, webTools: prefs.webTools && plan.webTools, execute: plan.execute && sandbox, note: plan.note, threadId: resume ? session.claudeSessionId : null, images: input.images ?? [], confine });
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     const handle = this.process.spawn(this.config.binaries.codex, args, { cwd: session.workspacePath, env: { ...codexEnv(this.config, connection.configDir), ...plan.env } });
     this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }));
+  }
+
+  // Whether Codex's own sandbox can start on this host (`codex sandbox -- true`), asked once: in a container without user
+  // namespaces it cannot, and then neither can a chat's commands.
+  private codexSandbox: Promise<boolean> | null = null;
+
+  private codexSandboxRuns(): Promise<boolean> {
+    if (this.codexSandbox === null) {
+      const scratch = join(this.config.data.home, "codex-probe");
+      mkdirSync(scratch, { recursive: true, mode: 0o700 });
+      this.codexSandbox = this.process
+        .run(this.config.binaries.codex, ["sandbox", "--", "true"], { cwd: scratch, env: codexEnv(this.config, scratch), timeoutMs: 15_000 })
+        .then((r) => r.spawnError === null && !r.timedOut && r.code === 0)
+        .catch(() => false);
+    }
+    return this.codexSandbox;
   }
 
   // A started CLI made the session's run: its stream read into the chat's events, its end recorded once, the input given.
@@ -492,5 +520,14 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
     const masked = `${redactSecrets(line)}\n`;
     run.logBytes += masked.length;
     run.log.write(masked);
+  }
+}
+
+// A path as the kernel resolves it (a sandbox matches real paths: /tmp is /private/tmp on macOS); itself when it is not there.
+function real(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
   }
 }

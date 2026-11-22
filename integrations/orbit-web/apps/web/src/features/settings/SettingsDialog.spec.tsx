@@ -65,7 +65,7 @@ describe("Settings: the sections, over the page", () => {
     const { p } = show("account");
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     const nav = within(dialog).getByRole("navigation", { name: "Settings sections" });
-    expect(sections(nav)).toEqual(["Account", "Appearance", "Code", "AI Connections", "Compute & storage", "Connectors", "Claude connectors", "Skills", "Plugins", "System"]);
+    expect(sections(nav)).toEqual(["Account", "Appearance", "Code", "AI Connections", "Compute & storage", "Connectors", "MCP servers", "Claude connectors", "Skills", "Plugins", "System"]);
     expect(within(nav).getByRole("button", { name: "Account" })).toHaveAttribute("aria-current", "page");
     expect(within(dialog).getByRole("heading", { name: "Account" })).toBeInTheDocument();
     await userEvent.type(within(dialog).getByRole("searchbox", { name: "Search settings" }), "effort");

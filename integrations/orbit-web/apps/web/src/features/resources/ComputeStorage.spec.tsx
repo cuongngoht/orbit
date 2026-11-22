@@ -76,7 +76,7 @@ describe("Settings → Compute & storage: what the account's employees may use, 
     await userEvent.type(cpu, "0.04");
     await userEvent.click(within(form).getByRole("button", { name: "Save the budget" }));
     await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
-    expect(api.calls.find((c) => c.method === "PATCH")?.body).toEqual({ cpuMillis: 40 }, "only the CPU, typed; the storage stays as it is");
+    expect(api.calls.find((c) => c.method === "PATCH")?.body, "only the CPU, typed; the storage stays as it is").toEqual({ cpuMillis: 40 });
   });
 
   test("the budget is lowered against the version read, and never offered above the operator's authorization", async () => {

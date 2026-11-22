@@ -124,7 +124,7 @@ test("a change of an employee names what changes, and a restore the revision it 
   assert.deepEqual(errorsOf(checkUpdateResources({ resources: { ...RESOURCES, pidsLimit: 1 }, note: "x".repeat(2001) })), ["resources.pidsLimit must be a whole number from 64 to 32768", "note is too long"]);
   assert.deepEqual(checkEmployment({ command: "suspend", reason: " audit ", held: "keep_paused" }), { ok: true, value: { command: "suspend", reason: "audit", held: "keep_paused" } });
   assert.deepEqual(checkEmployment({ command: "activate" }), { ok: true, value: { command: "activate", reason: "" } });
-  assert.deepEqual(errorsOf(checkEmployment({ command: "fire", held: "drop" })), ["command must be one of start_probation, activate, reject, suspend, reinstate, archive", "held must be keep_paused or cancel"]);
+  assert.deepEqual(errorsOf(checkEmployment({ command: "fire", held: "drop" })), ["command must be one of start_probation, activate, reject, suspend, reinstate, archive, delete", "held must be keep_paused or cancel"]);
   assert.deepEqual(checkHireAssistant({ name: "Helper", ttlMinutes: 60, missionId: id(3), profile: PROFILE }), { ok: true, value: { name: "Helper", ttlMinutes: 60, missionId: id(3), profile: PROFILE } });
   assert.deepEqual(errorsOf(checkHireAssistant({ name: "Helper", ttlMinutes: 7 * 24 * 60 + 1, missionId: "m", profile: PROFILE })), ["ttlMinutes must be 1 minute to 7 days", "missionId must be a mission id"]);
 });

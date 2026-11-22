@@ -82,7 +82,7 @@ test("every host says whether its calls name an agent, and how one call is named
 
 test("the lifecycle words in the docs are the table's", () => {
   const readme = readFileSync(join(REPO, "README.md"), "utf8");
-  for (const row of LIFECYCLE) assert.match(readme, new RegExp(`\`${row.state}\``), `README §4.18 names ${row.state}`);
+  for (const row of LIFECYCLE) assert.match(readme, new RegExp(`\`${row.state}\``), `README "Unified work tracking" names ${row.state}`);
 });
 
 test("Orbit Control's room for a checkout's working sets is the room the hooks write to", (t) => {

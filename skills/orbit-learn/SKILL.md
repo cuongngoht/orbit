@@ -110,7 +110,7 @@ something. Not "one case just ran". The plugin's `PostToolUse` hook does this fo
 `run-case`, in the background; running it by hand is for when you want to read the output.
 
 The same hooks also record the session's **working set** — what it read, changed, searched and
-ran, as metadata only — and run the engineering observer at a milestone (README §4.6). The observer
+ran, as metadata only — and run the engineering observer at a milestone (README, "Project memory"). The observer
 is on by default since 1.8.9; `ORBIT_ENGINEERING_OBSERVE=off` or the plugin's `engineering_observe`
 option turns it off. Neither touches the lessons.
 
@@ -184,7 +184,7 @@ is retired: never create or update host MEMORY.md or Orbit topic pages, and exis
 are left untouched. Use `learn recall` and `architecture facts/why`.
 
 Host memory is READ in one way only: as untrusted session hints for project knowledge
-(`knowledge claims` / `verify`, README §4.9). The async SessionStart entry
+(`knowledge claims` / `verify`; README, "Project memory"). The async SessionStart entry
 `knowledge locate --hook` notes where the host keeps it for this checkout
 (`hosts/claude-memory.mjs` is the provider); a hint is never stored, never certain and never
 outranks the source. Switch it off with the plugin option `host_memory`.

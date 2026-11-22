@@ -532,7 +532,7 @@ src/work/      WORK: what is being done about a requirement, resumable by anothe
                offered again while what answered it is settled and unmoved), a pure fold `context --work=` reads.
                freshness.mjs also invalidates a need settled on a path the index no longer holds (GONE). It never
                names a provider
-src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links and a REPORTED lifecycle in the
+src/work/track/  UNIFIED WORK TRACKING (1.8.8, README "Unified work tracking"): identity, links and a REPORTED lifecycle in the
                work journal, and the ONE read model over them -- never a second journal and never the
                doing. vocab.mjs (LIFECYCLE, EVIDENCE, LINKS, LIMITS as tables) · fold.mjs (the fold over
                `created`/`bound`/`handoff`/`linked`/`state`/`report`: an `eid` is folded once, a closed

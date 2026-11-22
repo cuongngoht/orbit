@@ -3,7 +3,7 @@
 // unmodified module (the failures are recorded in that document), so each one
 // shows the defect before it holds the fix.
 //
-// Every expectation is the CONTRACT's -- what the brief, README §4.11 and the
+// Every expectation is the CONTRACT's -- what the brief, the README's "Autonomous QA" and the
 // engine's own rules say must happen -- and never what deriveFindings happens to
 // return: a test that mirrors the implementation proves only that it runs.
 import { test } from "node:test";

@@ -51,9 +51,9 @@ capability: a gap is reported as an opportunity, and a person decides.
 **Orbit Live follows this workflow by itself.** It creates no task, and needs none: while Orbit Live is open beside the
 session it shows what this session's tools read, edit and run -- the working set the plugin's hooks already record --
 with a check RUNNING until its command ends. Do not create a task, or write anything, just so Live has something to
-show; it says outright when there is nothing to observe (README §4.16).
+show; it says outright when there is nothing to observe (README, "Orbit Live").
 
-**A work follows it, when `/orbit-help` tracked one (README §4.18).** When the task came through `/orbit-help` with a
+**A work follows it, when `/orbit-help` tracked one (README, "Unified work tracking").** When the task came through `/orbit-help` with a
 concrete task, the work id was named there and is the id of this request: `track.mjs current` finds it again. Tracking
 never changes how you work and never blocks you. When you are waiting for a person, a permission or an environment, say
 so once with `track.mjs state --state=waiting --wait=<user|permission|environment> --why="<one sentence>"`, and at the

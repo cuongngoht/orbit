@@ -102,7 +102,7 @@ export class DepartmentRepository {
   }
 
   async members(orbitId: string): Promise<Map<string, number>> {
-    const rows = await this.db.query("SELECT department_id, count(*) AS n FROM workforce.employees WHERE account_id = $1 AND employment <> 'archived' AND department_id IS NOT NULL GROUP BY department_id", [orbitId]);
+    const rows = await this.db.query("SELECT department_id, count(*) AS n FROM workforce.employees WHERE account_id = $1 AND employment NOT IN ('archived', 'deleted') AND department_id IS NOT NULL GROUP BY department_id", [orbitId]);
     return new Map(rows.map((r) => [str(r.department_id), Number(r.n)]));
   }
 
@@ -146,7 +146,7 @@ export class EmployeeRepository {
   }
 
   async inDepartment(orbitId: string, departmentId: string): Promise<Employee[]> {
-    return (await this.db.query("SELECT * FROM workforce.employees WHERE account_id = $1 AND department_id = $2 AND employment <> 'archived' ORDER BY id FOR UPDATE", [orbitId, departmentId])).map((r) => Employee.restore(employeeDataOf(r)));
+    return (await this.db.query("SELECT * FROM workforce.employees WHERE account_id = $1 AND department_id = $2 AND employment NOT IN ('archived', 'deleted') ORDER BY id FOR UPDATE", [orbitId, departmentId])).map((r) => Employee.restore(employeeDataOf(r)));
   }
 
   async insert(e: Employee): Promise<void> {

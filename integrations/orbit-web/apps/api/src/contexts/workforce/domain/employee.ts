@@ -38,6 +38,8 @@ const MOVES: Record<string, { from: readonly Employment[]; to: Employment }> = {
   suspend: { from: ["probation", "active"], to: "suspended" },
   reinstate: { from: ["suspended"], to: "active" },
   archive: { from: ["candidate", "probation", "active", "suspended"], to: "archived" },
+  // Only an archived employee's desk is deleted (Governance → Employee desks): its work already ended at the archive.
+  delete: { from: ["archived"], to: "deleted" },
 };
 
 export type EmploymentMove = keyof typeof MOVES;
@@ -100,7 +102,7 @@ export class Employee extends AccountOwned {
   }
 
   moveToDepartment(departmentId: string | null, at: string): void {
-    if (this.d.employment === "archived") throw conflictWith("invalid_transition", "An archived employee keeps the department they left in.");
+    if (this.d.employment === "archived" || this.d.employment === "deleted") throw conflictWith("invalid_transition", "An archived employee keeps the department they left in.");
     const from = this.d.departmentId;
     this.d = { ...this.d, departmentId, updatedAt: at };
     this.raise("EmployeeDepartmentChanged", { from, to: departmentId });
@@ -129,7 +131,10 @@ export function sandboxMove(from: SandboxState, to: SandboxState): void {
     PROVISIONING: ["READY", "FAILED", "ARCHIVED"],
     FAILED: ["PROVISIONING", "ARCHIVED"],
     READY: ["ARCHIVED", "PROVISIONING"],
-    ARCHIVED: [],
+    // An archived employee's desk deleted by its owner: removed (tried again until it is gone), then gone.
+    ARCHIVED: ["DELETING"],
+    DELETING: ["DELETED"],
+    DELETED: [],
   };
   if (!allowed[from].includes(to)) throw conflictWith("invalid_transition", `A sandbox that is ${from} cannot become ${to}.`);
 }

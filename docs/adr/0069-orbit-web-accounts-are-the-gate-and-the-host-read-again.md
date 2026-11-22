@@ -44,11 +44,23 @@ cli"). Amends ADR 0060's access token rule and ADR 0067's capacity and image. Fo
    Code. `build-info.json` and Settings → System name their versions. What each may do is unchanged: ADR 0067's
    methods decide (Antigravity has no sign-in Orbit Web offers).
 
+5. **Employee desks** (Governance → Employee desks). An employee who leaves -- archived, or rejected at its trial --
+   keeps its desk, read only, and its desk storage stays committed (an archive releases only the cache). The owner
+   reviews each one there -- what it holds, why it left -- and deletes the desk (`employment` command `delete`, only from
+   `archived`, against the version read). Its sandbox goes `DELETING`; the provisioner asks the provider to remove every
+   area of the employee (`deleteEmployee`: refused while a container of one of its attempts exists, read back),
+   backing off and trying again until it is gone; only then is it `DELETED` and the desk's storage released -- the
+   account is never told it may use space still on the pool's disk. The employee stays, `deleted`, for what refers to
+   it, and leaves the office's lists. 0.8.0 keeps ONE initial schema: the new states are in it, and an installation
+   of a development build starts afresh (`db.js reset`).
+
 ## Consequences
 
 - A hosted installation asks for a username and a password, nothing else, unless its operator sets a token.
 - Resizing a host, or changing `ORBIT_WEB_CAPACITY_*`, takes effect at a Re-check or a restart, with no database edit.
-- Held by `apps/api/src/config/config.spec.ts`, `apps/api/src/contexts/execution/application/resources.service.spec.ts`,
+- An office whose storage is full of desks of people who left frees it from Governance, never from a database edit.
+- Held by `apps/api/tests/integration/office-desks.spec.ts`, the web's `EmployeeDesks.spec.tsx`, and
+  `apps/api/src/config/config.spec.ts`, `apps/api/src/contexts/execution/application/resources.service.spec.ts`,
   `apps/api/tests/integration/capacity.spec.ts` (Re-check, the owner's lowered value, the operator's authorization, a
   provider that does not answer, a restart), the web's `ComputeStorage.spec.tsx`, and the Docker smoke test (both CLIs
   answer in the image).

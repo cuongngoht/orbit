@@ -90,7 +90,7 @@ describe("one employee", () => {
     // An active employee may be suspended or archived, each said with what it means.
     const moves = within(section).getByRole("radiogroup", { name: "What to do" });
     expect(within(moves).getAllByRole("radio")).toHaveLength(2);
-    expect(within(moves).getByRole("radio", { name: "Archive — It leaves the office; its desk and toolbox are kept, read only." })).toBeInTheDocument();
+    expect(within(moves).getByRole("radio", { name: "Archive — It leaves the office; its desk and toolbox are kept, read only, until you delete them in Governance → Employee desks." })).toBeInTheDocument();
     await userEvent.click(within(section).getByRole("radio", { name: /^Suspend/ }));
     await userEvent.click(within(section).getByRole("radio", { name: "Cancel it" }));
     await userEvent.type(within(section).getByRole("textbox", { name: /Reason/ }), "Wrong client");

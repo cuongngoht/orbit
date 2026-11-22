@@ -20,20 +20,11 @@ This README describes Orbit **0.6.0** and Orbit Web **0.8.0**. What changed in e
 
 ## Contents
 
-1. [Install](#install)
-2. [Quick start](#quick-start)
-3. [How Orbit works](#how-orbit-works)
-4. [Skills](#skills)
-5. [Command line](#command-line)
-6. [Where your data lives](#where-your-data-lives)
-7. [Settings and switches](#settings-and-switches)
-8. [Orbit Live and Orbit Control](#orbit-live-and-orbit-control)
-9. [Feature guides](#feature-guides)
-10. [Orbit Web](#orbit-web)
-11. [Developing Orbit](#developing-orbit)
-12. [Further reading](#further-reading)
-
----
+[Install](#install) · [Quick start](#quick-start) · [How Orbit works](#how-orbit-works) · [Skills](#skills) ·
+[Command line](#command-line) · [Where your data lives](#where-your-data-lives) ·
+[Settings and switches](#settings-and-switches) · [Orbit Live and Orbit Control](#orbit-live-and-orbit-control) ·
+[Feature guides](#feature-guides) · [Orbit Web](#orbit-web) · [Developing Orbit](#developing-orbit) ·
+[Further reading](#further-reading)
 
 ## Install
 
@@ -63,8 +54,6 @@ node <plugin-root>/cli/live.mjs doctor --claude   # can Orbit Live show a task h
 How each host binds the plugin root and the session: [docs/hosts.md](docs/hosts.md). Source:
 [github.com/cuongngoht/orbit](https://github.com/cuongngoht/orbit) (public, MIT).
 
----
-
 ## Quick start
 
 1. **Open your product repository** in a host where Orbit is installed. Nothing is written into the repository: Orbit
@@ -84,8 +73,6 @@ How each host binds the plugin root and the session: [docs/hosts.md](docs/hosts.
 5. **Watch it work** in [Orbit Live](#orbit-live), beside your session. Normal development needs no approval; when work
    reaches a [protected boundary](#protected-boundaries), decide it in [Orbit Control](#orbit-control) (`/orbit-control`).
 
----
-
 ## How Orbit works
 
 ```text
@@ -103,22 +90,17 @@ dependency direction and data: [docs/architecture.md](docs/architecture.md).
 
 | Idea | What it means for you |
 | --- | --- |
-| **The host reasons, the engine keeps state** | The model proposes the next step; the engine judges it, records it before it runs and settles it with receipts. |
 | **Every artifact has one owner** | A requirement, a task, a check, a QA investigation each own their records. Nothing re-judges another owner's verdict. |
 | **PASS is earned** | No verdict executed means `INCONCLUSIVE`, never a pass. A failure that existed before your change shows as `failed-as-before`, never hidden. |
 | **Your repository is untrusted data** | Orbit runs only commands your project files declare, as argument lists — never a shell line a model wrote. |
 | **Changes happen in isolation** | An engineering task edits and commits in its own workspace (a local clone), never in your checkout. |
-| **Autonomous by default** | Building, testing, QA, sandboxes, containers, local databases and local commits run without asking anybody. |
-| **A person decides at the boundary** | A push, a production deploy or migration and destroying production data wait for one approval of exactly that action; writing your checkout is yours alone. An agent cannot approve its own action. |
-| **No product knowledge in the engine** | Products, vendors and stacks live in your project's data, or in adapters and packs a project opts into. |
-
----
+| **Autonomous, except at the boundary** | Building, testing, QA, sandboxes, local databases and local commits ask nobody. A push, a production deploy or migration and destroying production data wait for one approval of exactly that action; writing your checkout is yours alone. An agent cannot approve its own action. |
 
 ## Skills
 
 Name a skill yourself (`/orbit-help`; in Claude Code also `/orbit:orbit-help`), or let the host pick one: each
 description's first sentence says *when* to use it, within the host's listing budget (300 characters each, 7,500 for
-all 26 — `test/activation-catalog.test.mjs` holds both).
+all 26).
 
 ### Entry points
 
@@ -211,28 +193,23 @@ Where Orbit owns the work, the rest of the session gets at most a line at a time
 | Stop, with a workflow step ready | the turn is held open (at most twice per prompt, never twice in a row) with the step and its command, or the model says in one sentence why it stops; never past your pause, cancel, approval or question, never after a halt cue. Off: `trigger.holdOnStop` |
 | Stop, after edits nothing checked (0.6.0) | held open once per prompt when the turn edited code a component owns and no test or declared verifying check passed after the edit (a lint or a build alone shows nothing works), naming the safe check that component declares — or, with none, the tracked test files linked to the edited files, or a regression test to write. It runs nothing. Off: `trigger.holdUnverified` |
 
-The Stop holds are Claude Code's; each host's row is in [docs/hosts.md](docs/hosts.md). `trace activation` shows how a
-suggestion became an outcome — suggested → selected → dispatched → executed → verified, with only an owner's record
-ever verified — and marks a turn that dispatched more agents than its strategy accounted for as **over-delegated**.
-
----
+The Stop holds are Claude Code's; each host's row is in [docs/hosts.md](docs/hosts.md). How a suggestion became an
+outcome is read back from [the session trail](#the-session-trail).
 
 ## Command line
 
 Every skill is backed by commands under `cli/`. On any host the reliable form is `node <plugin-root>/cli/<tool>.mjs …`
-(`node cli/…` below, for short). Each file starts with its usage, and most commands take `--json`.
+(`node cli/…` below, for short). Each file starts with its usage; most commands take `--json`; in the examples,
+`a | b` between subcommands means either one, as in a usage line.
 
 | Area | Commands | What they are for |
 | --- | --- | --- |
 | Start | `orbit.mjs` | goals (`goal start`, `analyze`, `plan`, `step`, `status`, `verify`, `report`, `resume`, `list`) and `doctor` |
 | | `help.mjs` · `automation.mjs` · `track.mjs` | one recommended next step; coordinated workflows; unified work tracking |
 | Requirements and work | `requirements.mjs` · `work.mjs` · `task.mjs` | facts, questions and snapshots; a work's needs and receipts; one execution (`list`, `show`, `why`) |
-| Engineering | `autonomous-engineering.mjs` | a task taken to a verified change: `start`, `context`, `step`, `reconcile`, `finish` |
-| | `context.mjs` | what a task touches, and whether that is enough (`--for="<task>"`) |
-| | `runtime.mjs` | what a checkout needs to run: `discover`, `status`, `doctor`, `start`, `stop`, a task's sandbox |
+| Engineering | `autonomous-engineering.mjs` · `context.mjs` · `runtime.mjs` | a task taken to a verified change; what a task touches; what a checkout needs to run |
 | Project memory | `architecture.mjs` · `intelligence.mjs` · `engineering.mjs` · `knowledge.mjs` · `learn.mjs` | architecture and the system graph; technologies; conventions; knowledge and opportunities; lessons |
-| Testing and QA | `run-case.mjs` | run one JSON UI test case (`--dry`, `--report`) |
-| | `query.mjs` | the UI map, the cases and the DSL (`dsl`, `verb`, `field`); `check`, `triage`, `doctor`, `storage` |
+| Testing and QA | `run-case.mjs` · `query.mjs` | one JSON UI test case (`--dry`, `--report`); the UI map, cases and DSL (`dsl`, `verb`, `field`), `check`, `triage`, `doctor`, `storage` |
 | | `qa-plan.mjs` · `plan-check.mjs` | test plans and their coverage, held to their rules |
 | | `autonomous-qa.mjs` · `security-audit.mjs` | QA investigations and generated tests; security assessments |
 | | `report.mjs` · `review.mjs` · `explore.mjs` · `record-edge.mjs` | a run, screen, session or exploration as one HTML page; UI map records |
@@ -249,8 +226,6 @@ integrity check, an MCP tool's own error) · `2` refused · `3` blocked · `4` i
 > **Trying commands inside this repository?** Set `ORBIT_STORE_DIR=/tmp/orbit` first — everything writes to
 > `~/.orbit` by default.
 
----
-
 ## Where your data lives
 
 All durable state lives **outside your product repository**, in the machine store:
@@ -262,17 +237,15 @@ All durable state lives **outside your product repository**, in the machine stor
 | Show the paths | `node cli/query.mjs storage --json` or `node cli/storage.mjs where` |
 
 - A project is keyed by its repository's identity: every checkout of one repository shares one store, and runtime
-  sessions stay separate per checkout.
-- **Test data** (`ui-tests/`) lives in the store by default: `project.json`, `graph/`,
-  `screens/<screen>/<plan>.plan.json` and `screens/<screen>/cases/<case>.json`. A team that commits its test data with
-  its code chooses the checkout explicitly (`init --in-checkout`, or `storage export --all --move`), and
-  `ORBIT_UI_TESTS` names a data directory directly. Moving data between the two is a person's act (`storage import`,
-  `storage export`), previewed and checked with per-file digests.
+  sessions stay separate per checkout. Reading never creates state; every write is contained, locked and checked for a
+  stale revision.
+- **Test data** (`ui-tests/`: `project.json`, `graph/`, `screens/<screen>/<plan>.plan.json`,
+  `screens/<screen>/cases/<case>.json`) lives in the store by default. A team that commits it with its code chooses the
+  checkout explicitly (`init --in-checkout`, or `storage export --all --move`), and `ORBIT_UI_TESTS` names a data
+  directory directly. Moving data between the two is a person's act (`storage import`, `storage export`), previewed and
+  checked with per-file digests.
 - **Reports, evidence, lessons, goals, requirements, works, tasks, generated playbooks and improvement campaigns**
   always stay in the store.
-- Reading never creates state; every write is contained, locked and checked for a stale revision.
-
----
 
 ## Settings and switches
 
@@ -292,8 +265,6 @@ New lessons stop with `ORBIT_LEARN=off` (or `learn auto off`). Everything else a
 triggers (`trigger.holdOnStop`, `trigger.holdUnverified`), Live (`live.open`, `pane.*`), self-improvement
 (`improvement.*`), MCP policies, security catalogs and budgets — is set in [Orbit Control](#orbit-control), naming the
 revision it read.
-
----
 
 ## Orbit Live and Orbit Control
 
@@ -315,13 +286,11 @@ names the subagent behind a call (Claude Code, 0.2.2), activity is grouped **per
 campaign in an `IMPROVE` section (0.3.0). The task shown is one this session created, a pin or the one task running in
 this checkout — never the newest on the machine; two candidates are `AMBIGUOUS`, and `live pin <task>` chooses.
 
-```bash
-node cli/live.mjs status | watch | tui | open     # print once; follow here (q detaches); full screen; open beside you
-```
-
-Settings (`live settings --apply='<json>' --revision=<r>`): `pane.widthPercent`, `pane.focusCli`, `pane.animation: off`
-and `pane.orbitSpeed` (`slow` · `normal` · `fast`). To stop it opening by itself: Orbit Control › Advanced › Automation
-limits › Live (`live.open`).
+In a terminal: `live.mjs status` (print once), `watch` (follow; `q` detaches the viewer and nothing else), `tui` (full
+screen, in a second terminal or pane) and `open` (beside this session). Settings, through `live settings
+--apply='<json>' --revision=<r>`: `pane.widthPercent`, `pane.focusCli`, `pane.animation: off` and `pane.orbitSpeed`
+(`slow` · `normal` · `fast`). To stop it opening by itself: Orbit Control › Advanced › Automation limits › Live
+(`live.open`).
 
 **Status line (Claude Code).** Orbit can own one key, `statusLine`, in your Claude Code settings:
 `node cli/host.mjs render --host=claude --kind=statusline` shows what it would write and the revision; `apply …
@@ -341,8 +310,8 @@ the page is read-only.
   is what a host configured: listed and testable, never routed to, called or written by Orbit. A secret is never typed
   in: a header or variable names the environment variable its value comes from.
 - **Decisions.** Approving a push or a production action, and resuming a paused task, happen only here: a terminal
-  cannot prove a person typed them. Orbit never adds, enables or approves a server, a policy or an approval by itself.
-  The one thing it fetches on its own is a pinned, checksum-verified private tool that work you asked for needs (see
+  cannot prove a person typed them. Orbit never adds, enables or approves a server, a policy or an approval by itself;
+  the one thing it fetches on its own is a pinned, checksum-verified private tool that work you asked for needs (see
   [Microsoft sign-in](#microsoft-sign-in-for-azure-devops)).
 
 ### Protected boundaries
@@ -370,15 +339,13 @@ spent before the action starts and never twice; a rejected or expired one runs n
 or your project **declared** (a capability's `environment` and `effects`, a QA environment's kind), never a guess from a
 command — and unknown is never production.
 
----
-
 ## Feature guides
 
 [Goals](#goals) · [Requirements, work and tasks](#requirements-work-and-tasks) · [Project context](#project-context) ·
 [Project memory](#project-memory) · [Coordinated workflows](#coordinated-workflows-and-playbooks) ·
 [Autonomous engineering](#autonomous-engineering) · [Unified work tracking](#unified-work-tracking) ·
 [Running the application](#running-the-application) · [UI test cases](#ui-test-cases) · [Autonomous QA](#autonomous-qa) ·
-[System graph](#system-graph) · [Orbit Satellite](#orbit-satellite) · [Self-improvement](#autonomous-self-improvement) ·
+[Orbit Satellite](#orbit-satellite) · [Self-improvement](#autonomous-self-improvement) ·
 [The session trail](#the-session-trail) · [Project reports](#project-reports) ·
 [Extending Orbit](#extending-orbit-in-your-project)
 
@@ -390,12 +357,8 @@ row with no kind is an assumption) — and a structured **intent**: category, wo
 dependencies, missing prerequisites. The plan comes from the intent alone, never from the words, so a goal in Vietnamese
 and its English twin plan the same: one unit per work kind, in order (analyze → change → investigate → procedure →
 verify), each run as a [coordinated workflow](#coordinated-workflows-and-playbooks). A unit a missing prerequisite
-blocks is `unresolved` and never started.
-
-```bash
-node cli/orbit.mjs goal start --stdin [--ref=PBI-482] < goal.txt
-node cli/orbit.mjs goal analyze|plan|step|status|verify|report|resume <goal-id>
-```
+blocks is `unresolved` and never started. From a terminal: `orbit.mjs goal start --stdin [--ref=PBI-482] < goal.txt`,
+then `goal analyze|plan|step|status|verify|report|resume <goal-id>`.
 
 ### Requirements, work and tasks
 
@@ -423,22 +386,19 @@ answers two questions about the task (0.5.0):
 
 - **RELEVANT** — what the task touches, from what the owners already hold: each item a `file`, `symbol`, `component` or
   `check`, classed `direct`, `dependency`, `downstream`, `verification` or `unknown`, with its evidence, its freshness
-  (against its own scope, never HEAD) and who found it (`engine` or `host-verified`); at most 40 are listed. Names match
-  with identifiers split (`createOrder` is "create order"): no embeddings, no parsing of any language. Each direct file
-  is followed one hop each way — what it imports, who imports it, its tests — by relation adapters in a pack
-  (JavaScript/TypeScript and Python ship in `skills/orbit-develop/relations/`).
-- **SUFFICIENCY** — `ENOUGH` (proceed from those items), `DISCOVER` (the targeted reads that would fill the gap, each an
-  Orbit command, never a full scan) or `ASK` (a question about the task's own work is already open; Orbit never makes
-  one up). Since 0.6.0 it also answers by level — enough to **investigate** (a direct file or symbol the tree holds), to
-  **change** (those confirmed by a read, their dependents known, a done criterion and the check that would prove it),
-  to **conclude** (every proof need satisfied, nothing moved since, the work `verified`) — each an ordered table over
-  facts, never a count of search hits ([ADR 0058](docs/adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md)).
+  and who found it (`engine` or `host-verified`); at most 40. Names match with identifiers split (`createOrder` is
+  "create order"), with no embeddings. Each direct file is followed one hop each way — its imports, its importers, its
+  tests — by relation adapters in a pack (JavaScript/TypeScript and Python, in `skills/orbit-develop/relations/`).
+- **SUFFICIENCY** — `ENOUGH` (proceed), `DISCOVER` (the targeted reads that would fill the gap, each an Orbit command,
+  never a full scan) or `ASK` (a question about the task's own work is already open; Orbit never makes one up). Since
+  0.6.0 it is also answered per level — enough to **investigate**, to **change**, to **conclude** — each an ordered
+  table over facts, never a count of search hits
+  ([ADR 0058](docs/adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md)).
 
 A host proposes what it found with `--with-refs`; a file or symbol the tracked tree does not hold is refused by name.
-Discovery is recorded on the task's own work: done criteria are `proof` needs, gaps are `knowledge` needs, and each round
-is a checkpoint (`work checkpoint <w-…> --asked="<source · target>"`). Rounds stop after five, or after two in a row that
-settle nothing new, and an answer still fresh is not asked again — so the next session re-reads only what went stale.
-Composing the package writes nothing.
+Discovery rounds are checkpoints on the task's own work (`work checkpoint <w-…> --asked="<source · target>"`): they stop
+after five, or after two in a row that settle nothing new, and an answer still fresh is not asked again — so the next
+session re-reads only what went stale. Composing the package writes nothing.
 
 ```bash
 node cli/context.mjs --for="<task>" [--work=<w-…>] [--json]
@@ -454,19 +414,25 @@ deleted, renamed away or gone on a branch switch is `GONE`.
 
 | Memory | What it keeps | Commands (`node cli/…`) |
 | --- | --- | --- |
-| Architecture | modules, boundaries, gates and the [system graph](#system-graph); `ensure` normally answers `CURRENT` after a few git calls | `architecture.mjs ensure`, `facts`, `why <id>`, `diff` |
+| Architecture | modules, boundaries, gates and the system graph (below); `ensure` normally answers `CURRENT` after a few git calls | `architecture.mjs ensure`, `facts`, `why <id>`, `graph`, `diff` |
 | Technologies | what is declared, used and configured (a technology is not a capability); integrations by system *and* operation; `resolve` says reuse, build, unknown or blocked, and never acts | `intelligence.mjs ensure`, `technologies`, `integrations`, `resolve <intent>` |
 | Engineering conventions | how this project builds code, from tracked files and the checks that passed | `engineering.mjs facts`, `why <id>`, `doctor` |
 | Knowledge | claims, each a relation in a context (two contexts are two claims); authority derived: rule · adopted · source · confirmed · host-memory · inference | `knowledge.mjs claims --for="…"`, `opportunities` |
 | Lessons | what repeated in independent sessions (two machines or two UTC days); one session is only an observation | `learn.mjs lessons`, `why <id>`, `recall` |
 
+The **system graph** (`architecture graph`) projects the running system — nodes (components, workloads, interfaces,
+channels, schedules, stores) and relations (calls, publishes-to, consumes-from …), each with evidence, freshness and
+unknowns. `ensure` reads what composition files declare; the rest arrives as candidates through `architecture record`,
+which refuses untracked files and secret attributes; what a kind means comes from the vocabulary
+(`catalog/topology.json` plus organisation and project layers). `orbit-reverse-engineer` runs a standalone pass.
+
 A capability nothing provides is remembered as one **opportunity** and work goes on; only a person decides it
 (`knowledge decide <opp-id> defer|accept|ignore|reopen --human`). The **engineering observer** is on by default and
 bounded: a milestone only (a commit, a session's end, a check passing after an edit, a completed task), at most four
 times a session, never stronger than `observed`, and only in a checkout the machine knows (one Orbit was used in, one
-that commits `ui-tests/`, or `ORBIT_UI_TESTS`). Turn it off with `ORBIT_ENGINEERING_OBSERVE=off`; `engineering doctor`
-says whether it ran and what stopped it. Your **host's memory** is a hint: it can point discovery somewhere, but never
-becomes a fact, is never copied into the store and is always outranked by current source.
+that commits `ui-tests/`, or `ORBIT_UI_TESTS`); `engineering doctor` says whether it ran and what stopped it. Your
+**host's memory** is a hint: it can point discovery somewhere, but never becomes a fact or enters the store, and current
+source always outranks it.
 
 ### Coordinated workflows and playbooks
 
@@ -497,22 +463,17 @@ local clone; your checkout, `.git` included, is never written.
   the component graph decide which declared checks are REQUIRED; the rest are NOT AFFECTED, never a pass. A path nothing
   holds, or a changed component nothing tests, is MISSING and blocks completion. A failure its baseline already had is
   `failed-as-before` — shown, never a pass — and at least one required test or verify command must pass.
-- **Only declared checks run**, chosen by id and run as argument lists; nothing a model writes becomes a command.
-- **What stopped a check** comes from facts, never from an error's words: `DEPENDENCY` (the component's dependency
-  restore ran and failed), `ACCESS` (a target a person said it requires is unreachable, asked fresh), `ENVIRONMENT` (it
-  cannot run here, or failed the same way before any change), `CODE`, `TEST`, `CAPABILITY`, `REQUIREMENT`, `DATA`,
-  `SCOPE`, `UNKNOWN`. A class picks what to look at next, never a verdict; three attempts on one failure signature are
-  `NO_PROGRESS`.
-- **Commit, then push on approval:** a verified change is committed by itself, and that exact commit is pushed only
-  after one approval in Orbit Control. It never merges.
+- **Only declared checks run**, by id, as argument lists. What stopped one comes from facts, never an error's words:
+  `DEPENDENCY` (the dependency restore failed), `ACCESS` (a target the component requires is unreachable),
+  `ENVIRONMENT` (it cannot run here, or failed this way before any change), `CODE`, `TEST`, `CAPABILITY`,
+  `REQUIREMENT`, `DATA`, `SCOPE`, `UNKNOWN` — a class picks what to look at next, never a verdict. Three attempts on one
+  failure signature are `NO_PROGRESS`.
+- **Commit, then push on approval:** a verified change is committed by itself; that exact commit is pushed only after
+  one approval in Orbit Control. It never merges.
 
-The task's context ends with a `DO` line, the one command that goes on. `task why <task>` says how each decision settled
-(a receipt, or REPORTED and never proven; OPEN or AMBIGUOUS read back, never resent) and which receipt moved it next.
-
-```bash
-node cli/autonomous-engineering.mjs start --ref=<item> | start "<objective>"
-node cli/autonomous-engineering.mjs context <task> | step <task> < decision.json | reconcile <task> | finish <task>
-```
+Start one with `autonomous-engineering.mjs start --ref=<item>` (or `start "<objective>"`). Its context ends with a `DO`
+line, the one command that goes on (`step` with the decision on stdin, or `reconcile`). `task why <task>` says how each
+decision settled — a receipt, or REPORTED and never proven — and which receipt moved the task next.
 
 #### Check observation adapters
 
@@ -540,28 +501,18 @@ and never blocks the work. It is shown on three separate axes:
 - **Liveness:** whether a session is still on it (`ACTIVE`, `QUIET`, `ENDED`, `NONE`), never a lifecycle.
 
 Files are the paths an edit tool was seen writing while a session was bound, never the checkout's dirty files; a check
-is a command named like one, with how it ended, never "passed". What each host lets tracking see differs:
-`track.mjs coverage` says, and [docs/hosts.md](docs/hosts.md) has the table.
-
-```bash
-node cli/track.mjs status [<w-…>] | list | coverage
-```
+is a command named like one, with how it ended, never "passed". `track.mjs status [<w-…>]`, `list` and `coverage` (what
+this host lets tracking see; [docs/hosts.md](docs/hosts.md) has the table) read it back.
 
 ### Running the application
 
 `orbit-runtime` works out what a checkout needs to run from its own files — manifests, version files, container and dev
 container files, pipelines, build files — and runs none of them to find out. A command is launched only as a file
 declared it, as an argument list. Orbit stops only what it can prove it started (a receipt, a pid and the pid's start
-time agree); a port in use blocks the start and names its holder, and is never freed or moved. What it takes to run a
-checkout is kept per checkout, since a branch's manifest, a machine's tools and a held port differ. A task's **sandbox**
-is its own — containers, an internal network, leased ports, each fingerprinted and receipted — and never reuses your
+time agree); a port in use blocks the start and names its holder, and is never freed or moved. A task's **sandbox** is
+its own — containers, an internal network, leased ports, each fingerprinted and receipted — and never reuses your
 running application. Writing the repository (`runtime adopt`) is the primary-checkout-write boundary: only you, in
-Orbit Control.
-
-```bash
-node cli/runtime.mjs discover | status | doctor | design | proposal
-node cli/runtime.mjs start|stop [--component=<key>]
-```
+Orbit Control. Commands: `runtime.mjs discover`, `status`, `doctor`, `design`, `start|stop [--component=<key>]`.
 
 ### UI test cases
 
@@ -570,17 +521,14 @@ in the project's UI map (`"on": "home/Add"`), so a moved locator is corrected on
 one layer — the screen (`ui`), the call it made (`api`) or the row it wrote (`sql`):
 
 ```json
-{ "id": "create-thing", "name": "Create a thing", "start": "home", "creates": "one thing ${NAME}",
-  "params": [{ "n": "NAME", "required": true }],
-  "steps": [
-    { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
-    { "do": "click", "on": "home/Add", "wait": "document.querySelector('[role=dialog]')" },
-    { "do": "fill", "on": "dlg-thing/Name", "value": "${NAME}" },
-    { "do": "click", "on": "dlg-thing/Save", "wait": "document.body.innerText.includes('${NAME}')" },
-    { "do": "api", "match": "api/things", "method": "POST", "status": 201 },
-    { "do": "sql", "query": "SELECT COUNT(*) AS n FROM Things WHERE Name='${NAME}'", "expect": "Number(it[0].n) === 1" }
-  ],
-  "seen": "live" }
+{ "id": "create-thing", "name": "Create a thing", "start": "home", "creates": "one thing ${NAME}", "seen": "live",
+  "params": [{ "n": "NAME", "required": true }], "steps": [
+  { "do": "goto", "screen": "home", "wait": "document.body.innerText.length>0" },
+  { "do": "click", "on": "home/Add", "wait": "document.querySelector('[role=dialog]')" },
+  { "do": "fill", "on": "dlg-thing/Name", "value": "${NAME}" },
+  { "do": "click", "on": "dlg-thing/Save", "wait": "document.body.innerText.includes('${NAME}')" },
+  { "do": "api", "match": "api/things", "method": "POST", "status": 201 },
+  { "do": "sql", "query": "SELECT COUNT(*) AS n FROM Things WHERE Name='${NAME}'", "expect": "Number(it[0].n) === 1" } ] }
 ```
 
 PASS is earned and says what it proved (`proved ui n · api n · sql n`); no verdict executed is `INCONCLUSIVE` (4); an
@@ -596,8 +544,7 @@ promotes them.
 ```bash
 node cli/run-case.mjs create-thing NAME=TC-1 --dry      # resolve and print the plan; no browser, no database
 node cli/run-case.mjs create-thing NAME=TC-1 --report   # run it, with a self-contained HTML report
-node cli/query.mjs dsl | verb sql | field into          # the case vocabulary, from the DSL tables
-node cli/query.mjs check | triage                       # integrity; what one run's evidence shows, and cannot tell
+node cli/query.mjs dsl | verb sql | check | triage      # the vocabulary; one verb; integrity; what a run's evidence shows
 node cli/qa-plan.mjs coverage <plan-id>                 # criterion → scenario → case → run → evidence
 ```
 
@@ -630,73 +577,48 @@ node cli/autonomous-qa.mjs derive|step|reconcile|finish --investigation=<id>   #
 node cli/security-audit.mjs assess --investigation=<id>      # the security controls in effect, from that record
 node cli/qa-plan.mjs expects <contract.json>                 # OpenAPI, AsyncAPI or schedule → candidate expectations
 node cli/query.mjs adapters --matrix                         # what each adapter is proven to support
-node acceptance/run.mjs [--stack=…] [--variant=…]            # native acceptance: two stacks, planted defects (Docker)
 ```
-
-### System graph
-
-`architecture graph [--json]` projects the running system: **nodes** (components, workloads, interfaces, channels,
-schedules, stores …) and **relations** (calls, publishes-to, consumes-from, schedules …), each with evidence, freshness
-and unknowns. `architecture ensure` reads what composition files declare; everything else arrives as candidates through
-`architecture record`, which refuses untracked files and secret attributes. What a kind or relation *means* comes from
-the vocabulary (`catalog/topology.json` plus organisation and project layers). `orbit-reverse-engineer` runs a
-standalone pass, one agent per unknown scope.
 
 ### Orbit Satellite
 
 `/orbit:satellite <goal>` (or `node <plugin-root>/satellite/cli/satellite.mjs` on any host) runs a **mission**: the goal
 becomes a structured intent, an investigation comes before deciding who changes what, and the work graph is revised only
 on evidence. Roles, agent templates, skills and workflows are reused first and generated only when nothing fits, each
-pinned by digest. Every unit runs as a fresh agent under a least-privilege profile; source changes happen only in an
-engineering task's own workspace; a criterion is verified only by an independent owner's record.
+pinned by digest. Every unit runs as a fresh agent under a least-privilege profile, source changes happen only in an
+engineering task's own workspace, and a criterion is verified only by an independent owner's record.
 
 ```bash
-node satellite/cli/satellite.mjs mission start --stdin < goal.txt      # start; the goal is kept as submitted
-node satellite/cli/satellite.mjs mission context <msn>                 # what stands, what is allowed, the next step
-node satellite/cli/satellite.mjs mission step <msn> < decision.json    # one decision, judged before it runs
-node satellite/cli/satellite.mjs live tui <msn>                        # Satellite Live: nine views
-node satellite/cli/satellite.mjs host capabilities                     # what this host can do
+node satellite/cli/satellite.mjs mission start --stdin < goal.txt      # the goal is kept as submitted
+node satellite/cli/satellite.mjs mission context <msn> | step <msn> < decision.json
+node satellite/cli/satellite.mjs live tui <msn> | host capabilities    # Satellite Live (nine views); what this host can do
 ```
 
 Claude Code dispatches agent runs natively and in parallel; Codex, Antigravity CLI and Grok Build run them one at a time
-in the main session. Each run says which of the host's agents carries it, and how anybody knows (0.2.2,
-[ADR 0044](docs/adr/0044-run-identity-and-attribution.md)):
-
-| Word | Means |
-| --- | --- |
-| `HOST_OBSERVED` | the hooks saw the Agent call that carried the run's envelope launch that agent |
-| `REPORTED` | only the dispatcher said so (`agent ack <msn> <arn> --host-agent=<agentId>`) |
-| `CONFLICTING` | two agents are named for one run, or one agent for two runs: neither is chosen |
-| `UNATTRIBUTED` | a serial run, or nothing observed: its calls cannot be told from the session's own |
-
-In `live tui`, press `2`, select a run with `j`/`k` and press `enter` to see its pins, parent and children, its host
-agent and the basis of that word, its calls and its records. Details: [satellite/docs/README.md](satellite/docs/README.md),
-[ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
+in the main session. Each run says which host agent carries it, and how anybody knows (0.2.2,
+[ADR 0044](docs/adr/0044-run-identity-and-attribution.md)): `HOST_OBSERVED` (the hooks saw the Agent call carrying the
+run's envelope launch that agent), `REPORTED` (only the dispatcher said so, with `agent ack <msn> <arn>
+--host-agent=<agentId>`), `CONFLICTING` (two agents named for one run, or one for two runs: neither is chosen) or
+`UNATTRIBUTED` (a serial run, or nothing observed). In `live tui`, press `2`, pick a run with `j`/`k` and `enter` to see
+its pins, parent and children, host agent and the basis of that word, its calls and its records. Details:
+[satellite/docs/README.md](satellite/docs/README.md), [ADR 0041](docs/adr/0041-orbit-satellite-is-a-mission-journal-above-owners.md).
 
 ### Autonomous self-improvement
 
 Orbit improves this project's **declared playbooks** and **Satellite roles** from what they actually did, and only on
-independent evidence ([ADR 0045](docs/adr/0045-autonomous-self-improvement-on-independent-evidence.md)):
-
-1. **Detect** — the owners' run records become signals, one opportunity per problem. A single failure, retries in one
-   session, a provider, an environment or a person's approval never count.
-2. **Generate** — only a defect of the definition itself gets a successor, drafted by the skill factory from the
-   version it succeeds, written by the host and staged as a candidate nobody is offered.
-3. **Validate** — a candidate that widens its tools, drops a required step, loosens a success rule or carries anything
-   executable is refused before it runs.
-4. **Evaluate** — candidate and current version run the same frozen inputs through the same gates as ordinary work; it
-   is better only when two independent sessions (two UTC days or two machines) say so and none says otherwise.
-5. **Promote** — twelve gates, then the owner's own door picks it for new work. A pin a task holds never moves.
-6. **Monitor** — a regression in independent sessions puts the replaced version back.
+independent evidence ([ADR 0045](docs/adr/0045-autonomous-self-improvement-on-independent-evidence.md)).
+**Detect** — the owners' run records become signals, one opportunity per problem; a single failure, retries in one
+session, a provider, an environment or an approval never count. **Generate** — only a defect of the definition itself
+gets a successor, drafted by the skill factory and staged as a candidate nobody is offered. **Validate** — one that
+widens its tools, drops a required step, loosens a success rule or carries anything executable is refused before it
+runs. **Evaluate** — candidate and current version run the same frozen inputs through the same gates; it is better only
+when two independent sessions (two UTC days or two machines) say so and none says otherwise. **Promote** — twelve
+gates, then the owner's own door picks it for new work; a pin a task holds never moves. **Monitor** — a regression in
+independent sessions puts the replaced version back.
 
 It runs by itself after a workflow and from the hooks, but never evaluates there. Every switch and bound is a person's
-(`improvement.*` in Orbit Control); with automatic promotion off, a qualified candidate waits for a person. Nothing it
-does crosses a protected boundary, widens a permission or overrides a person's decision.
-
-```bash
-node cli/improve.mjs status | analyse [--dry] | metrics      # switches and campaigns; opportunities; nine metrics
-node cli/improve.mjs resume <imp-id> | evaluate <imp-id>     # step a campaign; evaluate in this session
-```
+(`improvement.*` in Orbit Control); with automatic promotion off, a qualified candidate waits for a person, and nothing
+it does crosses a protected boundary. Commands: `improve.mjs status`, `analyse [--dry]`, `resume <imp-id>`,
+`evaluate <imp-id>`, `metrics` (nine metrics, each with its numerator and denominator).
 
 ### The session trail
 
@@ -704,14 +626,11 @@ The hooks keep a trail of what each session did through Orbit, on this machine o
 prompt a salted fingerprint, its length and what the router decided; which skills and agents started; which Orbit
 commands (and classes of other command) ran and how they ended; where a turn ended; a line of advice as `advice.given`
 (table words, never the sentence). Never a prompt's text, a response, an argument, a tool's output, a path or a file's
-contents. It is kept 90 days and sent nowhere. The views are folds rebuilt on every read, so a terminal and Orbit
-Control's Trace and Analytics pages always agree.
-
-```bash
-node cli/trace.mjs turns | turn <turn-id>    # one line per prompt; one prompt in full
-node cli/trace.mjs usage | activation        # counts with their denominators; suggested → … → verified
-node cli/trace.mjs where                     # where the trail is kept, and what it never keeps
-```
+contents. It is kept 90 days and sent nowhere, and its views are folds rebuilt on every read, so a terminal and Orbit
+Control's Trace and Analytics pages always agree. `trace activation` shows how a suggestion became an outcome —
+suggested → selected → dispatched → executed → verified, with only an owner's record ever verified — and marks a turn
+that dispatched more agents than its strategy accounted for as **over-delegated**. Read it with `trace.mjs turns`,
+`turn <turn-id>`, `usage`, `activation` and `where`.
 
 ### Project reports
 
@@ -725,9 +644,9 @@ connection reads with a token (named by an environment variable, or stored throu
 store); an Azure DevOps connection signs in with Microsoft by default.
 
 ```bash
-node cli/project-report.mjs status | settings | parts | runs | connections | probe
 node cli/project-report.mjs run [--months=N | --from=D --to=D | --all] [--dry]
 node cli/project-report.mjs render [<run-id>|latest]                   # again, asking no source
+node cli/project-report.mjs status | settings | parts | runs | connections | probe
 ```
 
 #### Microsoft sign-in for Azure DevOps
@@ -754,18 +673,10 @@ sign-in is required, run `sign-in` yourself (in Claude Code, type `! node <plugi
 | **How it signs in** | The Azure CLI's browser sign-in (a device code with `--device-code`), in Orbit's own profile. Orbit asks the CLI for a short-lived Azure DevOps token each time it needs one and keeps it in memory only; it signs in again only when the CLI says you must act. |
 | **Which `az` runs** | 1. a private copy Orbit already installed; 2. your machine's own `az`, used only as a program (it must start, be 2.61.0 or newer and belong to this operating system), never its sign-in; 3. a private copy Orbit installs by itself when neither is usable; 4. otherwise a blocked answer that names every candidate. To make the private copy win over your own `az`, install it from Orbit Control's Tools page. |
 | **What Orbit installs** | Only in step 3, into Orbit's store: on Windows x64 Microsoft's official Azure CLI 2.91.0 ZIP (91 MB, SHA-256 checked); on macOS and Linux a Python of Orbit's own plus the official `azure-cli` 2.91.0 wheels from PyPI, every distribution pinned and hash-locked (150 of them; about 200 MB to download, about 700 MB on disk). No administrator rights, nothing on PATH, no package manager, no `sudo`, no Program Files, no Homebrew, no system Python. It is a tool Orbit runs, not a dependency of the engine. |
+| **Per platform** | A private copy on Windows x64 (the official ZIP), macOS arm64 and x64, and Linux x64 and arm64 with glibc (the locked Python environment). None on Windows ARM64 (Microsoft publishes no ARM64 build; an x64 `az` you already have is started through its own wrapper, never a shell) or Alpine (musl: the Python Orbit installs is a glibc build). Under WSL, as Linux, with its own Orbit state; a Windows `az` reached through WSL, or a profile on a Windows drive, is refused. Full table: [ADR 0043 › Platforms](docs/adr/0043-orbit-signs-in-through-an-azure-cli-profile-of-its-own.md#platforms). |
 | **What it never does** | Import or copy your session, or ask to; read `~/.azure` or `%USERPROFILE%\.azure`, or Azure CLI's token-cache files; change your subscription, extensions or configuration; install the Azure DevOps CLI extension; create a personal access token. |
 | **On Windows** | The sign-in is the browser flow. The Windows account broker is turned off for Orbit's profile because it keeps a session outside the profile, shared with your own `az`; so there is no Windows Hello or single sign-on, and a tenant that requires a compliant device through the broker may refuse it. Use a personal access token there. |
 | **Scope** | Azure DevOps Services. Microsoft Entra authentication is not available for Azure DevOps Server collections, which use a personal access token. The token is yours for Azure DevOps and is not narrowed to read-only the way a personal access token can be; Orbit's readers only read. |
-
-| Platform | Private copy Orbit can install | Your own `az`, as a program |
-| --- | --- | --- |
-| Windows x64 | official ZIP | yes |
-| Windows ARM64 | none: Microsoft publishes no ARM64 build | an x64 `az` you already have, started through its own wrapper and never a shell; otherwise blocked |
-| macOS arm64 and x64 | locked Python environment | yes |
-| Linux x64 and arm64 (glibc) | locked Python environment | yes |
-| WSL | as Linux, with its own Orbit state; a Windows `az` reached through WSL is refused, and so is a profile on a Windows drive | a Linux `az` |
-| Alpine (musl) | none: the Python Orbit installs is a glibc build | an `az` already there |
 
 This covers the Azure CLI processes Orbit starts for its own sign-in; a tool a project's own capability declares
 (`tools: ["az"]`) and `query doctor` run as the project asked. How far each platform was run for real, and how far only
@@ -776,22 +687,16 @@ resolved or faked: the [platform evidence table](docs/adr/0043-orbit-signs-in-th
 Everything specific to your product lives in your project's data and in what it opts into, never in the engine:
 
 - **Project QC tools.** When a test needs what no built-in verb can do — a second database, a vendor SDK, a queue —
-  `orbit-qc-builder` builds the smallest project-local *capability*, and a case asks it through the one `call` verb. It
-  lives outside the repository, is loaded for real into a throwaway context before it is trusted (`qc-tool verify`) and
-  is registered only once it verifies. A capability sees a narrow facade — no store, no ledger, no environment, no way
-  to write a verdict — and its own crash is `BLOCKED`, never a defect in your feature.
-- **Packs** stay inert until a project lists them in `project.json` `packs`: `orbit-api-test` (HTTP reads and writes)
-  and `orbit-backend-test` (messaging, schedulers, jobs, state, fixtures, the clock, identity — each answered by
-  whichever adapter discovery and its declared semantics select).
-- **MCP servers** are added and policed in [Orbit Control](#orbit-control), and a session calls a managed one through
-  every gate: `node cli/mcp.mjs call <server> <tool> --for=<capability> --input='{…}'`.
-
-```bash
-node cli/qc-tool.mjs list | new <id> <scratch-dir> [--tool=psql] | verify <dir> | register <dir>
-node cli/query.mjs capabilities | extensions     # what a {"do":"call"} step may ask; what loaded, what was refused and why
-```
-
----
+  `orbit-qc-builder` builds the smallest project-local *capability*, which a case asks through the one `call` verb. It
+  lives outside the repository, is loaded for real into a throwaway context before it is trusted, and is registered only
+  once it verifies (`qc-tool new`, `verify`, `register`). It sees a narrow facade — no store, no ledger, no environment,
+  no way to write a verdict — and its own crash is `BLOCKED`, never a defect in your feature.
+- **Packs** stay inert until `project.json` lists them in `packs`: `orbit-api-test` (HTTP reads and writes) and
+  `orbit-backend-test` (messaging, schedulers, jobs, state, fixtures, the clock, identity — each answered by the adapter
+  that discovery and its declared semantics select).
+- **MCP servers** are added and policed in [Orbit Control](#orbit-control); a session calls a managed one through every
+  gate: `node cli/mcp.mjs call <server> <tool> --for=<capability> --input='{…}'`. `query capabilities` and
+  `query extensions` say what a `call` step may ask here, and what loaded or was refused, and why.
 
 ## Orbit Web
 
@@ -820,8 +725,6 @@ To run it — the passwords, the allocator's secret, three images and `docker co
 [Orbit Web › Run it](integrations/orbit-web/README.md#run-it). A localhost-only trial (`compose.trial.yaml`, with
 `admin` / `123456`) skips the setup code.
 
----
-
 ## Developing Orbit
 
 ```bash
@@ -831,6 +734,7 @@ ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs check
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/plan-check.mjs
 node skills/orbit-release/ship.mjs --ci                      # the whole definition of done, one command (the fast tier)
 node skills/orbit-release/panel.mjs                          # Orbit Control on its own Node: server tests, panel build
+node acceptance/run.mjs [--stack=…] [--variant=…]            # optional native backend acceptance: planted defects (Docker)
 ```
 
 Run one suite at a time: two at once interfere. Before changing code, read:
@@ -848,34 +752,30 @@ changing one is a major version and adding to one a minor version, bumped in all
 
 ### Releasing and the independent evaluator
 
-A release qualifies on the fast tier plus the record of the **independent evaluator** (`evaluator/`,
-[evaluator/README.md](evaluator/README.md), [ADR 0057](docs/adr/0057-an-independent-evaluator-measures-a-release.md))
-for that very artifact. The evaluator runs the same task with the same model, effort, tools, limits and prompt in arms
-that differ only by the plugin — the plain host, Orbit at the previous release, Orbit at the release candidate (a second
-host, mini-SWE-agent, makes it a 2 × 2) — and grades the patch each run leaves by hidden tests the agent never sees, in a
-fresh container with no network: never by the agent's word, never by Orbit's own records. It is a package of its own
-(Orbit imports nothing of it, and it imports nothing of Orbit) and never ships. What runs and how it is judged is
-pre-registered (`evaluator/prereg/<release>.json`) before any model run — SWE-bench Verified instances and local task
-packs, a development set and a held-out set, the arms and the verdict rule: IMPROVED, NO_DIFFERENCE, REGRESSED or
-INCONCLUSIVE, where a one-task difference is INCONCLUSIVE.
+A release qualifies on the fast tier plus the **independent evaluator**'s record of that very artifact (`evaluator/`, a
+package of its own that imports nothing of Orbit and never ships;
+[ADR 0057](docs/adr/0057-an-independent-evaluator-measures-a-release.md)). It runs one task with the same model, effort,
+tools, limits and prompt in arms that differ only by the plugin — the plain host, Orbit at the previous release, Orbit
+at the release candidate (mini-SWE-agent as a second host makes it a 2 × 2) — and grades each patch by hidden tests in a
+fresh container with no network, never by the agent's word. What runs and how it is judged (task packs and SWE-bench
+Verified instances, development and held-out sets, the verdict rule) is pre-registered in
+`evaluator/prereg/<release>.json` before any model run. The verdict — IMPROVED, NO_DIFFERENCE, REGRESSED or
+INCONCLUSIVE — is said as what it is; a one-task difference is INCONCLUSIVE, never a gain.
 
 ```bash
 node evaluator/cli.mjs checks | prereg verify                # its own checks; the registered order, re-derived
-node evaluator/cli.mjs prereg campaign final --rev=<commit>  # a phase's campaign, made from the pre-registration
+node evaluator/cli.mjs prereg campaign final --rev=<commit>  # a campaign, made from the pre-registration
 node evaluator/cli.mjs run <campaign.json> | resume <id> | status <id> | report <id> --md
 node evaluator/cli.mjs record --campaign=<id>,<id> --out=<record.json>
-node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>   # the publish gate
+node skills/orbit-release/ship.mjs --evidence --evaluation=<record.json>   # the publish gate: PUBLISHABLE, or why not
 ```
 
-`ship.mjs --evidence` must say PUBLISHABLE on the pushed head before the merge commit is tagged `v<version>`; it never
-tags, pushes or publishes itself, and IMPROVED, NO_DIFFERENCE and INCONCLUSIVE are said as what they are. No GitHub
-workflow gates the plugin: the gates run where the release is made. The one scoped exception is Orbit Web's two
-workflows — pull-request checks for `integrations/orbit-web/**`, and its image published by hand behind a reviewer
-([ADR 0060](docs/adr/0060-orbit-web-a-browser-host-around-the-official-clis.md)). The release contract:
-[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md); running the held-out campaigns from a Claude Code cloud
-session: [CLAUDE.md](CLAUDE.md).
-
----
+The tag `v<version>` goes on the merge commit only after `--evidence` says PUBLISHABLE on the pushed head; the gate
+itself never tags, pushes or publishes. No GitHub workflow gates the plugin; the one scoped exception is Orbit Web's two
+workflows (pull-request checks for `integrations/orbit-web/**`, and its image published by hand behind a reviewer,
+[ADR 0060](docs/adr/0060-orbit-web-a-browser-host-around-the-official-clis.md)). More: [evaluator/README.md](evaluator/README.md),
+[skills/orbit-release/SKILL.md](skills/orbit-release/SKILL.md), and [CLAUDE.md](CLAUDE.md) for running the campaigns
+from a Claude Code cloud session.
 
 ## Further reading
 

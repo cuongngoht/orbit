@@ -149,7 +149,7 @@ export class SchedulesService implements OnApplicationBootstrap, OnModuleDestroy
     const id = randomUUID();
     await this.governance.command(actor, "schedule.create", id, async () => {
       await this.governance.authorize(actor, "work.assign", req.employeeId, { employee: req.employeeId, schedule: true });
-      if ((await this.db.one("SELECT 1 AS x FROM workforce.employees WHERE account_id = $1 AND id = $2 AND employment <> 'archived'", [orbitId, req.employeeId])) === null) throw missing("Employee");
+      if ((await this.db.one("SELECT 1 AS x FROM workforce.employees WHERE account_id = $1 AND id = $2 AND employment NOT IN ('archived', 'deleted')", [orbitId, req.employeeId])) === null) throw missing("Employee");
       const at = new Date().toISOString();
       const template: Template = { goal: req.mission.goal, deliverables: req.mission.deliverables, acceptanceCriteria: req.mission.acceptanceCriteria, workspaceId: req.mission.workspaceId ?? null, sourceRevisionIds: req.mission.sourceRevisionIds ?? [] };
       const next = runsAfter(req.rule, Date.now(), 1)[0]?.dueAt ?? null;
@@ -174,7 +174,7 @@ export class SchedulesService implements OnApplicationBootstrap, OnModuleDestroy
       if (Number(r.version) !== expectedVersion) throw stale("This schedule changed since you read it: load the latest.", { version: Number(r.version) });
       const employeeId = req.employeeId ?? s(r.employee_id);
       await this.governance.authorize(actor, "work.assign", employeeId, { employee: employeeId, schedule: true });
-      if (req.employeeId !== undefined && (await this.db.one("SELECT 1 AS x FROM workforce.employees WHERE account_id = $1 AND id = $2 AND employment <> 'archived'", [orbitId, employeeId])) === null) throw missing("Employee");
+      if (req.employeeId !== undefined && (await this.db.one("SELECT 1 AS x FROM workforce.employees WHERE account_id = $1 AND id = $2 AND employment NOT IN ('archived', 'deleted')", [orbitId, employeeId])) === null) throw missing("Employee");
       const rule = req.rule ?? (r.rule as ScheduleRule);
       const state = req.state ?? s(r.state);
       // A rule changed or a schedule resumed: due from now on (what was missed while paused is not made).

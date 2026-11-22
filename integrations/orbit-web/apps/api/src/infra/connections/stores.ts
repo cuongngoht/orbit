@@ -160,7 +160,7 @@ export class ConnectionStore {
 
   // How many of the account's employees (not archived) run on a connection.
   async employeesOn(accountId: string, id: string): Promise<number> {
-    return Number((await this.db.one("SELECT count(*) AS n FROM workforce.employees WHERE account_id = $1 AND connection_id = $2 AND employment <> 'archived'", [accountId, id]))?.n ?? 0);
+    return Number((await this.db.one("SELECT count(*) AS n FROM workforce.employees WHERE account_id = $1 AND connection_id = $2 AND employment NOT IN ('archived', 'deleted')", [accountId, id]))?.n ?? 0);
   }
 }
 

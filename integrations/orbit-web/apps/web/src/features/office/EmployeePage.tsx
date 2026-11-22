@@ -21,19 +21,21 @@ export const EMPLOYEE_TABS = ["profile", "work", "resources", "employment"] as c
 type EmployeeTab = (typeof EMPLOYEE_TABS)[number];
 const TAB_TEXT: Record<EmployeeTab, string> = { profile: "Profile", work: "Work", resources: "Sandbox & resources", employment: "Employment" };
 
-const EMPLOYMENT_TEXT: Record<Employment, string> = { candidate: "Candidate", probation: "On probation", active: "Active", suspended: "Suspended", archived: "Archived" };
+const EMPLOYMENT_TEXT: Record<Employment, string> = { candidate: "Candidate", probation: "On probation", active: "Active", suspended: "Suspended", archived: "Archived", deleted: "Desk deleted" };
 
-const SANDBOX_TEXT: Record<SandboxState, string> = { PROVISIONING: "Being prepared", READY: "Ready", FAILED: "Failed", ARCHIVED: "Archived" };
+const SANDBOX_TEXT: Record<SandboxState, string> = { PROVISIONING: "Being prepared", READY: "Ready", FAILED: "Failed", ARCHIVED: "Archived", DELETING: "Being deleted", DELETED: "Deleted" };
 
 // What may be done next with an employment, and what each move means.
-const MOVES: Record<Employment, EmploymentCommand[]> = { candidate: ["start_probation", "activate", "reject"], probation: ["activate", "reject"], active: ["suspend", "archive"], suspended: ["reinstate", "archive"], archived: [] };
+// An archived employee's desk is deleted from Governance → Employee desks, where what it holds is shown first.
+const MOVES: Record<Employment, EmploymentCommand[]> = { candidate: ["start_probation", "activate", "reject"], probation: ["activate", "reject"], active: ["suspend", "archive"], suspended: ["reinstate", "archive"], archived: [], deleted: [] };
 const MOVE_TEXT: Record<EmploymentCommand, { label: string; means: string }> = {
   start_probation: { label: "Start the trial", means: "It works trial assignments you review before it is active." },
   activate: { label: "Activate", means: "It takes work as a member of the office." },
   reject: { label: "Reject", means: "It is not hired; its sandbox is archived." },
   suspend: { label: "Suspend", means: "It takes no new work until you reinstate it." },
   reinstate: { label: "Reinstate", means: "It takes work again." },
-  archive: { label: "Archive", means: "It leaves the office; its desk and toolbox are kept, read only." },
+  archive: { label: "Archive", means: "It leaves the office; its desk and toolbox are kept, read only, until you delete them in Governance → Employee desks." },
+  delete: { label: "Delete the desk", means: "Its desk, cache and workspaces are deleted for good and their storage released." },
 };
 
 function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[]; go: Go; label: string; empty: string }) {

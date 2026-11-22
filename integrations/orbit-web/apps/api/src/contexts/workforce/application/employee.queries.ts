@@ -2,7 +2,7 @@
 // (areas with quotas, real use and how each is enforced), the resource revisions, what is queued for them, what they
 // did, and the attempt running now. Read for the session's account; another account's employee is not found.
 import { Inject, Injectable } from "@nestjs/common";
-import { isWorkforceId, type AssignmentState, type AssignmentSummary, type EmployeeDetail, type EmployeeProfile, type SandboxView } from "@orbit-web/contracts";
+import { isWorkforceId, type AssignmentState, type AssignmentSummary, type EmployeeDesk, type EmployeeDetail, type EmployeeProfile, type SandboxState, type SandboxView } from "@orbit-web/contracts";
 import { Db, type Row } from "../../../infra/db/db.js";
 import { RunViews } from "../../execution/application/run-views.js";
 import { missing } from "../../shared/domain.js";
@@ -35,6 +35,34 @@ export class EmployeeQueries {
     @Inject(SandboxRepository) private readonly sandboxes: SandboxRepository,
     @Inject(RunViews) private readonly runViews: RunViews,
   ) {}
+
+  // Governance → Employee desks: every employee who left with a desk still held -- archived (or rejected) -- and the ones
+  // whose desk is being deleted, most recent first, with what each holds of the account's storage.
+  async desks(orbitId: string): Promise<EmployeeDesk[]> {
+    const rows = await this.db.query(
+      `SELECT e.id, e.name, e.employment, e.employment_reason, e.updated_at, e.version, s.state AS sandbox_state, s.reason AS sandbox_reason,
+              COALESCE((SELECT committed_mib FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category = 'desk' AND u.owner_ref = e.id::text), 0) AS desk_mib,
+              COALESCE((SELECT committed_mib FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category = 'cache' AND u.owner_ref = e.id::text), 0) AS cache_mib,
+              (SELECT SUM(used_mib) FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category IN ('desk', 'cache') AND u.owner_ref = e.id::text) AS used_mib
+       FROM workforce.employees e
+       LEFT JOIN workforce.sandboxes s ON s.account_id = e.account_id AND s.employee_id = e.id
+       WHERE e.account_id = $1 AND (e.employment = 'archived' OR (e.employment = 'deleted' AND s.state = 'DELETING'))
+       ORDER BY e.updated_at DESC`,
+      [orbitId],
+    );
+    return rows.map((r) => ({
+      employeeId: String(r.id),
+      name: String(r.name),
+      employment: String(r.employment) as EmployeeDesk["employment"],
+      reason: r.employment_reason === null ? null : String(r.employment_reason),
+      leftAt: String(r.updated_at),
+      sandbox: r.sandbox_state === null ? null : { state: String(r.sandbox_state) as SandboxState, reason: r.sandbox_reason === null ? null : String(r.sandbox_reason) },
+      deskMiB: Number(r.desk_mib),
+      cacheMiB: Number(r.cache_mib),
+      usedMiB: r.used_mib === null ? null : Number(r.used_mib),
+      version: Number(r.version),
+    }));
+  }
 
   // One employee in full, read from ONE snapshot.
   async detail(orbitId: string, id: string): Promise<EmployeeDetail> {

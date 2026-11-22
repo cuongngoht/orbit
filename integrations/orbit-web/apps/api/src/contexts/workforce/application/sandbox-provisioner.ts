@@ -5,8 +5,14 @@
 // made: a try is CLAIMED with an optimistic version (two processes never provision one sandbox at once), the provider is
 // asked with no transaction open (idempotent by the sandbox's ids, so a try repeated after a crash finds what the first
 // made), and the result is written under the version the claim left. No container is started.
+//
+// The same loop DELETES a desk its owner deleted (Governance → Employee desks): a sandbox DELETING is removed through
+// the provider -- every area of the employee, read back -- tried again (backing off, never given up) until it is gone,
+// and only then is it DELETED and the employee's desk and cache storage released: what the account is told it may use
+// again is never still on the pool's disk.
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { Db } from "../../../infra/db/db.js";
+import { ResourcesService } from "../../execution/application/resources.service.js";
 import { SANDBOX_PROVIDER, type ProvisionResult, type SandboxProvider } from "../../execution/application/sandbox.port.js";
 import { systemActor } from "../../shared/application/commands.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
@@ -29,6 +35,7 @@ export class SandboxProvisioner implements OnApplicationBootstrap, OnModuleDestr
     @Inject(Db) private readonly db: Db,
     @Inject(SandboxRepository) private readonly sandboxes: SandboxRepository,
     @Inject(Outbox) private readonly outbox: Outbox,
+    @Inject(ResourcesService) private readonly resources: ResourcesService,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
   ) {}
 
@@ -79,7 +86,50 @@ export class SandboxProvisioner implements OnApplicationBootstrap, OnModuleDestr
       const quotas = row.profile as { deskStorageMiB: number; cacheStorageMiB: number };
       if (await this.provision(String(row.account_id), String(row.id), String(row.employee_id), Number(row.version), Number(row.provision_attempts), { deskMiB: quotas.deskStorageMiB, cacheMiB: quotas.cacheStorageMiB })) n += 1;
     }
+    return n + (await this.sweepDeletions());
+  }
+
+  // Every desk being deleted and due a try, oldest first.
+  private async sweepDeletions(): Promise<number> {
+    const due = await this.db.query(
+      `SELECT account_id, id, employee_id, version, provision_attempts FROM workforce.sandboxes
+       WHERE state = 'DELETING' AND (provision_attempts = 0 OR updated_at + make_interval(secs => LEAST(300, power(2, GREATEST(1, provision_attempts)))) <= now())
+       ORDER BY updated_at LIMIT 20`,
+    );
+    let n = 0;
+    for (const row of due) {
+      if (this.closing) break;
+      if (await this.remove(String(row.account_id), String(row.id), String(row.employee_id), Number(row.version), Number(row.provision_attempts))) n += 1;
+    }
     return n;
+  }
+
+  private async remove(orbitId: string, sandboxId: string, employeeId: string, version: number, tries: number): Promise<boolean> {
+    const claimed = await this.db.run("UPDATE workforce.sandboxes SET provision_attempts = provision_attempts + 1, updated_at = now(), version = version + 1 WHERE account_id = $1 AND id = $2 AND state = 'DELETING' AND version = $3", [orbitId, sandboxId, version]);
+    if (claimed === 0) return false;
+    let result: { gone: boolean; detail: string };
+    try {
+      result = await (this.provider as SandboxProvider).deleteEmployee({ orbitId, employeeId, sandboxId });
+    } catch (err) {
+      result = { gone: false, detail: err instanceof Error ? err.message.slice(0, 300) : String(err).slice(0, 300) };
+    }
+    if (!result.gone) {
+      this.logger.warn(`Deleting the desk of ${employeeId} did not finish (try ${tries + 1}); it is tried again in ${backoff(tries + 1)} s: ${result.detail}`);
+      await this.db.run("UPDATE workforce.sandboxes SET reason = $3 WHERE account_id = $1 AND id = $2 AND state = 'DELETING'", [orbitId, sandboxId, `Being deleted: ${result.detail}`.slice(0, 400)]);
+      return false;
+    }
+    await this.db.tx(async () => {
+      const s = await this.sandboxes.ofEmployee(orbitId, employeeId, true);
+      if (s === null || s.id !== sandboxId || s.state !== "DELETING") return;
+      const at = new Date().toISOString();
+      const v = await this.sandboxes.save({ ...s, state: "DELETED", areas: [], reason: `Deleted by its owner: ${result.detail}` }, at);
+      await this.resources.commit(orbitId, "desk", employeeId, 0);
+      await this.resources.commit(orbitId, "cache", employeeId, 0);
+      const actor = systemActor(orbitId, "sandbox-provisioner", `sandbox:${sandboxId}`);
+      await this.outbox.append(actor.command, [{ type: "SandboxDeleted", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: v, payload: { employeeId, detail: result.detail } }]);
+      await this.outbox.touched(orbitId, ["roster"]);
+    });
+    return true;
   }
 
   private async provision(orbitId: string, sandboxId: string, employeeId: string, version: number, tries: number, quotas: { deskMiB: number; cacheMiB: number }): Promise<boolean> {

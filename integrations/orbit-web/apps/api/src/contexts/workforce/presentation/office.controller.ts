@@ -19,8 +19,9 @@
 //   PATCH /api/employees/:id/resources                         a new resource revision       (If-Match)
 //   POST  /api/employees/:id/department                        move to a department          (If-Match)
 //   POST  /api/employees/:id/employment                        probation, activate, suspend… (If-Match)
+//   GET   /api/office/desks                                    Governance → Employee desks: who left, what desk each holds
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
-import { checkUpdateBudget, type Department, type EmployeeDetail, type EmployeeProfile, type EmployeeTemplate, type Office, type ResourcePreset, type ResourceSummary, type Roster } from "@orbit-web/contracts";
+import { checkUpdateBudget, type Department, type EmployeeDeskList, type EmployeeDetail, type EmployeeProfile, type EmployeeTemplate, type Office, type ResourcePreset, type ResourceSummary, type Roster } from "@orbit-web/contracts";
 import type { Request } from "express";
 import { accepted } from "../../../common/errors.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
@@ -117,6 +118,14 @@ export class OfficeController {
     await this.governance.recorded(actor, "resources.capacity.check", "capacity", orbitId, 0, `usable ${capacity.usable.cpuMillis} millicores, ${capacity.usable.memoryMiB} MiB, ${capacity.usable.storageMiB} MiB storage; ${moved} budget(s) followed`);
     await this.outbox.touched(orbitId, ["roster"]);
     return this.resources.summary(orbitId);
+  }
+
+  // Governance → Employee desks: every employee who left and the desk it still holds, beside the account's storage.
+  @Get("office/desks")
+  async desks(): Promise<EmployeeDeskList> {
+    const orbitId = ownerActor().command.orbitId;
+    const summary = await this.resources.summary(orbitId);
+    return { desks: await this.employees.desks(orbitId), storage: { budgetMiB: summary.storage.budgetMiB, committedMiB: summary.storage.committedMiB }, asOf: new Date().toISOString() };
   }
 
   @Post("employees")

@@ -39,10 +39,12 @@ function notReady(f: LabelFacts): string | null {
   if (f.employment === "candidate") return "Hired, but not started: begin the trial or activate.";
   if (f.employment === "suspended") return "Suspended.";
   if (f.employment === "archived") return "Archived.";
+  if (f.employment === "deleted") return "Archived, and their desk deleted.";
   if (f.expired) return "Their engagement as an assistant ended.";
   if (f.sandbox === null || f.sandbox === "PROVISIONING") return "Their Personal Sandbox is being prepared.";
   if (f.sandbox === "FAILED") return `Their Personal Sandbox could not be prepared: ${f.sandboxReason ?? "no reason given"}.`;
   if (f.sandbox === "ARCHIVED") return "Their Personal Sandbox is archived.";
+  if (f.sandbox === "DELETING" || f.sandbox === "DELETED") return "Their Personal Sandbox was deleted.";
   if (!f.connectionUsable) return f.connectionReason ?? "Their AI connection cannot run work now.";
   return null;
 }

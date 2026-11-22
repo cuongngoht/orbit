@@ -325,7 +325,8 @@ provider's words it rests on, with their source:
   shows the browser that started it the link the CLI printed: open it and sign in; for **Claude Code** paste back the
   code its page shows (it goes to the CLI's stdin and nowhere else), for **OpenAI Codex** enter the one-time code the
   card shows on OpenAI's page -- nothing comes back. The card turns *Connected* once the CLI's own status names who it
-  is signed in as. Another browser of the account sees that a sign-in is under way and by whom, never its link or code;
+  is signed in as (for Codex, whose `login status` names no ChatGPT account, its own app server's `account/read`: the
+  email and the workspace). Another browser of the account sees that a sign-in is under way and by whom, never its link or code;
   no link, code or token is kept anywhere (the audit record says that a sign-in started and how it ended). **Or** in a
   terminal of the server, where nothing of the sign-in passes through Orbit Web's pages -- the card shows the command:
 
@@ -681,6 +682,12 @@ Governance is the **account's**, and you -- the account's owner, signed in -- go
 sidebar: there is no second sign-in, no operator and no organization to create. It shows what your
 account owns and nothing of another account's.
 
+- **Employee desks.** Everyone who left the office -- archived, or rejected at the trial -- keeps a desk, read only, and
+  its storage stays committed (an archive releases only the cache). **Governance → Employee desks** lists each one:
+  why and when it left, and what its desk and cache hold of the account's storage. Review them, and **Delete the desk**
+  of the ones you no longer need (confirmed; it cannot be undone): the desk, the cache and every workspace are removed
+  through the allocator -- tried again while a container of one of its attempts is still there -- and only once they
+  are read back gone is the storage released (ADR 0069).
 - **What it governs.** **Workspaces** (your chats, and their runs), **Research** (your research workspaces, their
   sessions, sources and runs) and the **Office** (hiring, giving and delegating work, publishing an employee's work,
   deliveries -- each an action of the policy, and every attempt bound to its account and employee). Each resource shows the policy that applies to it -- inherited from the

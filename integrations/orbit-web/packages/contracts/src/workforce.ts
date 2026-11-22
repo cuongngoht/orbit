@@ -12,7 +12,7 @@
 // their CONNECTION and the state of a RUN are separate again. The office shows a WORK LABEL worked out from them.
 import type { Checked } from "./validate.js";
 import { isRuntimeKind, RUNTIME_KINDS, type RuntimeKind } from "./ai-connections.js";
-import { checkResourceProfile, type ResourceEvidence, type ResourceProfile, type ResourceRevisionView, type SandboxView, type UsageView } from "./resources.js";
+import { checkResourceProfile, type ResourceEvidence, type ResourceProfile, type ResourceRevisionView, type SandboxState, type SandboxView, type UsageView } from "./resources.js";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -137,7 +137,8 @@ export interface Department {
   members: number;
 }
 
-export const EMPLOYMENT_STATES = ["candidate", "probation", "active", "suspended", "archived"] as const;
+// `deleted`: an archived employee whose desk its owner deleted (Governance → Employee desks); kept for what refers to it.
+export const EMPLOYMENT_STATES = ["candidate", "probation", "active", "suspended", "archived", "deleted"] as const;
 export type Employment = (typeof EMPLOYMENT_STATES)[number];
 
 export const AVAILABILITIES = ["available", "busy", "ineligible"] as const;
@@ -237,6 +238,31 @@ export interface EmployeeDetail extends EmployeeCard {
   activeRun: RunView | null;
 }
 
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0069): every employee who left -- archived, or rejected at the trial -- and the desk it
+// still holds: its storage stays committed until its owner deletes the desk here (POST /api/employees/:id/employment
+// { command: "delete" }, If-Match the employee's version). A desk being deleted is listed until it is gone.
+export interface EmployeeDesk {
+  employeeId: string;
+  name: string;
+  employment: Employment;
+  // Why it left, as the owner said.
+  reason: string | null;
+  leftAt: string;
+  sandbox: { state: SandboxState; reason: string | null } | null;
+  // What its desk and cache hold committed of the account's storage budget, and what was last measured in them.
+  deskMiB: number;
+  cacheMiB: number;
+  usedMiB: number | null;
+  // The employee's version: the delete names it.
+  version: number;
+}
+
+export interface EmployeeDeskList {
+  desks: EmployeeDesk[];
+  storage: { budgetMiB: number; committedMiB: number };
+  asOf: string;
+}
+
 export interface Roster {
   // Null: the account has no office yet (the page shows how to set one up).
   office: Office | null;
@@ -309,7 +335,8 @@ export interface MoveEmployeeRequest {
   departmentId: string | null;
 }
 
-export const EMPLOYMENT_COMMANDS = ["start_probation", "activate", "reject", "suspend", "reinstate", "archive"] as const;
+// `delete`: an archived employee's desk deleted for good (its sandbox removed, its storage released).
+export const EMPLOYMENT_COMMANDS = ["start_probation", "activate", "reject", "suspend", "reinstate", "archive", "delete"] as const;
 export type EmploymentCommand = (typeof EMPLOYMENT_COMMANDS)[number];
 
 export interface EmploymentRequest {
@@ -843,6 +870,8 @@ export const INTEGRATION_EVENTS = {
   SandboxProvisionRequested: 1,
   SandboxReady: 1,
   SandboxFailed: 1,
+  // An archived employee's desk, deleted by its owner, read back gone (ADR 0069).
+  SandboxDeleted: 1,
   // An accepted assignment's workspace was published to its employee's desk (and its toolbox), or could not be.
   DeskPublished: 1,
   EmployeeResourcesRevised: 1,

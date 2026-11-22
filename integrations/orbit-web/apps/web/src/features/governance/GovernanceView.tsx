@@ -12,6 +12,7 @@ import {
   DocumentCheckmark16Regular,
   DocumentText16Regular,
   History16Regular,
+  Desktop16Regular,
   Navigation20Regular,
   Scales16Regular,
   ShieldKeyhole20Regular,
@@ -23,6 +24,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { AuditPage } from "./AuditPage";
 import { DecisionsPage } from "./DecisionsPage";
+import { EmployeeDesksPage } from "./EmployeeDesksPage";
 import { FindingsPage } from "./FindingsPage";
 import { OverviewPage } from "./OverviewPage";
 import { PolicyPage } from "./PolicyPage";
@@ -34,6 +36,7 @@ const TITLES: Record<GovernancePage, string> = {
   policy: "Policy",
   workspaces: "Workspaces",
   research: "Research",
+  desks: "Employee desks",
   approvals: "Approvals",
   decisions: "Decisions",
   audit: "Audit timeline",
@@ -46,6 +49,7 @@ const ICONS: Record<GovernancePage, ReactElement> = {
   policy: <DocumentCheckmark16Regular />,
   workspaces: <Chat16Regular />,
   research: <BookOpen16Regular />,
+  desks: <Desktop16Regular />,
   approvals: <CheckmarkCircle16Regular />,
   decisions: <Scales16Regular />,
   audit: <History16Regular />,
@@ -187,6 +191,7 @@ function Page({ page, item, go }: { page: GovernancePage; item: string | null; g
   if (page === "policy") return <PolicyPage item={item} go={go} />;
   if (page === "workspaces") return <ResourcesPage kind="workspace" item={item} go={go} />;
   if (page === "research") return <ResourcesPage kind="research_workspace" item={item} go={go} />;
+  if (page === "desks") return <EmployeeDesksPage />;
   if (page === "decisions") return <DecisionsPage go={go} />;
   if (page === "approvals") return <ApprovalsPage item={item} />;
   if (page === "audit") return <AuditPage item={item} />;

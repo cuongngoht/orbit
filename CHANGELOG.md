@@ -80,6 +80,16 @@ plugin it bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`
   value that stood at it moves, one the owner lowered stays). `governance.js budget show | set` -- the command the pages
   named -- authorizes an account's own numbers (kept until `--from-capacity`). The budget form takes any value up to the
   authorization (the browser's step check no longer refuses one like 0.05 vCPU).
+- **Governance → Employee desks** (ADR 0069). Everyone who left the office -- archived, or rejected at the trial -- is
+  listed with the desk it still holds and what that holds of the account's storage; the owner deletes a desk there
+  (confirmed, for good): the sandbox is removed through the allocator (`deleteEmployee`, read back, tried again while
+  an attempt's container is still there) and only then is its storage released. The employee stays, `deleted`, and
+  leaves the office's lists.
+- **Codex's ChatGPT identity** (ADR 0068): codex-cli 0.169.0's `login status` names no account, so a ChatGPT sign-in is
+  named by `codex app-server`'s `account/read` (email, workspace) -- connected, held to one identity, one account. The
+  card folds the terminal command away behind *Use the server's terminal instead*.
+- **The budget form sends only what was typed**: a field nobody touched is never sent, however its value rounds on the
+  page (a storage budget of 18374 MiB was sent back as 18371 and stopped following the capacity).
 - **Every AI CLI in the image** (ADR 0069): OpenAI Codex CLI 0.169.0 and the Google Antigravity CLI (`agy`) 1.5.14
   (its release archive pinned by SHA-512 per architecture) beside Claude Code, in the control plane's and the model
   plane's images; Settings → System names their versions.

@@ -190,7 +190,8 @@ export interface UsageView {
   sampledAt: string | null;
 }
 
-export const SANDBOX_STATES = ["PROVISIONING", "READY", "FAILED", "ARCHIVED"] as const;
+// DELETING: an archived employee's desk being removed (tried again until the allocator reads it back gone); DELETED: gone.
+export const SANDBOX_STATES = ["PROVISIONING", "READY", "FAILED", "ARCHIVED", "DELETING", "DELETED"] as const;
 export type SandboxState = (typeof SANDBOX_STATES)[number];
 
 export interface SandboxAreaView {

@@ -908,7 +908,7 @@ CREATE TABLE workforce.employees (
   kind text NOT NULL CHECK (kind IN ('permanent', 'assistant')),
   department_id uuid,
   manager_id uuid,
-  employment text NOT NULL CHECK (employment IN ('candidate', 'probation', 'active', 'suspended', 'archived')),
+  employment text NOT NULL CHECK (employment IN ('candidate', 'probation', 'active', 'suspended', 'archived', 'deleted')),
   employment_reason text,
   profile_revision integer NOT NULL,
   resource_revision integer NOT NULL,
@@ -927,7 +927,7 @@ CREATE TABLE workforce.employees (
   CHECK (manager_id IS NULL OR manager_id <> id),
   CHECK ((kind = 'assistant') = (expires_at IS NOT NULL))
 );
-CREATE INDEX employees_by_department ON workforce.employees (account_id, department_id) WHERE employment <> 'archived';
+CREATE INDEX employees_by_department ON workforce.employees (account_id, department_id) WHERE employment NOT IN ('archived', 'deleted');
 CREATE TRIGGER employees_account_fixed BEFORE UPDATE ON workforce.employees FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 -- An employee's profile, one immutable revision at a time (an assignment pins the one it was claimed under).
@@ -964,7 +964,7 @@ CREATE TABLE workforce.sandboxes (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL,
   employee_id uuid NOT NULL,
-  state text NOT NULL CHECK (state IN ('PROVISIONING', 'READY', 'FAILED', 'ARCHIVED')),
+  state text NOT NULL CHECK (state IN ('PROVISIONING', 'READY', 'FAILED', 'ARCHIVED', 'DELETING', 'DELETED')),
   reason text,
   provider text NOT NULL CHECK (provider IN ('container', 'process')),
   areas jsonb NOT NULL,

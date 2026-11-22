@@ -226,7 +226,7 @@ export class OfficeService {
        LEFT JOIN workforce.reservations rv ON rv.account_id = e.account_id AND rv.employee_id = e.id
        LEFT JOIN workforce.assignments a ON a.account_id = rv.account_id AND a.id = rv.assignment_id
        LEFT JOIN workforce.missions m ON m.account_id = a.account_id AND m.id = a.mission_id
-       WHERE e.account_id = $1 AND ${only !== null ? "e.id = $2" : "e.employment <> 'archived'"}`,
+       WHERE e.account_id = $1 AND ${only !== null ? "e.id = $2" : "e.employment NOT IN ('archived', 'deleted')"}`,
       only !== null ? [orbitId, only] : [orbitId],
     );
     const connections = new Map((await this.connections.all(orbitId)).map((c) => [c.id, c]));

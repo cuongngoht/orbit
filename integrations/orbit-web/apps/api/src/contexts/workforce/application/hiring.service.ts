@@ -198,10 +198,24 @@ export class HiringService {
         if (s !== null && s.state !== "ARCHIVED") await this.sandboxes.save({ ...s, state: "ARCHIVED", reason: "The employee was archived: the desk is kept, read-only." }, at);
         await this.resources.commit(orbitId, "cache", employeeId, 0);
       }
+      if (e.data.employment === "deleted") await this.deleteDesk(orbitId, employeeId, at);
       await this.outbox.append(actor.command, events);
       await this.outbox.touched(orbitId, ["roster"]);
       await this.governance.recorded(actor, `employee.${req.command}`, "employee", employeeId, v, req.reason ?? "");
     });
+  }
+
+  // Its owner deleted an archived employee's desk (Governance → Employee desks): the sandbox goes DELETING, and the
+  // provisioner removes it through the provider, tried again until it is read back gone (sandbox-provisioner.ts) -- only
+  // then is its storage released. An employee with no sandbox has nothing to remove: its storage is released now.
+  private async deleteDesk(orbitId: string, employeeId: string, at: string): Promise<void> {
+    const s = await this.sandboxes.ofEmployee(orbitId, employeeId, true);
+    if (s !== null && s.state !== "DELETED") {
+      await this.sandboxes.save({ ...s, state: "DELETING", reason: "Its owner deleted the desk: it is being removed.", provisionAttempts: 0 }, at);
+      return;
+    }
+    await this.resources.commit(orbitId, "desk", employeeId, 0);
+    await this.resources.commit(orbitId, "cache", employeeId, 0);
   }
 
   // The execution an employee may be given: on a VERIFIED connection of this account, with a model of that connection's

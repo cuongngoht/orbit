@@ -62,6 +62,23 @@ describe("Settings → Compute & storage: what the account's employees may use, 
     expect(rowOf(within(capacity).getByRole("table", { name: "Capacity" }), "CPU").textContent).toBe("CPU8 vCPU2 vCPU6 vCPU");
   });
 
+  test("a field nobody touched is never sent, however its value rounds on the page (18374 MiB shown as 17.94 GiB)", async () => {
+    const base = resourceSummary().budget;
+    const budget = { ...base, cpuMillis: 50, storageMiB: 18374, authorized: { ...base.authorized, storageMiB: 18374 } };
+    const api = fakeApi()
+      .on("GET", "/api/office/resources", () => resourceSummary({ budget }))
+      .on("PATCH", "/api/office/resources/budget", () => resourceSummary());
+    renderLive(<ComputeStorageSection />);
+    const form = await screen.findByRole("form", { name: "Change the budget" });
+    expect(within(form).getByRole("spinbutton", { name: /^Persistent storage/ })).toHaveValue(17.94);
+    const cpu = within(form).getByRole("spinbutton", { name: /^CPU \(vCPU\)/ });
+    await userEvent.clear(cpu);
+    await userEvent.type(cpu, "0.04");
+    await userEvent.click(within(form).getByRole("button", { name: "Save the budget" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
+    expect(api.calls.find((c) => c.method === "PATCH")?.body).toEqual({ cpuMillis: 40 }, "only the CPU, typed; the storage stays as it is");
+  });
+
   test("the budget is lowered against the version read, and never offered above the operator's authorization", async () => {
     const api = fakeApi()
       .on("GET", "/api/office/resources", () => resourceSummary())

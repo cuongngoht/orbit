@@ -40,7 +40,10 @@ pass through Orbit" -- the terminal stays, beside the card. For Orbit Web only: 
    record says `ai_connection.<runtime>.subscription.sign_in_started` and `…signed_in_from_page` with the connection's
    id and how it ended. The CLI keeps its login in the connection's home, as from the terminal.
 4. **Verified, not said.** A sign-in ends connected only when the CLI's own status names the identity, held to ADR
-   0067's ONE IDENTITY, ONE ACCOUNT (`ConnectionProbe.check`); the CLI exiting 0 proves nothing by itself.
+   0067's ONE IDENTITY, ONE ACCOUNT (`ConnectionProbe.check`); the CLI exiting 0 proves nothing by itself. Codex's
+   `codex login status` (codex-cli 0.169.0) says only "Logged in using ChatGPT", so a ChatGPT sign-in is named by the
+   CLI's own app server instead: `codex app-server`, `initialize` then `account/read` (no token refreshed) -- the
+   account's email and workspace, the workspace's id telling two workspaces of one email apart.
 5. **Add, then the link.** Adding a subscription connection starts its sign-in on its card at once. **Reconnect** on a
    subscription runs the same sign-in again from the card; on a connected one, the same identity stays connected and
    another makes it `identity_changed` -- who a connection is still changes only by disconnecting it.

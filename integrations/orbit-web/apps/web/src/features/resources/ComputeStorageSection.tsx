@@ -108,6 +108,9 @@ const shown = (l: Limit, v: number): string => (isCpu(l) ? cpuText(v) : isCount(
 function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResourceBudget; onSaved: (r: ResourceSummary) => void; onLoadLatest: () => void }) {
   const s = useStyles();
   const [draft, setDraft] = useState<Draft>(() => draftOf(budget));
+  // What each field said when the form opened: a field is a change only once its text differs from it -- comparing the
+  // rounded GiB shown with the MiB kept made a field nobody touched look changed (18374 MiB shown 17.94, sent 18371).
+  const [opened] = useState<Draft>(() => draftOf(budget));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ text: string; stale: boolean } | null>(null);
   const values = LIMITS.map((l) => ({ l, value: l.toApi(Number(draft[l.key])), typed: draft[l.key] }));
@@ -116,7 +119,7 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
   const change: UpdateBudgetRequest = {};
   const perEmployee: Partial<PerEmployeeCeiling> = {};
   for (const v of values) {
-    if (invalid.includes(v) || v.value === v.l.current(budget)) continue;
+    if (invalid.includes(v) || v.typed.trim() === opened[v.l.key].trim() || v.value === v.l.current(budget)) continue;
     if (v.l.key === "cpu") change.cpuMillis = v.value;
     if (v.l.key === "memory") change.memoryMiB = v.value;
     if (v.l.key === "storage") change.storageMiB = v.value;

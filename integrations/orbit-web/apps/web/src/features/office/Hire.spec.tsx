@@ -155,6 +155,26 @@ describe("hiring an employee, in five steps", () => {
     expect(posted(a)).toMatchObject({ skipProbation: true, skipReason: "Proven on the old team" });
   });
 
+  test("a team lead: the switch says what it means, the review repeats it, and the hire asks for it", async () => {
+    const a = api();
+    const { dialog } = await open();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Mai");
+    await next(dialog);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Role title/ }), "Team lead");
+    const lead = within(dialog).getByRole("switch", { name: "Team lead: may give parts of its work to colleagues" });
+    expect(lead).not.toBeChecked();
+    expect(dialog.textContent).toContain("reviews each part as it is handed in, and hands the whole in to you");
+    await userEvent.click(lead);
+    await next(dialog);
+    await within(dialog).findByRole("radio", { name: "Claude Code — Claude subscription" });
+    await next(dialog);
+    await next(dialog);
+    expect(within(dialog).getByLabelText("Your choices").textContent).toContain("Team leadYes: may give parts of its work to colleagues");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hire" }));
+    await waitFor(() => expect(posted(a)).toBeDefined());
+    expect(posted(a)?.profile).toMatchObject({ title: "Team lead", canDelegate: true, maxAssistants: 0 });
+  });
+
   test("a refusal says why: a per-employee limit, with the API's reasons", async () => {
     api(() => withStatus(422, { error: { code: "resource_limit_exceeded", message: "The profile is above the account's per-employee limit.", details: { reasons: ["memory 8192 MiB is above the per-employee limit of 4096 MiB"] } } }));
     const { dialog } = await open();

@@ -11,6 +11,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
 import { Disclosure, useOfficeStyles, when } from "./parts";
+import { NO_SOURCES, SourcesPicker, type PinnedSources } from "./SourcesPicker";
 
 const useStyles = makeStyles({
   surface: { width: "min(720px, 96vw)", maxWidth: "min(720px, 96vw)", maxHeight: "92dvh" },
@@ -35,6 +36,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const [criteria, setCriteria] = useState("");
   const [deadline, setDeadline] = useState("");
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("reject");
+  const [sources, setSources] = useState<PinnedSources>(NO_SOURCES);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -54,6 +56,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
       .map((l) => l.trim())
       .filter((l) => l.length > 0),
     deadline: deadline ? new Date(deadline).toISOString() : null,
+    ...(sources.workspaceId !== null && sources.revisionIds.length > 0 ? { workspaceId: sources.workspaceId, sourceRevisionIds: sources.revisionIds } : {}),
   });
 
   const submit = async (mode: WhenBusy) => {
@@ -185,6 +188,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                   </div>
                 </div>
               </div>
+              <SourcesPicker value={sources} onChange={setSources} />
               <Field label="Acceptance criteria" hint="Optional, one per line: what makes the result acceptable.">
                 <Textarea value={criteria} resize="vertical" rows={3} onChange={(_, d) => setCriteria(d.value)} />
               </Field>

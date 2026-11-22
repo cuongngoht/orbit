@@ -88,9 +88,10 @@ interface Draft {
   resources: ResourceProfile | null;
   skipProbation: boolean;
   skipReason: string;
+  canDelegate: boolean;
 }
 
-const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "" };
+const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false };
 
 const list = (text: string): string[] =>
   text
@@ -196,7 +197,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
             execution: { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch, orbitPlugin },
             handoffStandard: draft.handoffStandard.trim(),
             reportingRule: draft.reportingRule.trim(),
-            canDelegate: false,
+            canDelegate: draft.canDelegate,
             maxAssistants: 0,
             canHirePermanent: false,
           },
@@ -302,6 +303,12 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     <Input value={draft.handoffStandard} onChange={(_, d) => set({ handoffStandard: d.value })} />
                   </Field>
                 </div>
+                <div className={s.option}>
+                  <Switch label="Team lead: may give parts of its work to colleagues" checked={draft.canDelegate} onChange={(_, d) => set({ canDelegate: d.checked })} />
+                  <Text size={200}>
+                    A team lead splits an assignment into parts for other employees of the office, shares a team room with them for that mission, reviews each part as it is handed in, and hands the whole in to you. Its colleagues need no switch.
+                  </Text>
+                </div>
               </div>
             )}
 
@@ -379,6 +386,8 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                   <dd className={o.dd}>{body.profile.title}</dd>
                   <dt className={o.dt}>Department</dt>
                   <dd className={o.dd}>{department?.name ?? "Unassigned"}</dd>
+                  <dt className={o.dt}>Team lead</dt>
+                  <dd className={o.dd}>{draft.canDelegate ? "Yes: may give parts of its work to colleagues" : "No"}</dd>
                   <dt className={o.dt}>Runtime</dt>
                   <dd className={o.dd}>
                     {RUNTIME_LABELS[connection.runtime]} — {connection.label}

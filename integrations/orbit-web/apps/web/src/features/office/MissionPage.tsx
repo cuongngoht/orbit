@@ -4,19 +4,19 @@
 // read (its digest) and the assignment's version: if either moved on, nothing is done and the page offers the latest.
 import { Badge, Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Spinner, Tab, TabList, Text, Textarea, useRestoreFocusTarget } from "@fluentui/react-components";
 import { ArrowDownload16Regular } from "@fluentui/react-icons";
-import { ASSIGNMENT_STATE_TEXT, DELIVERY_STATE_TEXT, type AssignmentView, type DeliveryView, type HandoffStatus, type HandoffView, type MissionDetail } from "@orbit-web/contracts";
+import { ASSIGNMENT_STATE_TEXT, DELIVERY_STATE_TEXT, type AssignmentView, type DeliveryView, type HandoffStatus, type HandoffView, type MissionDetail, type TeamRoomChange } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
-import { sizeText } from "../resources/format";
+import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, type AssignmentCommand } from "./api";
 import { AsOf, ProblemBar, RUN_STATE_TEXT, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
 import { RunDetails } from "./RunDetails";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
-export const MISSION_TABS = ["overview", "timeline", "handoffs", "run"] as const;
+export const MISSION_TABS = ["overview", "timeline", "handoffs", "team", "run"] as const;
 type MissionTab = (typeof MISSION_TABS)[number];
-const TAB_TEXT: Record<MissionTab, string> = { overview: "Overview", timeline: "Timeline", handoffs: "Handoffs", run: "Last run" };
+const TAB_TEXT: Record<MissionTab, string> = { overview: "Overview", timeline: "Timeline", handoffs: "Handoffs", team: "Team room", run: "Last run" };
 
 const HANDOFF_TEXT: Record<HandoffStatus, string> = { submitted: "Submitted", revision_requested: "Revision requested", accepted: "Accepted", superseded: "Superseded" };
 
@@ -83,6 +83,11 @@ function AssignmentRow({ a, go, depth }: { a: AssignmentView; go: Go; depth: num
         </Link>
         {a.pinned.departmentName ? ` (${a.pinned.departmentName} when claimed)` : ""} · {a.attempts} attempt(s) · revision {a.handoffRevision}
       </Text>
+      {a.unitKey !== null && (
+        <Text size={200} className={o.muted}>
+          Part “{a.unitKey}” of its manager's plan{a.brief.dependsOn.length > 0 ? ` · waits for ${a.brief.dependsOn.map((k) => `“${k}”`).join(", ")}` : ""}
+        </Text>
+      )}
       {(a.reason || a.waitingOn) && (
         <Text size={200} className={o.warn}>
           {a.reason ?? ""}
@@ -117,6 +122,53 @@ function Plan({ assignments, go }: { assignments: AssignmentView[]; go: Go }) {
         <AssignmentRow key={a.id} a={a} go={go} depth={depth} />
       ))}
     </ul>
+  );
+}
+
+// The mission's team room: every change its members' attempts made, in order -- which file, what it became, and whose
+// attempt changed it. The room is a workbench shared by the mission's team; what was accepted is in the handoffs.
+function TeamRoom({ missionId, go }: { missionId: string; go: Go }) {
+  const o = useOfficeStyles();
+  const changes = useOfficeRead<TeamRoomChange[]>(() => office.teamRoom(missionId), [missionId], ["missions"], missionId);
+  if (changes.data === null)
+    return changes.error ? (
+      <MessageBar intent="error">
+        <MessageBarBody>The team room could not be read: {changes.error}</MessageBarBody>
+      </MessageBar>
+    ) : (
+      <Spinner size="tiny" label="Reading the team room…" />
+    );
+  if (changes.data.length === 0)
+    return (
+      <Text className={o.muted}>
+        Nothing was written in a team room for this mission. A team lead's mission has one: its members share it while they work, and each change is kept here with whose attempt made it.
+      </Text>
+    );
+  return (
+    <ol className={o.list} aria-label="Team room changes">
+      {changes.data.map((c, i) => (
+        <li key={`${i}:${c.path}`} className={o.item}>
+          <div className={o.row}>
+            <Text weight="semibold" size={200} className={o.mono}>
+              {c.path}
+            </Text>
+            <Text size={200} className={o.muted}>
+              {c.sha256 === null ? "removed" : `${bytesText(c.size)} · ${short(c.sha256)}`}
+            </Text>
+          </div>
+          <Text size={200} className={o.muted}>
+            {when(c.at)} ·{" "}
+            {c.employeeId !== null && c.employeeName !== null ? (
+              <Link as="button" onClick={() => go("employee", c.employeeId)}>
+                {c.employeeName}
+              </Link>
+            ) : (
+              "an attempt no longer on record"
+            )}
+          </Text>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -241,7 +293,7 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
                 <ArrowDownload16Regular aria-hidden /> {x.name}
               </Link>
               <Text size={200} className={o.muted}>
-                {x.kind} · {x.mediaType} · {sizeText(x.size / 1048576)} · sha256 {short(x.sha256)}
+                {x.kind} · {x.mediaType} · {bytesText(x.size)} · sha256 {short(x.sha256)}
               </Text>
             </li>
           ))}
@@ -334,6 +386,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const root = m.assignments.find((a) => a.id === m.assignment.id) ?? m.assignments.find((a) => a.parentId === null) ?? null;
   const reload = () => void mission.reload();
   const handoffs = [...m.handoffs].sort((a, b) => b.revision - a.revision);
+  // A mission whose work was split into parts has a team room (the tab shows when asked for by its address too).
+  const hasTeam = m.assignments.some((a) => a.parentId !== null) || current === "team";
   return (
     <div className={o.page}>
       <div className={o.stack}>
@@ -355,7 +409,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       </div>
       <div className={`${o.tabStrip} orbit-hscroll`}>
         <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label="Mission">
-          {MISSION_TABS.map((t) => (
+          {MISSION_TABS.filter((t) => t !== "team" || hasTeam).map((t) => (
             <Tab key={t} value={t}>
               {TAB_TEXT[t]}
               {t === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
@@ -378,6 +432,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
               <dd className={o.dd}>{m.acceptanceCriteria.length === 0 ? "No criteria named" : m.acceptanceCriteria.join("; ")}</dd>
               <dt className={o.dt}>Accepted by</dt>
               <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? "You" : "Its manager"}</dd>
+              <dt className={o.dt}>Research sources</dt>
+              <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? "None pinned" : `${m.sourceRevisionIds.length} source revision(s) pinned, read-only`}</dd>
               <dt className={o.dt}>Created</dt>
               <dd className={o.dd}>
                 {when(m.createdAt)} by {m.createdBy}
@@ -427,6 +483,12 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
         ) : (
           handoffs.map((h) => <Handoff key={`${h.id}:${h.status}`} h={h} a={m.assignments.find((a) => a.id === h.assignmentId) ?? null} onDone={reload} onLoadLatest={reload} />)
         ))}
+
+      {current === "team" && (
+        <section className={o.card} aria-label="Team room">
+          <TeamRoom missionId={m.id} go={go} />
+        </section>
+      )}
 
       {current === "run" && (
         <section className={o.card} aria-label="Last run">

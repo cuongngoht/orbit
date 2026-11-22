@@ -227,13 +227,13 @@ export class MissionQueries {
     const assignments: AssignmentView[] = rows.map((r) => {
       const base = summaryOf(r);
       const run = runs.get(base.id);
-      const brief = r.brief as { goal: string; deliverables: AssignmentView["brief"]["deliverables"]; acceptanceCriteria: string[] };
+      const brief = r.brief as { goal: string; deliverables: AssignmentView["brief"]["deliverables"]; acceptanceCriteria: string[]; dependsOn?: string[] };
       const pinned = (r.pinned ?? null) as { profileRevision?: number; departmentId?: string | null; departmentName?: string | null; execution?: AssignmentView["pinned"]["execution"] } | null;
       return {
         ...base,
         parentId: sn(r.parent_id),
         unitKey: sn(r.unit_key),
-        brief: { goal: brief.goal, deliverables: brief.deliverables, acceptanceCriteria: brief.acceptanceCriteria },
+        brief: { goal: brief.goal, deliverables: brief.deliverables, acceptanceCriteria: brief.acceptanceCriteria, dependsOn: brief.dependsOn ?? [] },
         handoffRevision: Number(r.handoff_revision),
         reworkCount: Number(r.rework_count),
         pinned: { profileRevision: pinned?.profileRevision ?? null, departmentId: pinned?.departmentId ?? null, departmentName: pinned?.departmentName ?? null, execution: pinned?.execution ?? null },

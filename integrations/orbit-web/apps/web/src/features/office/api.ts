@@ -31,6 +31,7 @@ import type {
   UpdateEmployeeRequest,
   UpdateResourcesRequest,
   UpdateScheduleRequest,
+  TeamRoomChange,
   WorkLabel,
 } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -82,6 +83,7 @@ export const office = {
   createMission: (body: CreateMissionRequest, key: string) => send<MissionAccepted>("POST", "/api/missions", body, idempotent(key)),
   missions: (state: "open" | "closed", cursor: string | null = null) => get<MissionList>(`/api/missions${query({ state, cursor })}`),
   mission: (missionId: string) => get<MissionDetail>(`/api/missions/${id(missionId)}`),
+  teamRoom: (missionId: string) => get<TeamRoomChange[]>(`/api/missions/${id(missionId)}/team-room`),
   command: (assignmentId: string, version: number, command: AssignmentCommand, body?: unknown) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/${command}`, body ?? {}, ifMatch(version)),
   inbox: (state: "open" | "history", cursor: string | null = null) => get<Inbox>(`/api/inbox${query({ state, cursor })}`),
   schedules: () => get<ScheduleView[]>("/api/schedules"),

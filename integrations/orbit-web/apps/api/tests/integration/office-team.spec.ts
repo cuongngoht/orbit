@@ -125,6 +125,8 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     assert.equal(byKey(m, "research").employeeId, ids.Nam);
     assert.equal(byKey(m, "summary").state, "COMPLETED");
     assert.equal(byKey(m, "summary").parentId, byKey(m, null).id);
+    assert.deepEqual(byKey(m, "summary").brief.dependsOn, ["research"], "a part says what it waits for");
+    assert.deepEqual(byKey(m, "research").brief.dependsOn, []);
     assert.ok(m.planRevision >= 2, "the plan was revised when the parts were given");
     // The team room was shared: the research read the manager's brief, the summary read the research's data.
     assert.equal(said.Nam?.[0], "Q3 only; amounts in VND.\n");

@@ -474,7 +474,8 @@ export type RunState = (typeof RUN_STATES)[number];
 export interface AssignmentView extends AssignmentSummary {
   parentId: string | null;
   unitKey: string | null;
-  brief: { goal: string; deliverables: Deliverable[]; acceptanceCriteria: string[] };
+  // `dependsOn`: the keys of the parts of the same plan this part waits for (a part of a team's plan; [] otherwise).
+  brief: { goal: string; deliverables: Deliverable[]; acceptanceCriteria: string[]; dependsOn: string[] };
   handoffRevision: number;
   reworkCount: number;
   // Pinned when the employee claimed it: the profile revision, the department then (id and name), the execution asked.
@@ -563,6 +564,18 @@ export interface MissionDetail extends MissionSummary {
   timeline: TimelineEntry[];
   deliveries: DeliveryView[];
   resourceVersion: number;
+}
+
+// One change of a mission's team room, as the room's history keeps it: which file, what it became (its hash and size; null
+// when it was removed), and the attempt of which employee and assignment changed it.
+export interface TeamRoomChange {
+  path: string;
+  sha256: string | null;
+  size: number | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  assignmentId: string | null;
+  at: string;
 }
 
 export interface MissionList {

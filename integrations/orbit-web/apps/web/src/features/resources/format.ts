@@ -12,6 +12,14 @@ export const sizeText = (mib: number | null | undefined): string => {
   return `${n(mib, 0)} MiB`;
 };
 
+// A file's size, from its bytes: small files in bytes or KiB, larger ones as sizeText says them.
+export const bytesText = (bytes: number | null | undefined): string => {
+  if (bytes === null || bytes === undefined) return "unknown";
+  if (bytes < 1024) return `${n(bytes, 0)} ${bytes === 1 ? "byte" : "bytes"}`;
+  if (bytes < 1024 * 1024) return `${n(bytes / 1024, 1)} KiB`;
+  return sizeText(bytes / (1024 * 1024));
+};
+
 export const LEVEL_TEXT: Record<EnforcementLevel, string> = {
   HARD_ENFORCED: "Hard limit — the kernel refuses past it",
   SOFT_MONITORED: "Measured only — not a hard limit",

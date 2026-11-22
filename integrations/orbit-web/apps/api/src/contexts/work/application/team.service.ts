@@ -13,7 +13,7 @@
 //     REVIEWS them (`review_unit`: accept, or ask for a revision -- the part keeps its employee) and, once all are
 //     accepted, integrates and hands in its own result to the person who gave the work.
 import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
-import { WORKFORCE_LIMITS, type AssignmentState, type Deliverable } from "@orbit-web/contracts";
+import { WORKFORCE_LIMITS, type AssignmentState, type Deliverable, type TeamRoomChange } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
@@ -338,7 +338,7 @@ export class TeamService implements OnModuleInit {
     return n;
   }
 
-  async roomHistory(orbitId: string, missionId: string): Promise<{ path: string; sha256: string | null; size: number | null; employeeId: string | null; employeeName: string | null; assignmentId: string | null; at: string }[]> {
+  async roomHistory(orbitId: string, missionId: string): Promise<TeamRoomChange[]> {
     const rows = await this.db.query(
       `SELECT c.path, c.sha256, c.size, c.employee_id, e.name, c.assignment_id, c.changed_at FROM workforce.team_room_changes c
        JOIN workforce.team_rooms r ON r.account_id = c.account_id AND r.id = c.room_id

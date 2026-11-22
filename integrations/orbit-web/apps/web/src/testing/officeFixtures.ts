@@ -290,7 +290,7 @@ export function assignmentView(over: Partial<AssignmentView> = {}): AssignmentVi
     updatedAt: "2026-11-21T08:50:00.000Z",
     parentId: null,
     unitKey: null,
-    brief: { goal: "Write the Q3 report.", deliverables: [{ name: "q3-report.pdf", required: true }], acceptanceCriteria: ["Totals match the ledger"] },
+    brief: { goal: "Write the Q3 report.", deliverables: [{ name: "q3-report.pdf", required: true }], acceptanceCriteria: ["Totals match the ledger"], dependsOn: [] },
     handoffRevision: 2,
     reworkCount: 1,
     pinned: { profileRevision: 2, departmentId: DEPT_ACCOUNTING, departmentName: "Accounting", execution: execution() },

@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { CSRF, authAccount, authSession } from "../../testing/fixtures";
-import { ASSIGNMENT_ID, EMP_BAO, HANDOFF_DIGEST, MISSION_ID, assignmentView, busyBao, connectionsView, missionDetail, missionList, missionSummary, roster, runView } from "../../testing/officeFixtures";
+import { ASSIGNMENT_ID, EMP_ANA, EMP_BAO, HANDOFF_DIGEST, MISSION_ID, assignmentView, busyBao, connectionsView, missionDetail, missionList, missionSummary, roster, runView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
+import { REVISION_A, SOURCE_B, WORKSPACE_ID, source, workspaceSummary } from "../../testing/researchFixtures";
 import { NETWORK_DISCLOSURE } from "./parts";
 import { OfficeView } from "./OfficeView";
 
@@ -68,6 +69,47 @@ describe("assigning work", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
     expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
     expect(screen.getByText(/holds it now\. State: Assigned\./)).toBeInTheDocument();
+  });
+});
+
+describe("a mission with research sources", () => {
+  test("a workspace's sources are pinned at the revision they are at; one not read yet cannot be; the request names them", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/research/workspaces", () => [workspaceSummary()])
+      .on("GET", `/api/research/workspaces/${WORKSPACE_ID}/sources`, () => [source(), source({ id: SOURCE_B, title: "Draft memo", state: "queued", revision: null })])
+      .on("POST", "/api/missions", () => withStatus(201, accepted("ASSIGNED")));
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign work" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Summarise the policy");
+    const group = within(dialog).getByRole("group", { name: "Research sources" });
+    await userEvent.selectOptions(await within(group).findByRole("combobox", { name: "Research workspace" }), WORKSPACE_ID);
+    const pinned = await within(group).findByRole("checkbox", { name: "NIST policy — revision 1" });
+    expect(within(group).getByRole("checkbox", { name: "Draft memo — not read yet" })).toBeDisabled();
+    await userEvent.click(pinned);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
+    expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
+    const post = api.calls.find((c) => c.method === "POST" && c.path === "/api/missions");
+    expect(post?.body).toMatchObject({ goal: "Summarise the policy", workspaceId: WORKSPACE_ID, sourceRevisionIds: [REVISION_A] });
+  });
+
+  test("with no source chosen, the request names none", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/research/workspaces", () => [workspaceSummary()])
+      .on("POST", "/api/missions", () => withStatus(201, accepted("ASSIGNED")));
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign work" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Close the books");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
+    expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
+    const body = api.calls.find((c) => c.method === "POST" && c.path === "/api/missions")?.body as Record<string, unknown>;
+    expect(body.workspaceId).toBeUndefined();
+    expect(body.sourceRevisionIds).toBeUndefined();
   });
 });
 
@@ -145,6 +187,60 @@ describe("the work and one mission", () => {
     await userEvent.click(within(r2).getByRole("button", { name: "Load the latest" }));
     await waitFor(() => expect(api.calls.filter((c) => c.path === `/api/missions/${MISSION_ID}`).length).toBeGreaterThan(reads));
     expect(api.calls.filter((c) => c.path.endsWith("/accept"))).toHaveLength(1);
+  });
+
+  test("a team's mission: each part says its key and what it waits for, and the team room says who changed what", async () => {
+    const PART_A = "a2000000-0000-4000-8000-000000000001";
+    const PART_B = "a2000000-0000-4000-8000-000000000002";
+    const root = assignmentView({ title: "Q3 team report", state: "REVIEWING" });
+    const research = assignmentView({ id: PART_A, title: "Research", parentId: ASSIGNMENT_ID, unitKey: "research", employeeId: EMP_BAO, employeeName: "Bao", state: "COMPLETED" });
+    const summary = assignmentView({ id: PART_B, title: "Summary", parentId: ASSIGNMENT_ID, unitKey: "summary", state: "QUEUED", brief: { ...research.brief, dependsOn: ["research"] } });
+    fakeApi()
+      .on("GET", `/api/missions/${MISSION_ID}`, () => missionDetail({ assignments: [root, research, summary], sourceRevisionIds: [] }))
+      .on("GET", `/api/missions/${MISSION_ID}/team-room`, () => [
+        { path: "brief.md", sha256: "b".repeat(64), size: 24, employeeId: EMP_ANA, employeeName: "Ana", assignmentId: ASSIGNMENT_ID, at: "2026-11-21T09:00:00.000Z" },
+        { path: "data.csv", sha256: "c".repeat(64), size: 2048, employeeId: EMP_BAO, employeeName: "Bao", assignmentId: PART_A, at: "2026-11-21T09:05:00.000Z" },
+        { path: "old.txt", sha256: null, size: null, employeeId: EMP_BAO, employeeName: "Bao", assignmentId: PART_A, at: "2026-11-21T09:06:00.000Z" },
+      ]);
+    const go = vi.fn();
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="overview" go={go} account={authAccount()} />);
+    const plan = await screen.findByRole("list", { name: "Assignments" });
+    expect(plan.textContent).toContain("Part “research” of its manager's plan");
+    expect(plan.textContent).toContain("Part “summary” of its manager's plan · waits for “research”");
+    expect(screen.getByRole("region", { name: "What is wanted" }).textContent).toContain("Research sourcesNone pinned");
+    await userEvent.click(screen.getByRole("tab", { name: "Team room" }));
+    expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "team");
+  });
+
+  test("the team room tab lists each change in order, a removal as removed, and names whose attempt made it", async () => {
+    fakeApi()
+      .on("GET", `/api/missions/${MISSION_ID}`, () => missionDetail())
+      .on("GET", `/api/missions/${MISSION_ID}/team-room`, () => [
+        { path: "brief.md", sha256: "b".repeat(64), size: 24, employeeId: EMP_ANA, employeeName: "Ana", assignmentId: ASSIGNMENT_ID, at: "2026-11-21T09:00:00.000Z" },
+        { path: "data.csv", sha256: "c".repeat(64), size: 2048, employeeId: EMP_BAO, employeeName: "Bao", assignmentId: ASSIGNMENT_ID, at: "2026-11-21T09:05:00.000Z" },
+        { path: "old.txt", sha256: null, size: null, employeeId: EMP_BAO, employeeName: "Bao", assignmentId: ASSIGNMENT_ID, at: "2026-11-21T09:06:00.000Z" },
+      ]);
+    const go = vi.fn();
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="team" go={go} account={authAccount()} />);
+    const changes = await screen.findByRole("list", { name: "Team room changes" });
+    const items = within(changes).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]?.textContent).toMatch(/^brief\.md/);
+    expect(items[1]?.textContent).toMatch(/^data\.csv/);
+    expect(items[2]?.textContent).toMatch(/^old\.txt/);
+    expect(items[0]?.textContent).toContain("24 bytes");
+    expect(items[1]?.textContent).toContain("2 KiB");
+    expect(items[2]?.textContent).toContain("removed");
+    await userEvent.click(within(items[1] as HTMLElement).getByRole("button", { name: "Bao" }));
+    expect(go).toHaveBeenCalledWith("employee", EMP_BAO);
+  });
+
+  test("a mission with nothing in a team room says so", async () => {
+    fakeApi()
+      .on("GET", `/api/missions/${MISSION_ID}`, () => missionDetail())
+      .on("GET", `/api/missions/${MISSION_ID}/team-room`, () => []);
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="team" go={vi.fn()} account={authAccount()} />);
+    expect(await screen.findByText(/Nothing was written in a team room for this mission\./)).toBeInTheDocument();
   });
 
   test("the last run keeps requested, resolved and observed apart, says unknown as unknown, and says why it waits", async () => {

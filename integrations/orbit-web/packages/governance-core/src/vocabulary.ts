@@ -68,7 +68,7 @@ export const ACTIONS = {
   "tool.web": { summary: "Use the runtime's own web fetch and web search tools.", subject: "tools", enforcement: "runtime", sensitive: true, ceiling: {}, fingerprint: ["workspace"] },
   // A connector of the account: one of its claude.ai connectors, or an installed plugin's MCP server. The account's owner
   // chooses which a chat and research may use; the policy then decides each one, for each run.
-  "tool.connector": { summary: "Use one of the account's connectors (claude.ai's, an installed plugin's server, or -- an employee's ask, made by Orbit Web with the installation's sign-in -- GitHub or Azure DevOps).", subject: "tools", enforcement: "runtime", sensitive: true, ceiling: {}, fingerprint: ["connector"] },
+  "tool.connector": { summary: "Use one of the account's connectors (claude.ai's, an installed plugin's server, or -- an employee's ask, made by Orbit Web with a sign-in kept on its side -- GitHub, Azure DevOps or one of the account's MCP servers).", subject: "tools", enforcement: "runtime", sensitive: true, ceiling: {}, fingerprint: ["connector"] },
   "network.egress": { summary: "Open a connection from the agent's runtime to a host.", subject: "network", enforcement: "boundary", sensitive: true, ceiling: {}, fingerprint: ["host", "port"] },
   "filesystem.outside_workspace": { summary: "Reach files outside the agent's own storage.", subject: "filesystem", enforcement: "boundary", sensitive: true, ceiling: { agent: "deny", service: "deny" }, fingerprint: ["path"] },
   "credential.read_raw": { summary: "Read a stored credential itself: a token, a sign-in file, a session.", subject: "credentials", enforcement: "boundary", sensitive: true, ceiling: NOBODY, fingerprint: ["credential"] },
@@ -94,7 +94,7 @@ export const ACTIONS = {
   "artifact.publish": { summary: "Publish a handoff's files as immutable artifacts of the account.", subject: "resources", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["assignment"] },
   "notification.send": { summary: "Deliver an accepted result to a recipient.", subject: "resources", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["recipient", "digest"] },
   "budget.change": { summary: "Change the account's resource budget (never above the operator's authorization).", subject: "resources", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["account"] },
-  "connection.manage": { summary: "Add, change, sign out or remove an AI connection of the account.", subject: "credentials", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["connection"] },
+  "connection.manage": { summary: "Add, change, sign out or remove an AI connection or an MCP server of the account, or change what an employee may use of its connectors.", subject: "credentials", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["connection"] },
 } as const satisfies Record<string, ActionSpec>;
 
 export type ActionKind = keyof typeof ACTIONS;

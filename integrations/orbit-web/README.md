@@ -697,6 +697,21 @@ enters the employee's sandbox**, and nothing is written (reading only). Each ask
 the account's policy (`tool.connector`, the repository or project its resource) and recorded; its answer is fenced as
 data the employee must not take instructions from, and cut to 256 KiB. Turned off, the next ask is refused.
 
+**Knowledge bases (MCP servers).** **Settings → MCP servers** keeps the account's remote MCP servers (Streamable HTTP):
+a knowledge base, a wiki, a document store. A person adds one with a name, its URL and how Orbit Web signs in to it --
+nothing, a bearer token, or a token in a header they name; a token is typed once, kept in Orbit Web's credential store
+and never shown again, and a server with a token is reached over https only. Orbit Web reads its tools at once (a server
+that cannot be read yet is kept, saying why, so its sign-in can be put right and read again) and **allows only the ones
+the server marks read-only**; any other, and any tool the server adds later, is offered to employees only once a person
+checks it. Each server is then **off for every employee until a person turns it on** on the employee's **Access** tab
+(*Knowledge bases (MCP)*), saved at once. The employee sees its allowed tools as `kb_<server>_<tool>`; Orbit Web makes
+each ask itself, with the server's credential, on its own side -- **the credential never enters the sandbox**, and the
+employee's CLI keeps its one MCP server (Orbit's tools). Each ask is held to the grant and the tools allowed now, decided
+by the account's policy (`tool.connector`, resource `mcp:<server>/<tool>`) and recorded; its answer is fenced as data,
+not instructions, and cut. Orbit Web connects only to the public internet (or a range the installation named,
+`ORBIT_WEB_EGRESS_PRIVATE_ALLOW`), never to its own host, loopback or a cloud metadata service, to the very address it
+checked, and never follows a redirect. Removing a server takes its tools from every employee at their next ask.
+
 **Resources.** An attempt reserves its CPU and memory (its limits plus its model plane's) when it is admitted, and gives
 them back only once its containers are gone. With no room now -- in the account's budget or on this host -- its work
 **waits for resources** and starts by itself; one that can never fit as configured is **unschedulable**, said with the

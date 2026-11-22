@@ -1,6 +1,7 @@
-// AN EMPLOYEE'S GRANTS OF THE ACCOUNT'S CONNECTORS, in workforce.connection_grants: one live row per employee and
-// operation ("github.read", "azure.read"), its scope the repositories granted (or every one). A change revokes the live
-// row and writes the next one -- the history stays -- and turning a connector off revokes it.
+// AN EMPLOYEE'S GRANTS OF THE ACCOUNT'S CONNECTORS AND MCP SERVERS, in workforce.connection_grants: one live row per
+// employee and operation ("github.read", "azure.read", "mcp:<server id>.read"), a connector's scope the repositories
+// granted (or every one). A change revokes the live row and writes the next one -- the history stays -- and turning one
+// off revokes it.
 import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { ACCESS_CONNECTORS, type AccessConnector, type GrantedRepository } from "@orbit-web/contracts";
@@ -15,17 +16,23 @@ export interface LiveGrant {
 const operationOf = (c: AccessConnector): string => `${c}.read`;
 const connectorOf = (operation: unknown): AccessConnector | null => ACCESS_CONNECTORS.find((c) => operationOf(c) === operation) ?? null;
 const iso = (v: unknown): string => (v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString());
+const knowledgeOperation = (serverId: string): string => `mcp:${serverId}.read`;
+const KNOWLEDGE = /^mcp:([0-9a-f-]{36})\.read$/;
 
 @Injectable()
 export class ConnectionGrantStore {
   constructor(@Inject(Db) private readonly db: Db) {}
 
-  async live(accountId: string, employeeId: string): Promise<Map<AccessConnector, LiveGrant>> {
-    const rows = await this.db.query(
+  private liveRows(accountId: string, employeeId: string) {
+    return this.db.query(
       `SELECT operation, scope, created_at FROM workforce.connection_grants
         WHERE account_id = $1 AND grantee_kind = 'employee' AND grantee_id = $2 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`,
       [accountId, employeeId],
     );
+  }
+
+  async live(accountId: string, employeeId: string): Promise<Map<AccessConnector, LiveGrant>> {
+    const rows = await this.liveRows(accountId, employeeId);
     const out = new Map<AccessConnector, LiveGrant>();
     for (const r of rows) {
       const connector = connectorOf(r.operation);
@@ -34,6 +41,32 @@ export class ConnectionGrantStore {
       out.set(connector, { repositories: Array.isArray(scope.repositories) ? scope.repositories : null, grantedAt: iso(r.created_at) });
     }
     return out;
+  }
+
+  // The MCP servers an employee may use now: each one's id, and when it was let.
+  async liveKnowledge(accountId: string, employeeId: string): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    for (const r of await this.liveRows(accountId, employeeId)) {
+      const m = KNOWLEDGE.exec(String(r.operation));
+      if (m !== null) out.set(m[1] as string, iso(r.created_at));
+    }
+    return out;
+  }
+
+  async replaceKnowledge(accountId: string, employeeId: string, serverId: string, enabled: boolean, by: string): Promise<void> {
+    await this.db.tx(async () => {
+      await this.db.query(
+        `UPDATE workforce.connection_grants SET revoked_at = now(), version = version + 1
+          WHERE account_id = $1 AND grantee_kind = 'employee' AND grantee_id = $2 AND operation = $3 AND revoked_at IS NULL`,
+        [accountId, employeeId, knowledgeOperation(serverId)],
+      );
+      if (!enabled) return;
+      await this.db.query(
+        `INSERT INTO workforce.connection_grants (id, account_id, grantee_kind, grantee_id, operation, scope, created_by, created_at)
+         VALUES ($1, $2, 'employee', $3, $4, '{}'::jsonb, $5, now())`,
+        [randomUUID(), accountId, employeeId, knowledgeOperation(serverId), by],
+      );
+    });
   }
 
   // `repositories` undefined: the connector is turned off for the employee.

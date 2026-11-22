@@ -15,7 +15,8 @@ import { OfficeView } from "./OfficeView";
 beforeEach(() => rememberSession(authSession()));
 afterEach(() => rememberSession(null));
 
-const off: EmployeeAccess = { employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, grantedAt: null }] };
+const KB_ID = "0b5e2a7c-4d1f-4b8e-9c3a-6f7d8e9a0b1c";
+const off: EmployeeAccess = { employeeId: EMP_ANA, connectors: [{ connector: "github", enabled: false, repositories: null, grantedAt: null }, { connector: "azure", enabled: false, repositories: null, grantedAt: null }], knowledge: [] };
 
 describe("one employee's access to the account's connectors", () => {
   test("off until a person lets it -- for the repositories chosen; a connector not signed in says where to sign it in", async () => {
@@ -50,5 +51,32 @@ describe("one employee's access to the account's connectors", () => {
     const github = await screen.findByRole("region", { name: "GitHub" });
     expect(within(github).getByRole("switch")).toBeChecked();
     expect(within(github).getByRole("radio", { name: "Every repository this sign-in reaches" })).toBeChecked();
+  });
+
+  test("knowledge bases: each of the account's MCP servers off until a person turns it on, saved at once", async () => {
+    const withKb: EmployeeAccess = { ...off, knowledge: [{ serverId: KB_ID, name: "Team KB", enabled: false, grantedAt: null, tools: 2 }] };
+    const api = fakeApi()
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => withKb)
+      .on("GET", "/api/sources", () => sources("connected", "connected"))
+      .on("PUT", `/api/employees/${EMP_ANA}/access`, () => ({ ...withKb, knowledge: [{ ...withKb.knowledge[0], enabled: true, grantedAt: "2026-11-22T00:00:00.000Z" }] }));
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab="access" go={vi.fn()} account={authAccount()} />);
+    const knowledge = await screen.findByRole("region", { name: "Knowledge bases (MCP)" });
+    expect(knowledge.textContent).toContain("2 tools");
+    const toggle = within(knowledge).getByRole("switch", { name: /Team KB/ });
+    expect(toggle).not.toBeChecked();
+    await userEvent.click(toggle);
+    await waitFor(() => expect(api.calls.find((c) => c.method === "PUT")?.body).toEqual({ knowledge: [{ serverId: KB_ID, enabled: true }] }));
+    await waitFor(() => expect(within(knowledge).getByRole("switch", { name: /Team KB/ })).toBeChecked());
+  });
+
+  test("an account with no MCP server says where to add one", async () => {
+    fakeApi()
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => off)
+      .on("GET", "/api/sources", () => sources());
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab="access" go={vi.fn()} account={authAccount()} />);
+    const knowledge = await screen.findByRole("region", { name: "Knowledge bases (MCP)" });
+    expect(within(knowledge).getByRole("link", { name: /Settings → MCP servers/ })).toHaveAttribute("href", expect.stringContaining("settings=mcp-servers"));
   });
 });

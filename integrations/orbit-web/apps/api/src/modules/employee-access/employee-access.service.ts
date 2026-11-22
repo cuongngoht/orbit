@@ -1,6 +1,7 @@
-// WHAT AN EMPLOYEE MAY USE OF THE ACCOUNT'S CONNECTORS, as a person sees and changes it. A change is a signed-in
-// person's of that account, the policy's to allow (`connection.manage`), and recorded; a repository is granted only as
-// the connector lists it now (one it does not list is refused, as opening a chat on it is).
+// WHAT AN EMPLOYEE MAY USE OF THE ACCOUNT'S CONNECTORS AND MCP SERVERS, as a person sees and changes it. A change is a
+// signed-in person's of that account, the policy's to allow (`connection.manage`), and recorded; a repository is granted
+// only as the connector lists it now (one it does not list is refused, as opening a chat on it is), and an MCP server only
+// while the account has it.
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { ACCESS_CONNECTOR_LABELS, ACCESS_CONNECTORS, checkUpdateEmployeeAccess, type AccessConnector, type EmployeeAccess, type GrantedRepository } from "@orbit-web/contracts";
 import { accepted, ApiError } from "../../common/errors.js";
@@ -8,6 +9,7 @@ import type { Actor } from "../../contexts/shared/application/commands.js";
 import { Db } from "../../infra/db/db.js";
 import { AuditService } from "../governance/audit.service.js";
 import { PolicyService } from "../governance/policy.service.js";
+import { McpRegistry } from "../mcp-servers/mcp-registry.js";
 import { SourcesService } from "../sources/sources.module.js";
 import { ConnectionGrantStore } from "./grants.store.js";
 
@@ -19,17 +21,19 @@ export class EmployeeAccessService {
     @Inject(SourcesService) private readonly sources: SourcesService,
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(McpRegistry) private readonly registry: McpRegistry,
   ) {}
 
   async view(accountId: string, employeeId: string): Promise<EmployeeAccess> {
     await this.nameOf(accountId, employeeId);
-    const live = await this.grants.live(accountId, employeeId);
+    const [live, knowledge, servers] = await Promise.all([this.grants.live(accountId, employeeId), this.grants.liveKnowledge(accountId, employeeId), this.registry.servers(accountId)]);
     return {
       employeeId,
       connectors: ACCESS_CONNECTORS.map((connector) => {
         const g = live.get(connector);
         return { connector, enabled: g !== undefined, repositories: g?.repositories ?? null, grantedAt: g?.grantedAt ?? null };
       }),
+      knowledge: servers.map((s) => ({ serverId: s.id, name: s.name, enabled: knowledge.has(s.id), grantedAt: knowledge.get(s.id) ?? null, tools: s.allowed.length })),
     };
   }
 
@@ -44,6 +48,17 @@ export class EmployeeAccessService {
       const repositories = c.enabled ? (c.repositories === null ? null : await this.listed(c.connector, c.repositories)) : undefined;
       await this.grants.replace(accountId, employeeId, c.connector, repositories, actor.command.actor);
       await this.audit.record(actor.governance, { type: "settings.privileged.changed", outcome: c.enabled ? "authorized" : "narrowed", data: { setting: `employee_access.${c.connector}`, value: repositories === undefined ? "off" : repositories === null ? "every repository" : `${repositories.length} repositories`, employeeId } });
+    }
+    if (asked.knowledge.length > 0) {
+      const servers = await this.registry.servers(accountId);
+      for (const k of asked.knowledge) {
+        const server = servers.find((s) => s.id === k.serverId);
+        if (server === undefined) throw new ApiError(HttpStatus.NOT_FOUND, "not_found", "No such MCP server in this account.");
+        const decision = await this.policy.decide(actor.governance, { action: "connection.manage", resource: `employee:${employeeId}:mcp:${server.slug}`, scope: "ACCOUNT", params: { connection: "mcp" } });
+        if (decision.verdict !== "allow") throw new ApiError(HttpStatus.FORBIDDEN, "policy_denied", `The account's policy in effect does not let a person change what ${name} may use of "${server.name}" (${decision.reasonCodes.join(", ") || decision.verdict}).`);
+        await this.grants.replaceKnowledge(accountId, employeeId, server.id, k.enabled, actor.command.actor);
+        await this.audit.record(actor.governance, { type: "settings.privileged.changed", outcome: k.enabled ? "authorized" : "narrowed", data: { setting: `employee_access.mcp.${server.slug}`, value: k.enabled ? "on" : "off", employeeId } });
+      }
     }
     return this.view(accountId, employeeId);
   }

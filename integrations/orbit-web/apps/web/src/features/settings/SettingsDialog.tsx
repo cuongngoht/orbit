@@ -3,21 +3,7 @@
 // a reload or a link comes back to it. The connectors' status is read here, and again whenever the app stream says a
 // connector changed (or reopens, since it replays nothing).
 import { Button, Dialog, DialogSurface, DialogTitle, SearchBox, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
-import {
-  Apps20Regular,
-  ArrowLeft20Regular,
-  BrainCircuit20Regular,
-  ChevronRight16Regular,
-  Code20Regular,
-  DataUsage20Regular,
-  Dismiss20Regular,
-  Lightbulb20Regular,
-  PaintBrush20Regular,
-  Person20Regular,
-  PlugConnected20Regular,
-  PuzzlePiece20Regular,
-  Server20Regular,
-} from "@fluentui/react-icons";
+import { Apps20Regular, ArrowLeft20Regular, BookDatabase20Regular, BrainCircuit20Regular, ChevronRight16Regular, Code20Regular, DataUsage20Regular, Dismiss20Regular, Lightbulb20Regular, PaintBrush20Regular, Person20Regular, PlugConnected20Regular, PuzzlePiece20Regular, Server20Regular } from "@fluentui/react-icons";
 import type { AuthStatus, AuthUser, ConnectorName, SetupStatus, Settings } from "@orbit-web/contracts";
 import { useCallback, useState, type ReactElement } from "react";
 import type { SettingsSection } from "../../hooks/useHashRoute";
@@ -32,6 +18,7 @@ import { AccessLinkCard } from "./AccessLinkCard";
 import { AccountSection } from "./AccountSection";
 import { ClaudeConnectorsSection } from "./ClaudeConnectorsSection";
 import { ConnectorsSection } from "./ConnectorsSection";
+import { McpServersSection } from "./McpServersSection";
 import { PluginsSection, SkillsSection } from "./CustomizeSections";
 import { AppearanceSection, CodeSection } from "./PreferenceSections";
 import { SystemCard } from "./SystemCard";
@@ -187,6 +174,7 @@ const SECTIONS: Section[] = [
   { id: "ai-connections", label: "AI Connections", icon: <BrainCircuit20Regular />, about: "Claude Code, OpenAI Codex and Google Antigravity: whether each is installed, how it signs in, and your connections to it.", words: "claude codex antigravity agy cli api key subscription model effort plugin connect disconnect" },
   { id: "compute", label: "Compute & storage", icon: <DataUsage20Regular />, about: "What your employees may use: the host's capacity, your budget, what is reserved and what is stored.", words: "cpu memory storage budget capacity quota resources reserved" },
   { id: "connectors", label: "Connectors", icon: <PlugConnected20Regular />, about: "Connect Orbit Web to your repositories on GitHub and Azure DevOps.", words: "github azure devops sign in cli repository" },
+  { id: "mcp-servers", label: "MCP servers", icon: <BookDatabase20Regular />, about: "Knowledge bases and other remote MCP servers your employees may ask, each turned on per employee.", words: "mcp server knowledge base wiki docs token employees tools" },
   { id: "claude-connectors", label: "Claude connectors", icon: <Apps20Regular />, about: "What Claude may use as your Claude account -- its claude.ai connectors and the plugins' servers -- in chats and in research.", words: "connectors claude.ai mcp docs gmail drive slack research chat artifact" },
   { id: "skills", label: "Skills", icon: <Lightbulb20Regular />, about: "The skills, commands and agents Claude Code is given: Orbit's own, and each project's.", words: "commands agents project orbit" },
   { id: "plugins", label: "Plugins", icon: <PuzzlePiece20Regular />, about: "The plugins Claude Code runs with, and what became of each project's.", words: "plugin marketplace hooks mcp" },
@@ -231,6 +219,7 @@ function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: Set
   if (p.section === "ai-connections") return <AiConnectionsSection />;
   if (p.section === "compute") return <ComputeStorageSection />;
   if (p.section === "connectors") return <ConnectorsSection status={status} onChanged={reloadStatus} initial={p.connector ?? null} />;
+  if (p.section === "mcp-servers") return <McpServersSection />;
   if (p.section === "claude-connectors") return <ClaudeConnectorsSection />;
   if (p.section === "skills") return <SkillsSection />;
   if (p.section === "plugins") return <PluginsSection onOpenCode={() => p.onSection("code")} />;

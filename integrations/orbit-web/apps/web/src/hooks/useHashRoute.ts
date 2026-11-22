@@ -4,7 +4,7 @@
 // `?settings=<section>` opens Settings over any of them.
 import { useCallback, useEffect, useState } from "react";
 
-export const SETTINGS_SECTIONS = ["account", "appearance", "code", "ai-connections", "compute", "connectors", "claude-connectors", "skills", "plugins", "system"] as const;
+export const SETTINGS_SECTIONS = ["account", "appearance", "code", "ai-connections", "compute", "connectors", "mcp-servers", "claude-connectors", "skills", "plugins", "system"] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 

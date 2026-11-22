@@ -1,7 +1,9 @@
 // WHAT AN EMPLOYEE MAY USE OF THE ACCOUNT'S CONNECTORS: the GitHub and Azure DevOps sign-ins of Settings → Connectors,
 // used ON ITS BEHALF by Orbit Web -- the sign-in never enters its sandbox -- off until a person turns it on, and then for
 // every repository that sign-in reaches, or only the ones chosen (an Azure DevOps project's work items and wiki with its
-// chosen repositories' projects).
+// chosen repositories' projects). The same for the account's MCP servers (Settings → MCP servers): each off until a
+// person turns it on for the employee, and then its allowed tools.
+import { MAX_MCP_SERVERS } from "./mcp-servers.js";
 import type { Checked } from "./validate.js";
 
 export const ACCESS_CONNECTORS = ["github", "azure"] as const;
@@ -27,9 +29,20 @@ export interface ConnectorAccess {
   grantedAt: string | null;
 }
 
+// One of the account's MCP servers, for one employee.
+export interface KnowledgeAccess {
+  serverId: string;
+  name: string;
+  enabled: boolean;
+  grantedAt: string | null;
+  // How many of its tools the account allows.
+  tools: number;
+}
+
 export interface EmployeeAccess {
   employeeId: string;
   connectors: ConnectorAccess[];
+  knowledge: KnowledgeAccess[];
 }
 
 export interface UpdateConnectorAccess {
@@ -39,8 +52,15 @@ export interface UpdateConnectorAccess {
   repositories: string[] | null;
 }
 
+export interface UpdateKnowledgeAccess {
+  serverId: string;
+  enabled: boolean;
+}
+
+// What a change names: connectors, MCP servers, or both.
 export interface UpdateEmployeeAccessRequest {
-  connectors: UpdateConnectorAccess[];
+  connectors?: UpdateConnectorAccess[];
+  knowledge?: UpdateKnowledgeAccess[];
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -48,9 +68,36 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const CONTROL = /[\u0000-\u001f\u007f]/;
 export const MAX_GRANTED_REPOSITORIES = 200;
 
-export function checkUpdateEmployeeAccess(body: unknown): Checked<UpdateEmployeeAccessRequest> {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function knowledgeOf(list: unknown, errors: string[]): UpdateKnowledgeAccess[] {
+  if (list === undefined) return [];
+  if (!Array.isArray(list) || list.length === 0 || list.length > MAX_MCP_SERVERS) {
+    errors.push(`knowledge must name 1 to ${MAX_MCP_SERVERS} MCP servers`);
+    return [];
+  }
+  const seen = new Set<string>();
+  return list.map((k: unknown, i): UpdateKnowledgeAccess => {
+    const at = `knowledge[${i}]`;
+    if (!isRecord(k)) {
+      errors.push(`${at} must be an object`);
+      return { serverId: "", enabled: false };
+    }
+    for (const f of Object.keys(k)) if (!["serverId", "enabled"].includes(f)) errors.push(`${at}.${f} is not a field of an MCP server's access`);
+    const serverId = typeof k.serverId === "string" && UUID.test(k.serverId) ? k.serverId : "";
+    if (serverId === "") errors.push(`${at}.serverId must be an MCP server's id`);
+    else if (seen.has(serverId)) errors.push(`${at}.serverId ${serverId} is named twice`);
+    else seen.add(serverId);
+    if (typeof k.enabled !== "boolean") errors.push(`${at}.enabled must be true or false`);
+    return { serverId, enabled: k.enabled === true };
+  });
+}
+
+export function checkUpdateEmployeeAccess(body: unknown): Checked<Required<UpdateEmployeeAccessRequest>> {
   if (!isRecord(body)) return { ok: false, errors: ["the body must be a JSON object"] };
-  const errors = Object.keys(body).filter((k) => k !== "connectors").map((k) => `${k} is not a field of this request`);
+  const errors = Object.keys(body).filter((k) => k !== "connectors" && k !== "knowledge").map((k) => `${k} is not a field of this request`);
+  const knowledge = knowledgeOf(body.knowledge, errors);
+  if (body.connectors === undefined && body.knowledge !== undefined) return errors.length > 0 ? { ok: false, errors } : { ok: true, value: { connectors: [], knowledge } };
   const list = body.connectors;
   if (!Array.isArray(list) || list.length === 0 || list.length > ACCESS_CONNECTORS.length) return { ok: false, errors: [...errors, `connectors must name 1 to ${ACCESS_CONNECTORS.length} connectors`] };
   const seen = new Set<string>();
@@ -71,5 +118,5 @@ export function checkUpdateEmployeeAccess(body: unknown): Checked<UpdateEmployee
     if (!okRepos) errors.push(`${at}.repositories must be null (every repository) or a list of at most ${MAX_GRANTED_REPOSITORIES} repository ids`);
     return { connector: connector ?? "github", enabled: c.enabled === true, repositories: okRepos ? (repos as string[] | null) : null };
   });
-  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: { connectors } };
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: { connectors, knowledge } };
 }

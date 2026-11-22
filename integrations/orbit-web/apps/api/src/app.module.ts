@@ -22,6 +22,7 @@ import { SessionsModule } from "./modules/sessions/sessions.module.js";
 import { SettingsModule } from "./modules/settings/settings.module.js";
 import { SetupModule } from "./modules/setup/setup.module.js";
 import { ShareModule } from "./modules/share/share.module.js";
+import { McpServersModule } from "./modules/mcp-servers/mcp-servers.module.js";
 import { SourcesModule } from "./modules/sources/sources.module.js";
 
 @Module({})
@@ -42,6 +43,7 @@ export class AppModule {
         AzureAuthModule,
         SettingsModule,
         SourcesModule,
+        McpServersModule,
         ProjectModule,
         EventsModule,
         OrbitModule,

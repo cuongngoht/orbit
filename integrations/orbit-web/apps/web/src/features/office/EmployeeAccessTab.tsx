@@ -1,9 +1,10 @@
 // ONE EMPLOYEE'S ACCESS TO THE ACCOUNT'S CONNECTORS: the GitHub and Azure DevOps sign-ins of Settings → Connectors, which
 // Orbit Web uses on the employee's behalf -- reading only, and the sign-in never enters its sandbox. Each is off until a
 // person turns it on, for every repository that sign-in reaches or only the ones chosen (an Azure DevOps project's work
-// items and wiki come with a chosen repository's project).
+// items and wiki come with a chosen repository's project). The same for the account's MCP servers (Settings → MCP
+// servers): each off until a person turns it on for the employee -- saved at once -- and then the tools allowed there.
 import { Button, Checkbox, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Spinner, Switch, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-import { ACCESS_CONNECTOR_LABELS, type ConnectorAccess, type EmployeeAccess, type EmployeeDetail, type RepositoryList, type SourcesStatus } from "@orbit-web/contracts";
+import { ACCESS_CONNECTOR_LABELS, type ConnectorAccess, type EmployeeAccess, type EmployeeDetail, type KnowledgeAccess, type RepositoryList, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
@@ -107,6 +108,48 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
   );
 }
 
+function KnowledgeCard({ employee, start }: { employee: EmployeeDetail; start: KnowledgeAccess[] }) {
+  const s = useStyles();
+  const [items, setItems] = useState(start);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const turn = async (k: KnowledgeAccess, enabled: boolean) => {
+    setBusy(k.serverId);
+    setError(null);
+    try {
+      setItems((await send<EmployeeAccess>("PUT", `/api/employees/${employee.id}/access`, { knowledge: [{ serverId: k.serverId, enabled }] })).knowledge);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section className={s.card} aria-label="Knowledge bases (MCP)">
+      <Text weight="semibold">Knowledge bases (MCP)</Text>
+      {items.length === 0 ? (
+        <Text size={200} className={s.muted}>
+          The account has no MCP server: add one at <Link href={settingsHref("mcp-servers")}>Settings → MCP servers</Link>.
+        </Text>
+      ) : (
+        items.map((k) => (
+          <Switch key={k.serverId} checked={k.enabled} disabled={busy !== null} label={`${k.name} (${k.tools} ${k.tools === 1 ? "tool" : "tools"} allowed)`} onChange={(_, d) => void turn(k, d.checked)} />
+        ))
+      )}
+      {items.length > 0 && (
+        <Text size={200} className={s.muted}>
+          Orbit Web asks each server for {employee.name} with the sign-in kept in <Link href={settingsHref("mcp-servers")}>Settings → MCP servers</Link>, where the tools it may use are chosen.
+        </Text>
+      )}
+      {error !== null && (
+        <MessageBar intent="error">
+          <MessageBarBody>{error}</MessageBarBody>
+        </MessageBar>
+      )}
+    </section>
+  );
+}
+
 export function AccessTab({ e }: { e: EmployeeDetail }) {
   const s = useStyles();
   const access = useResource<EmployeeAccess>(() => get(`/api/employees/${e.id}/access`), [e.id]);
@@ -120,6 +163,7 @@ export function AccessTab({ e }: { e: EmployeeDetail }) {
       {access.data.connectors.map((c) => (
         <ConnectorCard key={c.connector} employee={e} start={c} source={status.data?.sources.find((x) => x.source === c.connector)} />
       ))}
+      <KnowledgeCard employee={e} start={access.data.knowledge} />
     </div>
   );
 }

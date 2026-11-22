@@ -436,7 +436,8 @@ async function inBrowser(port) {
     for (const hash of ["#/office", "#/office/work", "#/office/inbox", "#/office/schedule", "#/settings/ai-connections", "#/settings/compute", "#/governance/policy"]) {
       await p.goto(`${url}/${hash}`);
       await p.waitForTimeout(1500);
-      const w = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      // Evaluated in the page (a string: this file runs in Node, where neither global exists).
+      const w = await p.evaluate("document.documentElement.scrollWidth - window.innerWidth");
       if (w > 0) wide.push(`${hash} +${w}px`);
       await shot(p, `320-${hash.replace(/[#/]+/g, "-").replace(/^-|-$/g, "")}.png`);
     }

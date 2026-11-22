@@ -204,6 +204,38 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
     assert.equal(open, false, "the unschedulable item was withdrawn when it was admitted");
   });
 
+  test("a hire above a per-employee limit, or past the account's storage budget, is refused with the numbers -- and nothing is made", async () => {
+    const count = async () => Number((await h.sql("SELECT count(*) AS n FROM workforce.employees WHERE account_id = $1", [h.accountId as string]))[0]?.n);
+    const before = await count();
+    const model = connection.catalog.models[0];
+    assert.ok(model !== undefined);
+    const body = (name: string, resources: unknown) => ({
+      name,
+      profile: { title: "Analyst", duties: "Reports.", instructions: "", skills: [], languages: ["en"], knowledge: [], execution: { runtime: "claude", connectionId: connection.id, model: model.id, effort: model.efforts[0] ?? null, webSearch: false, orbitPlugin: false }, handoffStandard: "", reportingRule: "", canDelegate: false, maxAssistants: 0, canHirePermanent: false },
+      resources,
+      skipProbation: true,
+      skipReason: "a test employee",
+    });
+    let r = (await b.get("/api/office/resources")).body as ResourceSummary;
+    const preset = DEFAULT_PRESETS[0]?.profile;
+    assert.ok(preset !== undefined);
+    const tooBig = await b.send("POST", "/api/employees", body("Too big", { ...preset, presetId: null, cpuMillis: r.budget.perEmployee.cpuMillis + 1000 }));
+    assert.equal(tooBig.status, 422, JSON.stringify(tooBig.body));
+    assert.equal(code(tooBig), "resource_limit_exceeded");
+    assert.match((tooBig.body as { error: { message: string } }).error.message, /per-employee/);
+    // The storage budget lowered to what is committed now: a new desk does not fit.
+    const lowered = await b.send("PATCH", "/api/office/resources/budget", { storageMiB: Math.max(1, r.storage.committedMiB) }, ifMatch(r.budget.version));
+    assert.equal(lowered.status, 200, JSON.stringify(lowered.body));
+    const noRoom = await b.send("POST", "/api/employees", body("No room", preset));
+    assert.equal(noRoom.status, 422, JSON.stringify(noRoom.body));
+    assert.equal(code(noRoom), "storage_budget_exceeded");
+    assert.match((noRoom.body as { error: { message: string } }).error.message, /MiB/);
+    assert.equal(await count(), before, "neither refused hire made an employee");
+    r = (await b.get("/api/office/resources")).body as ResourceSummary;
+    const restored = await b.send("PATCH", "/api/office/resources/budget", { storageMiB: r.budget.authorized.storageMiB }, ifMatch(r.budget.version));
+    assert.equal(restored.status, 200, JSON.stringify(restored.body));
+  });
+
   test("a schedule makes one mission per period, whoever asks; an accepted result is delivered with a receipt, or waits for a channel", async () => {
     const e = await hire("Lan");
     const made = await b.send("POST", "/api/schedules", {

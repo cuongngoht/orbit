@@ -19,16 +19,19 @@ function send(message: Json): void {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
+function parseBody(text: string): Json {
+  if (text.length === 0) return {};
+  try {
+    return JSON.parse(text) as Json;
+  } catch {
+    return { error: { message: text.slice(0, 500) } };
+  }
+}
+
 async function post(path: string, body: unknown): Promise<{ status: number; body: Json }> {
   const res = await fetch(`${url}/${path}`, { method: "POST", headers: { "content-type": "application/json", [RUN_TOKEN_HEADER]: token, "x-orbit-web": "1" }, body: JSON.stringify(body) });
   const text = await res.text();
-  let parsed: Json = {};
-  try {
-    parsed = text.length > 0 ? (JSON.parse(text) as Json) : {};
-  } catch {
-    parsed = { error: { message: text.slice(0, 500) } };
-  }
-  return { status: res.status, body: parsed };
+  return { status: res.status, body: parseBody(text) };
 }
 
 async function handle(m: Json): Promise<Json | null> {

@@ -69,7 +69,7 @@ export function readyToReview(units: readonly Pick<UnitView, "key" | "state" | "
 export function orderOf(units: readonly Pick<UnitPlan, "key" | "dependsOn">[]): string[] | null {
   const waits = new Map(units.map((u) => [u.key, new Set(u.dependsOn)]));
   const out: string[] = [];
-  let ready = units.filter((u) => u.dependsOn.length === 0).map((u) => u.key);
+  const ready = units.filter((u) => u.dependsOn.length === 0).map((u) => u.key);
   while (ready.length > 0) {
     const k = ready.shift() as string;
     out.push(k);

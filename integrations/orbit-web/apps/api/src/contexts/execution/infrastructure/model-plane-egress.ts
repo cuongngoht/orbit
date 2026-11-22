@@ -25,16 +25,19 @@ export class ModelPlaneEgress implements OnApplicationBootstrap, OnApplicationSh
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    let container = false;
-    try {
-      container = loadSandboxConfig(this.config.sourceEnv).provider === "container";
-    } catch {
-      return;
-    }
-    if (!container) return;
+    if (!this.containerProvider()) return;
     const net = employeeNetworkOf(this.config, true);
     this.server = await startEgressProxy(net.modelEgressPort, { decide: (ask) => modelPlaneVerdict(net.modelHosts, ask), admit: () => true, warn: (m) => this.logger.warn(m) });
     this.logger.log(`model-plane egress listening on ${net.modelEgressPort} (${net.modelHosts.size} provider hosts)`);
+  }
+
+  // Whether employees run in containers here (a sandbox configuration that does not load starts nothing).
+  private containerProvider(): boolean {
+    try {
+      return loadSandboxConfig(this.config.sourceEnv).provider === "container";
+    } catch {
+      return false;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {

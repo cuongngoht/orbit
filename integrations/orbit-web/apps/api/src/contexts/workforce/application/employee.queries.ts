@@ -26,6 +26,9 @@ const summaryOf = (r: Row): AssignmentSummary => ({
   updatedAt: s(r.updated_at),
 });
 
+// A desk that exists to be looked into: a ready sandbox's, or an archived one's (read only).
+export const deskReadable = (state: SandboxState): boolean => state === "READY" || state === "ARCHIVED";
+
 @Injectable()
 export class EmployeeQueries {
   constructor(
@@ -36,32 +39,52 @@ export class EmployeeQueries {
     @Inject(RunViews) private readonly runViews: RunViews,
   ) {}
 
-  // Governance → Employee desks: every employee who left with a desk still held -- archived (or rejected) -- and the ones
-  // whose desk is being deleted, most recent first, with what each holds of the account's storage.
+  // Governance → Employee desks: every employee's desk -- those in the office first, then those who left (most recent
+  // first), then the ones being deleted -- with what each commits of the account's storage and what was last measured
+  // in it, and whether it may be looked into (a desk that exists) and cleaned up (its employee in the office, its
+  // sandbox READY, and no work held, running or accepted and not yet on the desk).
   async desks(orbitId: string): Promise<EmployeeDesk[]> {
     const rows = await this.db.query(
-      `SELECT e.id, e.name, e.employment, e.employment_reason, e.updated_at, e.version, s.state AS sandbox_state, s.reason AS sandbox_reason,
-              COALESCE((SELECT committed_mib FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category = 'desk' AND u.owner_ref = e.id::text), 0) AS desk_mib,
-              COALESCE((SELECT committed_mib FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category = 'cache' AND u.owner_ref = e.id::text), 0) AS cache_mib,
-              (SELECT SUM(used_mib) FROM workforce.storage_usage u WHERE u.account_id = e.account_id AND u.category IN ('desk', 'cache') AND u.owner_ref = e.id::text) AS used_mib
+      `SELECT e.id, e.name, e.employment, e.employment_reason, e.updated_at, e.version, s.state AS sandbox_state, s.reason AS sandbox_reason, s.desk_version,
+              COALESCE(d.committed_mib, 0) AS desk_mib, d.used_mib AS desk_used, d.measured_at,
+              COALESCE(c.committed_mib, 0) AS cache_mib, c.used_mib AS cache_used,
+              EXISTS (SELECT 1 FROM workforce.reservations r WHERE r.account_id = e.account_id AND r.employee_id = e.id)
+                OR EXISTS (SELECT 1 FROM workforce.runs x WHERE x.account_id = e.account_id AND x.employee_id = e.id AND x.state IN ('starting', 'running', 'unknown'))
+                OR EXISTS (SELECT 1 FROM workforce.assignments a WHERE a.account_id = e.account_id AND a.employee_id = e.id AND a.state = 'COMPLETED'
+                             AND NOT EXISTS (SELECT 1 FROM workforce.desk_publications p WHERE p.account_id = a.account_id AND p.assignment_id = a.id)) AS busy
        FROM workforce.employees e
-       LEFT JOIN workforce.sandboxes s ON s.account_id = e.account_id AND s.employee_id = e.id
-       WHERE e.account_id = $1 AND (e.employment = 'archived' OR (e.employment = 'deleted' AND s.state = 'DELETING'))
-       ORDER BY e.updated_at DESC`,
+       JOIN workforce.sandboxes s ON s.account_id = e.account_id AND s.employee_id = e.id
+       LEFT JOIN workforce.storage_usage d ON d.account_id = e.account_id AND d.category = 'desk' AND d.owner_ref = e.id::text
+       LEFT JOIN workforce.storage_usage c ON c.account_id = e.account_id AND c.category = 'cache' AND c.owner_ref = e.id::text
+       WHERE e.account_id = $1 AND s.state <> 'DELETED' AND (e.employment <> 'deleted' OR s.state = 'DELETING')
+       ORDER BY CASE e.employment WHEN 'deleted' THEN 2 WHEN 'archived' THEN 1 ELSE 0 END,
+                CASE WHEN e.employment IN ('archived', 'deleted') THEN e.updated_at END DESC, e.name, e.id`,
       [orbitId],
     );
-    return rows.map((r) => ({
-      employeeId: String(r.id),
-      name: String(r.name),
-      employment: String(r.employment) as EmployeeDesk["employment"],
-      reason: r.employment_reason === null ? null : String(r.employment_reason),
-      leftAt: String(r.updated_at),
-      sandbox: r.sandbox_state === null ? null : { state: String(r.sandbox_state) as SandboxState, reason: r.sandbox_reason === null ? null : String(r.sandbox_reason) },
-      deskMiB: Number(r.desk_mib),
-      cacheMiB: Number(r.cache_mib),
-      usedMiB: r.used_mib === null ? null : Number(r.used_mib),
-      version: Number(r.version),
-    }));
+    return rows.map((r) => {
+      const employment = String(r.employment) as EmployeeDesk["employment"];
+      const left = employment === "archived" || employment === "deleted";
+      const state = String(r.sandbox_state) as SandboxState;
+      const busy = r.busy === true;
+      return {
+        employeeId: String(r.id),
+        name: String(r.name),
+        employment,
+        reason: r.employment_reason === null ? null : String(r.employment_reason),
+        leftAt: left ? String(r.updated_at) : null,
+        sandbox: { state, reason: r.sandbox_reason === null ? null : String(r.sandbox_reason) },
+        deskMiB: Number(r.desk_mib),
+        cacheMiB: Number(r.cache_mib),
+        deskUsedMiB: r.desk_used === null ? null : Number(r.desk_used),
+        cacheUsedMiB: r.cache_used === null ? null : Number(r.cache_used),
+        measuredAt: r.measured_at === null ? null : String(r.measured_at),
+        deskVersion: Number(r.desk_version),
+        busy,
+        canBrowse: deskReadable(state),
+        canClean: !left && state === "READY" && !busy,
+        version: Number(r.version),
+      };
+    });
   }
 
   // One employee in full, read from ONE snapshot.

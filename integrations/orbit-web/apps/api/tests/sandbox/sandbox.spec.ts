@@ -337,6 +337,42 @@ print(len(pids), err)
     assert.deepEqual(areas.map((a) => a.area), ["desk", "cache"]);
   });
 
+  test("a person looks into a desk -- links listed, never followed -- and cleans it only with no workspace left, at its version; the version does not move", async () => {
+    // An employee of its own, so what earlier tests left behind does not decide this one.
+    const idsC = () => ({ orbitId: lab.orbitA, employeeId: "emp-c", sandboxId: "sbx-c" });
+    const code = (c: string) => (e: unknown) => e instanceof AllocatorError && e.code === c;
+    assert.equal((await timed("provision C", () => provider.provisionEmployee(idsC(), { deskMiB: 256, cacheMiB: 32 }))).state, "READY");
+    // A work tree that leaves links and a big folder on the desk -- and, while it exists, no clean.
+    await provider.prepareWorkspace(idsC(), "asg-c", 256);
+    await assert.rejects(provider.cleanDesk(idsC(), { remove: ["private.txt"], empty: false, cache: false }, 0), (e: unknown) => code("conflict")(e) && /workspace/.test((e as Error).message));
+    const hc = await timed("start attempt (desk)", () => provider.startAttempt(spec(idsC(), "run-c:1", "asg-c")));
+    const w = await run(lab, provider, hc, "echo desk-of-c > /work/private.txt && ln -s /etc/passwd /work/passwd-link && ln -s /etc /work/etc-link && mkdir -p /work/big && head -c 2000000 /dev/zero > /work/big/zeros.bin && echo ok");
+    assert.match(w.stdout, /ok/, w.stderr);
+    await provider.stop(hc, 1000);
+    assert.equal((await provider.remove(hc)).gone, true);
+    assert.equal((await provider.publishWorkspace(idsC(), "asg-c", 0)).deskVersion, 1);
+    assert.equal((await provider.removeWorkspace(idsC(), "asg-c")).gone, true);
+
+    const top = await timed("list the desk", () => provider.listDesk(idsC(), "", 100));
+    const byName = new Map(top.entries.map((e) => [e.name, e]));
+    assert.deepEqual([top.deskVersion, top.entries[0]?.name], [1, "big"], "the biggest first");
+    assert.deepEqual([byName.get("big")?.type, byName.get("big")?.bytes, byName.get("big")?.files], ["dir", 2_000_000, 1]);
+    assert.deepEqual([byName.get("passwd-link")?.type, byName.get("passwd-link")?.target, byName.get("passwd-link")?.bytes], ["link", "/etc/passwd", 0]);
+    await assert.rejects(provider.readDesk(idsC(), "passwd-link", 100), code("bad_request"));
+    await assert.rejects(provider.readDesk(idsC(), "etc-link/passwd", 100), code("bad_request"));
+    await assert.rejects(provider.listDesk(idsC(), "etc-link", 100), code("bad_request"));
+    assert.equal((await timed("read a file", () => provider.readDesk(idsC(), "private.txt", 100))).data.toString("utf8"), "desk-of-c\n");
+
+    const before = (await provider.measure(idsC())).find((a) => a.area === "desk")?.usedMiB ?? null;
+    await assert.rejects(provider.cleanDesk(idsC(), { remove: ["big", "passwd-link"], empty: false, cache: true }, 0), code("conflict"));
+    const cleaned = await timed("clean the desk", () => provider.cleanDesk(idsC(), { remove: ["big", "passwd-link"], empty: false, cache: true }, 1));
+    assert.deepEqual([cleaned.removed, cleaned.paths, cleaned.missing, cleaned.cacheEmptied, cleaned.deskVersion], [3, ["big", "passwd-link"], [], true, 1]);
+    const left = (await provider.listDesk(idsC(), "", 100)).entries.map((e) => e.name);
+    assert.deepEqual([left.includes("big"), left.includes("passwd-link"), left.includes("etc-link"), left.includes("private.txt"), left.includes("toolbox")], [false, false, true, true, true]);
+    const after = (await provider.measure(idsC())).find((a) => a.area === "desk")?.usedMiB ?? null;
+    if (before !== null && after !== null) assert.ok(after < before, `the desk's measured use went down (${before} → ${after} MiB)`);
+  });
+
   test("an archived employee's sandbox is frozen: no new workspace", async () => {
     await provider.archiveEmployee(idsB());
     await assert.rejects(provider.prepareWorkspace(idsB(), "asg-b2", 256), /archived/);

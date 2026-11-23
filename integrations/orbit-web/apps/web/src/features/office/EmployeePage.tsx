@@ -654,7 +654,10 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
                   Desk
                 </dt>
                 <dd className={o.dd}>
-                  version {e.desk.version} · {e.desk.files} file(s)
+                  version {e.desk.version} · {e.desk.files} file(s) ·{" "}
+                  <Link href={`#/governance/desks/${encodeURIComponent(e.id)}`} inline>
+                    look into it
+                  </Link>
                 </dd>
               </div>
               <div className={s.kvCell}>

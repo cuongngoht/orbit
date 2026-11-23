@@ -40,7 +40,7 @@ import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 import { refused, stale, unprocessable } from "../../shared/domain.js";
 import { loadSandboxConfig, type SandboxConfig } from "../../../config/sandbox-config.js";
 import { infrastructureCapacity } from "../infrastructure/sandbox/capacity.js";
-import { SANDBOX_PROVIDER, type HostCapabilities, type SandboxProvider } from "./sandbox.port.js";
+import { SANDBOX_PROVIDER, type HostCapabilities, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 
 const sandboxConfigOrNull = (env: AppConfig["sourceEnv"]): SandboxConfig | null => {
   try {
@@ -366,6 +366,21 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
        ON CONFLICT (account_id, category, owner_ref) DO UPDATE SET used_mib = excluded.used_mib, level = excluded.level, evidence = excluded.evidence, measured_at = excluded.measured_at`,
       [orbitId, category, ownerRef, usedMiB, level, evidence, new Date().toISOString()],
     );
+  }
+
+  // What an employee's desk and cache hold now, as the provider measures them, kept beside what they commit (Governance
+  // → Employee desks shows it): after a publish or a provisioning, when the desk is opened, after a clean-up. Rounded up
+  // to a MiB. A measurement that fails is logged, never its caller's failure.
+  async measureEmployee(ids: SandboxIds): Promise<void> {
+    if (this.provider === null) return;
+    try {
+      for (const a of await this.provider.measure(ids)) {
+        if (a.area !== "desk" && a.area !== "cache") continue;
+        await this.measured(ids.orbitId, a.area, ids.employeeId, a.usedMiB === null ? null : Math.ceil(a.usedMiB), a.level, a.evidence);
+      }
+    } catch (err) {
+      this.logger.warn(`Measuring the sandbox of employee ${ids.employeeId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   async summary(orbitId: string): Promise<ResourceSummary> {

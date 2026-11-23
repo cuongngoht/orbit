@@ -470,7 +470,7 @@ export function deskScript(): void {
     let files = 0;
     const stack: Buffer[] = [dir];
     for (let d = stack.pop(); d !== undefined; d = stack.pop()) {
-      let names: Buffer[] = [];
+      let names: Buffer[];
       try {
         names = fs.readdirSync(d, { encoding: "buffer" });
       } catch {

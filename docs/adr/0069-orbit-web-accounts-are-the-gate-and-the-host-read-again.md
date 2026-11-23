@@ -44,10 +44,26 @@ cli"). Amends ADR 0060's access token rule and ADR 0067's capacity and image. Fo
    Code. `build-info.json` and Settings → System name their versions. What each may do is unchanged: ADR 0067's
    methods decide (Antigravity has no sign-in Orbit Web offers).
 
-5. **Employee desks** (Governance → Employee desks). An employee who leaves -- archived, or rejected at its trial --
-   keeps its desk, read only, and its desk storage stays committed (an archive releases only the cache). The owner
-   reviews each one there -- what it holds, why it left -- and deletes the desk (`employment` command `delete`, only from
-   `archived`, against the version read). Its sandbox goes `DELETING`; the provisioner asks the provider to remove every
+5. **Employee desks** (Governance → Employee desks: every employee's desk, the owner's decision "phần này vẫn hiển thị
+   ra chứ để có thể xem trong bàn làm việc có gì ... có thể làm mới khi dữ liệu nhiều"). Each desk is listed with what
+   it commits and what was last measured in it, and the owner may LOOK INTO any of them: one folder at a time, a file's
+   first 512 KiB as text (shown, never run or rendered; a file that is not text only named and sized), links listed and
+   never followed -- read by the allocator's storage worker (the employee's own user, no network), never by its
+   privileged helper. The desk is the account's (the directory it keeps for an employee's work), so reviewing it is the
+   owner's; it stays governed: `employee.desk.read` and `employee.desk.clean` are people-only actions of the policy
+   (allowed by default, always recorded), and every look is recorded with what was looked at, never what it holds
+   (`office.desk.read`). The owner may CLEAN UP the desk of an employee in the office -- named paths (never the
+   toolbox's folders), everything but the toolbox, the dependency cache -- only while it holds no work, nothing of it
+   is still running and its accepted work has reached the desk (a work tree made from the desk before a clean would put
+   back, when published, what the clean removed; the allocator checks again, under the employee's lock, that no
+   workspace or attempt container of it is left), and only at the desk's version the owner chose at (If-Match). A clean
+   does not move the version (it counts accepted results: moving it could leave the database and the disk apart and
+   refuse every later publish). Orbit Web's own names at a desk's top (`.orbit`, `.orbit-publish`, `lost+found`, an
+   isolation check's `.orbit-canary-<hex>`) are never shown, read or removed -- and never seeded or published, so no
+   employee can hide a file there. An employee who leaves -- archived, or rejected at its trial -- keeps its desk, read
+   only (looked into, never cleaned), and its desk storage stays committed (an archive releases only the cache). The
+   owner reviews each one there -- what it holds, why it left -- and deletes the desk (`employment` command `delete`,
+   only from `archived`, against the version read). Its sandbox goes `DELETING`; the provisioner asks the provider to remove every
    area of the employee (`deleteEmployee`: refused while a container of one of its attempts exists, read back),
    backing off and trying again until it is gone; only then is it `DELETED` and the desk's storage released -- the
    account is never told it may use space still on the pool's disk. The employee stays, `deleted`, for what refers to

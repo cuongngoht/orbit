@@ -53,12 +53,14 @@ import { SourcesCheck } from "./work/infrastructure/sources.check.js";
 import { MissionsController } from "./work/presentation/missions.controller.js";
 import { SchedulesController } from "./work/presentation/schedules.controller.js";
 import { EmployeeEligibility } from "./workforce/application/eligibility.js";
+import { DeskService } from "./workforce/application/desk.service.js";
 import { EmployeeQueries } from "./workforce/application/employee.queries.js";
 import { HiringService } from "./workforce/application/hiring.service.js";
 import { OfficeService } from "./workforce/application/office.service.js";
 import { SandboxProvisioner } from "./workforce/application/sandbox-provisioner.js";
 import { ConnectionsReader } from "./workforce/infrastructure/connections.reader.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository } from "./workforce/infrastructure/repositories.js";
+import { DeskController } from "./workforce/presentation/desk.controller.js";
 import { OfficeController } from "./workforce/presentation/office.controller.js";
 
 const PROVIDERS: Provider[] = [
@@ -77,6 +79,7 @@ const PROVIDERS: Provider[] = [
   HiringService,
   EmployeeEligibility,
   EmployeeQueries,
+  DeskService,
   SandboxProvisioner,
   // work
   MissionRepository,
@@ -124,7 +127,7 @@ export class OfficeModule {
       module: OfficeModule,
       imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
       providers: [...PROVIDERS, AttemptInputs, ...defaults, ...bindings],
-      controllers: [OfficeController, MissionsController, SchedulesController, ToolsController],
+      controllers: [OfficeController, DeskController, MissionsController, SchedulesController, ToolsController],
       exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs],
     };
   }

@@ -135,11 +135,14 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     gap: "4px",
-    flexWrap: "nowrap",
-    overflowX: "auto",
+    flexWrap: "wrap",
     paddingTop: "2px",
     paddingBottom: "2px",
     paddingRight: "16px",
+    "@media (max-width: 639px)": {
+      flexWrap: "nowrap",
+      overflowX: "auto",
+    },
   },
   tab: {
     flexShrink: 0,
@@ -186,7 +189,7 @@ function Page({ page, item, go }: { page: GovernancePage; item: string | null; g
   if (page === "policy") return <PolicyPage item={item} go={go} />;
   if (page === "workspaces") return <ResourcesPage kind="workspace" item={item} go={go} />;
   if (page === "research") return <ResourcesPage kind="research_workspace" item={item} go={go} />;
-  if (page === "desks") return <EmployeeDesksPage />;
+  if (page === "desks") return <EmployeeDesksPage item={item} go={go} />;
   if (page === "decisions") return <DecisionsPage go={go} />;
   if (page === "approvals") return <ApprovalsPage item={item} />;
   if (page === "audit") return <AuditPage item={item} />;

@@ -51,6 +51,12 @@ export class OfficeGovernance {
     await this.audit.record(actor.governance, { type: "office.command", outcome: "done", data: { command, aggregate, aggregateId, version, detail: detail.slice(0, 300) } });
   }
 
+  // A person's look into what an employee keeps (Governance → Employee desks): what was looked at -- the folder or the
+  // file, its size, the desk's version -- never what it holds.
+  async looked(actor: Actor, look: { employeeId: string; path: string; kind: "dir" | "file"; bytes: number; deskVersion: number }): Promise<void> {
+    await this.audit.record(actor.governance, { type: "office.desk.read", outcome: "done", data: { ...look } });
+  }
+
   // Runs `work` in one transaction; when it is refused, the refusal is recorded in a transaction of its own.
   async command<T>(actor: Actor, name: string, aggregateId: string, work: () => Promise<T>): Promise<T> {
     try {

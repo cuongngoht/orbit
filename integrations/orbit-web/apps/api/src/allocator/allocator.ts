@@ -425,9 +425,8 @@ export class Allocator implements AllocatorApi {
 
   async listDesk(idsIn: SandboxIds, dirIn: string, maxEntriesIn: number): Promise<DeskListing> {
     const ids = checkSandboxIds(idsIn);
-    const checked = checkDeskDir(dirIn);
-    if (checked === null) throw new AllocatorError("bad_request", "dir is not a folder of the desk");
-    const dir: string = checked;
+    const dir = checkDeskDir(dirIn);
+    if (dir === null) throw new AllocatorError("bad_request", "dir is not a folder of the desk");
     const maxEntries = intIn(maxEntriesIn, 1, 10_000, "maxEntries");
     return this.locks.run(`employee:${ids.orbitId}/${ids.employeeId}`, async () => {
       const st = await this.ready();
@@ -485,7 +484,7 @@ export class Allocator implements AllocatorApi {
     return record;
   }
 
-  private deskWorker(st: StorageState, ids: EmployeeIds, args: string[], clean: { cache: boolean } | null, stdin: Buffer | null = null): Promise<ExecOutcome> {
+  private deskWorker(st: StorageState & { volume: string }, ids: EmployeeIds, args: string[], clean: { cache: boolean } | null, stdin: Buffer | null = null): Promise<ExecOutcome> {
     const mounts: VolumeMount[] = [{ volume: st.volume, subpath: `${deskArea(ids)}/files`, target: "/desk", readOnly: clean === null }];
     if (clean?.cache === true) mounts.push({ volume: st.volume, subpath: cacheArea(ids), target: "/cache", readOnly: false });
     return this.storage.worker(mounts, ["node", "-e", nodeScript(deskScript), ...args], stdin, 120_000);

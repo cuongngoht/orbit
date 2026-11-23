@@ -7,9 +7,10 @@ import { ArrowDownload16Regular } from "@fluentui/react-icons";
 import { ASSIGNMENT_STATE_TEXT, DELIVERY_STATE_TEXT, type AssignmentView, type DeliveryView, type HandoffStatus, type HandoffView, type MissionDetail, type TeamRoomChange } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
+import { useI18n, type MessageKey } from "../../i18n";
 import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, type AssignmentCommand } from "./api";
-import { AsOf, EmployeeAvatar, ProblemBar, RUN_STATE_TEXT, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, EmployeeAvatar, ProblemBar, RUN_STATE_KEYS, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
 import { RunDetails } from "./RunDetails";
 
 const useStyles = makeStyles({
@@ -46,16 +47,33 @@ type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 export const MISSION_TABS = ["overview", "timeline", "handoffs", "team", "run"] as const;
 type MissionTab = (typeof MISSION_TABS)[number];
-const TAB_TEXT: Record<MissionTab, string> = { overview: "Overview", timeline: "Timeline", handoffs: "Handoffs", team: "Team room", run: "Last run" };
+const TAB_KEYS: Record<MissionTab, MessageKey> = {
+  overview: "office.mission.tab.overview",
+  timeline: "office.mission.tab.timeline",
+  handoffs: "office.mission.tab.handoffs",
+  team: "office.mission.tab.team",
+  run: "office.mission.tab.run",
+};
 
-const HANDOFF_TEXT: Record<HandoffStatus, string> = { submitted: "Submitted", revision_requested: "Revision requested", accepted: "Accepted", superseded: "Superseded" };
+const HANDOFF_KEYS: Record<HandoffStatus, MessageKey> = {
+  submitted: "office.mission.handoff.submitted",
+  revision_requested: "office.mission.handoff.revision_requested",
+  accepted: "office.mission.handoff.accepted",
+  superseded: "office.mission.handoff.superseded",
+};
 
-const ACTION_TEXT: Partial<Record<AssignmentCommand, string>> = { pause: "Pause", resume: "Resume", cancel: "Cancel the work", retry: "Retry" };
+const ACTION_KEYS: Partial<Record<AssignmentCommand, MessageKey>> = {
+  pause: "office.mission.action.pause",
+  resume: "office.mission.action.resume",
+  cancel: "office.mission.action.cancel",
+  retry: "office.mission.action.retry",
+};
 
 // The commands of an assignment a person may give from its Overview (a review is given from its handoff).
 const ROUTE_OF: Record<string, AssignmentCommand> = { pause: "pause", resume: "resume", cancel: "cancel", retry: "retry", answer: "answer", accept: "accept", request_revision: "request-revision" };
 
 function AssignmentActions({ a, onDone, onLoadLatest }: { a: AssignmentView; onDone: () => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const act = useAction();
   const [answer, setAnswer] = useState("");
@@ -69,7 +87,7 @@ function AssignmentActions({ a, onDone, onLoadLatest }: { a: AssignmentView; onD
         <div className={o.row}>
           {commands.map((c) => (
             <Button key={c} className={o.touch} size="small" disabled={act.busy} onClick={() => void run(c)}>
-              {ACTION_TEXT[c] ?? c}
+              {ACTION_KEYS[c] ? t(ACTION_KEYS[c]!) : c}
             </Button>
           ))}
         </div>
@@ -77,18 +95,18 @@ function AssignmentActions({ a, onDone, onLoadLatest }: { a: AssignmentView; onD
       {a.actions.includes("answer") && (
         <form
           className={o.form}
-          aria-label="Answer the employee"
+          aria-label={t("office.mission.answerAria")}
           onSubmit={(e) => {
             e.preventDefault();
             void run("answer", { answer: answer.trim() });
           }}
         >
-          <Field label="Your answer" hint={a.waitingOn ? `It asked: ${a.waitingOn}` : "It waits for information from you."}>
+          <Field label={t("office.mission.yourAnswer")} hint={a.waitingOn ? t("office.mission.itAsked", { question: a.waitingOn }) : t("office.mission.waitsForInfo")}>
             <Textarea value={answer} resize="vertical" onChange={(_, d) => setAnswer(d.value)} />
           </Field>
           <div>
             <Button type="submit" appearance="primary" disabled={act.busy || answer.trim() === ""}>
-              Send the answer
+              {t("office.mission.sendAnswer")}
             </Button>
           </div>
         </form>
@@ -99,6 +117,7 @@ function AssignmentActions({ a, onDone, onLoadLatest }: { a: AssignmentView; onD
 }
 
 function AssignmentRow({ a, go, depth }: { a: AssignmentView; go: Go; depth: number }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   return (
@@ -108,26 +127,28 @@ function AssignmentRow({ a, go, depth }: { a: AssignmentView; go: Go; depth: num
         <Text weight="semibold">{a.title}</Text>
       </div>
       <Text size={200}>
-        Held by{" "}
+        {t("office.mission.heldByPrefix")}
         <Link as="button" onClick={() => go("employee", a.employeeId)}>
           {a.employeeName}
         </Link>
-        {a.pinned.departmentName ? ` (${a.pinned.departmentName} when claimed)` : ""} · {a.attempts} attempt(s) · revision {a.handoffRevision}
+        {a.pinned.departmentName ? t("office.mission.deptWhenClaimed", { dept: a.pinned.departmentName }) : ""}
+        {t("office.mission.attemptsAndRevision", { attempts: a.attempts, revision: a.handoffRevision })}
       </Text>
       {a.unitKey !== null && (
         <Text size={200} className={o.muted}>
-          Part “{a.unitKey}” of its manager's plan{a.brief.dependsOn.length > 0 ? ` · waits for ${a.brief.dependsOn.map((k) => `“${k}”`).join(", ")}` : ""}
+          {t("office.mission.partOfPlan", { key: a.unitKey })}
+          {a.brief.dependsOn.length > 0 ? t("office.mission.waitsForDeps", { deps: a.brief.dependsOn.map((k) => `“${k}”`).join(", ") }) : ""}
         </Text>
       )}
       {(a.reason || a.waitingOn) && (
         <Text size={200} className={o.warn}>
           {a.reason ?? ""}
-          {a.waitingOn ? ` Waiting on: ${a.waitingOn}` : ""}
+          {a.waitingOn ? t("office.mission.waitingOn", { what: a.waitingOn }) : ""}
         </Text>
       )}
       {a.lastRun && (a.lastRun.state === "waiting_for_resources" || a.lastRun.state === "unschedulable") && (
         <Text size={200} className={a.lastRun.state === "unschedulable" ? o.danger : o.warn}>
-          {RUN_STATE_TEXT[a.lastRun.state]}: {a.lastRun.waitingReason ?? "no reason given"}
+          {t(RUN_STATE_KEYS[a.lastRun.state])}: {a.lastRun.waitingReason ?? t("office.run.noReasonGiven")}
         </Text>
       )}
     </li>
@@ -136,6 +157,7 @@ function AssignmentRow({ a, go, depth }: { a: AssignmentView; go: Go; depth: num
 
 // The plan: the root assignment and, under each, the assignments it delegated.
 function Plan({ assignments, go }: { assignments: AssignmentView[]; go: Go }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const rows: { a: AssignmentView; depth: number }[] = [];
   const walk = (parent: string | null, depth: number) => {
@@ -148,7 +170,7 @@ function Plan({ assignments, go }: { assignments: AssignmentView[]; go: Go }) {
   // Anything whose parent is not in the list is shown at the top, never hidden.
   for (const a of assignments) if (!rows.some((r) => r.a.id === a.id)) rows.push({ a, depth: 0 });
   return (
-    <ul className={o.list} aria-label="Assignments">
+    <ul className={o.list} aria-label={t("office.mission.assignmentsAria")}>
       {rows.map(({ a, depth }) => (
         <AssignmentRow key={a.id} a={a} go={go} depth={depth} />
       ))}
@@ -159,24 +181,25 @@ function Plan({ assignments, go }: { assignments: AssignmentView[]; go: Go }) {
 // The mission's team room: every change its members' attempts made, in order -- which file, what it became, and whose
 // attempt changed it. The room is a workbench shared by the mission's team; what was accepted is in the handoffs.
 function TeamRoom({ missionId, go }: { missionId: string; go: Go }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const changes = useOfficeRead<TeamRoomChange[]>(() => office.teamRoom(missionId), [missionId], ["missions"], missionId);
   if (changes.data === null)
     return changes.error ? (
       <MessageBar intent="error">
-        <MessageBarBody>The team room could not be read: {changes.error}</MessageBarBody>
+        <MessageBarBody>{t("office.mission.teamRoomError", { error: changes.error })}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner size="tiny" label="Reading the team room…" />
+      <Spinner size="tiny" label={t("office.mission.readingTeamRoom")} />
     );
   if (changes.data.length === 0)
     return (
       <Text className={o.muted}>
-        Nothing was written in a team room for this mission. A team lead's mission has one: its members share it while they work, and each change is kept here with whose attempt made it.
+        {t("office.mission.teamRoomEmpty")}
       </Text>
     );
   return (
-    <ol className={o.list} aria-label="Team room changes">
+    <ol className={o.list} aria-label={t("office.mission.teamRoomChangesAria")}>
       {changes.data.map((c, i) => (
         <li key={`${i}:${c.path}`} className={o.item}>
           <div className={o.row}>
@@ -184,7 +207,7 @@ function TeamRoom({ missionId, go }: { missionId: string; go: Go }) {
               {c.path}
             </Text>
             <Text size={200} className={o.muted}>
-              {c.sha256 === null ? "removed" : `${bytesText(c.size)} · ${short(c.sha256)}`}
+              {c.sha256 === null ? t("office.mission.removed") : `${bytesText(c.size)} · ${short(c.sha256)}`}
             </Text>
           </div>
           <Text size={200} className={o.muted}>
@@ -194,7 +217,7 @@ function TeamRoom({ missionId, go }: { missionId: string; go: Go }) {
                 {c.employeeName}
               </Link>
             ) : (
-              "an attempt no longer on record"
+              t("office.mission.attemptNoLongerOnRecord")
             )}
           </Text>
         </li>
@@ -204,6 +227,7 @@ function TeamRoom({ missionId, go }: { missionId: string; go: Go }) {
 }
 
 function Delivery({ d, onDone }: { d: DeliveryView; onDone: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const act = useAction();
   const [outcome, setOutcome] = useState<"delivered" | "resend">("delivered");
@@ -218,29 +242,29 @@ function Delivery({ d, onDone }: { d: DeliveryView; onDone: () => void }) {
           {DELIVERY_STATE_TEXT[d.state]}
         </Badge>
         <Text size={200} className={o.muted}>
-          {d.attempts} attempt(s){d.receipt ? ` · receipt ${d.receipt}` : ""}
+          {t("office.mission.attemptsCount", { count: d.attempts, receipt: d.receipt ? t("office.mission.receiptSuffix", { receipt: d.receipt }) : "" })}
         </Text>
       </div>
       {d.detail && <Text size={200}>{d.detail}</Text>}
       {d.state === "NEEDS_RECONCILIATION" && (
         <form
           className={o.form}
-          aria-label={`Settle the delivery to ${d.recipient.address}`}
+          aria-label={t("office.mission.settleDeliveryAria", { address: d.recipient.address })}
           onSubmit={(e) => {
             e.preventDefault();
-            void act.run(() => office.resolveDelivery(d.id, { outcome, reason: reason.trim() }).catch((err: unknown) => Promise.reject(isNotServed(err) ? new Error("Deliveries are not served by this Orbit Web yet: nothing was recorded.") : err))).then((ok) => ok && onDone());
+            void act.run(() => office.resolveDelivery(d.id, { outcome, reason: reason.trim() }).catch((err: unknown) => Promise.reject(isNotServed(err) ? new Error(t("office.mission.deliveriesNotServed")) : err))).then((ok) => ok && onDone());
           }}
         >
           <RadioGroup value={outcome} onChange={(_, v) => setOutcome(v.value as "delivered" | "resend")}>
-            <Radio value="delivered" label="It reached the receiver" />
-            <Radio value="resend" label="Send it again" />
+            <Radio value="delivered" label={t("office.mission.deliveryReached")} />
+            <Radio value="resend" label={t("office.mission.deliveryResend")} />
           </RadioGroup>
-          <Field label="How you know" required>
+          <Field label={t("office.mission.howYouKnow")} required>
             <Input value={reason} onChange={(_, v) => setReason(v.value)} />
           </Field>
           <div>
             <Button type="submit" disabled={act.busy || reason.trim() === ""}>
-              Record it
+              {t("office.mission.recordIt")}
             </Button>
           </div>
           <ProblemBar problem={act.problem} />
@@ -251,6 +275,7 @@ function Delivery({ d, onDone }: { d: DeliveryView; onDone: () => void }) {
 }
 
 function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose: () => void; onConfirm: (note: string) => void; busy: boolean }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const [note, setNote] = useState("");
   return (
@@ -258,25 +283,27 @@ function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose
       <DialogSurface className="orbit-touch">
         <DialogBody>
           <DialogTitle>
-            Accept revision {h.revision}?
+            {t("office.mission.acceptTitle", { revision: h.revision })}
           </DialogTitle>
           <DialogContent className={o.form}>
             <Text>
-              You accept exactly revision {h.revision} (digest <span className={o.mono}>{short(h.digest)}</span>) as the result. The employee is then free for its next work.
+              {t("office.mission.acceptConfirmBefore", { revision: h.revision })}
+              <span className={o.mono}>{short(h.digest)}</span>
+              {t("office.mission.acceptConfirmAfter")}
             </Text>
             {h.missing.length > 0 && (
               <MessageBar intent="warning">
-                <MessageBarBody>It is missing required deliverables: {h.missing.join(", ")}.</MessageBarBody>
+                <MessageBarBody>{t("office.mission.missingRequired", { missing: h.missing.join(", ") })}</MessageBarBody>
               </MessageBar>
             )}
-            <Field label="Note" hint="Optional: kept with the acceptance.">
+            <Field label={t("office.mission.noteLabel")} hint={t("office.mission.noteHint")}>
               <Input value={note} onChange={(_, d) => setNote(d.value)} />
             </Field>
           </DialogContent>
           <DialogActions>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t("office.assign.cancel")}</Button>
             <Button appearance="primary" disabled={busy} onClick={() => onConfirm(note.trim())}>
-              Accept revision {h.revision}
+              {t("office.mission.acceptBtn", { revision: h.revision })}
             </Button>
           </DialogActions>
         </DialogBody>
@@ -286,6 +313,7 @@ function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose
 }
 
 function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: AssignmentView | null; onDone: () => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const act = useAction();
   const restore = useRestoreFocusTarget();
@@ -303,21 +331,23 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
     }
   };
   return (
-    <article className={o.card} aria-label={`Revision ${h.revision}`}>
+    <article className={o.card} aria-label={t("office.mission.revisionAria", { revision: h.revision })}>
       <div className={o.between}>
         <div className={o.row}>
-          <Text weight="semibold">Revision {h.revision}</Text>
+          <Text weight="semibold">{t("office.mission.revisionTitle", { revision: h.revision })}</Text>
           <Badge appearance="tint" color={h.status === "accepted" ? "success" : h.status === "submitted" ? "important" : "subtle"}>
-            {HANDOFF_TEXT[h.status]}
+            {t(HANDOFF_KEYS[h.status])}
           </Badge>
         </div>
         <Text size={200} className={o.muted}>
-          digest <span className={o.mono}>{short(h.digest)}</span> · handed in {when(h.submittedAt)} by {h.submittedBy}
+          {t("office.mission.digestPrefix")}
+          <span className={o.mono}>{short(h.digest)}</span>
+          {t("office.mission.handedIn", { at: when(h.submittedAt), by: h.submittedBy })}
         </Text>
       </div>
       <Text className={o.wrap}>{h.summary}</Text>
       {h.artifacts.length > 0 && (
-        <ul className={o.list} aria-label={`Artifacts of revision ${h.revision}`}>
+        <ul className={o.list} aria-label={t("office.mission.artifactsAria", { revision: h.revision })}>
           {h.artifacts.map((x) => (
             <li key={x.id} className={o.row}>
               <Link className="orbit-target" href={office.artifactHref(x.id)} download={x.name} target="_blank" rel="noopener noreferrer">
@@ -331,12 +361,12 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
         </ul>
       )}
       {h.claims.length > 0 && (
-        <ul className={o.list} aria-label={`Claims of revision ${h.revision}`}>
+        <ul className={o.list} aria-label={t("office.mission.claimsAria", { revision: h.revision })}>
           {h.claims.map((c, i) => (
             <li key={`${i}:${c.text}`} className={o.item}>
               <div className={o.row}>
                 <Badge appearance="tint" color={c.supported ? "success" : "warning"}>
-                  {c.supported ? "Supported by a source" : "Not supported"}
+                  {c.supported ? t("office.mission.supported") : t("office.mission.notSupported")}
                 </Badge>
               </div>
               <Text size={200} className={o.wrap}>
@@ -353,12 +383,12 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
       )}
       {h.missing.length > 0 && (
         <Text size={200} className={o.danger}>
-          Missing deliverables: {h.missing.join(", ")}
+          {t("office.mission.missingDeliverables", { missing: h.missing.join(", ") })}
         </Text>
       )}
       {h.review && (
         <Text size={200} className={o.muted}>
-          Reviewed by {h.review.by} on {when(h.review.at)}
+          {t("office.mission.reviewedBy", { by: h.review.by, at: when(h.review.at) })}
           {h.review.note ? `: ${h.review.note}` : ""}
         </Text>
       )}
@@ -366,12 +396,12 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
         <div className={o.row}>
           {a.actions.includes("request_revision") && (
             <Button className={o.touch} disabled={act.busy} onClick={() => setRevising(!revising)}>
-              Request revision
+              {t("office.mission.requestRevision")}
             </Button>
           )}
           {a.actions.includes("accept") && (
             <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={() => setAccepting(true)} {...restore}>
-              Accept…
+              {t("office.mission.acceptEllipsis")}
             </Button>
           )}
         </div>
@@ -379,18 +409,18 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
       {revising && (
         <form
           className={o.form}
-          aria-label={`Request a revision of revision ${h.revision}`}
+          aria-label={t("office.mission.requestRevisionAria", { revision: h.revision })}
           onSubmit={(e) => {
             e.preventDefault();
             void review("request-revision", { criteria: criteria.trim() });
           }}
         >
-          <Field label="What must change" required hint={`About revision ${h.revision}, digest ${short(h.digest)}: the same employee works on it again.`}>
+          <Field label={t("office.mission.whatMustChange")} required hint={t("office.mission.whatMustChangeHint", { revision: h.revision, digest: short(h.digest) })}>
             <Textarea value={criteria} resize="vertical" onChange={(_, d) => setCriteria(d.value)} />
           </Field>
           <div>
             <Button type="submit" appearance="primary" disabled={act.busy || criteria.trim() === ""}>
-              Send the request
+              {t("office.mission.sendRequest")}
             </Button>
           </div>
         </form>
@@ -402,6 +432,7 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
 }
 
 export function MissionPage({ id, tab, go }: { id: string; tab: string | null; go: Go }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const mission = useOfficeRead<MissionDetail>(() => office.mission(id), [id], ["missions", "inbox"], id);
@@ -412,7 +443,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
         <MessageBarBody>{mission.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner label="Reading the mission…" />
+      <Spinner label={t("office.mission.reading")} />
     );
   const m = mission.data;
   const root = m.assignments.find((a) => a.id === m.assignment.id) ?? m.assignments.find((a) => a.parentId === null) ?? null;
@@ -430,22 +461,22 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           <StateBadge text={ASSIGNMENT_STATE_TEXT[m.assignment.state]} state={m.assignment.state} />
           <EmployeeAvatar name={m.assignment.employeeName} size="sm" />
           <Text size={200}>
-            Held by{" "}
+            {t("office.mission.heldByPrefix")}
             <Link as="button" onClick={() => go("employee", m.assignment.employeeId)}>
               {m.assignment.employeeName}
             </Link>
-            {m.deadline ? ` · due ${when(m.deadline)}` : ""}
-            {m.nextAction ? ` · next: ${m.nextAction}` : ""}
+            {m.deadline ? t("office.work.due", { at: when(m.deadline) }) : ""}
+            {m.nextAction ? t("office.work.next", { next: m.nextAction }) : ""}
           </Text>
         </div>
         <AsOf at={mission.loadedAt} />
       </section>
       <div className={`${o.tabStrip} orbit-hscroll`}>
-        <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label="Mission">
-          {MISSION_TABS.filter((t) => t !== "team" || hasTeam).map((t) => (
-            <Tab key={t} value={t}>
-              {TAB_TEXT[t]}
-              {t === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
+        <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label={t("office.mission.tabsAria")}>
+          {MISSION_TABS.filter((tabKey) => tabKey !== "team" || hasTeam).map((tabKey) => (
+            <Tab key={tabKey} value={tabKey}>
+              {t(TAB_KEYS[tabKey])}
+              {tabKey === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
             </Tab>
           ))}
         </TabList>
@@ -453,39 +484,39 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
 
       {current === "overview" && (
         <>
-          <section className={o.card} aria-label="What is wanted">
+          <section className={o.card} aria-label={t("office.mission.whatIsWanted")}>
             <Text weight="semibold" size={400}>
-              What is wanted
+              {t("office.mission.whatIsWanted")}
             </Text>
             <Text className={o.wrap} style={{ whiteSpace: "pre-wrap" }}>
               {m.goal}
             </Text>
             <div className={o.divider} />
             <dl className={o.dl}>
-              <dt className={o.dt}>Deliverables</dt>
-              <dd className={o.dd}>{m.deliverables.length === 0 ? "None named" : m.deliverables.map((d) => `${d.name}${d.required ? "" : " (optional)"}`).join(", ")}</dd>
-              <dt className={o.dt}>Accepted when</dt>
-              <dd className={o.dd}>{m.acceptanceCriteria.length === 0 ? "No criteria named" : m.acceptanceCriteria.join("; ")}</dd>
-              <dt className={o.dt}>Accepted by</dt>
-              <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? "You" : "Its manager"}</dd>
-              <dt className={o.dt}>Research sources</dt>
-              <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? "None pinned" : `${m.sourceRevisionIds.length} source revision(s) pinned, read-only`}</dd>
-              <dt className={o.dt}>Repositories</dt>
-              <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? "None" : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
-              <dt className={o.dt}>Created</dt>
+              <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
+              <dd className={o.dd}>{m.deliverables.length === 0 ? t("office.mission.noneNamed") : m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
+              <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
+              <dd className={o.dd}>{m.acceptanceCriteria.length === 0 ? t("office.mission.noCriteriaNamed") : m.acceptanceCriteria.join("; ")}</dd>
+              <dt className={o.dt}>{t("office.mission.acceptedBy")}</dt>
+              <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? t("office.mission.ownerYou") : t("office.mission.itsManager")}</dd>
+              <dt className={o.dt}>{t("office.sources.title")}</dt>
+              <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? t("office.mission.nonePinned") : t("office.mission.sourcesPinned", { count: m.sourceRevisionIds.length })}</dd>
+              <dt className={o.dt}>{t("office.repos.title")}</dt>
+              <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? t("office.mission.none") : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
+              <dt className={o.dt}>{t("office.mission.created")}</dt>
               <dd className={o.dd}>
-                {when(m.createdAt)} by {m.createdBy}
+                {t("office.mission.createdBy", { at: when(m.createdAt), by: m.createdBy })}
               </dd>
             </dl>
           </section>
-          <section className={o.card} aria-label="Plan">
-            <Text weight="semibold">Plan</Text>
+          <section className={o.card} aria-label={t("office.mission.plan")}>
+            <Text weight="semibold">{t("office.mission.plan")}</Text>
             <Plan assignments={m.assignments} go={go} />
             {root && <AssignmentActions a={root} onDone={reload} onLoadLatest={reload} />}
           </section>
           {m.deliveries.length > 0 && (
-            <section className={o.card} aria-label="Deliveries">
-              <Text weight="semibold">Deliveries</Text>
+            <section className={o.card} aria-label={t("office.mission.deliveries")}>
+              <Text weight="semibold">{t("office.mission.deliveries")}</Text>
               <ul className={o.list}>
                 {m.deliveries.map((d) => (
                   <Delivery key={d.id} d={d} onDone={reload} />
@@ -497,18 +528,18 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       )}
 
       {current === "timeline" && (
-        <section className={o.card} aria-label="Timeline">
+        <section className={o.card} aria-label={t("office.mission.tab.timeline")}>
           {m.timeline.length === 0 ? (
-            <Text className={o.muted}>Nothing happened yet.</Text>
+            <Text className={o.muted}>{t("office.mission.timelineEmpty")}</Text>
           ) : (
             <ol className={s.timelineList}>
-              {m.timeline.map((t) => (
-                <li key={t.seq} className={mergeClasses(o.item, s.timelineItem)}>
+              {m.timeline.map((item) => (
+                <li key={item.seq} className={mergeClasses(o.item, s.timelineItem)}>
                   <span className={s.timelineDot} aria-hidden />
                   <Text size={200} className={o.muted}>
-                    {when(t.at)} · {t.actor}
+                    {when(item.at)} · {item.actor}
                   </Text>
-                  <Text size={200}>{t.summary}</Text>
+                  <Text size={200}>{item.summary}</Text>
                 </li>
               ))}
             </ol>
@@ -518,20 +549,20 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
 
       {current === "handoffs" &&
         (handoffs.length === 0 ? (
-          <Text className={o.muted}>Nothing has been handed in yet.</Text>
+          <Text className={o.muted}>{t("office.mission.handoffsEmpty")}</Text>
         ) : (
           handoffs.map((h) => <Handoff key={`${h.id}:${h.status}`} h={h} a={m.assignments.find((a) => a.id === h.assignmentId) ?? null} onDone={reload} onLoadLatest={reload} />)
         ))}
 
       {current === "team" && (
-        <section className={o.card} aria-label="Team room">
+        <section className={o.card} aria-label={t("office.mission.tab.team")}>
           <TeamRoom missionId={m.id} go={go} />
         </section>
       )}
 
       {current === "run" && (
-        <section className={o.card} aria-label="Last run">
-          {root?.lastRun ? <RunDetails run={root.lastRun} /> : <Text className={o.muted}>No attempt has run yet.</Text>}
+        <section className={o.card} aria-label={t("office.mission.tab.run")}>
+          {root?.lastRun ? <RunDetails run={root.lastRun} /> : <Text className={o.muted}>{t("office.mission.runEmpty")}</Text>}
         </section>
       )}
     </div>

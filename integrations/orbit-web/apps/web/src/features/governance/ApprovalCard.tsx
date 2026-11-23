@@ -5,11 +5,13 @@
 import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, tokens } from "@fluentui/react-components";
 import type { ApprovalView } from "@orbit-web/contracts";
 import { useState } from "react";
+import { useI18n } from "../../i18n";
 import { errorText, send } from "../../services/api";
 import { Card, ErrorBar, Word, byWhom, useParts, when } from "./parts";
 
 // `inline`: the card is already the confirmation (a chat's Push dialog), so approving asks nothing more.
 export function ApprovalCard({ approval, onChanged, inline = false }: { approval: ApprovalView; onChanged: (a: ApprovalView) => void; inline?: boolean }) {
+  const { t } = useI18n();
   const s = useParts();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,6 +29,12 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
   };
   const p = approval.params;
   const params = Object.entries(p).filter(([k]) => !["sourceRef", "sessionId"].includes(k));
+  const timingExtra =
+    approval.state === "pending"
+      ? t("governance.approval.waitsUntil", { at: when(approval.expiresAt) })
+      : approval.decidedAt
+        ? t("governance.approval.decided", { at: when(approval.decidedAt) })
+        : "";
   return (
     <Card
       title={
@@ -34,10 +42,15 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
           {approval.summary} <Word value={approval.state} />
         </>
       }
-      description={`${approval.action} · asked ${when(approval.requestedAt)} by ${byWhom(approval.requestedBy)}${approval.state === "pending" ? ` · waits until ${when(approval.expiresAt)}` : approval.decidedAt ? ` · decided ${when(approval.decidedAt)}` : ""}`}
+      description={t("governance.approval.desc", {
+        action: approval.action,
+        askedAt: when(approval.requestedAt),
+        by: byWhom(approval.requestedBy),
+        extra: timingExtra,
+      })}
     >
       <div className={s.inset}>
-        <table aria-label="What exactly is approved" style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table aria-label={t("governance.approval.paramsAria")} style={{ width: "100%", borderCollapse: "collapse" }}>
           <tbody>
             {params.map(([k, v]) => (
               <tr key={k}>
@@ -48,7 +61,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
                 </td>
                 <td style={{ paddingTop: 3, paddingBottom: 3 }}>
                   <Text size={200} className={s.mono}>
-                    {v === null ? "none (a new branch)" : String(v)}
+                    {v === null ? t("governance.approval.noneNewBranch") : String(v)}
                   </Text>
                 </td>
               </tr>
@@ -56,7 +69,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
             <tr>
               <td style={{ paddingRight: 14, paddingTop: 4, paddingBottom: 2, verticalAlign: "top" }}>
                 <Text size={200} weight="semibold">
-                  fingerprint
+                  {t("governance.approval.fingerprint")}
                 </Text>
               </td>
               <td style={{ paddingTop: 4, paddingBottom: 2 }}>
@@ -69,7 +82,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
       {approval.change && (
         <>
           <Text size={200}>
-            {approval.change.commits} commit(s) · {approval.change.files} file(s) ·{" "}
+            {t("governance.approval.diffStats", { commits: approval.change.commits, files: approval.change.files })}
             <span style={{ color: tokens.colorPaletteGreenForeground1 }}>+{approval.change.insertions}</span>{" "}
             <span style={{ color: tokens.colorPaletteRedForeground1 }}>−{approval.change.deletions}</span>
           </Text>
@@ -85,34 +98,42 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
       {approval.state === "pending" && (
         <div className={s.row}>
           <Button appearance="primary" disabled={busy} onClick={() => (inline ? act("grant", { fingerprint: approval.fingerprint }) : setConfirm(true))}>
-            {inline ? (approval.action === "repository.push" ? (busy ? "Pushing…" : "Approve and push") : "Approve") : "Approve…"}
+            {inline
+              ? approval.action === "repository.push"
+                ? busy
+                  ? t("governance.approval.pushing")
+                  : t("governance.approval.approveAndPush")
+                : t("governance.approval.approve")
+              : t("governance.approval.approveEllipsis")}
           </Button>
           <Button disabled={busy} onClick={() => act("reject", { fingerprint: approval.fingerprint })}>
-            Reject
+            {t("governance.approval.reject")}
           </Button>
         </div>
       )}
       {approval.state === "granted" && (
         <div>
           <Button disabled={busy} onClick={() => act("execute")}>
-            Carry it out
+            {t("governance.approval.carryItOut")}
           </Button>
         </div>
       )}
       <Dialog open={confirm} onOpenChange={(_, d) => setConfirm(d.open)}>
         <DialogSurface>
           <DialogBody>
-            <DialogTitle>Approve exactly this?</DialogTitle>
+            <DialogTitle>{t("governance.approval.confirmTitle")}</DialogTitle>
             <DialogContent>
               <Text block>{approval.summary}.</Text>
               <Text block size={200}>
-                The approval is of fingerprint <span className={s.mono}>{approval.fingerprint}</span> and is spent once. If the commit, the branch or the remote moves before it is carried out, it is refused and asked for again.
+                {t("governance.approval.confirmBodyBefore")}
+                <span className={s.mono}>{approval.fingerprint}</span>
+                {t("governance.approval.confirmBodyAfter")}
               </Text>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setConfirm(false)}>Cancel</Button>
+              <Button onClick={() => setConfirm(false)}>{t("governance.approval.cancel")}</Button>
               <Button appearance="primary" disabled={busy} onClick={() => act("grant", { fingerprint: approval.fingerprint })}>
-                {approval.action === "repository.push" ? "Approve and push" : "Approve"}
+                {approval.action === "repository.push" ? t("governance.approval.approveAndPush") : t("governance.approval.approve")}
               </Button>
             </DialogActions>
           </DialogBody>

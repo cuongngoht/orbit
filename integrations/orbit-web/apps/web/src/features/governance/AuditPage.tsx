@@ -31,38 +31,39 @@ import type { AuditPage as Page, ChainVerification } from "@orbit-web/contracts"
 import { useEffect, useMemo, useState } from "react";
 import { AuditChainIcon } from "../../components/SectionIcons";
 import { useResource } from "../../hooks/useResource";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, EmptyState, ErrorBar, Word, plural, principalOf, short, useParts, when } from "./parts";
 
-const CATEGORY_OF_PREFIX: Record<string, string> = {
-  account: "Account & Auth",
-  auth: "Account & Auth",
-  authz: "Account & Auth",
-  boundary: "Account & Auth",
-  policy: "Policy & Overrides",
-  override: "Policy & Overrides",
-  approval: "Approvals & Protected",
-  protected: "Approvals & Protected",
-  run: "Runs & Isolation",
-  isolation: "Runs & Isolation",
-  egress: "Runs & Isolation",
-  office: "Office",
-  audit: "Audit, Findings & Settings",
-  finding: "Audit, Findings & Settings",
-  report: "Audit, Findings & Settings",
-  settings: "Audit, Findings & Settings",
-  resource: "Audit, Findings & Settings",
+const CATEGORY_KEY_OF_PREFIX: Record<string, MessageKey> = {
+  account: "governance.audit.cat.account",
+  auth: "governance.audit.cat.account",
+  authz: "governance.audit.cat.account",
+  boundary: "governance.audit.cat.account",
+  policy: "governance.audit.cat.policy",
+  override: "governance.audit.cat.policy",
+  approval: "governance.audit.cat.approvals",
+  protected: "governance.audit.cat.approvals",
+  run: "governance.audit.cat.runs",
+  isolation: "governance.audit.cat.runs",
+  egress: "governance.audit.cat.runs",
+  office: "governance.audit.cat.office",
+  audit: "governance.audit.cat.audit",
+  finding: "governance.audit.cat.audit",
+  report: "governance.audit.cat.audit",
+  settings: "governance.audit.cat.audit",
+  resource: "governance.audit.cat.audit",
 };
 
-const CATEGORY_ORDER = [
-  "Account & Auth",
-  "Policy & Overrides",
-  "Approvals & Protected",
-  "Runs & Isolation",
-  "Office",
-  "Audit, Findings & Settings",
-] as const;
+const CATEGORY_KEY_ORDER: readonly MessageKey[] = [
+  "governance.audit.cat.account",
+  "governance.audit.cat.policy",
+  "governance.audit.cat.approvals",
+  "governance.audit.cat.runs",
+  "governance.audit.cat.office",
+  "governance.audit.cat.audit",
+];
 
 interface EventOption {
   value: string;
@@ -72,14 +73,14 @@ interface EventOption {
 
 function categoryFor(eventType: string): string {
   const prefix = eventType.split(".")[0] ?? "";
-  if (CATEGORY_OF_PREFIX[prefix]) return CATEGORY_OF_PREFIX[prefix]!;
-  return prefix ? `${prefix.charAt(0).toUpperCase()}${prefix.slice(1)}` : "Other";
+  if (CATEGORY_KEY_OF_PREFIX[prefix]) return tr(CATEGORY_KEY_OF_PREFIX[prefix]);
+  return prefix ? `${prefix.charAt(0).toUpperCase()}${prefix.slice(1)}` : tr("governance.audit.cat.other");
 }
 
-const ALL_EVENT_OPTIONS: EventOption[] = (Object.keys(AUDIT_EVENTS) as Array<keyof typeof AUDIT_EVENTS>).map((t) => ({
-  value: t,
-  summary: AUDIT_EVENTS[t].summary,
-  category: categoryFor(t),
+const ALL_EVENT_OPTIONS: EventOption[] = (Object.keys(AUDIT_EVENTS) as Array<keyof typeof AUDIT_EVENTS>).map((evType) => ({
+  value: evType,
+  summary: AUDIT_EVENTS[evType].summary,
+  category: categoryFor(evType),
 }));
 
 const useStyles = makeStyles({
@@ -215,6 +216,7 @@ const OK_OUTCOMES = new Set(["allow", "ok", "succeeded", "signed_in", "granted",
 const DENY_OUTCOMES = new Set(["deny", "refused", "failed", "rejected"]);
 
 function EventTypePicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const [open, setOpen] = useState(false);
@@ -231,11 +233,12 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
       list.push(opt);
       byCat.set(opt.category, list);
     }
-    const order = [...CATEGORY_ORDER, ...Array.from(byCat.keys()).filter((c) => !(CATEGORY_ORDER as readonly string[]).includes(c))];
+    const baseOrder = CATEGORY_KEY_ORDER.map((k) => t(k));
+    const order = [...baseOrder, ...Array.from(byCat.keys()).filter((c) => !baseOrder.includes(c))];
     return order.map((cat) => ({ category: cat, items: byCat.get(cat) ?? [] })).filter((g) => g.items.length > 0);
-  }, [needle]);
+  }, [needle, t]);
 
-  const showAllOption = !needle || "every record".includes(needle);
+  const showAllOption = !needle || t("governance.audit.everyRecordLower").includes(needle);
   const pick = (next: string) => {
     onChange(next);
     setQuery("");
@@ -253,7 +256,7 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
     >
       <PopoverTrigger disableButtonEnhancement>
         <Button
-          aria-label="Record type"
+          aria-label={t("governance.audit.recordTypeAria")}
           appearance="outline"
           shape="circular"
           className={mergeClasses(st.pickerBtn, value !== "" && st.pickerBtnActive)}
@@ -262,19 +265,19 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
         >
           <span className={st.pickerBtnInner}>
             <Filter16Regular aria-hidden style={{ flexShrink: 0 }} />
-            <span className={mergeClasses(st.pickerBtnLabel, value !== "" && s.mono)}>{value || "Every record"}</span>
+            <span className={mergeClasses(st.pickerBtnLabel, value !== "" && s.mono)}>{value || t("governance.audit.everyRecord")}</span>
           </span>
         </Button>
       </PopoverTrigger>
-      <PopoverSurface className={st.popoverSurface} aria-label="Filter record types">
+      <PopoverSurface className={st.popoverSurface} aria-label={t("governance.audit.filterTypesAria")}>
         <SearchBox
-          placeholder="Search record types…"
-          aria-label="Search record types"
+          placeholder={t("governance.audit.searchPlaceholder")}
+          aria-label={t("governance.audit.searchAria")}
           value={query}
           onChange={(_, d) => setQuery(d.value)}
           autoFocus
         />
-        <div className={st.optionList} role="listbox" aria-label="Record type options">
+        <div className={st.optionList} role="listbox" aria-label={t("governance.audit.optionsAria")}>
           {showAllOption && (
             <button
               type="button"
@@ -285,16 +288,16 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
             >
               <span className={st.optionTop}>
                 <Text weight="semibold" size={200}>
-                  Every record
+                  {t("governance.audit.everyRecord")}
                 </Text>
                 {value === "" && <Checkmark16Regular className={st.checkIcon} aria-hidden />}
               </span>
-              <span className={st.optionSummary}>Show all {ALL_EVENT_OPTIONS.length} audit record types</span>
+              <span className={st.optionSummary}>{t("governance.audit.showAllTypes", { count: ALL_EVENT_OPTIONS.length })}</span>
             </button>
           )}
           {grouped.length === 0 && !showAllOption ? (
             <Text size={200} className={s.muted} style={{ padding: "12px 8px", textAlign: "center" }}>
-              No record type matches “{query.trim()}”.
+              {t("governance.audit.noMatch", { query: query.trim() })}
             </Text>
           ) : (
             grouped.map((g) => (
@@ -331,6 +334,7 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
 }
 
 function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boolean }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const [open, setOpen] = useState(initiallyOpen);
@@ -366,13 +370,13 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
             onClick={() => setOpen(!open)}
             aria-expanded={open}
           >
-            {open ? "Less" : "Everything it says"}
+            {open ? t("governance.audit.less") : t("governance.audit.everythingItSays")}
           </Button>
         </div>
         <div className={st.reasonRow}>
           <Text size={200} className={s.muted}>
             {principalOf(event.principalType, event.principalId, event.agentId)}
-            {event.workspaceId ? ` · workspace ${short(event.workspaceId, 8)}` : ""}
+            {event.workspaceId ? t("governance.audit.workspaceSuffix", { id: short(event.workspaceId, 8) }) : ""}
           </Text>
           {event.reasonCodes.map((code) => (
             <span key={code} className={s.codeChip}>
@@ -391,7 +395,7 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
                 <span />
               )}
               <Button size="small" appearance="subtle" shape="circular" icon={<Copy16Regular />} onClick={copyJson}>
-                {copied ? "Copied" : "Copy JSON"}
+                {copied ? t("governance.audit.copied") : t("governance.audit.copyJson")}
               </Button>
             </div>
             <pre className={s.pre}>{JSON.stringify(event, null, 2)}</pre>
@@ -403,6 +407,7 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
 }
 
 export function AuditPage({ item }: { item: string | null }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const [type, setType] = useState("");
@@ -446,27 +451,34 @@ export function AuditPage({ item }: { item: string | null }) {
                 setType("");
               }}
             >
-              Clear
+              {t("governance.audit.clear")}
             </Button>
           )}
           {page.data && (
             <Text size={200} className={s.muted}>
-              {plural(page.data.events.length, "record")}
+              {plural(page.data.events.length, t("governance.audit.recordOne"), t("governance.audit.recordMany"))}
             </Text>
           )}
         </div>
         <Button shape="circular" icon={<ShieldCheckmark16Regular />} disabled={verifying} onClick={verify}>
-          {verifying ? "Verifying…" : "Verify the chain"}
+          {verifying ? t("governance.audit.verifying") : t("governance.audit.verifyChain")}
         </Button>
       </div>
       {verification && (
         <MessageBar intent={verification.ok ? "success" : "error"}>
-          <MessageBarBody>{verification.ok ? `The chain holds: ${plural(verification.count, "record")}, head ${short(verification.head, 16)}.` : `The chain does NOT hold at record ${verification.brokenAt} (${verification.problem}).`}</MessageBarBody>
+          <MessageBarBody>
+            {verification.ok
+              ? t("governance.audit.chainOk", {
+                  records: plural(verification.count, t("governance.audit.recordOne"), t("governance.audit.recordMany")),
+                  head: short(verification.head, 16),
+                })
+              : t("governance.audit.chainBroken", { at: verification.brokenAt ?? "", problem: verification.problem ?? "" })}
+          </MessageBarBody>
         </MessageBar>
       )}
       <ErrorBar text={error} />
       {item && one.data && (
-        <ul className={s.list} aria-label="The record asked for">
+        <ul className={s.list} aria-label={t("governance.audit.requestedRecordAria")}>
           <Record event={one.data} open />
         </ul>
       )}
@@ -484,8 +496,8 @@ export function AuditPage({ item }: { item: string | null }) {
             <EmptyState
               icon={<AuditChainIcon size={22} />}
               tone="teal"
-              title={type ? "No matching audit records" : "No audit records yet"}
-              body={type ? `Nothing recorded for ${type} on this page.` : "Governance actions will appear here as they happen."}
+              title={type ? t("governance.audit.emptyMatchingTitle") : t("governance.audit.emptyTitle")}
+              body={type ? t("governance.audit.emptyMatchingBody", { type }) : t("governance.audit.emptyBody")}
               action={
                 type ? (
                   <Button
@@ -495,13 +507,13 @@ export function AuditPage({ item }: { item: string | null }) {
                       setType("");
                     }}
                   >
-                    Show every record
+                    {t("governance.audit.showEveryRecord")}
                   </Button>
                 ) : undefined
               }
             />
           ) : (
-            <ul className={mergeClasses(s.list)} aria-label="Audit records">
+            <ul className={mergeClasses(s.list)} aria-label={t("governance.audit.recordsAria")}>
               {page.data.events.map((e) => (
                 <Record key={e.eventId} event={e} open={false} />
               ))}
@@ -510,12 +522,12 @@ export function AuditPage({ item }: { item: string | null }) {
           <div className={s.row}>
             {before !== null && (
               <Button shape="circular" onClick={() => setBefore(null)}>
-                Newest
+                {t("governance.audit.newest")}
               </Button>
             )}
             {page.data.next !== null && (
               <Button shape="circular" onClick={() => setBefore(page.data?.next ?? null)}>
-                Older
+                {t("governance.audit.older")}
               </Button>
             )}
           </div>

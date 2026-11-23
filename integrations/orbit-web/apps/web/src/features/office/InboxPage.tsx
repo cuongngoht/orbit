@@ -8,6 +8,7 @@ import { ShieldClearIcon } from "../../components/SectionIcons";
 import { INBOX_KIND_TEXT, type Inbox, type InboxItem } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
+import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
 import { AsOf, Callout, EmptyState, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
@@ -34,6 +35,7 @@ const useStyles = makeStyles({
 });
 
 function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const act = useAction();
@@ -67,7 +69,7 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
         </div>
         <Text size={200} className={o.muted}>
           {when(item.createdAt)}
-          {item.deadline ? ` · decide by ${when(item.deadline)}` : ""}
+          {item.deadline ? t("office.inbox.decideBy", { at: when(item.deadline) }) : ""}
         </Text>
       </div>
       <Text size={300} className={o.wrap}>
@@ -75,13 +77,13 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
       </Text>
       {item.waiting && (
         <Callout tone="info" icon={<Clock16Regular />}>
-          Waiting: {item.waiting}
+          {t("office.inbox.waiting", { what: item.waiting })}
         </Callout>
       )}
       {!open && (
         <div className={o.inset}>
           <Text size={200} className={o.muted}>
-            {item.state === "resolved" ? "Resolved" : item.state === "expired" ? "Expired" : "Withdrawn"} {when(item.resolvedAt)}
+            {item.state === "resolved" ? t("office.inbox.stateResolved") : item.state === "expired" ? t("office.inbox.stateExpired") : t("office.inbox.stateWithdrawn")} {when(item.resolvedAt)}
             {item.resolution ? `: ${item.resolution}` : ""}
           </Text>
         </div>
@@ -89,25 +91,27 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
       {open && item.kind === "unschedulable" && (
         <div className={o.inset}>
           <Text size={200}>
-            As configured this work can never start. Lower what the employee asks for, have the operator raise the account's authorization (<code className={mergeClasses(o.mono, s.cmd)}>{OPERATOR_COMMAND}</code> on the server), or cancel the work and give it to somebody else.
+            {t("office.inbox.unschedulableAdviceBefore")}
+            <code className={mergeClasses(o.mono, s.cmd)}>{OPERATOR_COMMAND}</code>
+            {t("office.inbox.unschedulableAdviceAfter")}
           </Text>
         </div>
       )}
       {open && item.kind === "information" && canCommand && (
         <form
           className={mergeClasses(o.form, o.inset)}
-          aria-label={`Answer: ${item.title}`}
+          aria-label={t("office.inbox.answerFormAria", { title: item.title })}
           onSubmit={(e) => {
             e.preventDefault();
             command("answer", { answer: answer.trim() });
           }}
         >
-          <Field label="Your answer" required>
+          <Field label={t("office.mission.yourAnswer")} required>
             <Textarea value={answer} resize="vertical" onChange={(_, d) => setAnswer(d.value)} />
           </Field>
           <div>
             <Button type="submit" appearance="primary" disabled={act.busy || answer.trim() === ""}>
-              Send the answer
+              {t("office.mission.sendAnswer")}
             </Button>
           </div>
         </form>
@@ -117,27 +121,27 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
         <div className={o.row}>
           {open && item.kind === "acceptance" && (
             <Button className={o.touch} appearance="primary" onClick={() => go("mission", item.missionId, "handoffs")}>
-              Review the result
+              {t("office.inbox.reviewResult")}
             </Button>
           )}
           {open && item.kind === "unschedulable" && (
             <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={editResources}>
-              Edit the employee's resources
+              {t("office.inbox.editResources")}
             </Button>
           )}
           {open && item.kind === "blocked" && (
             <Button className={o.touch} appearance="primary" disabled={act.busy || !canCommand} onClick={() => command("retry")}>
-              Retry
+              {t("office.mission.action.retry")}
             </Button>
           )}
           {open && (item.kind === "unschedulable" || item.kind === "blocked") && (
             <Button className={o.touch} disabled={act.busy || !canCommand} onClick={() => command("cancel")}>
-              Cancel the work
+              {t("office.inbox.cancelWork")}
             </Button>
           )}
         </div>
         <Link className="orbit-target" as="button" onClick={() => go("mission", item.missionId)}>
-          Open the work
+          {t("office.assign.openWork")}
         </Link>
       </div>
       <ProblemBar problem={act.problem} onLoadLatest={onDone} />
@@ -146,6 +150,7 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
 }
 
 function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "history"; go: Go; onDone: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const [more, setMore] = useState<InboxItem[]>([]);
   const [cursor, setCursor] = useState(first.nextCursor);
@@ -171,11 +176,11 @@ function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "hi
         <EmptyState
           icon={<ShieldClearIcon size={22} />}
           tone="success"
-          title={state === "open" ? "Nothing needs you now." : "Nothing decided yet."}
-          body={state === "open" ? "Reviews, questions, and blocked assignments waiting on you will appear here." : "Resolved, expired, or withdrawn items are kept here."}
+          title={state === "open" ? t("office.inbox.emptyOpenTitle") : t("office.inbox.emptyHistoryTitle")}
+          body={state === "open" ? t("office.inbox.emptyOpenBody") : t("office.inbox.emptyHistoryBody")}
         />
       ) : (
-        <ul className={o.list} aria-label={state === "open" ? "Needs you" : "Decided"}>
+        <ul className={o.list} aria-label={state === "open" ? t("office.inbox.listOpenAria") : t("office.inbox.listHistoryAria")}>
           {items.map((i) => (
             <Item key={i.id} item={i} go={go} onDone={onDone} />
           ))}
@@ -189,7 +194,7 @@ function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "hi
       {cursor !== null && (
         <div>
           <Button disabled={loading} onClick={() => void loadMore()}>
-            {loading ? "Loading…" : "Load more"}
+            {loading ? t("office.overview.loading") : t("office.overview.loadMore")}
           </Button>
         </div>
       )}
@@ -198,6 +203,7 @@ function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "hi
 }
 
 export function InboxPage({ go }: { go: Go }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const [state, setState] = useState<"open" | "history">("open");
   const inbox = useOfficeRead<Inbox>(() => office.inbox(state), [state], ["inbox", "missions"]);
@@ -205,9 +211,12 @@ export function InboxPage({ go }: { go: Go }) {
     <div className={o.page}>
       <div className={o.between}>
         <div className={o.tabStrip}>
-          <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "history")} aria-label="Which items">
-            <Tab value="open">Open{inbox.data && state === "open" ? ` (${inbox.data.open})` : ""}</Tab>
-            <Tab value="history">History</Tab>
+          <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "history")} aria-label={t("office.inbox.whichItemsAria")}>
+            <Tab value="open">
+              {t("office.inbox.tabOpen")}
+              {inbox.data && state === "open" ? ` (${inbox.data.open})` : ""}
+            </Tab>
+            <Tab value="history">{t("office.inbox.tabHistory")}</Tab>
           </TabList>
         </div>
         <AsOf at={inbox.data?.asOf ?? null} />
@@ -218,7 +227,7 @@ export function InboxPage({ go }: { go: Go }) {
             <MessageBarBody>{inbox.error}</MessageBarBody>
           </MessageBar>
         ) : (
-          <Spinner label="Reading what needs you…" />
+          <Spinner label={t("office.inbox.reading")} />
         )
       ) : (
         <Items key={`${state}:${inbox.data.asOf}:${inbox.data.version}`} first={inbox.data} state={state} go={go} onDone={() => void inbox.reload()} />

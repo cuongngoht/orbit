@@ -3,7 +3,7 @@
 // first whose own first line appears in the output (a protocol, src/); else the command's lifecycle only.
 //
 //   ADAPTERS                       bound by cli/autonomous-engineering.mjs into the check runner's observer
-//   CAPABILITY_MATRIX              what each can show, as data: the table the README's "Check observation adapters" prints, which a test holds to
+//   CAPABILITY_MATRIX              what each can show, as data: the table docs/plugin.md's "Check observation adapters" prints, which a test holds to
 //                                  these rows -- and an observation never claims more than its adapter's row
 //
 // Adding one is a file here with the adapter contract (id, framework, runner, capabilities, observes, verified,

@@ -4,6 +4,7 @@
 import { FALLBACK_CATALOG, type ModelCatalog } from "@orbit-web/contracts";
 import { createContext, useContext, type ReactNode } from "react";
 import { useResource } from "../../hooks/useResource";
+import { t } from "../../i18n";
 import { get } from "../api";
 import { useAppEvent, useAppStream } from "../events/AppEvents";
 
@@ -30,5 +31,5 @@ export const catalogOfConnection = (c: { catalog: { source: "account" | "fallbac
   source: c.catalog.source === "account" ? "account" : "fallback",
   models: c.catalog.models,
   recommended: c.catalog.recommended ?? c.catalog.models[0]?.id ?? "",
-  detail: c.catalog.source === "account" ? null : "This connection's CLI could not be asked which models it may use: its fallback list is shown, and the CLI decides.",
+  detail: c.catalog.source === "account" ? null : t("common.models.fallbackDetail"),
 });

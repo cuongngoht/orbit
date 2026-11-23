@@ -10,11 +10,13 @@ import { browserTimeZone, TimeZoneSelect } from "../components/TimeZoneSelect";
 import { PasswordRules } from "../features/auth/PasswordRules";
 import { TrialBar } from "../features/auth/TrialBar";
 import { useViewport } from "../hooks/useViewport";
+import { useI18n } from "../i18n";
 import { ApiError, errorText, send } from "../services/api";
 import { useSignInStyles } from "./signInStyles";
 
 // A password field with a button that shows what was typed (to check it) and hides it again.
 export function PasswordInput({ value, onChange, autoComplete, label, hint, autoFocus = false }: { value: string; onChange: (v: string) => void; autoComplete: string; label: string; hint?: string; autoFocus?: boolean }) {
+  const { t } = useI18n();
   const [shown, setShown] = useState(false);
   return (
     <Field label={label} hint={hint} required>
@@ -24,13 +26,14 @@ export function PasswordInput({ value, onChange, autoComplete, label, hint, auto
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         onChange={(_, d) => onChange(d.value)}
-        contentAfter={<Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? `Hide the ${label.toLowerCase()}` : `Show the ${label.toLowerCase()}`} onClick={() => setShown(!shown)} />}
+        contentAfter={<Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? t("common.signIn.hideField", { label: label.toLowerCase() }) : t("common.signIn.showField", { label: label.toLowerCase() })} onClick={() => setShown(!shown)} />}
       />
     </Field>
   );
 }
 
 function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; onReload: () => void }) {
+  const { t } = useI18n();
   const s = useSignInStyles();
   const { isMobile, isCoarse } = useViewport();
   const [username, setUsername] = useState("");
@@ -54,31 +57,33 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
   return (
     <form
       className={s.form}
-      aria-label="Sign in"
+      aria-label={t("common.signIn.signInAria")}
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <Field label="Username" required>
+      <Field label={t("common.signIn.usernameLabel")} required>
         <Input value={username} autoComplete="username" autoCapitalize="none" spellCheck={false} autoFocus={!isMobile && !isCoarse} onChange={(_, d) => setUsername(d.value)} />
       </Field>
-      <PasswordInput label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
+      <PasswordInput label={t("common.signIn.passwordLabel")} value={password} onChange={setPassword} autoComplete="current-password" />
       {error && (
         <MessageBar intent={error.throttled ? "warning" : "error"}>
           <MessageBarBody>{error.text}</MessageBarBody>
         </MessageBar>
       )}
       {busy ? (
-        <Spinner size="tiny" label="Signing in…" />
+        <Spinner size="tiny" label={t("common.signIn.signingIn")} />
       ) : (
         <Button className={s.wide} appearance="primary" size="large" type="submit" disabled={username.trim().length === 0 || password.length === 0}>
-          Sign in
+          {t("common.signIn.signIn")}
         </Button>
       )}
       <Text size={200} className={s.hint}>
-        Forgot the password? An operator issues a new one-time code on the server: <span className={s.code}>node dist/cli/governance.js owner reset-password</span>.
+        {t("common.signIn.forgotLead")}
+        <span className={s.code}>node dist/cli/governance.js owner reset-password</span>
+        {t("common.signIn.forgotEnd")}
       </Text>
     </form>
   );
@@ -86,6 +91,7 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
 
 // `standing`: a test installation's standing setup code (ORBIT_WEB_SETUP_CODE), filled in for the first administrator.
 function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; standing: string | null }) {
+  const { t } = useI18n();
   const s = useSignInStyles();
   const [code, setCode] = useState(standing ?? "");
   const [username, setUsername] = useState("admin");
@@ -104,7 +110,7 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
     // The contract's own check first: the page says every problem at once, before anything is sent.
     const checked = checkSetup(body);
     if (!checked.ok || confirm !== password) {
-      setProblems([...(checked.ok ? [] : checked.errors), ...(confirm !== password ? ["the two passwords differ"] : [])]);
+      setProblems([...(checked.ok ? [] : checked.errors), ...(confirm !== password ? [t("common.signIn.passwordsDifferError")] : [])]);
       return;
     }
     setProblems([]);
@@ -121,7 +127,7 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
   return (
     <form
       className={s.form}
-      aria-label="Set up the first administrator"
+      aria-label={t("common.signIn.setupAria")}
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
@@ -129,36 +135,36 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
       }}
     >
       <Field
-        label={standing !== null ? "Setup code" : "One-time setup code"}
+        label={standing !== null ? t("common.signIn.setupCodeStanding") : t("common.signIn.setupCodeOneTime")}
         required
-        hint={standing !== null ? "This installation's standing setup code (ORBIT_WEB_SETUP_CODE), filled in for you: it makes the first administrator only." : "Printed on the server by node dist/cli/governance.js owner setup-code — valid for 30 minutes, and used once."}
+        hint={standing !== null ? t("common.signIn.setupCodeStandingHint") : t("common.signIn.setupCodeOneTimeHint")}
       >
         <Input value={code} autoComplete="one-time-code" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
       </Field>
-      <Field label="Username" required hint="Lower-case letters, digits, dots, dashes or underscores, starting with a letter.">
+      <Field label={t("common.signIn.usernameLabel")} required hint={t("common.signIn.usernameHint")}>
         <Input value={username} autoComplete="username" autoCapitalize="none" spellCheck={false} onChange={(_, d) => setUsername(d.value)} />
       </Field>
-      <Field label="Full name" required>
+      <Field label={t("common.signIn.fullNameLabel")} required>
         <Input value={fullName} autoComplete="name" onChange={(_, d) => setFullName(d.value)} />
       </Field>
-      <Field label="Company name" hint="Optional.">
+      <Field label={t("common.signIn.companyNameLabel")} hint={t("common.signIn.optionalHint")}>
         <Input value={companyName} autoComplete="organization" onChange={(_, d) => setCompanyName(d.value)} />
       </Field>
-      <Field label="Time zone" required hint="The default of your schedules. It starts as this browser's.">
+      <Field label={t("common.signIn.timezoneLabel")} required hint={t("common.signIn.timezoneHint")}>
         <TimeZoneSelect value={timezone} onChange={setTimezone} />
       </Field>
-      <Field label="Contact email" hint="Optional. It stays unverified until Orbit can send mail.">
+      <Field label={t("common.signIn.contactEmailLabel")} hint={t("common.signIn.contactEmailHint")}>
         <Input type="email" value={contactEmail} autoComplete="email" onChange={(_, d) => setContactEmail(d.value)} />
       </Field>
-      <PasswordInput label="Password" value={password} onChange={setPassword} autoComplete="new-password" />
+      <PasswordInput label={t("common.signIn.passwordLabel")} value={password} onChange={setPassword} autoComplete="new-password" />
       <PasswordRules password={password} username={username.trim().toLowerCase()} />
-      <Field label="Repeat the password" required validationState={mismatch ? "error" : "none"} validationMessage={mismatch ? "The two passwords differ." : undefined}>
+      <Field label={t("common.signIn.repeatPasswordLabel")} required validationState={mismatch ? "error" : "none"} validationMessage={mismatch ? t("common.signIn.passwordsDifferValidation") : undefined}>
         <Input type="password" value={confirm} autoComplete="new-password" onChange={(_, d) => setConfirm(d.value)} />
       </Field>
       {problems.length > 0 && (
         <MessageBar intent="error" layout="multiline">
           <MessageBarBody>
-            <ul aria-label="What to correct" style={{ margin: 0, paddingLeft: "18px" }}>
+            <ul aria-label={t("common.signIn.whatToCorrect")} style={{ margin: 0, paddingLeft: "18px" }}>
               {problems.map((p) => (
                 <li key={p}>{p}</li>
               ))}
@@ -172,10 +178,10 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
         </MessageBar>
       )}
       {busy ? (
-        <Spinner size="tiny" label="Creating the administrator…" />
+        <Spinner size="tiny" label={t("common.signIn.creatingAdmin")} />
       ) : (
         <Button className={s.wide} appearance="primary" size="large" type="submit">
-          Create the administrator
+          {t("common.signIn.createAdmin")}
         </Button>
       )}
     </form>
@@ -183,6 +189,7 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
 }
 
 export function SignInPage({ status, onStatus, onReload }: { status: AuthStatus; onStatus: (s: AuthStatus) => void; onReload: () => void }) {
+  const { t } = useI18n();
   const s = useSignInStyles();
   const setup = status.state === "setup_required";
   return (
@@ -191,18 +198,16 @@ export function SignInPage({ status, onStatus, onReload }: { status: AuthStatus;
       <main className={s.page}>
         <div className={s.panel}>
           <img src="/orbit.svg" alt="" className={s.logo} />
-          <h1 className={s.heading}>{setup ? "Set up Orbit Web" : "Sign in to Orbit Web"}</h1>
+          <h1 className={s.heading}>{setup ? t("common.signIn.setupTitle") : t("common.signIn.signInTitle")}</h1>
           <Text align="center" className={s.lead}>
-            {setup
-              ? "Create the first administrator of this installation. You connect Claude Code, Codex or Antigravity afterwards, in Settings → AI Connections."
-              : "Sign in with your Orbit username and password. This is Orbit's own sign-in: no AI provider is asked, and none is started."}
+            {setup ? t("common.signIn.setupLead") : t("common.signIn.signInLead")}
           </Text>
         </div>
-        <section className={s.card} aria-label={setup ? "Set up the first administrator" : "Sign in to Orbit Web"}>
+        <section className={s.card} aria-label={setup ? t("common.signIn.setupAria") : t("common.signIn.signInTitle")}>
           {setup ? <SetupForm onStatus={onStatus} standing={status.setupCode ?? null} /> : <LoginForm onStatus={onStatus} onReload={onReload} />}
         </section>
         <Text size={200} className={s.foot}>
-          Orbit Web {ORBIT_WEB_VERSION}
+          {t("common.access.footer", { version: ORBIT_WEB_VERSION })}
         </Text>
       </main>
     </div>

@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import { ConnectionRequired, isConnectionRequired } from "../../components/ApiErrorBar";
 import { DesksIcon, IconBadge, PolicyIcon, QueuedIcon, WorkMissionIcon } from "../../components/SectionIcons";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
 import { Disclosure, WorkLabelBadge, useOfficeStyles, when } from "./parts";
@@ -209,6 +210,7 @@ const useStyles = makeStyles({
 type Outcome = { kind: "done"; result: MissionAccepted } | { kind: "busy"; details: EmployeeBusyDetails | null; message: string } | { kind: "failed"; error: unknown } | null;
 
 export function AssignDialog({ employees, employeeId = null, onClose, onOpenMission }: { employees: EmployeeCard[]; employeeId?: string | null; onClose: () => void; onOpenMission: (missionId: string) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const { isMobile } = useViewport();
@@ -288,13 +290,13 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   if (outcome?.kind === "done") {
     const r = outcome.result;
     const recipient = choices.find((e) => e.id === r.employeeId);
-    const who = recipient?.name ?? "The employee";
+    const who = recipient?.name ?? t("office.assign.defaultRecipient");
     const queued = r.state === "QUEUED";
     return (
       <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
         <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)}>
           <DialogBody>
-            <DialogTitle>{queued ? "Queued" : "Started"}</DialogTitle>
+            <DialogTitle>{queued ? t("office.assign.doneQueued") : t("office.assign.doneStarted")}</DialogTitle>
             <DialogContent className={s.dialogContent}>
               <div className={s.colleagueCard}>
                 <div className={s.portraitFrame}>
@@ -305,23 +307,24 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     {who}
                   </Text>
                   <Text size={200} className={o.muted}>
-                    {recipient?.title ?? "Teammate"}
+                    {recipient?.title ?? t("office.assign.defaultTitle")}
                     {title.trim() ? ` · ${title.trim()}` : ""}
                   </Text>
                 </div>
               </div>
               <MessageBar intent={queued ? "info" : "success"}>
                 <MessageBarBody>
-                  {queued ? `It waits behind ${who}'s current work.` : `${who} holds it now.`} State: {ASSIGNMENT_STATE_TEXT[r.state]}.
+                  {queued ? t("office.assign.queuedBody", { who }) : t("office.assign.startedBody", { who })}
+                  {t("office.assign.stateLine", { state: ASSIGNMENT_STATE_TEXT[r.state] })}
                 </MessageBarBody>
               </MessageBar>
             </DialogContent>
             <DialogActions>
               <Button type="button" onClick={onClose}>
-                Close
+                {t("office.assign.close")}
               </Button>
               <Button type="button" appearance="primary" onClick={() => onOpenMission(r.missionId)}>
-                Open the work
+                {t("office.assign.openWork")}
               </Button>
             </DialogActions>
           </DialogBody>
@@ -342,13 +345,13 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
           }}
         >
           <DialogBody className={s.dialogBody}>
-            <DialogTitle>Assign work</DialogTitle>
+            <DialogTitle>{t("office.assign.title")}</DialogTitle>
             <DialogContent className={s.dialogContent}>
               <div className={s.sectionCard}>
                 <div className={s.sectionHead}>
                   <IconBadge icon={<DesksIcon size={14} active />} tone="brand" size="sm" />
                   <Text weight="semibold" size={300}>
-                    Colleague desk
+                    {t("office.assign.colleagueDesk")}
                   </Text>
                 </div>
                 {employee && (
@@ -368,18 +371,22 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                       </Text>
                       {employee.holding && outcome?.kind !== "busy" ? (
                         <Text size={200} className={o.muted}>
-                          {employee.name} is working on “{employee.holding.title}” now{employee.queued > 0 ? `, with ${employee.queued} queued` : ""}.
+                          {t("office.assign.workingOnNow", {
+                            name: employee.name,
+                            title: employee.holding.title,
+                            queued: employee.queued > 0 ? t("office.assign.withQueued", { count: employee.queued }) : "",
+                          })}
                         </Text>
                       ) : (
                         <Text size={200} className={o.muted}>
-                          {employee.workLabel === "ready" ? "At desk and ready to start right away." : deskMoodText(employee.workLabel)}
+                          {employee.workLabel === "ready" ? t("office.assign.readyAtDesk") : deskMoodText(employee.workLabel)}
                         </Text>
                       )}
                     </div>
                   </div>
                 )}
                 {choices.length > 1 && choices.length <= 8 && (
-                  <div className={s.seatStrip} role="group" aria-label="Quick desk switch">
+                  <div className={s.seatStrip} role="group" aria-label={t("office.assign.quickDeskSwitch")}>
                     {choices.map((c) => {
                       const p = personaFor(c.name);
                       const selected = c.id === target;
@@ -389,7 +396,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                           type="button"
                           className={mergeClasses(s.seatChip, selected && s.seatChipSelected)}
                           aria-pressed={selected}
-                          aria-label={`Walk up to ${c.name}'s desk`}
+                          aria-label={t("office.assign.walkUpToDesk", { name: c.name })}
                           onClick={() => chooseTarget(c.id)}
                         >
                           <span className={s.chipAvatar} style={{ backgroundColor: p.shirt }} aria-hidden>
@@ -404,7 +411,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     })}
                   </div>
                 )}
-                <Field label="Employee" required>
+                <Field label={t("office.assign.employeeLabel")} required>
                   <Select ref={select} value={target} onChange={(_, d) => chooseTarget(d.value)}>
                     {choices.map((e) => (
                       <option key={e.id} value={e.id}>
@@ -419,13 +426,13 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 <div className={s.sectionHead}>
                   <IconBadge icon={<WorkMissionIcon size={14} active />} tone="brand" size="sm" />
                   <Text weight="semibold" size={300}>
-                    The brief
+                    {t("office.assign.theBrief")}
                   </Text>
                 </div>
-                <Field label="Title" hint="Optional: the goal's first line is used otherwise.">
+                <Field label={t("office.assign.titleLabel")} hint={t("office.assign.titleHint")}>
                   <Input value={title} maxLength={120} onChange={(_, d) => setTitle(d.value)} />
                 </Field>
-                <Field label="Goal" required hint="What you want done, as you would tell a colleague.">
+                <Field label={t("office.assign.goalLabel")} required hint={t("office.assign.goalHint")}>
                   <Textarea value={goal} resize="vertical" rows={4} onChange={(_, d) => setGoal(d.value)} />
                 </Field>
               </div>
@@ -434,37 +441,37 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 <div className={s.sectionHead}>
                   <IconBadge icon={<PolicyIcon size={14} active />} tone="teal" size="sm" />
                   <Text weight="semibold" size={300}>
-                    Deliverables & sources
+                    {t("office.assign.deliverablesAndSources")}
                   </Text>
                 </div>
-                <div role="group" aria-label="Deliverables" className={o.stack}>
+                <div role="group" aria-label={t("office.assign.deliverables")} className={o.stack}>
                   <Text weight="semibold" size={300}>
-                    Deliverables
+                    {t("office.assign.deliverables")}
                   </Text>
                   <Text size={200} className={o.muted}>
-                    Files it must hand in (a plain file name each).
+                    {t("office.assign.deliverablesHint")}
                   </Text>
                   <div className={o.stack}>
                     {deliverables.length > 0 && (
-                      <ul className={o.list} aria-label="Deliverables to hand in">
+                      <ul className={o.list} aria-label={t("office.assign.deliverablesListAria")}>
                         {deliverables.map((d) => (
                           <li key={d.name} className={s.deliverable}>
                             <div className={s.deliverableLeft}>
                               <Text weight="medium">{d.name}</Text>
                               <Badge appearance="tint" color={d.required ? "brand" : "subtle"} size="small" style={{ borderRadius: "9999px" }}>
-                                {d.required ? "required" : "optional"}
+                                {d.required ? t("office.assign.requiredTag") : t("office.assign.optionalTag")}
                               </Badge>
                             </div>
-                            <Button type="button" size="small" appearance="subtle" icon={<Dismiss16Regular />} aria-label={`Remove ${d.name}`} onClick={() => setDeliverables(deliverables.filter((x) => x !== d))} />
+                            <Button type="button" size="small" appearance="subtle" icon={<Dismiss16Regular />} aria-label={t("office.assign.removeDeliverable", { name: d.name })} onClick={() => setDeliverables(deliverables.filter((x) => x !== d))} />
                           </li>
                         ))}
                       </ul>
                     )}
                     <div className={s.addRow}>
-                      <Input aria-label="Deliverable file name" placeholder="report.pdf" value={newName} onChange={(_, d) => setNewName(d.value)} />
-                      <Checkbox label="Required" checked={newRequired} onChange={(_, d) => setNewRequired(d.checked === true)} />
+                      <Input aria-label={t("office.assign.deliverableNameAria")} placeholder={t("office.assign.deliverablePlaceholder")} value={newName} onChange={(_, d) => setNewName(d.value)} />
+                      <Checkbox label={t("office.assign.requiredLabel")} checked={newRequired} onChange={(_, d) => setNewRequired(d.checked === true)} />
                       <Button type="button" icon={<Add16Regular />} onClick={addDeliverable} disabled={newName.trim() === ""}>
-                        Add
+                        {t("office.assign.add")}
                       </Button>
                     </div>
                   </div>
@@ -479,21 +486,21 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 <div className={s.sectionHead}>
                   <IconBadge icon={<QueuedIcon size={14} active />} tone="neutral" size="sm" />
                   <Text weight="semibold" size={300}>
-                    Expectations & timing
+                    {t("office.assign.expectationsTiming")}
                   </Text>
                 </div>
                 <div className={s.expectGrid}>
-                  <Field label="Acceptance criteria" hint="Optional, one per line: what makes the result acceptable.">
+                  <Field label={t("office.assign.criteriaLabel")} hint={t("office.assign.criteriaHint")}>
                     <Textarea value={criteria} resize="vertical" rows={3} onChange={(_, d) => setCriteria(d.value)} />
                   </Field>
-                  <Field label="Deadline" hint="Optional.">
+                  <Field label={t("office.assign.deadlineLabel")} hint={t("office.assign.deadlineHint")}>
                     <Input type="datetime-local" value={deadline} onChange={(_, d) => setDeadline(d.value)} />
                   </Field>
                 </div>
-                <Field label="If the employee is busy">
+                <Field label={t("office.assign.whenBusyLabel")}>
                   <RadioGroup value={whenBusy} onChange={(_, d) => setWhenBusy(d.value as WhenBusy)}>
-                    <Radio value="reject" label="Start now — if it is busy, nothing is created and you choose what next" />
-                    <Radio value="enqueue" label="Queue it behind its current work" />
+                    <Radio value="reject" label={t("office.assign.whenBusyReject")} />
+                    <Radio value="enqueue" label={t("office.assign.whenBusyEnqueue")} />
                   </RadioGroup>
                 </Field>
               </div>
@@ -507,12 +514,12 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
               {outcome?.kind === "busy" && (
                 <MessageBar intent="warning" layout="multiline">
                   <MessageBarBody>
-                    {employee?.name ?? "The employee"} is busy, so nothing was created.{" "}
-                    {holding ? `It is working on “${holding.title}” (${ASSIGNMENT_STATE_TEXT[holding.state]}) since ${when(holding.since)}.` : "It holds other work you may not read."}
+                    {t("office.assign.busyTitle", { name: employee?.name ?? t("office.assign.defaultRecipient") })}
+                    {holding ? t("office.assign.busyHolding", { title: holding.title, state: ASSIGNMENT_STATE_TEXT[holding.state], since: when(holding.since) }) : t("office.assign.busyOther")}
                   </MessageBarBody>
                   <MessageBarActions>
                     <Button type="button" size="small" appearance="primary" disabled={busy} onClick={() => void submit("enqueue")}>
-                      Queue it
+                      {t("office.assign.queueIt")}
                     </Button>
                     <Button
                       type="button"
@@ -522,7 +529,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                         select.current?.focus();
                       }}
                     >
-                      Choose another employee
+                      {t("office.assign.chooseAnother")}
                     </Button>
                   </MessageBarActions>
                 </MessageBar>
@@ -538,10 +545,10 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
             </DialogContent>
             <DialogActions className={s.dialogActions}>
               <Button type="button" onClick={onClose}>
-                Cancel
+                {t("office.assign.cancel")}
               </Button>
               <Button appearance="primary" type="submit" disabled={busy || target === "" || goal.trim() === ""}>
-                {busy ? "Assigning…" : whenBusy === "enqueue" ? "Assign or queue" : "Start now"}
+                {busy ? t("office.assign.assigning") : whenBusy === "enqueue" ? t("office.assign.assignOrQueue") : t("office.assign.startNow")}
               </Button>
             </DialogActions>
           </DialogBody>

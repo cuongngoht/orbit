@@ -5,6 +5,7 @@
 import { Input, MessageBar, MessageBarBody, Slider, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { RESOURCE_BOUNDS, ceilingProblems, checkResourceProfile, type PerEmployeeCeiling, type ResourcePreset, type ResourceProfile, type ResourceSummary, type RuntimeKind } from "@orbit-web/contracts";
 import { useState } from "react";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { cpuText, fromGiB, fromVcpu, sizeText, toGiB, toVcpu } from "../resources/format";
 import { useOfficeStyles } from "./parts";
 
@@ -64,21 +65,22 @@ function NumberInput({ label, value, onValue, min, max, step }: { label: string;
 
 interface Spec {
   key: keyof Omit<ResourceProfile, "presetId">;
-  label: string;
-  hint: string;
+  labelKey: MessageKey;
+  hintKey: MessageKey;
   // The field's unit, and how its value maps to the profile's.
   unit: "vCPU" | "GiB" | "processes" | "minutes";
+  unitKey: MessageKey;
   slider: boolean;
 }
 
 const SPECS: Spec[] = [
-  { key: "cpuMillis", label: "CPU", hint: "Held while it works; an idle employee holds none.", unit: "vCPU", slider: true },
-  { key: "memoryMiB", label: "Memory", hint: "Held while it works; past it the work is stopped as out of memory.", unit: "GiB", slider: true },
-  { key: "deskStorageMiB", label: "Desk storage", hint: "Its persistent desk and toolbox: committed at hire.", unit: "GiB", slider: true },
-  { key: "scratchStorageMiB", label: "Scratch storage", hint: "One assignment's working space, held while it works.", unit: "GiB", slider: true },
-  { key: "cacheStorageMiB", label: "Dependency cache", hint: "Packages it installs, kept between assignments (0 for none).", unit: "GiB", slider: true },
-  { key: "pidsLimit", label: "Processes", hint: "How many processes an attempt may run at once.", unit: "processes", slider: false },
-  { key: "timeoutMinutes", label: "Time limit", hint: "How long one attempt may run.", unit: "minutes", slider: false },
+  { key: "cpuMillis", labelKey: "office.resources.spec.cpuMillis.label", hintKey: "office.resources.spec.cpuMillis.hint", unit: "vCPU", unitKey: "office.resources.unit.vCPU", slider: true },
+  { key: "memoryMiB", labelKey: "office.resources.spec.memoryMiB.label", hintKey: "office.resources.spec.memoryMiB.hint", unit: "GiB", unitKey: "office.resources.unit.GiB", slider: true },
+  { key: "deskStorageMiB", labelKey: "office.resources.spec.deskStorageMiB.label", hintKey: "office.resources.spec.deskStorageMiB.hint", unit: "GiB", unitKey: "office.resources.unit.GiB", slider: true },
+  { key: "scratchStorageMiB", labelKey: "office.resources.spec.scratchStorageMiB.label", hintKey: "office.resources.spec.scratchStorageMiB.hint", unit: "GiB", unitKey: "office.resources.unit.GiB", slider: true },
+  { key: "cacheStorageMiB", labelKey: "office.resources.spec.cacheStorageMiB.label", hintKey: "office.resources.spec.cacheStorageMiB.hint", unit: "GiB", unitKey: "office.resources.unit.GiB", slider: true },
+  { key: "pidsLimit", labelKey: "office.resources.spec.pidsLimit.label", hintKey: "office.resources.spec.pidsLimit.hint", unit: "processes", unitKey: "office.resources.unit.processes", slider: false },
+  { key: "timeoutMinutes", labelKey: "office.resources.spec.timeoutMinutes.label", hintKey: "office.resources.spec.timeoutMinutes.hint", unit: "minutes", unitKey: "office.resources.unit.minutes", slider: false },
 ];
 
 const toField = (spec: Spec, v: number): number => (spec.unit === "vCPU" ? toVcpu(v) : spec.unit === "GiB" ? toGiB(v) : v);
@@ -93,7 +95,7 @@ function sliderMax(spec: Spec, ceiling: PerEmployeeCeiling | null, value: number
   return Math.max(top, toField(spec, value), spec.unit === "vCPU" ? 0.25 : 1);
 }
 
-export const profileLine = (p: ResourceProfile): string => `${cpuText(p.cpuMillis)} · ${sizeText(p.memoryMiB)} memory · ${sizeText(p.deskStorageMiB)} desk`;
+export const profileLine = (p: ResourceProfile): string => tr("office.resources.profileLine", { cpu: cpuText(p.cpuMillis), memory: sizeText(p.memoryMiB), desk: sizeText(p.deskStorageMiB) });
 
 // What a profile breaks, in words: the bounds every profile keeps, and the account's per-employee limits.
 export function resourceProblems(p: ResourceProfile, ceiling: PerEmployeeCeiling | null): string[] {
@@ -106,53 +108,57 @@ export function resourceProblems(p: ResourceProfile, ceiling: PerEmployeeCeiling
 export function storageProblem(p: ResourceProfile, summary: ResourceSummary | null, already = 0): string | null {
   if (summary === null) return null;
   const after = summary.storage.committedMiB - already + p.deskStorageMiB + p.cacheStorageMiB;
-  return after > summary.budget.storageMiB ? `Its desk and cache (${sizeText(p.deskStorageMiB + p.cacheStorageMiB)}) would bring the storage committed to ${sizeText(after)}, above the account's storage budget of ${sizeText(summary.budget.storageMiB)}: it would be refused.` : null;
+  return after > summary.budget.storageMiB
+    ? tr("office.resources.storageProblem", { total: sizeText(p.deskStorageMiB + p.cacheStorageMiB), after: sizeText(after), budget: sizeText(summary.budget.storageMiB) })
+    : null;
 }
 
 export function BudgetSummary({ summary, runtime }: { summary: ResourceSummary | null; runtime?: RuntimeKind | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   if (summary === null)
     return (
-      <aside className={s.aside} aria-label="Account budget">
+      <aside className={s.aside} aria-label={t("office.resources.budgetAria")}>
         <Text size={200} className={o.muted}>
-          The account's budget could not be read now.
+          {t("office.resources.budgetUnread")}
         </Text>
       </aside>
     );
   const b = summary.budget;
   const overhead = runtime ? summary.modelPlane.find((m) => m.runtime === runtime) : undefined;
   return (
-    <aside className={s.aside} aria-label="Account budget">
+    <aside className={s.aside} aria-label={t("office.resources.budgetAria")}>
       <Text weight="semibold" size={300}>
-        Account budget now
+        {t("office.resources.budgetNow")}
       </Text>
       <Text size={200} className={s.num}>
-        CPU: {cpuText(b.cpuMillis)} in all · {cpuText(summary.reserved.cpuMillis)} reserved now · {cpuText(summary.available.cpuMillis)} available
+        {t("office.resources.budgetCpu", { total: cpuText(b.cpuMillis), reserved: cpuText(summary.reserved.cpuMillis), available: cpuText(summary.available.cpuMillis) })}
       </Text>
       <Text size={200} className={s.num}>
-        Memory: {sizeText(b.memoryMiB)} in all · {sizeText(summary.reserved.memoryMiB)} reserved now · {sizeText(summary.available.memoryMiB)} available
+        {t("office.resources.budgetMemory", { total: sizeText(b.memoryMiB), reserved: sizeText(summary.reserved.memoryMiB), available: sizeText(summary.available.memoryMiB) })}
       </Text>
       <Text size={200} className={s.num}>
-        Storage: {sizeText(summary.storage.budgetMiB)} budget · {sizeText(summary.storage.committedMiB)} committed · {sizeText(summary.storage.usedMiB)} actually used
+        {t("office.resources.budgetStorage", { budget: sizeText(summary.storage.budgetMiB), committed: sizeText(summary.storage.committedMiB), used: sizeText(summary.storage.usedMiB) })}
       </Text>
       <Text size={200} className={s.num}>
-        Work at once: at most {b.maxConcurrent} · {summary.running} running now
+        {t("office.resources.budgetConcurrent", { max: b.maxConcurrent, running: summary.running })}
       </Text>
       <Text size={200} className={s.num}>
-        Per employee: at most {cpuText(b.perEmployee.cpuMillis)}, {sizeText(b.perEmployee.memoryMiB)} memory, {sizeText(b.perEmployee.deskStorageMiB)} desk
+        {t("office.resources.budgetPerEmployee", { cpu: cpuText(b.perEmployee.cpuMillis), memory: sizeText(b.perEmployee.memoryMiB), desk: sizeText(b.perEmployee.deskStorageMiB) })}
       </Text>
       {overhead && (
         <Text size={200} className={o.muted}>
-          Each attempt also reserves its CLI's container: {cpuText(overhead.cpuMillis)} and {sizeText(overhead.memoryMiB)}.
+          {t("office.resources.budgetOverhead", { cpu: cpuText(overhead.cpuMillis), memory: sizeText(overhead.memoryMiB) })}
         </Text>
       )}
-      <Text size={200}>An idle employee reserves no CPU or memory; when the account is busy, work waits — hiring is never refused for that.</Text>
+      <Text size={200}>{t("office.resources.budgetIdleNote")}</Text>
     </aside>
   );
 }
 
 export function ResourceFields({ value, onChange, presets, summary, runtime = null, committed = 0 }: { value: ResourceProfile; onChange: (p: ResourceProfile) => void; presets: readonly ResourcePreset[]; summary: ResourceSummary | null; runtime?: RuntimeKind | null; committed?: number }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const ceiling = summary?.budget.perEmployee ?? null;
@@ -163,7 +169,7 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
   return (
     <div className={s.layout}>
       <div className={s.fields}>
-        <div className={s.presets} role="radiogroup" aria-label="Preset">
+        <div className={s.presets} role="radiogroup" aria-label={t("office.resources.presetAria")}>
           {presets.map((p) => (
             <button key={p.id} type="button" role="radio" aria-checked={value.presetId === p.id} className={mergeClasses(s.preset, value.presetId === p.id && s.presetOn)} onClick={() => onChange({ ...p.profile, presetId: p.id })}>
               <Text weight="semibold">{p.name}</Text>
@@ -176,9 +182,9 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
             </button>
           ))}
           <button type="button" role="radio" aria-checked={value.presetId === null} className={mergeClasses(s.preset, value.presetId === null && s.presetOn)} onClick={() => onChange({ ...value, presetId: null })}>
-            <Text weight="semibold">Custom</Text>
+            <Text weight="semibold">{t("office.resources.customName")}</Text>
             <Text size={200} className={o.muted}>
-              Your own numbers.
+              {t("office.resources.customDesc")}
             </Text>
           </button>
         </div>
@@ -187,18 +193,19 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
           const min = toField(spec, b.min);
           const field = toField(spec, value[spec.key]);
           const step = spec.unit === "vCPU" ? 0.25 : spec.unit === "GiB" ? 0.25 : 1;
-          const label = `${spec.label} (${spec.unit})`;
+          const specLabel = t(spec.labelKey);
+          const label = `${specLabel} (${t(spec.unitKey)})`;
           return (
-            <div key={spec.key} className={s.field} role="group" aria-label={spec.label}>
+            <div key={spec.key} className={s.field} role="group" aria-label={specLabel}>
               <Text weight="semibold" size={300}>
                 {label}
               </Text>
               <div className={s.pair}>
-                {spec.slider ? <Slider className={s.slider} aria-label={`${spec.label} slider`} min={min} max={sliderMax(spec, ceiling, value[spec.key])} step={step} value={field} onChange={(_, d) => set(spec, d.value)} /> : <span />}
+                {spec.slider ? <Slider className={s.slider} aria-label={t("office.resources.sliderAria", { label: specLabel })} min={min} max={sliderMax(spec, ceiling, value[spec.key])} step={step} value={field} onChange={(_, d) => set(spec, d.value)} /> : <span />}
                 <NumberInput label={label} value={field} onValue={(v) => set(spec, v)} min={min} max={toField(spec, b.max)} step={step} />
               </div>
               <Text size={200} className={o.muted}>
-                {spec.hint}
+                {t(spec.hintKey)}
               </Text>
             </div>
           );
@@ -206,7 +213,7 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
         {problems.length > 0 && (
           <MessageBar intent="error" layout="multiline">
             <MessageBarBody>
-              <ul aria-label="What these resources break" style={{ margin: 0, paddingLeft: "18px" }}>
+              <ul aria-label={t("office.resources.breaksAria")} style={{ margin: 0, paddingLeft: "18px" }}>
                 {problems.map((p) => (
                   <li key={p}>{p}</li>
                 ))}

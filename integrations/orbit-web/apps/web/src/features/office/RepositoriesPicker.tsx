@@ -6,6 +6,7 @@ import { Checkbox, Input, Link, Spinner, Text } from "@fluentui/react-components
 import { ACCESS_CONNECTOR_LABELS, MAX_MISSION_REPOSITORIES, type AccessConnector, type EmployeeAccess, type MissionRepositoryRequest, type RepositoryList } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { get } from "../../services/api";
 import { useOfficeStyles } from "./parts";
 
@@ -28,6 +29,7 @@ function useOffered(access: EmployeeAccess | null): { offered: Offered[]; readin
 }
 
 export function RepositoriesPicker({ employeeId, employeeName, value, onChange }: { employeeId: string; employeeName: string; value: MissionRepositoryRequest[]; onChange: (v: MissionRepositoryRequest[]) => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const access = useResource<EmployeeAccess>(employeeId === "" ? null : () => get(`/api/employees/${employeeId}/access`), [employeeId]);
   const { offered, reading, error } = useOffered(access.data);
@@ -37,28 +39,30 @@ export function RepositoriesPicker({ employeeId, employeeName, value, onChange }
   const shown = offered.filter((r) => r.fullName.toLowerCase().includes(filter.trim().toLowerCase()));
   const accessLink = (
     <Link href={`#/office/employee/${employeeId}/access`} inline>
-      its Access page
+      {t("office.repos.accessLink")}
     </Link>
   );
   return (
-    <div role="group" aria-label="Repositories" className={o.stack}>
+    <div role="group" aria-label={t("office.repos.groupAria")} className={o.stack}>
       <Text weight="semibold" size={300}>
-        Repositories
+        {t("office.repos.title")}
       </Text>
       <Text size={200} className={o.muted}>
-        Optional, at most {MAX_MISSION_REPOSITORIES}. Each one checked comes into the work as a snapshot of its default branch, a git bundle the employee clones; Orbit Web brings it in with the connector's sign-in, which never reaches the employee.
+        {t("office.repos.hint", { max: MAX_MISSION_REPOSITORIES })}
       </Text>
       {access.data === null ? (
-        access.error !== null ? null : <Spinner size="tiny" label="Reading what the employee may use…" />
+        access.error !== null ? null : <Spinner size="tiny" label={t("office.repos.readingAllowed")} />
       ) : offered.length === 0 && !reading ? (
         <Text size={200} className={o.muted}>
-          {employeeName || "This employee"} may use no repository: let it on {accessLink}.
+          {t("office.repos.noneAllowedPrefix", { name: employeeName || t("office.repos.thisEmployee") })}
+          {accessLink}
+          {t("office.repos.noneAllowedSuffix")}
         </Text>
       ) : (
         <>
-          {offered.length > 8 && <Input size="small" placeholder="Filter the repositories" value={filter} onChange={(_, d) => setFilter(d.value)} aria-label="Filter the repositories" />}
-          {reading && <Spinner size="tiny" label="Reading the repositories…" />}
-          {error !== null && <Text size={200}>The repositories could not be read: {error}</Text>}
+          {offered.length > 8 && <Input size="small" placeholder={t("office.repos.filterPlaceholder")} value={filter} onChange={(_, d) => setFilter(d.value)} aria-label={t("office.repos.filterPlaceholder")} />}
+          {reading && <Spinner size="tiny" label={t("office.repos.readingRepos")} />}
+          {error !== null && <Text size={200}>{t("office.repos.readError", { error })}</Text>}
           {shown.map((r) => (
             <Checkbox key={`${r.source}:${r.id}`} label={`${r.fullName} (${ACCESS_CONNECTOR_LABELS[r.source]})`} checked={chosen(r)} disabled={!chosen(r) && value.length >= MAX_MISSION_REPOSITORIES} onChange={(_, d) => toggle(r, d.checked === true)} />
           ))}

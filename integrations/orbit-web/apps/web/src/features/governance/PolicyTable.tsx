@@ -9,6 +9,7 @@ import { Delete16Regular, LockClosed16Regular } from "@fluentui/react-icons";
 import { ACTIONS, CLAUDE_ACCOUNT_HOSTS, boxesOf, effectOf, egressHostOf, tableOf, withTable, type AccountPolicy, type ActionKind, type ActionRow, type ConstitutionTable as TableModel } from "@orbit-web/governance-core";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
+import { t as tr, useI18n } from "../../i18n";
 import { Word, useParts } from "./parts";
 
 const usePolicyTableStyles = makeStyles({
@@ -90,16 +91,17 @@ const CLAUDE = new Set(CLAUDE_ACCOUNT_HOSTS.map((h) => `${h.host}:${h.port}`));
 export function limitOf(action: ActionKind): { fixed: boolean; note: string | null } {
   const spec = ACTIONS[action];
   const ceiling: Partial<Record<string, string>> = spec.ceiling;
-  if (spec.enforcement === "none") return { fixed: true, note: "Nothing in Orbit Web carries this out: always denied." };
-  if (ceiling.human === "deny" && ceiling.agent === "deny") return { fixed: true, note: "Nobody, whatever is ticked." };
-  if (ceiling.agent === "deny") return { fixed: false, note: "Never an agent: what is ticked applies to you." };
-  if (ceiling.agent === "require_approval") return { fixed: false, note: "An agent always waits for your approval of exactly the action." };
-  if (action === "network.egress") return { fixed: false, note: "Any host not in the list below." };
-  if (action === "repository.push") return { fixed: false, note: "Allowed alone: the agent pushes the chat's own branch itself, at once (another branch waits for you) -- never forced, never to the default or a protected branch." };
+  if (spec.enforcement === "none") return { fixed: true, note: tr("governance.policyTable.limit.noEnforcement") };
+  if (ceiling.human === "deny" && ceiling.agent === "deny") return { fixed: true, note: tr("governance.policyTable.limit.nobody") };
+  if (ceiling.agent === "deny") return { fixed: false, note: tr("governance.policyTable.limit.neverAgent") };
+  if (ceiling.agent === "require_approval") return { fixed: false, note: tr("governance.policyTable.limit.agentApproval") };
+  if (action === "network.egress") return { fixed: false, note: tr("governance.policyTable.limit.egress") };
+  if (action === "repository.push") return { fixed: false, note: tr("governance.policyTable.limit.push") };
   return { fixed: false, note: null };
 }
 
 function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; onChange: (row: ActionRow) => void }) {
+  const { t } = useI18n();
   const s = usePolicyTableStyles();
   const spec = ACTIONS[row.action];
   const limit = limitOf(row.action);
@@ -113,7 +115,7 @@ function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; o
           <Text className={s.actionSummary}>{spec.summary}</Text>
           <span className={s.id}>
             {row.action}
-            {row.stated ? "" : " · the default decision"}
+            {row.stated ? "" : t("governance.policyTable.defaultDecisionSuffix")}
           </span>
         </div>
       </TableCell>
@@ -121,10 +123,10 @@ function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; o
         <Word value={spec.enforcement} />
       </TableCell>
       <TableCell className={s.colAllowed}>
-        <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={`Allowed: ${row.action}`} />
+        <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={t("governance.policyTable.allowedAria", { action: row.action })} />
       </TableCell>
       <TableCell className={s.colApprove}>
-        <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={`You approve first: ${row.action}`} />
+        <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={t("governance.policyTable.approveFirstAria", { action: row.action })} />
       </TableCell>
       <TableCell className={s.colNote}>
         <Text size={200} className={s.note}>
@@ -136,6 +138,7 @@ function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; o
 }
 
 function MobileRow({ row, editable, onChange }: { row: ActionRow; editable: boolean; onChange: (row: ActionRow) => void }) {
+  const { t } = useI18n();
   const s = usePolicyTableStyles();
   const spec = ACTIONS[row.action];
   const limit = limitOf(row.action);
@@ -149,14 +152,14 @@ function MobileRow({ row, editable, onChange }: { row: ActionRow; editable: bool
           <Text weight="semibold">{spec.summary}</Text>
           <span className={s.id}>
             {row.action}
-            {row.stated ? "" : " · the default decision"}
+            {row.stated ? "" : t("governance.policyTable.defaultDecisionSuffix")}
           </span>
         </div>
         <Word value={spec.enforcement} />
       </div>
       <div className={s.mobileChecks}>
-        <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label="Allowed" checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={`Allowed: ${row.action}`} />
-        <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label="Approve first" checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={`You approve first: ${row.action}`} />
+        <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label={t("governance.policyTable.allowedLabel")} checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={t("governance.policyTable.allowedAria", { action: row.action })} />
+        <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label={t("governance.policyTable.approveFirstLabel")} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={t("governance.policyTable.approveFirstAria", { action: row.action })} />
       </div>
       {limit.note && (
         <Text size={200} className={s.note}>
@@ -168,6 +171,7 @@ function MobileRow({ row, editable, onChange }: { row: ActionRow; editable: bool
 }
 
 function Hosts({ hosts, editable, onChange }: { hosts: string[]; editable: boolean; onChange: (hosts: string[]) => void }) {
+  const { t } = useI18n();
   const s = usePolicyTableStyles();
   const [text, setText] = useState("");
   const host = egressHostOf(text);
@@ -178,34 +182,34 @@ function Hosts({ hosts, editable, onChange }: { hosts: string[]; editable: boole
   };
   return (
     <div className={s.dividerSection}>
-      <Text weight="semibold">Hosts the agent may reach</Text>
+      <Text weight="semibold">{t("governance.policyTable.hostsTitle")}</Text>
       <Text size={200} className={s.note}>
-        Through the egress proxy, in the governed deployment. Claude Code's own service is always listed: without it no run can reach the model.
+        {t("governance.policyTable.hostsDesc")}
       </Text>
-      <div className={s.hosts} aria-label="Hosts the agent may reach">
-        {hosts.length === 0 && <Text className={s.note}>None.</Text>}
+      <div className={s.hosts} aria-label={t("governance.policyTable.hostsTitle")}>
+        {hosts.length === 0 && <Text className={s.note}>{t("governance.policyTable.hostsEmpty")}</Text>}
         {hosts.map((h) => (
           <div key={h} className={s.host}>
             <Text size={200}>{h}</Text>
             {CLAUDE.has(h) ? (
-              <LockClosed16Regular aria-label="Claude Code's own service" />
+              <LockClosed16Regular aria-label={t("governance.policyTable.claudeServiceAria")} />
             ) : (
-              editable && <Button size="small" appearance="transparent" icon={<Delete16Regular />} aria-label={`Remove ${h}`} onClick={() => onChange(hosts.filter((x) => x !== h))} />
+              editable && <Button size="small" appearance="transparent" icon={<Delete16Regular />} aria-label={t("governance.network.removeHost", { host: h })} onClick={() => onChange(hosts.filter((x) => x !== h))} />
             )}
           </div>
         ))}
       </div>
       {editable && (
         <div className={s.add}>
-          <Input className={s.addInput} value={text} onChange={(_, d) => setText(d.value)} placeholder="registry.npmjs.org:443" aria-label="Host to allow" onKeyDown={(e) => e.key === "Enter" && add()} />
+          <Input className={s.addInput} value={text} onChange={(_, d) => setText(d.value)} placeholder="registry.npmjs.org:443" aria-label={t("governance.policyTable.hostToAllowAria")} onKeyDown={(e) => e.key === "Enter" && add()} />
           <Button className={s.addBtn} onClick={add} disabled={host === null || hosts.includes(host)}>
-            Add host
+            {t("governance.policyTable.addHost")}
           </Button>
         </div>
       )}
       {editable && text.trim() !== "" && host === null && (
         <Text size={200} className={s.note}>
-          A host and its port: name:port.
+          {t("governance.policyTable.hostFormatHint")}
         </Text>
       )}
     </div>
@@ -213,6 +217,7 @@ function Hosts({ hosts, editable, onChange }: { hosts: string[]; editable: boole
 }
 
 export function PolicyTable({ document, editable, onChange }: { document: AccountPolicy; editable: boolean; onChange: (next: AccountPolicy) => void }) {
+  const { t } = useI18n();
   const s = usePolicyTableStyles();
   const parts = useParts();
   const { isMobile } = useViewport();
@@ -224,22 +229,22 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
   return (
     <div className={s.wrap}>
       <div className={s.section}>
-        <Text weight="semibold">What may happen</Text>
+        <Text weight="semibold">{t("governance.policyTable.whatMayHappen")}</Text>
         {isMobile ? (
-          <div className={s.mobileList} aria-label="What may happen">
+          <div className={s.mobileList} aria-label={t("governance.policyTable.whatMayHappen")}>
             {table.rows.map((row) => (
               <MobileRow key={row.action} row={row} editable={editable} onChange={setRow} />
             ))}
           </div>
         ) : (
           <div className={parts.tableWrap}>
-            <Table size="small" aria-label="What may happen">
+            <Table size="small" aria-label={t("governance.policyTable.whatMayHappen")}>
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell className={s.colAction}>Action</TableHeaderCell>
-                  <TableHeaderCell className={s.colHeld}>Held by</TableHeaderCell>
-                  <TableHeaderCell className={s.colAllowed}>Allowed</TableHeaderCell>
-                  <TableHeaderCell className={s.colApprove}>You approve first</TableHeaderCell>
+                  <TableHeaderCell className={s.colAction}>{t("governance.policy.colAction")}</TableHeaderCell>
+                  <TableHeaderCell className={s.colHeld}>{t("governance.policyTable.colHeldBy")}</TableHeaderCell>
+                  <TableHeaderCell className={s.colAllowed}>{t("governance.policyTable.colAllowed")}</TableHeaderCell>
+                  <TableHeaderCell className={s.colApprove}>{t("governance.policyTable.colYouApprove")}</TableHeaderCell>
                   <TableHeaderCell className={s.colNote} />
                 </TableRow>
               </TableHeader>
@@ -254,26 +259,26 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
       </div>
       <Hosts hosts={table.egressHosts} editable={editable} onChange={(egressHosts) => write({ ...table, egressHosts })} />
       <div className={s.dividerSection}>
-        <Text weight="semibold">Obligations</Text>
+        <Text weight="semibold">{t("governance.policyTable.obligationsTitle")}</Text>
         <div className={parts.inset}>
           <Checkbox
             className={roClass}
-            label="Anything no rule speaks about waits for your approval (unticked: it is denied)"
+            label={t("governance.policyTable.obDefaultDecision")}
             checked={table.defaultDecision === "require_approval"}
             disabled={!editable}
             onChange={(_, d) => write({ ...table, defaultDecision: d.checked === true ? "require_approval" : "deny" })}
           />
           <Checkbox
             className={roClass}
-            label="Record every decision in the audit record (unticked: only those that did not simply allow)"
+            label={t("governance.policyTable.obAuditAll")}
             checked={o.auditDecisions === "all"}
             disabled={!editable}
             onChange={(_, d) => write({ ...table, obligations: { ...o, auditDecisions: d.checked === true ? "all" : "non_allow" } })}
           />
-          <Checkbox className={roClass} label="Write a daily audit report" checked={o.dailyReport} disabled={!editable} onChange={(_, d) => write({ ...table, obligations: { ...o, dailyReport: d.checked === true } })} />
+          <Checkbox className={roClass} label={t("governance.policyTable.obDailyReport")} checked={o.dailyReport} disabled={!editable} onChange={(_, d) => write({ ...table, obligations: { ...o, dailyReport: d.checked === true } })} />
           <Checkbox
             className={roClass}
-            label="A run starts only where the agent's isolation was proven"
+            label={t("governance.policyTable.obIsolation")}
             checked={o.isolation === "required"}
             disabled={!editable}
             onChange={(_, d) => write({ ...table, obligations: { ...o, isolation: d.checked === true ? "required" : "optional" } })}
@@ -282,19 +287,19 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
       </div>
       {table.kept.length > 0 && (
         <div className={s.dividerSection}>
-          <Text weight="semibold">Rules the table does not show</Text>
+          <Text weight="semibold">{t("governance.policyTable.keptTitle")}</Text>
           <Text size={200} className={s.note}>
-            Kept exactly as written.
+            {t("governance.policyTable.keptDesc")}
           </Text>
           <div className={parts.inset}>
-            <ul className={parts.list} aria-label="Rules the table does not show">
+            <ul className={parts.list} aria-label={t("governance.policyTable.keptTitle")}>
               {table.kept.map((r) => (
                 <li key={r.id}>
                   <Text size={200}>
                     <span className={s.id}>{r.id}</span> · {r.action}
-                    {r.principalType ? ` · for ${r.principalType === "human" ? "you" : `${r.principalType}s`}` : ""}
-                    {r.environment ? ` · in ${r.environment}` : ""}
-                    {r.resource ? ` · on ${r.resource}` : ""} · <Word value={r.effect} />
+                    {r.principalType ? t("governance.policyTable.keptFor", { who: r.principalType === "human" ? t("governance.parts.principal.you") : t("governance.policy.principalPlural", { type: r.principalType }) }) : ""}
+                    {r.environment ? t("governance.policyTable.keptIn", { env: r.environment }) : ""}
+                    {r.resource ? t("governance.policyTable.keptOn", { resource: r.resource }) : ""} · <Word value={r.effect} />
                   </Text>
                 </li>
               ))}

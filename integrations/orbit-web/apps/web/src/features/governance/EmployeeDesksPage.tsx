@@ -10,22 +10,27 @@ import type { EmployeeDesk, EmployeeDeskList } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { sizeText } from "../resources/format";
 import { DeskBrowser } from "./DeskBrowser";
 import { Card, EmptyState, ErrorBar, Word, useParts, when } from "./parts";
 
-const LEFT_TEXT: Record<string, string> = { archived: "Left the office", deleted: "Desk being deleted" };
-const GROUPS: { name: string; has: (d: EmployeeDesk) => boolean }[] = [
-  { name: "In the office", has: (d) => d.employment !== "archived" && d.employment !== "deleted" },
-  { name: "Left the office", has: (d) => d.employment === "archived" },
-  { name: "Being deleted", has: (d) => d.employment === "deleted" },
+const LEFT_KEYS: Record<string, MessageKey> = { archived: "governance.desks.word.archived", deleted: "governance.desks.word.deleted" };
+const GROUPS: { nameKey: MessageKey; has: (d: EmployeeDesk) => boolean }[] = [
+  { nameKey: "governance.desks.group.office", has: (d) => d.employment !== "archived" && d.employment !== "deleted" },
+  { nameKey: "governance.desks.group.left", has: (d) => d.employment === "archived" },
+  { nameKey: "governance.desks.group.deleting", has: (d) => d.employment === "deleted" },
 ];
 
 // What was measured in the desk and its cache, and when -- or that nothing was yet.
-const measuredText = (d: EmployeeDesk): string =>
-  d.deskUsedMiB === null ? "not measured yet" : `${sizeText(d.deskUsedMiB)} measured in the desk${d.cacheUsedMiB !== null && d.cacheMiB > 0 ? `, ${sizeText(d.cacheUsedMiB)} in its cache` : ""}${d.measuredAt !== null ? ` · ${when(d.measuredAt)}` : ""}`;
+const measuredText = (d: EmployeeDesk): string => {
+  if (d.deskUsedMiB === null) return tr("governance.desks.notMeasuredYet");
+  const cache = d.cacheUsedMiB !== null && d.cacheMiB > 0 ? tr("governance.desks.measuredCache", { used: sizeText(d.cacheUsedMiB) }) : "";
+  const at = d.measuredAt !== null ? ` · ${when(d.measuredAt)}` : "";
+  return tr("governance.desks.measured", { used: sizeText(d.deskUsedMiB), cache, at });
+};
 
 const useStyles = makeStyles({
   barTrack: {
@@ -46,6 +51,7 @@ const useStyles = makeStyles({
 });
 
 function Desk({ d, onChanged, go }: { d: EmployeeDesk; onChanged: () => void; go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -58,44 +64,48 @@ function Desk({ d, onChanged, go }: { d: EmployeeDesk; onChanged: () => void; go
     setBusy(true);
     setError(null);
     try {
-      await send("POST", `/api/employees/${encodeURIComponent(d.employeeId)}/employment`, { command: "delete", reason: "Desk deleted from Governance → Employee desks" }, ifMatch(d.version));
+      await send("POST", `/api/employees/${encodeURIComponent(d.employeeId)}/employment`, { command: "delete", reason: t("governance.desks.deleteReason") }, ifMatch(d.version));
       onChanged();
     } catch (err) {
-      setError(isStale(err) ? "This employee changed since the page read it: nothing was deleted. Read the list again." : errorText(err));
+      setError(isStale(err) ? t("governance.desks.staleDelete") : errorText(err));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Card title={<>{d.name} <Word value={LEFT_TEXT[d.employment] ?? d.employment} /></>} icon={<DesksIcon size={18} />} tone="neutral" label={d.name}>
+    <Card title={<>{d.name} <Word value={d.employment} label={LEFT_KEYS[d.employment] ? t(LEFT_KEYS[d.employment]) : undefined} /></>} icon={<DesksIcon size={18} />} tone="neutral" label={d.name}>
       {left ? (
         <Text size={200} className={s.muted}>
-          {deleting ? "Its owner deleted the desk" : "Left"} {when(d.leftAt)}
+          {deleting ? t("governance.desks.deletedByOwner") : t("governance.desks.leftPrefix")} {when(d.leftAt)}
           {d.reason ? ` · ${d.reason}` : ""}
         </Text>
       ) : (
         <Text size={200} className={s.muted}>
-          Desk version {d.deskVersion}
-          {d.sandbox !== null && d.sandbox.state !== "READY" ? ` · its sandbox is ${d.sandbox.state}` : ""}
+          {t("governance.desks.deskVersion", { version: d.deskVersion })}
+          {d.sandbox !== null && d.sandbox.state !== "READY" ? t("governance.desks.sandboxState", { state: d.sandbox.state }) : ""}
         </Text>
       )}
       <Text>
-        Holds {sizeText(held)} of the account's storage: desk {sizeText(d.deskMiB)}
-        {d.cacheMiB > 0 ? `, cache ${sizeText(d.cacheMiB)}` : ""} ({measuredText(d)}).
+        {t("governance.desks.holdsStorage", {
+          held: sizeText(held),
+          desk: sizeText(d.deskMiB),
+          cache: d.cacheMiB > 0 ? t("governance.desks.cachePart", { cache: sizeText(d.cacheMiB) }) : "",
+          measured: measuredText(d),
+        })}
       </Text>
-      {d.busy && !left && <Text size={200} className={s.muted}>It holds work now: its desk is cleaned up once that work is done.</Text>}
+      {d.busy && !left && <Text size={200} className={s.muted}>{t("governance.desks.holdsWorkNow")}</Text>}
       {deleting ? (
-        <Spinner size="tiny" label={d.sandbox?.reason ?? "Being deleted…"} labelPosition="after" />
+        <Spinner size="tiny" label={d.sandbox?.reason ?? t("governance.desks.beingDeleted")} labelPosition="after" />
       ) : (
         <div className={s.row}>
           {d.canBrowse && (
             <Button size="small" icon={<FolderOpen16Regular />} onClick={() => go("desks", d.employeeId)}>
-              Open the desk
+              {t("governance.desks.openDesk")}
             </Button>
           )}
           {left && (
             <Button size="small" icon={<Delete16Regular />} disabled={busy} onClick={() => setConfirm(true)}>
-              Delete the desk…
+              {t("governance.desks.deleteDeskEllipsis")}
             </Button>
           )}
         </div>
@@ -105,14 +115,14 @@ function Desk({ d, onChanged, go }: { d: EmployeeDesk; onChanged: () => void; go
         <Dialog open onOpenChange={(_, v) => !v.open && setConfirm(false)}>
           <DialogSurface className="orbit-touch">
             <DialogBody>
-              <DialogTitle>Delete {d.name}'s desk?</DialogTitle>
+              <DialogTitle>{t("governance.desks.deleteConfirmTitle", { name: d.name })}</DialogTitle>
               <DialogContent>
-                Its desk and toolbox, its cache and every workspace it kept are deleted for good, and {sizeText(held)} of the account's storage is released once they are gone. What it delivered stays with the work it was given. This cannot be undone.
+                {t("governance.desks.deleteConfirmBody", { held: sizeText(held) })}
               </DialogContent>
               <DialogActions>
-                <Button onClick={() => setConfirm(false)}>Cancel</Button>
+                <Button onClick={() => setConfirm(false)}>{t("governance.approval.cancel")}</Button>
                 <Button appearance="primary" onClick={() => void remove()}>
-                  Delete the desk
+                  {t("governance.desks.deleteDesk")}
                 </Button>
               </DialogActions>
             </DialogBody>
@@ -129,38 +139,43 @@ export function EmployeeDesksPage({ item, go }: { item: string | null; go: (page
 }
 
 function DeskList({ go }: { go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const list = useResource<EmployeeDeskList>(() => get("/api/office/desks"), []);
   useAppEvent("office.changed", (e) => e.data.areas.includes("roster") && void list.reload());
-  if (list.data === null) return list.error ? <MessageBar intent="error"><MessageBarBody>{list.error}</MessageBarBody></MessageBar> : <Spinner label="Reading the desks…" />;
+  if (list.data === null) return list.error ? <MessageBar intent="error"><MessageBarBody>{list.error}</MessageBarBody></MessageBar> : <Spinner label={t("governance.desks.readingDesks")} />;
   const { desks, storage } = list.data;
   const pct = storage.budgetMiB > 0 ? Math.min(100, Math.round((storage.committedMiB / storage.budgetMiB) * 100)) : 0;
   return (
     <div className={s.page}>
       <Card
-        title="Employee desks"
+        title={t("governance.desks.title")}
         icon={<DesksIcon size={18} />}
         tone="neutral"
-        description={`Every employee's desk: what its accepted work left there, and the toolbox it wrote for itself. Open one to look into it — read only, each look recorded in the audit — and clean it up when it fills. An employee who leaves keeps its desk, read only, and its storage stays committed until you delete it: ${sizeText(storage.committedMiB)} of the account's ${sizeText(storage.budgetMiB)} is committed now.`}
+        description={t("governance.desks.description", {
+          committed: sizeText(storage.committedMiB),
+          budget: sizeText(storage.budgetMiB),
+        })}
       >
-        <div className={st.barTrack} role="progressbar" aria-label="Account storage committed" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className={st.barTrack} role="progressbar" aria-label={t("governance.desks.progressAria")} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className={st.barFill} style={{ width: `${pct}%` }} />
         </div>
         {desks.length === 0 && (
           <EmptyState
             icon={<DesksIcon size={22} />}
             tone="neutral"
-            title="No employee has a desk yet."
-            body="An employee's desk is made when it is hired; it is listed here from then on."
+            title={t("governance.desks.emptyTitle")}
+            body={t("governance.desks.emptyBody")}
           />
         )}
       </Card>
       {GROUPS.map((g) => {
         const these = desks.filter(g.has);
+        const groupName = t(g.nameKey);
         return these.length === 0 ? null : (
-          <section key={g.name} aria-label={g.name} className={s.page}>
-            <Text weight="semibold">{g.name}</Text>
+          <section key={g.nameKey} aria-label={groupName} className={s.page}>
+            <Text weight="semibold">{groupName}</Text>
             {these.map((d) => (
               <Desk key={`${d.employeeId}:${d.version}`} d={d} go={go} onChanged={() => void list.reload()} />
             ))}

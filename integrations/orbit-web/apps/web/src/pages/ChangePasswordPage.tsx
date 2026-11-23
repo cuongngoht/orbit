@@ -5,27 +5,29 @@ import { ORBIT_WEB_VERSION, type AuthStatus } from "@orbit-web/contracts";
 import { ChangePasswordForm } from "../features/auth/ChangePasswordForm";
 import { TrialBar } from "../features/auth/TrialBar";
 import type { SignOut } from "../features/auth/useSignOut";
+import { useI18n } from "../i18n";
 import { useSignInStyles } from "./signInStyles";
 
 export function ChangePasswordPage({ status, onChanged, signOut }: { status: AuthStatus; onChanged: (s: AuthStatus) => void; signOut: SignOut }) {
+  const { t } = useI18n();
   const s = useSignInStyles();
-  const name = status.user?.fullName || status.user?.username || "you";
+  const name = status.user?.fullName || status.user?.username || t("common.changePassword.defaultName");
   return (
     <div className={`${s.root} orbit-touch`}>
       <TrialBar trial={status.trial} />
       <main className={s.page}>
         <div className={s.panel}>
           <img src="/orbit.svg" alt="" className={s.logo} />
-          <h1 className={s.heading}>Choose a new password</h1>
+          <h1 className={s.heading}>{t("common.changePassword.title")}</h1>
           <Text align="center" className={s.lead}>
-            Welcome, {name}. Your password was set for you, so it must be changed before Orbit opens.
+            {t("common.changePassword.lead", { name })}
           </Text>
         </div>
-        <section className={s.card} aria-label="Choose a new password">
-          <ChangePasswordForm username={status.user?.username ?? null} onChanged={onChanged} submitLabel="Change password and continue" />
+        <section className={s.card} aria-label={t("common.changePassword.title")}>
+          <ChangePasswordForm username={status.user?.username ?? null} onChanged={onChanged} submitLabel={t("common.changePassword.submit")} />
           <div style={{ marginTop: "12px" }}>
             <Button appearance="subtle" disabled={signOut.busy} onClick={() => void signOut.signOut()}>
-              Sign out
+              {t("common.changePassword.signOut")}
             </Button>
           </div>
           {signOut.error && (
@@ -35,7 +37,7 @@ export function ChangePasswordPage({ status, onChanged, signOut }: { status: Aut
           )}
         </section>
         <Text size={200} className={s.foot}>
-          Orbit Web {ORBIT_WEB_VERSION}
+          {t("common.access.footer", { version: ORBIT_WEB_VERSION })}
         </Text>
       </main>
     </div>

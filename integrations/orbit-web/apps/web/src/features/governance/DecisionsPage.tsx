@@ -7,16 +7,17 @@ import type { DecisionList } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { get } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, EmptyState, Word, principalOf, short, useParts, when } from "./parts";
 
-const VERDICTS = [
-  { value: "", label: "All verdicts" },
-  { value: "allow", label: "Allow" },
-  { value: "require_approval", label: "Requires approval" },
-  { value: "deny", label: "Deny" },
-] as const;
+const VERDICTS: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
+  { value: "", labelKey: "governance.decisions.verdict.all" },
+  { value: "allow", labelKey: "governance.decisions.verdict.allow" },
+  { value: "require_approval", labelKey: "governance.decisions.verdict.require_approval" },
+  { value: "deny", labelKey: "governance.decisions.verdict.deny" },
+];
 
 const useStyles = makeStyles({
   table: { minWidth: "960px" },
@@ -29,6 +30,7 @@ const useStyles = makeStyles({
 });
 
 export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const [verdict, setVerdict] = useState("");
@@ -37,11 +39,11 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
   return (
     <div className={s.page}>
       <Card
-        title="Decisions"
+        title={t("governance.decisions.title")}
         icon={<DecisionsIcon size={18} />}
         tone="brand"
         actions={
-          <div className={s.pillBar} role="group" aria-label="Verdict">
+          <div className={s.pillBar} role="group" aria-label={t("governance.decisions.verdictAria")}>
             {VERDICTS.map((v) => (
               <Button
                 key={v.value || "all"}
@@ -52,7 +54,7 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
                 aria-pressed={verdict === v.value}
                 onClick={() => setVerdict(v.value)}
               >
-                {v.label}
+                {t(v.labelKey)}
               </Button>
             ))}
           </div>
@@ -67,18 +69,18 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
             <Spinner />
           )
         ) : list.data.decisions.length === 0 ? (
-          <EmptyState icon={<DecisionsIcon size={22} />} tone="brand" title="No decision yet." body="Policy evaluations for agent and account actions will appear here." />
+          <EmptyState icon={<DecisionsIcon size={22} />} tone="brand" title={t("governance.decisions.emptyTitle")} body={t("governance.decisions.emptyBody")} />
         ) : (
           <div className={s.tableWrap}>
-            <Table size="small" aria-label="Decisions" className={st.table}>
+            <Table size="small" aria-label={t("governance.decisions.title")}>
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell className={st.nowrap}>When</TableHeaderCell>
-                  <TableHeaderCell className={st.nowrap}>Who</TableHeaderCell>
-                  <TableHeaderCell>Action · resource</TableHeaderCell>
-                  <TableHeaderCell className={st.nowrap}>Verdict</TableHeaderCell>
-                  <TableHeaderCell className={st.nowrap}>Held by</TableHeaderCell>
-                  <TableHeaderCell>Why</TableHeaderCell>
+                  <TableHeaderCell className={st.nowrap}>{t("governance.decisions.colWhen")}</TableHeaderCell>
+                  <TableHeaderCell className={st.nowrap}>{t("governance.decisions.colWho")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.decisions.colAction")}</TableHeaderCell>
+                  <TableHeaderCell className={st.nowrap}>{t("governance.decisions.colVerdict")}</TableHeaderCell>
+                  <TableHeaderCell className={st.nowrap}>{t("governance.decisions.colHeldBy")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.decisions.colWhy")}</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -109,7 +111,7 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
                           {d.matchedRules.length > 0 ? ` · ${d.matchedRules.join(", ")}` : ""}
                         </Text>
                         <Button size="small" shape="circular" appearance="outline" className={st.recordBtn} onClick={() => go("audit", d.eventId)}>
-                          Record {short(d.eventId.replace(/^evt-/, ""), 8)}
+                          {t("governance.decisions.recordBtn", { id: short(d.eventId.replace(/^evt-/, ""), 8) })}
                         </Button>
                       </div>
                     </TableCell>
@@ -120,7 +122,7 @@ export function DecisionsPage({ go }: { go: (page: GovernancePage, item?: string
           </div>
         )}
         <Text size={200} className={s.muted}>
-          “Held by” says what stands behind a decision: boundary (the container, the broker or the proxy: the agent cannot change it), control (Orbit Web's API), runtime (the agent runtime's own configuration: defence in depth, not a boundary).
+          {t("governance.decisions.heldByNote")}
         </Text>
       </Card>
     </div>

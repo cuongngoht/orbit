@@ -1,5 +1,6 @@
 import { Badge, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import type { ConnectionState, SessionStatus } from "@orbit-web/contracts";
+import { useI18n, type MessageKey } from "../i18n";
 
 type Tone = "brand" | "danger" | "important" | "informative" | "severe" | "subtle" | "success" | "warning";
 
@@ -37,14 +38,14 @@ const useStyles = makeStyles({
   dotInterrupted: { backgroundColor: tokens.colorPaletteDarkOrangeForeground1 },
 });
 
-const SESSION: Record<SessionStatus, { label: string; tone: keyof ReturnType<typeof useStyles> }> = {
-  preparing: { label: "Preparing", tone: "preparing" },
-  ready: { label: "Ready", tone: "ready" },
-  running: { label: "Running", tone: "running" },
-  completed: { label: "Completed", tone: "completed" },
-  failed: { label: "Failed", tone: "failed" },
-  interrupted: { label: "Interrupted", tone: "interrupted" },
-  setup_failed: { label: "Setup failed", tone: "failed" },
+const SESSION: Record<SessionStatus, { labelKey: MessageKey; tone: keyof ReturnType<typeof useStyles> }> = {
+  preparing: { labelKey: "common.status.session.preparing", tone: "preparing" },
+  ready: { labelKey: "common.status.session.ready", tone: "ready" },
+  running: { labelKey: "common.status.session.running", tone: "running" },
+  completed: { labelKey: "common.status.session.completed", tone: "completed" },
+  failed: { labelKey: "common.status.session.failed", tone: "failed" },
+  interrupted: { labelKey: "common.status.session.interrupted", tone: "interrupted" },
+  setup_failed: { labelKey: "common.status.session.setup_failed", tone: "failed" },
 };
 
 const DOT_TONE: Record<SessionStatus, "dotReady" | "dotRunning" | "dotCompleted" | "dotFailed" | "dotInterrupted"> = {
@@ -58,29 +59,31 @@ const DOT_TONE: Record<SessionStatus, "dotReady" | "dotRunning" | "dotCompleted"
 };
 
 export function SessionStatusBadge({ status }: { status: SessionStatus }) {
+  const { t } = useI18n();
   const styles = useStyles();
   const item = SESSION[status];
   const active = status === "running" || status === "preparing";
   return (
     <span className={mergeClasses(styles.pill, styles[item.tone])}>
       {active ? <Spinner size="extra-tiny" /> : <span className={mergeClasses(styles.dot, styles[DOT_TONE[status]])} aria-hidden />}
-      <span>{item.label}</span>
+      <span>{t(item.labelKey)}</span>
     </span>
   );
 }
 
-const CONNECTION: Record<ConnectionState, { label: string; tone: Tone }> = {
-  connected: { label: "Connected", tone: "success" },
-  not_connected: { label: "Not connected", tone: "subtle" },
-  expired: { label: "Expired", tone: "warning" },
-  unavailable: { label: "Unavailable", tone: "danger" },
+const CONNECTION: Record<ConnectionState, { labelKey: MessageKey; tone: Tone }> = {
+  connected: { labelKey: "common.status.connection.connected", tone: "success" },
+  not_connected: { labelKey: "common.status.connection.not_connected", tone: "subtle" },
+  expired: { labelKey: "common.status.connection.expired", tone: "warning" },
+  unavailable: { labelKey: "common.status.connection.unavailable", tone: "danger" },
 };
 
 export function ConnectionBadge({ state }: { state: ConnectionState }) {
+  const { t } = useI18n();
   const c = CONNECTION[state];
   return (
     <Badge appearance="tint" color={c.tone}>
-      {c.label}
+      {t(c.labelKey)}
     </Badge>
   );
 }

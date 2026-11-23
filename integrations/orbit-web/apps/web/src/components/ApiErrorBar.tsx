@@ -4,16 +4,22 @@
 import { Link, MessageBar, MessageBarBody, MessageBarTitle } from "@fluentui/react-components";
 import { CONNECTION_ERRORS } from "@orbit-web/contracts";
 import { settingsHref } from "../hooks/useHashRoute";
+import { useI18n } from "../i18n";
 import { errorCode, errorText } from "../services/api";
 
 export const isConnectionRequired = (err: unknown): boolean => errorCode(err) === CONNECTION_ERRORS.connectionRequired;
 
-export function ConnectionRequired({ what = "Claude Code (or another AI CLI)" }: { what?: string }) {
+export function ConnectionRequired({ what }: { what?: string }) {
+  const { t } = useI18n();
+  const target = what ?? t("common.apiError.defaultWhat");
   return (
     <MessageBar intent="warning" layout="multiline">
       <MessageBarBody>
-        <MessageBarTitle>No AI connection</MessageBarTitle>
-        Connect {what} in Settings → AI Connections. <Link href={settingsHref("ai-connections")}>Open AI Connections</Link>
+        <MessageBarTitle>{t("common.apiError.noConnectionTitle")}</MessageBarTitle>
+        {t("common.apiError.connectPrefix")}
+        {target}
+        {t("common.apiError.connectSuffix")}
+        <Link href={settingsHref("ai-connections")}>{t("common.apiError.openConnections")}</Link>
       </MessageBarBody>
     </MessageBar>
   );

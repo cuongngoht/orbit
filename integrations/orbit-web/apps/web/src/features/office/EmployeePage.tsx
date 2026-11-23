@@ -53,6 +53,7 @@ import { useState, type ReactElement } from "react";
 import { IconBadge } from "../../components/SectionIcons";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
 import { office, useOfficeRead } from "./api";
@@ -69,7 +70,13 @@ type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 export const EMPLOYEE_TABS = ["profile", "work", "access", "resources", "employment"] as const;
 type EmployeeTab = (typeof EMPLOYEE_TABS)[number];
-const TAB_TEXT: Record<EmployeeTab, string> = { profile: "Profile", work: "Work", access: "Access", resources: "Sandbox & resources", employment: "Employment" };
+const TAB_KEYS: Record<EmployeeTab, MessageKey> = {
+  profile: "office.employee.tab.profile",
+  work: "office.employee.tab.work",
+  access: "office.employee.tab.access",
+  resources: "office.employee.tab.resources",
+  employment: "office.employee.tab.employment",
+};
 
 const TAB_ICON: Record<EmployeeTab, ReactElement> = {
   profile: <Person16Regular />,
@@ -79,7 +86,14 @@ const TAB_ICON: Record<EmployeeTab, ReactElement> = {
   employment: <Briefcase16Regular />,
 };
 
-const EMPLOYMENT_TEXT: Record<Employment, string> = { candidate: "Candidate", probation: "On probation", active: "Active", suspended: "Suspended", archived: "Archived", deleted: "Desk deleted" };
+const EMPLOYMENT_KEYS: Record<Employment, MessageKey> = {
+  candidate: "office.employee.employment.candidate",
+  probation: "office.employee.employment.probation",
+  active: "office.employee.employment.active",
+  suspended: "office.employee.employment.suspended",
+  archived: "office.employee.employment.archived",
+  deleted: "office.employee.employment.deleted",
+};
 
 const EMPLOYMENT_TONE: Record<Employment, "success" | "warning" | "subtle" | "informative" | "danger"> = {
   candidate: "informative",
@@ -90,19 +104,26 @@ const EMPLOYMENT_TONE: Record<Employment, "success" | "warning" | "subtle" | "in
   deleted: "danger",
 };
 
-const SANDBOX_TEXT: Record<SandboxState, string> = { PROVISIONING: "Being prepared", READY: "Ready", FAILED: "Failed", ARCHIVED: "Archived", DELETING: "Being deleted", DELETED: "Deleted" };
+const SANDBOX_KEYS: Record<SandboxState, MessageKey> = {
+  PROVISIONING: "office.employee.sandbox.PROVISIONING",
+  READY: "office.employee.sandbox.READY",
+  FAILED: "office.employee.sandbox.FAILED",
+  ARCHIVED: "office.employee.sandbox.ARCHIVED",
+  DELETING: "office.employee.sandbox.DELETING",
+  DELETED: "office.employee.sandbox.DELETED",
+};
 
 // What may be done next with an employment, and what each move means.
 // An archived employee's desk is deleted from Governance → Employee desks, where what it holds is shown first.
 const MOVES: Record<Employment, EmploymentCommand[]> = { candidate: ["start_probation", "activate", "reject"], probation: ["activate", "reject"], active: ["suspend", "archive"], suspended: ["reinstate", "archive"], archived: [], deleted: [] };
-const MOVE_TEXT: Record<EmploymentCommand, { label: string; means: string; danger?: boolean }> = {
-  start_probation: { label: "Start the trial", means: "It works trial assignments you review before it is active." },
-  activate: { label: "Activate", means: "It takes work as a member of the office." },
-  reject: { label: "Reject", means: "It is not hired; its sandbox is archived.", danger: true },
-  suspend: { label: "Suspend", means: "It takes no new work until you reinstate it." },
-  reinstate: { label: "Reinstate", means: "It takes work again." },
-  archive: { label: "Archive", means: "It leaves the office; its desk and toolbox are kept, read only, until you delete them in Governance → Employee desks.", danger: true },
-  delete: { label: "Delete the desk", means: "Its desk, cache and workspaces are deleted for good and their storage released.", danger: true },
+const MOVE_KEYS: Record<EmploymentCommand, { labelKey: MessageKey; meansKey: MessageKey; danger?: boolean }> = {
+  start_probation: { labelKey: "office.employee.move.start_probation.label", meansKey: "office.employee.move.start_probation.means" },
+  activate: { labelKey: "office.employee.move.activate.label", meansKey: "office.employee.move.activate.means" },
+  reject: { labelKey: "office.employee.move.reject.label", meansKey: "office.employee.move.reject.means", danger: true },
+  suspend: { labelKey: "office.employee.move.suspend.label", meansKey: "office.employee.move.suspend.means" },
+  reinstate: { labelKey: "office.employee.move.reinstate.label", meansKey: "office.employee.move.reinstate.means" },
+  archive: { labelKey: "office.employee.move.archive.label", meansKey: "office.employee.move.archive.means", danger: true },
+  delete: { labelKey: "office.employee.move.delete.label", meansKey: "office.employee.move.delete.means", danger: true },
 };
 
 const useStyles = makeStyles({
@@ -377,6 +398,7 @@ const useStyles = makeStyles({
 });
 
 function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[]; go: Go; label: string; empty: string }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   if (items.length === 0)
@@ -397,9 +419,9 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
               </Link>
             </div>
             <Text size={200} className={o.muted}>
-              Updated {when(a.updatedAt)}
+              {t("office.employee.updatedAt", { at: when(a.updatedAt) })}
               {a.reason ? ` · ${a.reason}` : ""}
-              {a.waitingOn ? ` · waiting on ${a.waitingOn}` : ""}
+              {a.waitingOn ? t("office.employee.waitingOn", { what: a.waitingOn }) : ""}
             </Text>
           </div>
           <ChevronRight16Regular className={s.chevron} aria-hidden />
@@ -414,6 +436,7 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
 // connection offers it; the Orbit plugin only on the Claude Code connection it was granted on. The server holds the
 // change to the same rules as a hire (an OpenAI Codex model observed held to Orbit's tools, above all).
 function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onCancel: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const act = useAction();
@@ -431,12 +454,12 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
     act.run(async () => {
       if (connection === null || model === null) return;
       const execution = { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch: x.webSearch && connection.capabilities.webSearch === "yes", orbitPlugin: x.orbitPlugin && connection.runtime === "claude" && connection.id === x.connectionId };
-      onSaved(await office.updateEmployee(e, { profile: { ...e.profile, execution }, note: `Runs on ${RUNTIME_LABELS[connection.runtime]} — ${connection.label}, ${model.label}` }));
+      onSaved(await office.updateEmployee(e, { profile: { ...e.profile, execution }, note: t("office.employee.runsOnNote", { runtime: RUNTIME_LABELS[connection.runtime], label: connection.label, model: model.label }) }));
     });
-  if (connections.data === null) return <Spinner size="tiny" label="Reading your AI connections…" />;
+  if (connections.data === null) return <Spinner size="tiny" label={t("office.hire.readingConnections")} />;
   return (
     <form
-      aria-label="Change how it runs"
+      aria-label={t("office.employee.runsOnFormAria")}
       className={s.inlineFormBox}
       onSubmit={(ev) => {
         ev.preventDefault();
@@ -444,7 +467,7 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
       }}
     >
       <div className={o.formGrid}>
-        <Field label="AI connection" hint="Only a connection that can run employees now is offered (Settings → AI Connections says why another cannot).">
+        <Field label={t("office.hire.connectionLabel")} hint={t("office.employee.runsOnConnectionHint")}>
           <Select
             value={connection?.id ?? ""}
             onChange={(_, d) => {
@@ -460,7 +483,7 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
             ))}
           </Select>
         </Field>
-        <Field label="Model" hint="From this connection's own catalog.">
+        <Field label={t("office.hire.modelLabel")} hint={t("office.hire.modelHint")}>
           <Select
             value={model?.id ?? ""}
             onChange={(_, d) => {
@@ -471,14 +494,14 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
-                {connection?.catalog.recommended === m.id ? " (recommended)" : ""}
+                {connection?.catalog.recommended === m.id ? t("office.hire.recommendedSuffix") : ""}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="Effort" hint={model && model.efforts.length === 0 ? "This model takes no effort level." : "How thoroughly it works."}>
+        <Field label={t("office.hire.effortLabel")} hint={model && model.efforts.length === 0 ? t("office.hire.effortNoLevelHint") : t("office.hire.effortHint")}>
           <Select value={effort ?? ""} disabled={model === null || model.efforts.length === 0} onChange={(_, d) => setEffortId(d.value)}>
-            {model?.efforts.length === 0 && <option value="">No effort level</option>}
+            {model?.efforts.length === 0 && <option value="">{t("office.hire.noEffortOption")}</option>}
             {(model?.efforts ?? []).map((v) => (
               <option key={v} value={v}>
                 {effortLabel(v)}
@@ -489,9 +512,9 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
       </div>
       <div className={s.actionRow}>
         <Button type="submit" appearance="primary" disabled={act.busy || connection === null || model === null}>
-          Save how it runs
+          {t("office.employee.saveRunsOn")}
         </Button>
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t("office.assign.cancel")}</Button>
       </div>
       <ProblemBar problem={act.problem} />
     </form>
@@ -499,6 +522,7 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
 }
 
 function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const act = useAction();
@@ -518,7 +542,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
   const restore = (revision: number) =>
     act.run(async () => {
       const old = await office.profileRevision(e.id, revision);
-      onSaved(await office.updateEmployee(e, { profile: old.profile, basedOn: revision, note: `Restored revision ${revision}` }));
+      onSaved(await office.updateEmployee(e, { profile: old.profile, basedOn: revision, note: t("office.employee.restoredNote", { revision }) }));
     });
   const x = p.execution;
   const [changing, setChanging] = useState(false);
@@ -527,7 +551,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
       <div className={s.twoCol}>
         <form
           className={o.card}
-          aria-label="Role"
+          aria-label={t("office.employee.roleAria")}
           onSubmit={(ev) => {
             ev.preventDefault();
             void save();
@@ -538,35 +562,38 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
               <IconBadge icon={<Person16Regular />} tone="brand" size="md" />
               <div className={s.sectionTitleWrap}>
                 <Text weight="semibold" size={400}>
-                  Role — profile revision {e.profileRevision}
+                  {t("office.employee.roleTitle", { revision: e.profileRevision })}
                 </Text>
                 <Text size={200} className={o.muted}>
-                  Every save creates a restorable revision.
+                  {t("office.employee.roleSubtitle")}
                 </Text>
               </div>
             </div>
             {changed && (
               <Badge appearance="tint" color="warning" style={{ borderRadius: "9999px" }}>
-                Unsaved changes
+                {t("office.employee.unsavedChanges")}
               </Badge>
             )}
           </div>
           <div className={o.divider} />
-          <Field label="Role title" required>
+          <Field label={t("office.hire.roleTitleLabel")} required>
             <Input value={title} onChange={(_, d) => setTitle(d.value)} />
           </Field>
-          <Field label="Duties" hint="What this employee owns and delivers.">
+          <Field label={t("office.hire.dutiesLabel")} hint={t("office.employee.dutiesHint")}>
             <Textarea value={duties} rows={3} resize="vertical" onChange={(_, d) => setDuties(d.value)} />
           </Field>
-          <Field label="Instructions" hint="Working style, standards, and guardrails.">
+          <Field label={t("office.hire.instructionsLabel")} hint={t("office.employee.instructionsHint")}>
             <Textarea value={instructions} rows={5} resize="vertical" onChange={(_, d) => setInstructions(d.value)} />
           </Field>
-          <Field label="Why it changes" hint="Optional: kept with the revision.">
-            <Input value={note} placeholder="e.g. Narrowed scope to quarterly filings" onChange={(_, d) => setNote(d.value)} />
+          <Field label={t("office.employee.whyChangesLabel")} hint={t("office.employee.whyChangesHint")}>
+            <Input value={note} placeholder={t("office.employee.whyChangesPlaceholder")} onChange={(_, d) => setNote(d.value)} />
           </Field>
           <div className={o.inset}>
             <Text size={200} className={o.muted}>
-              Skills: {p.skills.join(", ") || "none named"} · Languages: {p.languages.join(", ") || "none named"}
+              {t("office.employee.skillsLanguagesLine", {
+                skills: p.skills.join(", ") || t("office.employee.noneNamed"),
+                languages: p.languages.join(", ") || t("office.employee.noneNamed"),
+              })}
             </Text>
             {(p.skills.length > 0 || p.languages.length > 0) && (
               <div className={s.chipRow}>
@@ -585,33 +612,33 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
           </div>
           <div className={s.actionRow}>
             <Button type="submit" appearance="primary" disabled={act.busy || !changed || title.trim() === ""}>
-              Save as a new revision
+              {t("office.employee.saveRevision")}
             </Button>
             {changed && (
               <Button type="button" appearance="subtle" disabled={act.busy} onClick={reset}>
-                Discard changes
+                {t("office.employee.discardChanges")}
               </Button>
             )}
           </div>
         </form>
 
         <div className={s.colStack}>
-          <section className={o.card} aria-label="How it runs">
+          <section className={o.card} aria-label={t("office.employee.howItRuns")}>
             <div className={o.between}>
               <div className={s.sectionHead}>
                 <IconBadge icon={<Code16Regular />} tone="teal" size="md" />
                 <div className={s.sectionTitleWrap}>
                   <Text weight="semibold" size={400}>
-                    How it runs
+                    {t("office.employee.howItRuns")}
                   </Text>
                   <Text size={200} className={o.muted}>
-                    Runtime, model, and capabilities
+                    {t("office.employee.howItRunsSub")}
                   </Text>
                 </div>
               </div>
               {!changing && (
                 <Button size="small" icon={<Edit16Regular />} onClick={() => setChanging(true)}>
-                  Change how it runs
+                  {t("office.employee.changeHowItRuns")}
                 </Button>
               )}
             </div>
@@ -629,7 +656,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
             <dl className={s.kvGrid} style={{ margin: 0 }}>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Runtime
+                  {t("office.hire.choiceRuntime")}
                 </dt>
                 <dd className={o.dd} style={{ fontWeight: 600 }}>
                   {RUNTIME_LABELS[x.runtime]}
@@ -637,7 +664,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Model
+                  {t("office.hire.choiceModel")}
                 </dt>
                 <dd className={o.dd} style={{ fontWeight: 600 }}>
                   {x.model}
@@ -645,60 +672,63 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Effort
+                  {t("office.hire.choiceEffort")}
                 </dt>
-                <dd className={o.dd}>{x.effort ? effortLabel(x.effort) : "None"}</dd>
+                <dd className={o.dd}>{x.effort ? effortLabel(x.effort) : t("office.hire.effortNoneShort")}</dd>
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Desk
+                  {t("office.employee.deskLabel")}
                 </dt>
                 <dd className={o.dd}>
-                  version {e.desk.version} · {e.desk.files} file(s) ·{" "}
+                  {t("office.employee.deskValue", { version: e.desk.version, files: e.desk.files })} ·{" "}
                   <Link href={`#/governance/desks/${encodeURIComponent(e.id)}`} inline>
-                    look into it
+                    {t("office.employee.lookIntoIt")}
                   </Link>
                 </dd>
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Web search
+                  {t("office.hire.choiceWebSearch")}
                 </dt>
                 <dd className={o.dd}>
                   <Badge appearance="tint" color={x.webSearch ? "success" : "subtle"} size="small" style={{ borderRadius: "9999px" }}>
-                    {x.webSearch ? "On" : "Off"}
+                    {x.webSearch ? t("office.hire.on") : t("office.hire.off")}
                   </Badge>
                 </dd>
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Orbit plugin
+                  {t("office.hire.choicePlugin")}
                 </dt>
                 <dd className={o.dd}>
                   <Badge appearance="tint" color={x.orbitPlugin ? "brand" : "subtle"} size="small" style={{ borderRadius: "9999px" }}>
-                    {x.orbitPlugin ? "On (skills only)" : "Off"}
+                    {x.orbitPlugin ? t("office.employee.pluginOnSkillsOnly") : t("office.hire.off")}
                   </Badge>
                 </dd>
               </div>
               <div className={mergeClasses(s.kvCell, s.kvFull)}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
-                  Connection
+                  {t("office.employee.connectionField")}
                 </dt>
-                <dd className={o.dd}>{x.connectionId ? <span className={o.mono}>{x.connectionId}</span> : "The account's default"}</dd>
+                <dd className={o.dd}>{x.connectionId ? <span className={o.mono}>{x.connectionId}</span> : t("office.employee.accountDefault")}</dd>
               </div>
             </dl>
           </section>
 
-          <section className={o.card} aria-label="Profile history">
+          <section className={o.card} aria-label={t("office.employee.profileHistory")}>
             <div className={o.between}>
               <div className={s.sectionHead}>
                 <IconBadge icon={<History16Regular />} tone="neutral" size="md" />
                 <div className={s.sectionTitleWrap}>
                   <Text weight="semibold" size={400}>
-                    Profile history
+                    {t("office.employee.profileHistory")}
                   </Text>
                   <Text size={200} className={o.muted}>
-                    {e.revisions.length} {e.revisions.length === 1 ? "revision" : "revisions"} recorded
+                    {t("office.employee.revisionsRecorded", {
+                      count: e.revisions.length,
+                      word: t(e.revisions.length === 1 ? "office.employee.revisionOne" : "office.employee.revisionMany"),
+                    })}
                   </Text>
                 </div>
               </div>
@@ -713,24 +743,24 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
                       <div className={o.between}>
                         <div className={o.row}>
                           <Text weight="semibold" size={200}>
-                            Revision {r.revision}
-                            {isCurrent ? " (current)" : ""}
+                            {t("office.employee.revisionLabel", { revision: r.revision })}
+                            {isCurrent ? t("office.employee.currentSuffix") : ""}
                           </Text>
                           {isCurrent && (
                             <Badge appearance="tint" color="brand" size="small" style={{ borderRadius: "9999px" }}>
-                              Active
+                              {t("office.employee.activeBadge")}
                             </Badge>
                           )}
                         </div>
                         {!isCurrent && (
                           <Button className={o.touch} size="small" appearance="subtle" icon={<ArrowCounterclockwise16Regular />} disabled={act.busy} onClick={() => void restore(r.revision)}>
-                            Restore revision {r.revision}
+                            {t("office.employee.restoreRevision", { revision: r.revision })}
                           </Button>
                         )}
                       </div>
                       <Text size={200} className={o.muted}>
-                        {when(r.createdAt)} by {r.createdBy}
-                        {r.basedOn ? ` · copied from revision ${r.basedOn}` : ""}
+                        {t("office.employee.revisionMeta", { at: when(r.createdAt), by: r.createdBy })}
+                        {r.basedOn ? t("office.employee.copiedFrom", { revision: r.basedOn }) : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </Text>
                     </li>
@@ -746,20 +776,21 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
 }
 
 function WorkTab({ e, go, onAssign }: { e: EmployeeDetail; go: Go; onAssign: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   return (
     <div className={s.colStack}>
-      <section className={o.card} aria-label="Working on">
+      <section className={o.card} aria-label={t("office.employee.workingOn")}>
         <div className={o.between}>
           <div className={s.sectionHead}>
             <IconBadge icon={<TaskListLtr20Regular />} tone={e.holding ? "brand" : "success"} size="md" />
             <div className={s.sectionTitleWrap}>
               <Text weight="semibold" size={400}>
-                Working on
+                {t("office.employee.workingOn")}
               </Text>
               <Text size={200} className={o.muted}>
-                Current active assignment on this desk
+                {t("office.employee.workingOnSub")}
               </Text>
             </div>
           </div>
@@ -772,15 +803,16 @@ function WorkTab({ e, go, onAssign }: { e: EmployeeDetail; go: Go; onAssign: () 
                 {e.holding.title}
               </Link>
               <Button size="small" appearance="subtle" icon={<ChevronRight16Regular />} iconPosition="after" onClick={() => go("mission", e.holding?.missionId ?? null)}>
-                Open mission
+                {t("office.employee.openMission")}
               </Button>
             </div>
             <Text size={200} className={o.muted}>
-              Since {when(e.holding.since)}
+              {t("office.employee.since", { at: when(e.holding.since) })}
             </Text>
             {e.workLabel.startsWith("waiting") && (
               <Callout tone="warn" icon={<Clock16Regular />}>
-                Waiting: <WorkLabelBadge label={e.workLabel} />
+                {t("office.employee.waitingLabel")}
+                <WorkLabelBadge label={e.workLabel} />
               </Callout>
             )}
           </div>
@@ -788,12 +820,12 @@ function WorkTab({ e, go, onAssign }: { e: EmployeeDetail; go: Go; onAssign: () 
           <EmptyState
             icon={<TaskListLtr20Regular />}
             tone="success"
-            title="Nothing: it is free for work."
-            body="Assign a new mission when you are ready for this employee to start."
+            title={t("office.employee.freeForWork")}
+            body={t("office.employee.freeForWorkSub")}
             action={
               e.employment !== "archived" ? (
                 <Button size="small" appearance="primary" onClick={onAssign}>
-                  Assign work
+                  {t("office.overview.assignWork")}
                 </Button>
               ) : undefined
             }
@@ -802,34 +834,34 @@ function WorkTab({ e, go, onAssign }: { e: EmployeeDetail; go: Go; onAssign: () 
       </section>
 
       <div className={s.equalCols}>
-        <section className={o.card} aria-label="Queue">
+        <section className={o.card} aria-label={t("office.employee.queueCardAria")}>
           <div className={o.between}>
             <div className={s.sectionHead}>
               <IconBadge icon={<Clock16Regular />} tone="warning" size="md" />
               <Text weight="semibold" size={400}>
-                Queued behind it ({e.queue.length})
+                {t("office.employee.queueTitle", { count: e.queue.length })}
               </Text>
             </div>
             <Badge appearance="tint" color={e.queue.length > 0 ? "warning" : "subtle"} style={{ borderRadius: "9999px" }}>
               {e.queue.length}
             </Badge>
           </div>
-          <AssignmentList items={e.queue} go={go} label="Queued work" empty="Nothing waits for it." />
+          <AssignmentList items={e.queue} go={go} label={t("office.employee.queuedWorkAria")} empty={t("office.employee.queueEmpty")} />
         </section>
 
-        <section className={o.card} aria-label="History">
+        <section className={o.card} aria-label={t("office.employee.historyTitle")}>
           <div className={o.between}>
             <div className={s.sectionHead}>
               <IconBadge icon={<History16Regular />} tone="neutral" size="md" />
               <Text weight="semibold" size={400}>
-                History
+                {t("office.employee.historyTitle")}
               </Text>
             </div>
             <Badge appearance="tint" color="subtle" style={{ borderRadius: "9999px" }}>
               {e.history.length}
             </Badge>
           </div>
-          <AssignmentList items={e.history} go={go} label="Past work" empty="No work finished yet." />
+          <AssignmentList items={e.history} go={go} label={t("office.employee.pastWorkAria")} empty={t("office.employee.historyEmpty")} />
         </section>
       </div>
     </div>
@@ -837,6 +869,7 @@ function WorkTab({ e, go, onAssign }: { e: EmployeeDetail; go: Go; onAssign: () 
 }
 
 function EditResources({ e, onSaved, onCancel, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onCancel: () => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const act = useAction();
@@ -852,7 +885,7 @@ function EditResources({ e, onSaved, onCancel, onLoadLatest }: { e: EmployeeDeta
   return (
     <form
       className={o.card}
-      aria-label="Edit resources"
+      aria-label={t("office.employee.editResources")}
       onSubmit={(ev) => {
         ev.preventDefault();
         void act.run(async () => onSaved(await office.updateResources(e, { resources: value, note: note.trim() })));
@@ -863,25 +896,25 @@ function EditResources({ e, onSaved, onCancel, onLoadLatest }: { e: EmployeeDeta
           <IconBadge icon={<Settings16Regular />} tone="brand" size="md" />
           <div className={s.sectionTitleWrap}>
             <Text weight="semibold" size={400}>
-              Edit resources
+              {t("office.employee.editResources")}
             </Text>
             <Text size={200} className={o.muted}>
-              Applies to future attempts: an attempt already admitted keeps the resources it was admitted under.
+              {t("office.employee.editResourcesSub")}
             </Text>
           </div>
         </div>
       </div>
       <div className={o.divider} />
       <ResourceFields value={value} onChange={setValue} presets={presets} summary={summary.data} runtime={e.execution.runtime} committed={committed} />
-      <Field label="Why it changes" hint="Optional: kept with the revision.">
+      <Field label={t("office.employee.whyChangesLabel")} hint={t("office.employee.whyChangesHint")}>
         <Input value={note} onChange={(_, d) => setNote(d.value)} />
       </Field>
       <div className={s.actionRow}>
         <Button type="submit" appearance="primary" disabled={act.busy || !changed || problems.length > 0}>
-          Save resources
+          {t("office.employee.saveResources")}
         </Button>
         <Button type="button" onClick={onCancel} disabled={act.busy}>
-          Cancel
+          {t("office.assign.cancel")}
         </Button>
       </div>
       <ProblemBar problem={act.problem} onLoadLatest={onLoadLatest} />
@@ -890,6 +923,7 @@ function EditResources({ e, onSaved, onCancel, onLoadLatest }: { e: EmployeeDeta
 }
 
 function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const [editing, setEditing] = useState(false);
@@ -897,36 +931,36 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
   const r = sb.resources;
   const run = e.activeRun;
   const specs = [
-    { label: "CPU", value: cpuText(r.cpuMillis) },
-    { label: "Memory", value: sizeText(r.memoryMiB) },
-    { label: "Desk", value: sizeText(r.deskStorageMiB) },
-    { label: "Scratch", value: sizeText(r.scratchStorageMiB) },
-    { label: "Cache", value: sizeText(r.cacheStorageMiB) },
-    { label: "Processes", value: `${r.pidsLimit}` },
-    { label: "Time limit", value: `${r.timeoutMinutes} min` },
+    { key: "cpu", label: t("office.employee.tileCpu"), value: cpuText(r.cpuMillis) },
+    { key: "mem", label: t("office.employee.tileMemory"), value: sizeText(r.memoryMiB) },
+    { key: "desk", label: t("office.employee.tileDesk"), value: sizeText(r.deskStorageMiB) },
+    { key: "scratch", label: t("office.employee.tileScratch"), value: sizeText(r.scratchStorageMiB) },
+    { key: "cache", label: t("office.employee.tileCache"), value: sizeText(r.cacheStorageMiB) },
+    { key: "pids", label: t("office.employee.tileProcesses"), value: `${r.pidsLimit}` },
+    { key: "time", label: t("office.employee.tileTimeLimit"), value: t("office.employee.tileTimeValue", { minutes: r.timeoutMinutes }) },
   ];
   return (
     <div className={s.colStack}>
-      <section className={o.card} aria-label="Personal Sandbox">
+      <section className={o.card} aria-label={t("office.employee.personalSandbox")}>
         <div className={o.between}>
           <div className={s.sectionHead}>
             <IconBadge icon={<Box16Regular />} tone={sb.state === "READY" ? "success" : sb.state === "FAILED" ? "danger" : "warning"} size="md" />
             <div className={o.row}>
               <Text weight="semibold" size={400}>
-                Personal Sandbox
+                {t("office.employee.personalSandbox")}
               </Text>
               <Badge appearance="tint" color={sb.state === "READY" ? "success" : sb.state === "FAILED" ? "danger" : sb.state === "PROVISIONING" ? "warning" : "subtle"} style={{ borderRadius: "9999px" }}>
-                {SANDBOX_TEXT[sb.state]}
+                {t(SANDBOX_KEYS[sb.state])}
               </Badge>
               {sb.provider === "process" && (
                 <Badge appearance="outline" color="warning" style={{ borderRadius: "9999px" }}>
-                  Development only: no isolation, no shell
+                  {t("office.employee.devOnly")}
                 </Badge>
               )}
             </div>
           </div>
           <Button className={o.touch} icon={<Edit16Regular />} disabled={editing || sb.state === "ARCHIVED"} onClick={() => setEditing(true)}>
-            Edit resources
+            {t("office.employee.editResources")}
           </Button>
         </div>
         {sb.reason && (
@@ -935,11 +969,20 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
           </Callout>
         )}
         <Text size={200} className={o.muted}>
-          Resources (revision {sb.resourceRevision}): {cpuText(r.cpuMillis)} · {sizeText(r.memoryMiB)} memory · {sizeText(r.deskStorageMiB)} desk · {sizeText(r.scratchStorageMiB)} scratch · {sizeText(r.cacheStorageMiB)} cache · {r.pidsLimit} processes · {r.timeoutMinutes} minutes per attempt
+          {t("office.employee.resourcesLine", {
+            revision: sb.resourceRevision,
+            cpu: cpuText(r.cpuMillis),
+            memory: sizeText(r.memoryMiB),
+            desk: sizeText(r.deskStorageMiB),
+            scratch: sizeText(r.scratchStorageMiB),
+            cache: sizeText(r.cacheStorageMiB),
+            pids: r.pidsLimit,
+            timeout: r.timeoutMinutes,
+          })}
         </Text>
         <div className={s.resourceTiles}>
           {specs.map((item) => (
-            <div key={item.label} className={s.resourceTile}>
+            <div key={item.key} className={s.resourceTile}>
               <Text size={100} className={o.muted}>
                 {item.label}
               </Text>
@@ -949,13 +992,13 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
         </div>
         <div className={o.divider} />
         <div className={o.tableWrap}>
-          <Table size="small" aria-label="Storage areas">
+          <Table size="small" aria-label={t("office.employee.storageAreasAria")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell style={{ width: "165px" }}>Area</TableHeaderCell>
-                <TableHeaderCell style={{ width: "92px" }}>Quota</TableHeaderCell>
-                <TableHeaderCell style={{ width: "104px" }}>Used</TableHeaderCell>
-                <TableHeaderCell>Enforcement</TableHeaderCell>
+                <TableHeaderCell style={{ width: "165px" }}>{t("office.employee.colArea")}</TableHeaderCell>
+                <TableHeaderCell style={{ width: "92px" }}>{t("office.employee.colQuota")}</TableHeaderCell>
+                <TableHeaderCell style={{ width: "104px" }}>{t("office.employee.colUsed")}</TableHeaderCell>
+                <TableHeaderCell>{t("office.employee.colEnforcement")}</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -963,7 +1006,7 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
                 <TableRow key={a.area}>
                   <TableCell>{AREA_TEXT[a.area]}</TableCell>
                   <TableCell style={{ whiteSpace: "nowrap" }}>{sizeText(a.quotaMiB)}</TableCell>
-                  <TableCell style={{ whiteSpace: "nowrap" }}>{a.usedMiB === null ? "not measured" : sizeText(a.usedMiB)}</TableCell>
+                  <TableCell style={{ whiteSpace: "nowrap" }}>{a.usedMiB === null ? t("office.employee.notMeasured") : sizeText(a.usedMiB)}</TableCell>
                   <TableCell>
                     <Badge appearance="tint" color={LEVEL_TONE[a.level]} style={{ height: "auto", minHeight: "20px", paddingTop: "3px", paddingBottom: "3px", whiteSpace: "normal", textAlign: "left", lineHeight: "1.3" }}>
                       {LEVEL_TEXT[a.level]}
@@ -990,30 +1033,33 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
         />
       )}
       <div className={s.twoCol}>
-        <section className={o.card} aria-label="Attempt now">
+        <section className={o.card} aria-label={t("office.employee.attemptNow")}>
           <div className={s.sectionHead}>
             <IconBadge icon={<Code16Regular />} tone={run ? "brand" : "neutral"} size="md" />
             <div className={s.sectionTitleWrap}>
               <Text weight="semibold" size={400}>
-                Attempt now
+                {t("office.employee.attemptNow")}
               </Text>
               <Text size={200} className={o.muted}>
-                Live container usage and isolation checks
+                {t("office.employee.attemptNowSub")}
               </Text>
             </div>
           </div>
-          {run ? <RunDetails run={run} /> : <Text className={o.muted}>No attempt runs now: it holds no CPU or memory.</Text>}
+          {run ? <RunDetails run={run} /> : <Text className={o.muted}>{t("office.employee.noAttemptNow")}</Text>}
         </section>
 
-        <section className={o.card} aria-label="Resource history">
+        <section className={o.card} aria-label={t("office.employee.resourceHistory")}>
           <div className={s.sectionHead}>
             <IconBadge icon={<History16Regular />} tone="neutral" size="md" />
             <div className={s.sectionTitleWrap}>
               <Text weight="semibold" size={400}>
-                Resource history
+                {t("office.employee.resourceHistory")}
               </Text>
               <Text size={200} className={o.muted}>
-                {e.resourceRevisions.length} {e.resourceRevisions.length === 1 ? "revision" : "revisions"} recorded
+                {t("office.employee.revisionsRecorded", {
+                  count: e.resourceRevisions.length,
+                  word: t(e.resourceRevisions.length === 1 ? "office.employee.revisionOne" : "office.employee.revisionMany"),
+                })}
               </Text>
             </div>
           </div>
@@ -1026,19 +1072,24 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
                   <li key={rv.revision} className={mergeClasses(o.item, isCurrent && s.revisionCurrent)}>
                     <div className={o.between}>
                       <Text weight="semibold" size={200}>
-                        Revision {rv.revision}
-                        {isCurrent ? " (current)" : ""}
+                        {t("office.employee.revisionLabel", { revision: rv.revision })}
+                        {isCurrent ? t("office.employee.currentSuffix") : ""}
                       </Text>
                       <Badge appearance="outline" size="small" style={{ borderRadius: "9999px" }}>
-                        {rv.profile.presetId ? `${rv.profile.presetId} preset` : "custom"}
+                        {rv.profile.presetId ? t("office.employee.presetTag", { name: rv.profile.presetId }) : t("office.employee.customTag")}
                       </Badge>
                     </div>
                     <Text size={200}>
-                      {cpuText(rv.profile.cpuMillis)} · {sizeText(rv.profile.memoryMiB)} memory · {sizeText(rv.profile.deskStorageMiB)} desk
-                      {rv.profile.presetId ? ` · ${rv.profile.presetId} preset` : " · custom"}
+                      {t("office.resources.profileLine", {
+                        cpu: cpuText(rv.profile.cpuMillis),
+                        memory: sizeText(rv.profile.memoryMiB),
+                        desk: sizeText(rv.profile.deskStorageMiB),
+                      })}
+                      {" · "}
+                      {rv.profile.presetId ? t("office.employee.presetTag", { name: rv.profile.presetId }) : t("office.employee.customTag")}
                     </Text>
                     <Text size={200} className={o.muted}>
-                      {when(rv.createdAt)} by {rv.createdBy}
+                      {t("office.employee.revisionMeta", { at: when(rv.createdAt), by: rv.createdBy })}
                       {rv.note ? ` · ${rv.note}` : ""}
                     </Text>
                   </li>
@@ -1052,6 +1103,7 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
 }
 
 function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const act = useAction();
@@ -1062,31 +1114,31 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
   const [departmentId, setDepartmentId] = useState(e.departmentId ?? "");
   const moves = MOVES[e.employment];
   const departments = (roster.data?.departments ?? []).filter((d) => !d.archived);
-  const currentDept = departments.find((d) => d.id === e.departmentId)?.name ?? "Unassigned";
+  const currentDept = departments.find((d) => d.id === e.departmentId)?.name ?? t("office.overview.unassigned");
   return (
     <div className={s.colStack}>
       <div className={s.twoCol}>
-        <section className={o.card} aria-label="Employment">
+        <section className={o.card} aria-label={t("office.employee.kpiEmployment")}>
           <div className={o.between}>
             <div className={s.sectionHead}>
               <IconBadge icon={<Briefcase16Regular />} tone={e.employment === "active" ? "success" : e.employment === "suspended" ? "warning" : "neutral"} size="md" />
               <div className={s.sectionTitleWrap}>
                 <Text weight="semibold" size={400}>
-                  Employment
+                  {t("office.employee.kpiEmployment")}
                 </Text>
                 <Text size={200} className={o.muted}>
-                  Lifecycle transitions are logged with your reason.
+                  {t("office.employee.employmentSub")}
                 </Text>
               </div>
             </div>
             <Badge appearance="tint" color={EMPLOYMENT_TONE[e.employment]} style={{ borderRadius: "9999px" }}>
-              {EMPLOYMENT_TEXT[e.employment]}
+              {t(EMPLOYMENT_KEYS[e.employment])}
             </Badge>
           </div>
           <div className={o.divider} />
           {moves.length === 0 ? (
             <Callout tone="info" icon={<Shield16Regular />}>
-              Nothing more can change: it is archived.
+              {t("office.employee.archivedReadOnly")}
             </Callout>
           ) : (
             <form
@@ -1097,37 +1149,37 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
                 void act.run(async () => onSaved(await office.employment(e, { command, reason: reason.trim(), ...(command === "suspend" ? { held } : {}) })));
               }}
             >
-              <RadioGroup value={command ?? ""} onChange={(_, d) => setCommand(d.value as EmploymentCommand)} aria-label="What to do" className={s.moveList}>
+              <RadioGroup value={command ?? ""} onChange={(_, d) => setCommand(d.value as EmploymentCommand)} aria-label={t("office.employee.whatToDoAria")} className={s.moveList}>
                 {moves.map((m) => {
                   const selected = command === m;
-                  const danger = MOVE_TEXT[m].danger === true;
+                  const danger = MOVE_KEYS[m].danger === true;
                   return (
                     <div key={m} className={mergeClasses(s.moveCard, selected && (danger ? s.moveCardDanger : s.moveCardSelected))}>
-                      <Radio value={m} label={`${MOVE_TEXT[m].label} — ${MOVE_TEXT[m].means}`} />
+                      <Radio value={m} label={`${t(MOVE_KEYS[m].labelKey)} — ${t(MOVE_KEYS[m].meansKey)}`} />
                     </div>
                   );
                 })}
               </RadioGroup>
               {command === "suspend" && e.holding && (
                 <div className={o.inset}>
-                  <Field label={`What happens to “${e.holding.title}”`}>
+                  <Field label={t("office.employee.whatHappensToHeld", { title: e.holding.title })}>
                     <RadioGroup value={held} onChange={(_, d) => setHeld(d.value as "keep_paused" | "cancel")}>
-                      <Radio value="keep_paused" label="Keep it, paused" />
-                      <Radio value="cancel" label="Cancel it" />
+                      <Radio value="keep_paused" label={t("office.employee.keepPaused")} />
+                      <Radio value="cancel" label={t("office.employee.cancelIt")} />
                     </RadioGroup>
                   </Field>
                 </div>
               )}
-              <Field label="Reason" hint="Recorded with the decision.">
-                <Input value={reason} placeholder="Explain why this change is being made" onChange={(_, d) => setReason(d.value)} />
+              <Field label={t("office.employee.reasonLabel")} hint={t("office.employee.reasonHint")}>
+                <Input value={reason} placeholder={t("office.employee.reasonPlaceholder")} onChange={(_, d) => setReason(d.value)} />
               </Field>
               <div className={s.actionRow}>
                 <Button type="submit" appearance="primary" disabled={act.busy || command === null}>
-                  {command ? MOVE_TEXT[command].label : "Choose what to do"}
+                  {command ? t(MOVE_KEYS[command].labelKey) : t("office.employee.chooseWhatToDo")}
                 </Button>
                 {command !== null && (
                   <Button type="button" appearance="subtle" onClick={() => setCommand(null)}>
-                    Clear choice
+                    {t("office.employee.clearChoice")}
                   </Button>
                 )}
               </div>
@@ -1135,16 +1187,16 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
           )}
         </section>
 
-        <section className={o.card} aria-label="Department">
+        <section className={o.card} aria-label={t("office.hire.choiceDept")}>
           <div className={o.between}>
             <div className={s.sectionHead}>
               <IconBadge icon={<Organization16Regular />} tone="teal" size="md" />
               <div className={s.sectionTitleWrap}>
                 <Text weight="semibold" size={400}>
-                  Department
+                  {t("office.hire.choiceDept")}
                 </Text>
                 <Text size={200} className={o.muted}>
-                  Organize where this employee sits
+                  {t("office.employee.deptSub")}
                 </Text>
               </div>
             </div>
@@ -1154,9 +1206,9 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
           </div>
           <div className={o.divider} />
           <div className={o.form}>
-            <Field label="Move to">
+            <Field label={t("office.employee.moveToLabel")}>
               <Select value={departmentId} onChange={(_, d) => setDepartmentId(d.value)}>
-                <option value="">Unassigned</option>
+                <option value="">{t("office.overview.unassigned")}</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
@@ -1166,11 +1218,11 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
             </Field>
             <div className={s.actionRow}>
               <Button className={o.touch} appearance="primary" disabled={act.busy || departmentId === (e.departmentId ?? "")} onClick={() => void act.run(async () => onSaved(await office.moveEmployee(e, departmentId === "" ? null : departmentId)))}>
-                Move
+                {t("office.employee.move")}
               </Button>
             </div>
             <Text size={200} className={o.muted}>
-              Work it already holds keeps the department it was claimed under.
+              {t("office.employee.deptMoveNote")}
             </Text>
           </div>
         </section>
@@ -1181,6 +1233,7 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
 }
 
 export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; go: Go }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const employee = useOfficeRead<EmployeeDetail>(() => office.employee(id), [id], ["roster", "missions", "connections"]);
@@ -1193,7 +1246,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
         <MessageBarBody>{employee.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner label="Reading the employee…" />
+      <Spinner label={t("office.employee.readingEmployee")} />
     );
   const e = employee.data;
   const reload = () => void employee.reload();
@@ -1215,7 +1268,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
                 </Text>
                 <WorkLabelBadge label={e.workLabel} />
                 <Badge appearance="tint" color={EMPLOYMENT_TONE[e.employment]} style={{ borderRadius: "9999px" }}>
-                  {EMPLOYMENT_TEXT[e.employment]}
+                  {t(EMPLOYMENT_KEYS[e.employment])}
                 </Badge>
               </div>
               <Text size={200} className={o.muted}>
@@ -1231,7 +1284,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
             </div>
           </div>
           <Button className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={e.employment === "archived"} onClick={() => setAssigning(true)} {...restore}>
-            Assign work
+            {t("office.overview.assignWork")}
           </Button>
         </div>
 
@@ -1239,70 +1292,74 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
           <button type="button" className={mergeClasses(s.kpiTile, current === "work" && s.kpiTileActive)} onClick={() => go("employee", id, "work")}>
             <span className={s.kpiLabel}>
               <TaskListLtr20Regular aria-hidden />
-              Current work
+              {t("office.employee.kpiCurrentWork")}
             </span>
-            <span className={s.kpiValue}>{e.holding ? e.holding.title : "Idle · free"}</span>
+            <span className={s.kpiValue}>{e.holding ? e.holding.title : t("office.employee.kpiIdle")}</span>
             <span className={s.kpiSub}>
-              {e.queue.length > 0 ? `${e.queue.length} queued · ` : ""}
-              {e.history.length} completed
+              {e.queue.length > 0 ? t("office.employee.kpiQueuePrefix", { count: e.queue.length }) : ""}
+              {t("office.employee.kpiCompleted", { count: e.history.length })}
             </span>
           </button>
 
           <button type="button" className={mergeClasses(s.kpiTile, current === "resources" && s.kpiTileActive)} onClick={() => go("employee", id, "resources")}>
             <span className={s.kpiLabel}>
               <Box16Regular aria-hidden />
-              Sandbox
+              {t("office.employee.kpiSandbox")}
             </span>
             <span className={s.kpiValue}>
               {cpuText(r.cpuMillis)} · {sizeText(r.memoryMiB)}
             </span>
             <span className={s.kpiSub}>
-              {SANDBOX_TEXT[e.sandbox.state]} · {sizeText(r.deskStorageMiB)} desk
+              {t("office.employee.kpiSandboxSub", { state: t(SANDBOX_KEYS[e.sandbox.state]), desk: sizeText(r.deskStorageMiB) })}
             </span>
           </button>
 
           <button type="button" className={mergeClasses(s.kpiTile, current === "profile" && s.kpiTileActive)} onClick={() => go("employee", id, "profile")}>
             <span className={s.kpiLabel}>
               <Code16Regular aria-hidden />
-              Model & profile
+              {t("office.employee.kpiModelProfile")}
             </span>
             <span className={s.kpiValue}>{e.execution.model}</span>
             <span className={s.kpiSub}>
-              {RUNTIME_LABELS[e.execution.runtime]} · rev {e.profileRevision}
+              {t("office.employee.kpiModelSub", { runtime: RUNTIME_LABELS[e.execution.runtime], revision: e.profileRevision })}
             </span>
           </button>
 
           <button type="button" className={mergeClasses(s.kpiTile, current === "employment" && s.kpiTileActive)} onClick={() => go("employee", id, "employment")}>
             <span className={s.kpiLabel}>
               <Briefcase16Regular aria-hidden />
-              Employment
+              {t("office.employee.kpiEmployment")}
             </span>
-            <span className={s.kpiValue}>{EMPLOYMENT_TEXT[e.employment]}</span>
+            <span className={s.kpiValue}>{t(EMPLOYMENT_KEYS[e.employment])}</span>
             <span className={s.kpiSub}>
-              Desk v{e.desk.version} · {e.desk.files} {e.desk.files === 1 ? "file" : "files"}
+              {t("office.employee.kpiEmploymentSub", {
+                version: e.desk.version,
+                files: e.desk.files,
+                fileWord: t(e.desk.files === 1 ? "office.employee.fileOne" : "office.employee.fileMany"),
+              })}
             </span>
           </button>
         </div>
 
         {e.notReadyReason && (
           <Callout tone="danger" icon={<ErrorCircle16Regular />}>
-            Not ready: {e.notReadyReason}
+            {t("office.floor.notReady", { reason: e.notReadyReason })}
           </Callout>
         )}
         {e.connectionWarning && (
           <Callout tone="warn" icon={<Warning16Regular />}>
-            Connection: {e.connectionWarning}
+            {t("office.floor.connectionWarn", { warning: e.connectionWarning })}
           </Callout>
         )}
       </section>
 
       <div className={`${o.tabStrip} orbit-hscroll`}>
-        <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label="Employee">
-          {EMPLOYEE_TABS.map((t) => (
-            <Tab key={t} value={t} icon={TAB_ICON[t]}>
+        <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label={t("office.employee.tabsAria")}>
+          {EMPLOYEE_TABS.map((tabKey) => (
+            <Tab key={tabKey} value={tabKey} icon={TAB_ICON[tabKey]}>
               <span className={s.tabLabel}>
-                <span>{TAB_TEXT[t]}</span>
-                {t === "work" && workCount > 0 && (
+                <span>{t(TAB_KEYS[tabKey])}</span>
+                {tabKey === "work" && workCount > 0 && (
                   <Badge appearance="tint" color="brand" size="small" style={{ borderRadius: "9999px" }}>
                     {workCount}
                   </Badge>

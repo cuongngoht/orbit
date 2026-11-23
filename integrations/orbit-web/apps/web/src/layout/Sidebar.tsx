@@ -55,6 +55,7 @@ import type { AuthAccount, AuthUser, ResearchSessionSummary, SessionSummary } fr
 import { useMemo, useState } from "react";
 import { GovernanceIcon, OfficeIcon } from "../components/SectionIcons";
 import { SourceMark } from "../components/SourceMark";
+import { useI18n } from "../i18n";
 import { errorText, send } from "../services/api";
 
 const useStyles = makeStyles({
@@ -162,13 +163,14 @@ const userLine = (user: AuthUser | null, account: AuthAccount | null): string | 
 };
 
 function AccountMenu({ user, account, collapsed, busy, onSettings, onSignOut }: { user: AuthUser | null; account: AuthAccount | null; collapsed: boolean; busy: boolean; onSettings: () => void; onSignOut: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
-  const name = user?.fullName || user?.username || "Your account";
+  const name = user?.fullName || user?.username || t("common.sidebar.yourAccount");
   const line = userLine(user, account);
   return (
     <Menu positioning="above-start">
       <MenuTrigger disableButtonEnhancement>
-        <Button className={mergeClasses(s.account, collapsed && s.accountCollapsed)} appearance="subtle" icon={<Avatar name={name} size={24} />} aria-label={`Signed in as ${name}`} disabled={busy}>
+        <Button className={mergeClasses(s.account, collapsed && s.accountCollapsed)} appearance="subtle" icon={<Avatar name={name} size={24} />} aria-label={t("common.sidebar.signedInAs", { name })} disabled={busy}>
           {!collapsed && (
             <span className={s.accountText}>
               <span className={s.email}>{name}</span>
@@ -180,7 +182,7 @@ function AccountMenu({ user, account, collapsed, busy, onSettings, onSignOut }: 
       <MenuPopover>
         <MenuList>
           <MenuGroup>
-            <MenuGroupHeader>Signed in to Orbit</MenuGroupHeader>
+            <MenuGroupHeader>{t("common.sidebar.signedInToOrbit")}</MenuGroupHeader>
             <div className={s.who}>
               <Text weight="semibold">{name}</Text>
               {line && (
@@ -192,10 +194,10 @@ function AccountMenu({ user, account, collapsed, busy, onSettings, onSignOut }: 
           </MenuGroup>
           <MenuDivider />
           <MenuItem icon={<Settings20Regular />} onClick={onSettings}>
-            Settings
+            {t("common.sidebar.settings")}
           </MenuItem>
           <MenuItem icon={<SignOut20Regular />} onClick={onSignOut}>
-            Sign out
+            {t("common.sidebar.signOut")}
           </MenuItem>
         </MenuList>
       </MenuPopover>
@@ -204,6 +206,7 @@ function AccountMenu({ user, account, collapsed, busy, onSettings, onSignOut }: 
 }
 
 export function Sidebar(p: SidebarProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -220,26 +223,26 @@ export function Sidebar(p: SidebarProps) {
 
   if (p.collapsed)
     return (
-      <nav className={mergeClasses(s.root, s.collapsed)} aria-label="Orbit">
+      <nav className={mergeClasses(s.root, s.collapsed)} aria-label={t("common.sidebar.navLabel")}>
         <div className={mergeClasses(s.head, s.headCollapsed)}>
-          <Tooltip content="Open the sidebar" relationship="label">
+          <Tooltip content={t("common.sidebar.open")} relationship="label">
             <Button appearance="subtle" icon={<PanelLeftExpand20Regular />} onClick={p.onToggle} />
           </Tooltip>
         </div>
         <div className={mergeClasses(s.nav, s.navCollapsed)}>
-          <Tooltip content="New session" relationship="label">
+          <Tooltip content={t("common.sidebar.newSession")} relationship="label">
             <Button appearance="subtle" icon={<Add20Regular />} onClick={p.onNew} />
           </Tooltip>
-          <Tooltip content="Customize" relationship="label">
+          <Tooltip content={t("common.sidebar.customize")} relationship="label">
             <Button appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
           </Tooltip>
           {p.onOffice && (
-            <Tooltip content="Office" relationship="label">
+            <Tooltip content={t("common.sidebar.office")} relationship="label">
               <Button appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
             </Tooltip>
           )}
           {p.onGovernance && (
-            <Tooltip content="Governance" relationship="label">
+            <Tooltip content={t("common.sidebar.governance")} relationship="label">
               <Button appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
             </Tooltip>
           )}
@@ -252,28 +255,28 @@ export function Sidebar(p: SidebarProps) {
     );
 
   return (
-    <nav className={mergeClasses(s.root, p.isDrawer && s.rootDrawer)} aria-label="Orbit">
+    <nav className={mergeClasses(s.root, p.isDrawer && s.rootDrawer)} aria-label={t("common.sidebar.navLabel")}>
       <div className={s.head}>
         <div className={s.brand}>
           <img src="/orbit.svg" alt="" className={s.logo} />
           <Text weight="semibold" size={500}>
-            Orbit
+            {t("common.sidebar.brand")}
           </Text>
         </div>
-        <Tooltip content="Close the sidebar" relationship="label">
-          <Button className={p.isDrawer ? s.touchBtn : undefined} appearance="subtle" icon={p.isDrawer ? <Dismiss20Regular /> : <PanelLeftContract20Regular />} aria-label="Close the sidebar" onClick={p.onToggle} />
+        <Tooltip content={t("common.sidebar.close")} relationship="label">
+          <Button className={p.isDrawer ? s.touchBtn : undefined} appearance="subtle" icon={p.isDrawer ? <Dismiss20Regular /> : <PanelLeftContract20Regular />} aria-label={t("common.sidebar.close")} onClick={p.onToggle} />
         </Tooltip>
       </div>
       <div className={s.nav}>
         <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && !p.office && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance && !p.office ? "page" : undefined} onClick={p.onNew}>
-          New session
+          {t("common.sidebar.newSession")}
         </Button>
         {searching ? (
           <SearchBox
             autoFocus
             size="medium"
-            placeholder="Search chats"
-            aria-label="Search chats"
+            placeholder={t("common.sidebar.searchChats")}
+            aria-label={t("common.sidebar.searchChats")}
             value={query}
             onChange={(_, d) => setQuery(d.value)}
             onBlur={() => query === "" && setSearching(false)}
@@ -286,40 +289,40 @@ export function Sidebar(p: SidebarProps) {
           />
         ) : (
           <Button className={s.navItem} appearance="subtle" icon={<Search20Regular />} onClick={() => setSearching(true)}>
-            Search
+            {t("common.sidebar.search")}
           </Button>
         )}
         <Button className={s.navItem} appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize}>
-          Customize
+          {t("common.sidebar.customize")}
         </Button>
         {p.onOffice && (
           <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
-            Office
+            {t("common.sidebar.office")}
           </Button>
         )}
         {p.onGovernance && (
           <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
-            Governance
+            {t("common.sidebar.governance")}
           </Button>
         )}
       </div>
       <div className={s.section}>
         <Text size={100} weight="semibold" className={s.sectionText}>
-          Recents
+          {t("common.sidebar.recents")}
         </Text>
       </div>
       {hasResearch && (
         <div className={s.filter}>
-          <TabList size="small" selectedValue={filter} onTabSelect={(_, d) => setFilter(d.value as Filter)} aria-label="Show sessions of kind">
-            <Tab value="all">All</Tab>
-            <Tab value="coding">Chat</Tab>
-            <Tab value="research">Research</Tab>
+          <TabList size="small" selectedValue={filter} onTabSelect={(_, d) => setFilter(d.value as Filter)} aria-label={t("common.sidebar.filterLabel")}>
+            <Tab value="all">{t("common.sidebar.filterAll")}</Tab>
+            <Tab value="coding">{t("common.sidebar.filterChat")}</Tab>
+            <Tab value="research">{t("common.sidebar.filterResearch")}</Tab>
           </TabList>
         </div>
       )}
-      <ul className={s.recents} aria-label="Chats">
+      <ul className={s.recents} aria-label={t("common.sidebar.chatsLabel")}>
         {p.loading && <Spinner size="tiny" />}
-        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? "No chat matches." : filter === "research" ? "No research sessions yet." : "No chats yet."}</li>}
+        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? t("common.sidebar.emptyMatch") : filter === "research" ? t("common.sidebar.emptyResearch") : t("common.sidebar.emptyChats")}</li>}
         {shown.map((e) => {
           const x = e.session;
           const subtitle = subtitleOf(e);
@@ -328,23 +331,23 @@ export function Sidebar(p: SidebarProps) {
               <button type="button" className={s.itemButton} onClick={() => p.onOpen(x.id)} aria-current={p.selected === x.id ? "page" : undefined} title={subtitle ? `${x.title} — ${subtitle}` : x.title}>
                 {e.kind === "research" ? <BookOpen16Regular className={s.kindIcon} aria-hidden /> : <Code16Regular className={s.kindIcon} aria-hidden />}
                 <span className={s.itemTitle}>{x.title}</span>
-                {e.kind === "research" && <span className={s.srOnly}> (research)</span>}
-                {isWorking(e) && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? "working" : "preparing"} />}
-                {isFailed(e) && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label="failed" />}
-                {x.access === "shared" && <People16Regular className={s.shared} role="img" aria-label={`Shared with you by ${x.owner ?? "its owner"}`} />}
+                {e.kind === "research" && <span className={s.srOnly}>{t("common.sidebar.researchSuffix")}</span>}
+                {isWorking(e) && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? t("common.sidebar.statusWorking") : t("common.sidebar.statusPreparing")} />}
+                {isFailed(e) && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label={t("common.sidebar.statusFailed")} />}
+                {x.access === "shared" && <People16Regular className={s.shared} role="img" aria-label={t("common.sidebar.sharedWithYou", { owner: x.owner ?? t("common.sidebar.itsOwner") })} />}
                 {e.kind === "coding" && <SourceMark source={e.session.source} />}
               </button>
               <Menu>
                 <MenuTrigger disableButtonEnhancement>
-                  <Button data-row-actions="" className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
+                  <Button data-row-actions="" className={s.touchBtn} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={t("common.sidebar.actionsFor", { title: x.title })} />
                 </MenuTrigger>
                 <MenuPopover>
                   <MenuList>
                     <MenuItem icon={<Rename16Regular />} onClick={() => setRenaming(e)}>
-                      Rename
+                      {t("common.sidebar.rename")}
                     </MenuItem>
                     <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(e)}>
-                      Delete
+                      {t("common.sidebar.delete")}
                     </MenuItem>
                   </MenuList>
                 </MenuPopover>
@@ -369,6 +372,7 @@ export function Sidebar(p: SidebarProps) {
 }
 
 function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose: () => void; onDone: (e: RecentEntry) => void }) {
+  const { t } = useI18n();
   const session = entry.session;
   const [title, setTitle] = useState(session.title);
   const [error, setError] = useState<string | null>(null);
@@ -391,9 +395,9 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
           }}
         >
           <DialogBody>
-            <DialogTitle>{entry.kind === "research" ? "Rename research session" : "Rename chat"}</DialogTitle>
+            <DialogTitle>{entry.kind === "research" ? t("common.sidebar.renameResearchTitle") : t("common.sidebar.renameChatTitle")}</DialogTitle>
             <DialogContent>
-              <Field label="Title">
+              <Field label={t("common.sidebar.titleField")}>
                 <Input value={title} onChange={(_, d) => setTitle(d.value)} maxLength={120} autoFocus />
               </Field>
               {error && (
@@ -404,10 +408,10 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
             </DialogContent>
             <DialogActions>
               <Button appearance="secondary" onClick={onClose}>
-                Cancel
+                {t("common.sidebar.cancel")}
               </Button>
               <Button appearance="primary" type="submit" disabled={title.trim().length === 0}>
-                Save
+                {t("common.sidebar.save")}
               </Button>
             </DialogActions>
           </DialogBody>
@@ -418,6 +422,7 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
 }
 
 function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n();
   const session = entry.session;
   const [error, setError] = useState<string | null>(null);
   const remove = async () => {
@@ -433,11 +438,11 @@ function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
     <Dialog open onOpenChange={(_, d) => (!d.open ? onClose() : undefined)}>
       <DialogSurface>
         <DialogBody>
-          <DialogTitle>Delete “{session.title}”?</DialogTitle>
+          <DialogTitle>{t("common.sidebar.deleteTitle", { title: session.title })}</DialogTitle>
           <DialogContent>
             {entry.kind === "research"
-              ? `This removes the research session's conversation. The workspace “${entry.session.workspaceName}” keeps its sources, notes and findings.`
-              : "This removes the chat, its history and its workspace (including any local commits in it). Nothing was pushed from it."}
+              ? t("common.sidebar.deleteResearchBody", { workspace: entry.session.workspaceName })
+              : t("common.sidebar.deleteChatBody")}
             {error && (
               <MessageBar intent="error">
                 <MessageBarBody>{error}</MessageBarBody>
@@ -446,10 +451,10 @@ function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
           </DialogContent>
           <DialogActions>
             <Button appearance="secondary" onClick={onClose}>
-              Cancel
+              {t("common.sidebar.cancel")}
             </Button>
             <Button appearance="primary" onClick={() => void remove()}>
-              Delete
+              {t("common.sidebar.delete")}
             </Button>
           </DialogActions>
         </DialogBody>

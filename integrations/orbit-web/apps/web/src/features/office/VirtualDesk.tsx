@@ -3,6 +3,7 @@
 import { tokens } from "@fluentui/react-components";
 import type { WorkLabel } from "@orbit-web/contracts";
 import { useId, type CSSProperties } from "react";
+import { t, type MessageKey } from "../../i18n";
 
 export interface PersonaPalette {
   shirt: string;
@@ -88,55 +89,35 @@ export function presenceStatusColor(label: WorkLabel): string {
   return tokens.colorPaletteDarkOrangeForeground1;
 }
 
-export function deskMoodText(label: WorkLabel): string {
-  switch (label) {
-    case "working":
-      return "Focused at desk";
-    case "ready":
-      return "Available at desk";
-    case "waiting_review":
-      return "Waiting for your review";
-    case "waiting_info":
-      return "Needs your input";
-    case "waiting_resources":
-      return "Needs desk resources";
-    case "waiting_team":
-      return "Syncing with teammates";
-    case "paused":
-      return "Stepped away · paused";
-    case "cancelling":
-      return "Wrapping up task";
-    case "reconciling":
-      return "Checking desk state";
-    case "not_ready":
-      return "Desk offline";
-  }
-}
+const MOOD_KEYS: Record<WorkLabel, MessageKey> = {
+  working: "office.desk.mood.working",
+  ready: "office.desk.mood.ready",
+  waiting_review: "office.desk.mood.waiting_review",
+  waiting_info: "office.desk.mood.waiting_info",
+  waiting_resources: "office.desk.mood.waiting_resources",
+  waiting_team: "office.desk.mood.waiting_team",
+  paused: "office.desk.mood.paused",
+  cancelling: "office.desk.mood.cancelling",
+  reconciling: "office.desk.mood.reconciling",
+  not_ready: "office.desk.mood.not_ready",
+};
 
-export function deskShortCue(label: WorkLabel): string {
-  switch (label) {
-    case "working":
-      return "At work";
-    case "ready":
-      return "At desk";
-    case "waiting_review":
-      return "Needs you";
-    case "waiting_info":
-      return "Has question";
-    case "waiting_resources":
-      return "Queued desk";
-    case "waiting_team":
-      return "With team";
-    case "paused":
-      return "Away";
-    case "cancelling":
-      return "Wrapping up";
-    case "reconciling":
-      return "Syncing";
-    case "not_ready":
-      return "Offline";
-  }
-}
+const CUE_KEYS: Record<WorkLabel, MessageKey> = {
+  working: "office.desk.cue.working",
+  ready: "office.desk.cue.ready",
+  waiting_review: "office.desk.cue.waiting_review",
+  waiting_info: "office.desk.cue.waiting_info",
+  waiting_resources: "office.desk.cue.waiting_resources",
+  waiting_team: "office.desk.cue.waiting_team",
+  paused: "office.desk.cue.paused",
+  cancelling: "office.desk.cue.cancelling",
+  reconciling: "office.desk.cue.reconciling",
+  not_ready: "office.desk.cue.not_ready",
+};
+
+export const deskMoodText = (label: WorkLabel): string => t(MOOD_KEYS[label]);
+
+export const deskShortCue = (label: WorkLabel): string => t(CUE_KEYS[label]);
 
 interface LampPalette {
   glow: string;

@@ -176,7 +176,7 @@ test("a skip-if after the first mutating step is not a guard", () => {
 // that DECLARED it creates something has to ask a layer below the screen.
 //
 // Three places already said so in prose -- the case-writer agent, the skill's
-// §3, the README's best practices -- and the agent even reports back
+// §3, docs/plugin.md's best practices -- and the agent even reports back
 // "verdicts: UI yes · API no · SQL no". Nothing enforced it, so that line was
 // information for whoever read it, and `check` exited 0 either way.
 test("a case that creates something has to rule below the screen, not only on it", () => {

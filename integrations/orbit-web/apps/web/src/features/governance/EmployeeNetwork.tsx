@@ -6,7 +6,7 @@
 import { Button, Field, Input, Radio, RadioGroup, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { Dismiss16Regular } from "@fluentui/react-icons";
 import { useState } from "react";
-import { NETWORK_DISCLOSURE } from "../office/parts";
+import { useI18n, type MessageKey } from "../../i18n";
 import { Card, useParts } from "./parts";
 
 export type NetworkMode = "AUTONOMOUS" | "RESTRICTED";
@@ -47,17 +47,17 @@ const GiB = 1024 * MiB;
 
 interface LimitSpec {
   key: keyof NetworkLimits;
-  label: string;
+  labelKey: MessageKey;
   // The unit a person types, and how many of the stored unit one of it is.
   factor: number;
 }
 
 const LIMITS: LimitSpec[] = [
-  { key: "bandwidthMbpsPerRun", label: "Bandwidth per run (Mbit/s)", factor: 1 },
-  { key: "downloadBytesPerRun", label: "Download per run (MiB)", factor: MiB },
-  { key: "downloadBytesPerDay", label: "Download per day, whole account (GiB)", factor: GiB },
-  { key: "connectionsPerMinutePerRun", label: "New connections per minute, per run", factor: 1 },
-  { key: "concurrentConnectionsPerRun", label: "Open connections at once, per run", factor: 1 },
+  { key: "bandwidthMbpsPerRun", labelKey: "governance.network.limit.bandwidthMbpsPerRun", factor: 1 },
+  { key: "downloadBytesPerRun", labelKey: "governance.network.limit.downloadBytesPerRun", factor: MiB },
+  { key: "downloadBytesPerDay", labelKey: "governance.network.limit.downloadBytesPerDay", factor: GiB },
+  { key: "connectionsPerMinutePerRun", labelKey: "governance.network.limit.connectionsPerMinutePerRun", factor: 1 },
+  { key: "concurrentConnectionsPerRun", labelKey: "governance.network.limit.concurrentConnectionsPerRun", factor: 1 },
 ];
 
 const useStyles = makeStyles({
@@ -69,11 +69,12 @@ const useStyles = makeStyles({
 });
 
 function LimitField({ spec, value, editable, onChange }: { spec: LimitSpec; value: number | undefined; editable: boolean; onChange: (v: number | undefined) => void }) {
+  const { t } = useI18n();
   const shown = value === undefined ? "" : String(Math.round((value / spec.factor) * 100) / 100);
   const [draft, setDraft] = useState<{ text: string; value: number | undefined } | null>(null);
   const text = draft !== null && draft.value === value ? draft.text : shown;
   return (
-    <Field label={spec.label} hint="Empty: no limit.">
+    <Field label={t(spec.labelKey)} hint={t("governance.network.limitHint")}>
       <Input
         type="number"
         min={0}
@@ -91,6 +92,7 @@ function LimitField({ spec, value, editable, onChange }: { spec: LimitSpec; valu
 }
 
 export function EmployeeNetworkSection({ value, editable, onChange }: { value: EmployeeNetwork | null; editable: boolean; onChange: (v: EmployeeNetwork) => void }) {
+  const { t } = useI18n();
   const p = useParts();
   const s = useStyles();
   const current: EmployeeNetwork = value ?? { mode: "AUTONOMOUS", allow: [] };
@@ -109,32 +111,33 @@ export function EmployeeNetworkSection({ value, editable, onChange }: { value: E
     onChange({ ...current, ...(Object.keys(limits).length > 0 ? { limits } : { limits: undefined }) });
   };
   return (
-    <Card className="orbit-touch" label="Employee network access" title="Employee network access" description="What an employee's sandbox may reach on the internet. Chats and research keep their own rules.">
+    <Card className="orbit-touch" label={t("governance.network.title")} title={t("governance.network.title")} description={t("governance.network.description")}>
       {value === null && (
         <Text size={200} className={p.muted}>
-          This revision does not say, so employee runs use Autonomous.{editable ? " Changing it here adds it to the draft." : ""}
+          {t("governance.network.defaultNotice", { editable: editable ? t("governance.network.defaultEditable") : "" })}
         </Text>
       )}
-      <Field label="Mode">
+      <Field label={t("governance.network.modeLabel")}>
         <RadioGroup value={current.mode} disabled={!editable} onChange={(_, d) => onChange({ ...current, mode: d.value as NetworkMode })}>
-          <Radio value="AUTONOMOUS" label="Autonomous — every public website, ports 80 and 443, with no per-site approval" />
-          <Radio value="RESTRICTED" label="Restricted — only the hosts listed below" />
+          <Radio value="AUTONOMOUS" label={t("governance.network.modeAutonomous")} />
+          <Radio value="RESTRICTED" label={t("governance.network.modeRestricted")} />
         </RadioGroup>
       </Field>
       <div className={p.inset}>
         <Text weight="semibold" size={300}>
-          Allowed hosts {current.mode === "AUTONOMOUS" ? "(used once the mode is Restricted)" : ""}
+          {t("governance.network.allowedHosts")}
+          {current.mode === "AUTONOMOUS" ? t("governance.network.allowedHostsInactiveSuffix") : ""}
         </Text>
         {current.allow.length === 0 ? (
           <Text size={200} className={p.muted}>
-            {current.mode === "RESTRICTED" ? "None: in Restricted mode nothing outside is reached." : "None listed."}
+            {current.mode === "RESTRICTED" ? t("governance.network.noneRestricted") : t("governance.network.noneListed")}
           </Text>
         ) : (
-          <ul className={s.hosts} aria-label="Allowed hosts">
+          <ul className={s.hosts} aria-label={t("governance.network.allowedHosts")}>
             {current.allow.map((h) => (
               <li key={h} className={s.host}>
                 <span className={p.codeChip}>{h}</span>
-                {editable && <Button size="small" appearance="subtle" icon={<Dismiss16Regular />} aria-label={`Remove ${h}`} onClick={() => onChange({ ...current, allow: current.allow.filter((x) => x !== h) })} />}
+                {editable && <Button size="small" appearance="subtle" icon={<Dismiss16Regular />} aria-label={t("governance.network.removeHost", { host: h })} onClick={() => onChange({ ...current, allow: current.allow.filter((x) => x !== h) })} />}
               </li>
             ))}
           </ul>
@@ -147,18 +150,18 @@ export function EmployeeNetworkSection({ value, editable, onChange }: { value: E
               add();
             }}
           >
-            <Field label="Host or domain to allow" hint="An exact host (docs.example.com) or a whole domain (*.example.com)." validationState={typed !== "" && !valid ? "error" : "none"} validationMessage={typed !== "" && !valid ? "Not a host name or *.domain." : undefined}>
+            <Field label={t("governance.network.hostInputLabel")} hint={t("governance.network.hostInputHint")} validationState={typed !== "" && !valid ? "error" : "none"} validationMessage={typed !== "" && !valid ? t("governance.network.hostInputInvalid") : undefined}>
               <Input value={host} onChange={(_, d) => setHost(d.value)} />
             </Field>
             <Button type="submit" disabled={!valid}>
-              Allow
+              {t("governance.network.allow")}
             </Button>
           </form>
         )}
       </div>
       <div className={p.inset}>
         <Text weight="semibold" size={300}>
-          Limits
+          {t("governance.network.limits")}
         </Text>
         <div className={s.limits}>
           {LIMITS.map((l) => (
@@ -167,10 +170,10 @@ export function EmployeeNetworkSection({ value, editable, onChange }: { value: E
         </div>
       </div>
       <Text size={200} className={p.muted}>
-        In both modes private, loopback, link-local and cloud-metadata addresses are refused, and every connection is logged for the work it belongs to. Switching from Restricted back to Autonomous is a high-risk change: it is reviewed as one before it is published.
+        {t("governance.network.footerNote")}
       </Text>
       <Text size={200} weight="semibold" className={s.warn}>
-        {NETWORK_DISCLOSURE}
+        {t("office.shared.networkDisclosure")}
       </Text>
     </Card>
   );

@@ -5,6 +5,7 @@ import { ErrorCircle16Regular, MoreHorizontal16Regular, Warning16Regular } from 
 import type { AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBadge, OfficeIcon } from "../../components/SectionIcons";
+import { useI18n } from "../../i18n";
 import type { DepartmentEdit } from "./DepartmentDialogs";
 import { createWalker, resnapIdleWalkers, stepWalkers, type SimEmployee, type WalkerState, type WaypointMap } from "./officeSim";
 import { Callout, WorkLabelBadge, useOfficeStyles, when } from "./parts";
@@ -534,6 +535,7 @@ export function OfficeFloorMap({
   onOpenMission: (missionId: string) => void;
   onEditDepartment: (edit: DepartmentEdit) => void;
 }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const restore = useRestoreFocusTarget();
@@ -629,7 +631,7 @@ export function OfficeFloorMap({
   const walkerById = new Map(walkers.map((w) => [w.id, w]));
 
   // When an active walker gets clicked cleanly by desk stage, also sync any immediate route updates
-  const directorName = account?.displayName?.trim() || "You";
+  const directorName = account?.displayName?.trim() || t("office.floor.directorFallback");
 
   const pantryCount = measured
     ? walkers.filter((w) => w.zone === "pantry" && !w.walking).length
@@ -649,26 +651,26 @@ export function OfficeFloorMap({
         <div className={s.hudLeft}>
           <IconBadge icon={<OfficeIcon size={15} active />} tone="brand" size="sm" />
           <Text weight="semibold" size={300}>
-            Company floor
+            {t("office.floor.companyFloor")}
           </Text>
           <span className={s.hudPillGroup} aria-hidden>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#16a34a" }} />
-              {pantryCount} in Pantry
+              {t("office.floor.inPantry", { count: pantryCount })}
             </span>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#6366f1" }} />
-              {deskCount} at desk
+              {t("office.floor.atDesk", { count: deskCount })}
             </span>
             <span className={s.hudStat}>
               <span className={s.dot} style={{ backgroundColor: "#f59e0b" }} />
-              {directorCount} at Director&apos;s Office
+              {t("office.floor.atDirector", { count: directorCount })}
             </span>
-            {walkingCount > 0 && <span className={s.hudStat}>🚶 {walkingCount} walking</span>}
+            {walkingCount > 0 && <span className={s.hudStat}>{t("office.floor.walkingCount", { count: walkingCount })}</span>}
           </span>
         </div>
         <Text size={100} className={s.muted} aria-hidden>
-          Click a desk for profile · Click a teammate to assign work
+          {t("office.floor.hudHint")}
         </Text>
       </div>
 
@@ -676,14 +678,14 @@ export function OfficeFloorMap({
       <div className={s.topWing}>
         <span data-wp="hall-aisle" style={{ position: "absolute", left: "50%", top: 0, width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
 
-        <div className={s.execRoom} aria-label="Director's Office">
+        <div className={s.execRoom} aria-label={t("office.floor.directorsOffice")}>
           <div className={s.roomTitleBar} aria-hidden>
             <span className={s.roomTag}>
               <span className={s.dot} style={{ backgroundColor: "#3b82f6" }} />
-              <span>Director&apos;s Office</span>
+              <span>{t("office.floor.directorsOffice")}</span>
             </span>
             <Text size={100} className={s.muted}>
-              {directorCount > 0 ? `${directorCount} asking opinion` : "Ask opinion & review"}
+              {directorCount > 0 ? t("office.floor.askingOpinion", { count: directorCount }) : t("office.floor.askOpinionReview")}
             </Text>
           </div>
           <div className={s.execCarpet}>
@@ -694,7 +696,7 @@ export function OfficeFloorMap({
                   <PixelChibiSvg name={directorName} workLabel="ready" activity="director" size={38} />
                 </div>
                 <PixelDirectorDeskSvg />
-                <GatherNamePill name={directorName} dotColor="#3b82f6" suffix="Director" />
+                <GatherNamePill name={directorName} dotColor="#3b82f6" suffix={t("office.floor.directorSuffix")} />
               </div>
             </div>
             <div className={s.visitorsCluster}>
@@ -702,7 +704,7 @@ export function OfficeFloorMap({
               <span data-wp="director-visitor-1" style={{ position: "relative", width: "2px", height: "44px" }} aria-hidden />
               {directorCount === 0 && (
                 <Text size={100} className={s.muted} style={{ position: "absolute", right: "2px", bottom: "2px" }} aria-hidden>
-                  Teammates walk here when they need your input.
+                  {t("office.floor.directorEmptyNote")}
                 </Text>
               )}
             </div>
@@ -710,14 +712,14 @@ export function OfficeFloorMap({
           <span className={s.doorwayBottom} data-wp="director-door" aria-hidden />
         </div>
 
-        <div className={s.execRoom} aria-label="Pantry Lounge">
+        <div className={s.execRoom} aria-label={t("office.floor.pantryAria")}>
           <div className={s.roomTitleBar} aria-hidden>
             <span className={s.roomTag}>
               <span className={s.dot} style={{ backgroundColor: "#16a34a" }} />
-              <span>Pantry &amp; Lounge</span>
+              <span>{t("office.floor.pantryTitle")}</span>
             </span>
             <Text size={100} className={s.muted}>
-              {pantryCount > 0 ? `${pantryCount} resting` : "Coffee & break area"}
+              {pantryCount > 0 ? t("office.floor.restingCount", { count: pantryCount }) : t("office.floor.coffeeBreakArea")}
             </Text>
           </div>
           <div className={s.pantryCarpet}>
@@ -728,7 +730,7 @@ export function OfficeFloorMap({
               <span data-wp="pantry-pingpong" style={{ position: "absolute", left: "82%", bottom: "16px", width: 0, height: 0 }} aria-hidden />
               {pantryCount === 0 && (
                 <Text size={100} className={s.muted} aria-hidden>
-                  Coffee is fresh — teammates walk here between tasks.
+                  {t("office.floor.pantryEmptyNote")}
                 </Text>
               )}
             </div>
@@ -741,11 +743,11 @@ export function OfficeFloorMap({
       <div className={s.hallway} aria-hidden>
         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
           <PixelPlantSvg variant="green" />
-          <span>← Director&apos;s Office · Main Company Hallway · Pantry →</span>
+          <span>{t("office.floor.hallwayLeft")}</span>
         </span>
         <span data-wp="hall-center" className={s.anchorDot} />
         <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-          <span>Departments ↓</span>
+          <span>{t("office.floor.hallwayRight")}</span>
           <PixelPlantSvg variant="autumn" />
         </span>
       </div>
@@ -754,7 +756,7 @@ export function OfficeFloorMap({
       <div className={s.departmentsGrid}>
         {groups.map((g) => {
           const deptKey = g.department?.id ?? "unassigned";
-          const roomName = g.department?.name ?? "Unassigned";
+          const roomName = g.department?.name ?? t("office.overview.unassigned");
           const accent = roomAccentFor(roomName);
           return (
             <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
@@ -766,18 +768,20 @@ export function OfficeFloorMap({
                     {roomName}
                   </Text>
                   <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
-                    ({g.department ? `${g.department.members} ${g.department.members === 1 ? "member" : "members"}` : `${g.employees.length} shown`})
+                    {g.department
+                      ? t("office.floor.membersCount", { count: g.department.members, word: g.department.members === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
+                      : t("office.floor.shownCount", { count: g.employees.length })}
                   </Text>
                 </div>
                 {g.department && (
                   <Menu>
                     <MenuTrigger disableButtonEnhancement>
-                      <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${g.department.name}`} />
+                      <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} aria-label={t("office.floor.actionsForDept", { name: g.department.name })} />
                     </MenuTrigger>
                     <MenuPopover>
                       <MenuList>
-                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>Rename</MenuItem>
-                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>Archive</MenuItem>
+                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
+                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
                       </MenuList>
                     </MenuPopover>
                   </Menu>
@@ -788,7 +792,7 @@ export function OfficeFloorMap({
                 <div className={s.emptyFloor} style={{ backgroundColor: accent.tint }}>
                   <PixelEmptyDeskClusterSvg />
                   <Text size={200} className={s.muted}>
-                    No employee here{filter === "all" ? " yet" : " matches"}.
+                    {t("office.floor.noEmployeeHere", { suffix: filter === "all" ? t("office.floor.noEmployeeYet") : t("office.floor.noEmployeeMatches") })}
                   </Text>
                 </div>
               ) : (
@@ -797,15 +801,15 @@ export function OfficeFloorMap({
                     const w = walkerById.get(e.id);
                     const atDeskNow = !measured || (w ? w.zone === "desk" && w.path.length === 0 : true);
                     const awayReason = w?.walking
-                      ? "Walking in office…"
+                      ? t("office.floor.walkingInOffice")
                       : w && w.path.length > 0
-                        ? "In corridor 💬"
+                        ? t("office.floor.inCorridor")
                         : w?.zone === "pantry"
-                          ? "In Pantry ☕"
+                          ? t("office.floor.inPantryNote")
                           : w?.zone === "director"
-                            ? "At Director's Office ↑"
+                            ? t("office.floor.atDirectorNote")
                             : w?.zone === "hallway"
-                              ? "In corridor 💬"
+                              ? t("office.floor.inCorridor")
                               : null;
 
                     return (
@@ -821,9 +825,9 @@ export function OfficeFloorMap({
                               <button
                                 type="button"
                                 className={s.staticAvatarBtn}
-                                aria-label={`Assign work to ${e.name}`}
+                                aria-label={t("office.floor.assignWorkTo", { name: e.name })}
                                 disabled={e.employment === "archived"}
-                                title={e.employment === "archived" ? `${e.name} — Archived` : `Assign work to ${e.name}`}
+                                title={e.employment === "archived" ? t("office.floor.archivedTitle", { name: e.name }) : t("office.floor.assignWorkTo", { name: e.name })}
                                 onClick={() => onAssign(e.id)}
                                 {...restore}
                               >
@@ -841,8 +845,8 @@ export function OfficeFloorMap({
                             <button
                               type="button"
                               className={s.deskStageBtn}
-                              aria-label={`Open ${e.name}'s profile`}
-                              title={`Open ${e.name}'s profile`}
+                              aria-label={t("office.floor.openProfileAria", { name: e.name })}
+                              title={t("office.floor.openProfileAria", { name: e.name })}
                               onClick={() => onOpenEmployee(e.id)}
                             >
                               <PixelModernDeskSvg
@@ -856,8 +860,8 @@ export function OfficeFloorMap({
                           <button
                             type="button"
                             className={s.deskStageBtn}
-                            aria-label={`Open ${e.name}'s profile`}
-                            title={`Open ${e.name}'s profile`}
+                            aria-label={t("office.floor.openProfileAria", { name: e.name })}
+                            title={t("office.floor.openProfileAria", { name: e.name })}
                             onClick={() => onOpenEmployee(e.id)}
                           >
                             <div className={s.chairAnchorWrap}>
@@ -889,7 +893,7 @@ export function OfficeFloorMap({
 
                         {e.kind === "assistant" && (
                           <Text size={100} className={mergeClasses(s.muted, o.wrap)}>
-                            temporary assistant{e.expiresAt ? ` until ${when(e.expiresAt)}` : ""}
+                            {t("office.floor.temporaryAssistant", { until: e.expiresAt ? t("office.floor.until", { when: when(e.expiresAt) }) : "" })}
                           </Text>
                         )}
 
@@ -902,24 +906,24 @@ export function OfficeFloorMap({
                             </Text>
                             {e.queued > 0 && (
                               <Text size={100} className={s.muted}>
-                                {e.queued} queued behind it
+                                {t("office.floor.queuedBehind", { count: e.queued })}
                               </Text>
                             )}
                           </div>
                         )}
                         {!e.holding && e.queued > 0 && (
                           <Text size={100} className={s.muted}>
-                            {e.queued} queued behind it
+                            {t("office.floor.queuedBehind", { count: e.queued })}
                           </Text>
                         )}
                         {e.notReadyReason && (
                           <Callout tone="danger" icon={<ErrorCircle16Regular />}>
-                            Not ready: {e.notReadyReason}
+                            {t("office.floor.notReady", { reason: e.notReadyReason })}
                           </Callout>
                         )}
                         {e.connectionWarning && (
                           <Callout tone="warn" icon={<Warning16Regular />}>
-                            Connection: {e.connectionWarning}
+                            {t("office.floor.connectionWarn", { reason: e.connectionWarning })}
                           </Callout>
                         )}
                       </article>
@@ -953,8 +957,8 @@ export function OfficeFloorMap({
                 key={w.id}
                 type="button"
                 className={s.walkerBtn}
-                aria-label={`Assign work to ${e.name}`}
-                title={e.employment === "archived" ? `${e.name} — Open profile` : `Assign work to ${e.name}`}
+                aria-label={t("office.floor.assignWorkTo", { name: e.name })}
+                title={e.employment === "archived" ? t("office.floor.openProfileTitle", { name: e.name }) : t("office.floor.assignWorkTo", { name: e.name })}
                 style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -76%)` }}
                 onMouseEnter={() => setHoveredId(e.id)}
                 onMouseLeave={() => setHoveredId((cur) => (cur === e.id ? null : cur))}

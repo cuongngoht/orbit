@@ -5,6 +5,7 @@
 import { Checkbox, Field, Select, Spinner, Text } from "@fluentui/react-components";
 import type { ResearchSourceSummary, ResearchWorkspaceSummary } from "@orbit-web/contracts";
 import { useResource } from "../../hooks/useResource";
+import { t as tr, useI18n } from "../../i18n";
 import { research } from "../research/api";
 import { useOfficeStyles } from "./parts";
 
@@ -16,9 +17,10 @@ export interface PinnedSources {
 export const NO_SOURCES: PinnedSources = { workspaceId: null, revisionIds: [] };
 
 // Why a source has no revision to pin.
-const notPinnable = (src: ResearchSourceSummary): string => (src.state === "failed" ? `could not be read${src.stateReason ? `: ${src.stateReason}` : ""}` : "not read yet");
+const notPinnable = (src: ResearchSourceSummary): string => (src.state === "failed" ? tr("office.sources.couldNotBeRead", { reason: src.stateReason ? `: ${src.stateReason}` : "" }) : tr("office.sources.notReadYet"));
 
 export function SourcesPicker({ value, onChange }: { value: PinnedSources; onChange: (v: PinnedSources) => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const workspaces = useResource<ResearchWorkspaceSummary[]>(() => research.workspaces(), []);
   const workspaceId = value.workspaceId;
@@ -26,30 +28,30 @@ export function SourcesPicker({ value, onChange }: { value: PinnedSources; onCha
   const toggle = (revisionId: string, on: boolean) => onChange({ workspaceId, revisionIds: on ? [...value.revisionIds, revisionId] : value.revisionIds.filter((r) => r !== revisionId) });
 
   return (
-    <div role="group" aria-label="Research sources" className={o.stack}>
+    <div role="group" aria-label={t("office.sources.groupAria")} className={o.stack}>
       <Text weight="semibold" size={300}>
-        Research sources
+        {t("office.sources.title")}
       </Text>
       <Text size={200} className={o.muted}>
-        Optional. The employee reads the revisions you pin here, read-only; a claim it hands in counts as supported only when a source holds the words it quotes.
+        {t("office.sources.hint")}
       </Text>
       {workspaces.data === null ? (
         workspaces.error ? (
-          <Text size={200}>The research workspaces could not be read: {workspaces.error}</Text>
+          <Text size={200}>{t("office.sources.workspacesError", { error: workspaces.error })}</Text>
         ) : (
-          <Spinner size="tiny" label="Reading your research workspaces…" />
+          <Spinner size="tiny" label={t("office.sources.readingWorkspaces")} />
         )
       ) : workspaces.data.length === 0 ? (
         <Text size={200} className={o.muted}>
-          No research workspace yet: add sources under Research first.
+          {t("office.sources.noWorkspaces")}
         </Text>
       ) : (
-        <Field label="Research workspace">
+        <Field label={t("office.sources.workspaceLabel")}>
           <Select value={workspaceId ?? ""} onChange={(_, d) => onChange({ workspaceId: d.value === "" ? null : d.value, revisionIds: [] })}>
-            <option value="">None</option>
+            <option value="">{t("office.sources.noneOption")}</option>
             {workspaces.data.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.name} ({w.sourceCount} {w.sourceCount === 1 ? "source" : "sources"})
+                {w.name} ({w.sourceCount} {w.sourceCount === 1 ? t("office.sources.sourceOne") : t("office.sources.sourceMany")})
               </option>
             ))}
           </Select>
@@ -57,13 +59,13 @@ export function SourcesPicker({ value, onChange }: { value: PinnedSources; onCha
       )}
       {workspaceId !== null &&
         (sources.data === null ? (
-          sources.error ? <Text size={200}>Its sources could not be read: {sources.error}</Text> : <Spinner size="tiny" label="Reading its sources…" />
+          sources.error ? <Text size={200}>{t("office.sources.sourcesError", { error: sources.error })}</Text> : <Spinner size="tiny" label={t("office.sources.readingSources")} />
         ) : sources.data.length === 0 ? (
           <Text size={200} className={o.muted}>
-            This workspace has no source yet.
+            {t("office.sources.noSources")}
           </Text>
         ) : (
-          <ul className={o.list} aria-label="Sources to pin">
+          <ul className={o.list} aria-label={t("office.sources.sourcesToPinAria")}>
             {sources.data.map((src) => {
               const revision = src.revision;
               return (
@@ -71,7 +73,7 @@ export function SourcesPicker({ value, onChange }: { value: PinnedSources; onCha
                   {revision === null ? (
                     <Checkbox disabled label={`${src.title} — ${notPinnable(src)}`} />
                   ) : (
-                    <Checkbox label={`${src.title} — revision ${revision.number}`} checked={value.revisionIds.includes(revision.id)} onChange={(_, d) => toggle(revision.id, d.checked === true)} />
+                    <Checkbox label={t("office.sources.revisionOption", { title: src.title, number: revision.number })} checked={value.revisionIds.includes(revision.id)} onChange={(_, d) => toggle(revision.id, d.checked === true)} />
                   )}
                 </li>
               );

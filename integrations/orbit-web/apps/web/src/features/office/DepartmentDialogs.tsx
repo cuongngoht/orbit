@@ -3,6 +3,7 @@
 import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Select, Text } from "@fluentui/react-components";
 import { WORKFORCE_ERRORS, type Department } from "@orbit-web/contracts";
 import { useState } from "react";
+import { useI18n } from "../../i18n";
 import { ApiError } from "../../services/api";
 import { office } from "./api";
 import { ProblemBar, problemOf, useOfficeStyles, type Problem } from "./parts";
@@ -10,6 +11,7 @@ import { ProblemBar, problemOf, useOfficeStyles, type Problem } from "./parts";
 export type DepartmentEdit = { kind: "new" } | { kind: "rename"; department: Department } | { kind: "archive"; department: Department };
 
 export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit: DepartmentEdit; departments: Department[]; onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const [name, setName] = useState(edit.kind === "rename" ? edit.department.name : "");
   const others = edit.kind === "archive" ? departments.filter((d) => !d.archived && d.id !== edit.department.id) : [];
@@ -18,7 +20,7 @@ export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit:
   const [needsMove, setNeedsMove] = useState(edit.kind === "archive" && edit.department.members > 0);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const title = edit.kind === "new" ? "New department" : edit.kind === "rename" ? `Rename ${edit.department.name}` : `Archive ${edit.department.name}?`;
+  const title = edit.kind === "new" ? t("office.department.newTitle") : edit.kind === "rename" ? t("office.department.renameTitle", { name: edit.department.name }) : t("office.department.archiveTitle", { name: edit.department.name });
   const save = async () => {
     setBusy(true);
     setProblem(null);
@@ -29,11 +31,12 @@ export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit:
       onDone();
     } catch (err) {
       if (err instanceof ApiError && err.code === WORKFORCE_ERRORS.departmentNotEmpty) setNeedsMove(true);
-      setProblem(problemOf(err, "The department changed since the page read it: nothing was done. Close this and try again."));
+      setProblem(problemOf(err, t("office.department.stale")));
     } finally {
       setBusy(false);
     }
   };
+  const targetLabel = edit.kind === "archive" ? (edit.department.members === 1 ? t("office.department.oneMember") : t("office.department.manyMembers", { count: edit.department.members })) : "";
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
       <DialogSurface className="orbit-touch">
@@ -47,16 +50,16 @@ export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit:
             <DialogTitle>{title}</DialogTitle>
             <DialogContent className={o.form}>
               {edit.kind !== "archive" ? (
-                <Field label="Name" required>
+                <Field label={t("office.department.nameLabel")} required>
                   <Input value={name} maxLength={80} autoFocus onChange={(_, d) => setName(d.value)} />
                 </Field>
               ) : (
                 <>
-                  <Text>An archived department keeps its history; nobody can be placed in it any more.</Text>
+                  <Text>{t("office.department.archiveNote")}</Text>
                   {needsMove && (
-                    <Field label={`Move its ${edit.department.members === 1 ? "member" : `${edit.department.members} members`} to`} required>
+                    <Field label={t("office.department.moveMembersLabel", { target: targetLabel })} required>
                       <Select value={moveTo} onChange={(_, d) => setMoveTo(d.value)}>
-                        <option value="">Unassigned</option>
+                        <option value="">{t("office.overview.unassigned")}</option>
                         {others.map((d) => (
                           <option key={d.id} value={d.id}>
                             {d.name}
@@ -70,9 +73,9 @@ export function DepartmentDialog({ edit, departments, onClose, onDone }: { edit:
               <ProblemBar problem={problem} />
             </DialogContent>
             <DialogActions>
-              <Button onClick={onClose}>Cancel</Button>
+              <Button onClick={onClose}>{t("office.department.cancel")}</Button>
               <Button appearance="primary" type="submit" disabled={busy || (edit.kind !== "archive" && name.trim() === "")}>
-                {edit.kind === "new" ? "Create" : edit.kind === "rename" ? "Rename" : "Archive"}
+                {edit.kind === "new" ? t("office.department.create") : edit.kind === "rename" ? t("office.floor.rename") : t("office.floor.archive")}
               </Button>
             </DialogActions>
           </DialogBody>

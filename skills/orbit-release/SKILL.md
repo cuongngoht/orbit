@@ -318,8 +318,8 @@ checkout later with `storage export --all --move`, and only a person applies tha
 
 1. **`$DATA/project.json`** — `origin`, and whatever this product actually needs:
    `sql.command`, `launcher`, `signIn.hosts`, `launch`, `frontend.roots`, `identity.audience`.
-   Every key is documented in `README.md` §5, and `project.schema.json` sits beside it so the
-   editor explains each one as you type.
+   Every key is described in `project.schema.json`, which sits beside it so the editor explains
+   each one as you type.
 2. **`$DATA/graph/`** — the screens, controls and effects a case points into. The
    `orbit-ui-map` skill fills it: read the checkout for candidates (`seen: "src"`), then confirm
    them in a browser (`seen: "live"`). Declare this product's own `layers` and `timings` in

@@ -19,6 +19,7 @@ import {
 } from "../../components/SectionIcons";
 import { settingsHref, type OfficePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { office, useOfficeRead, type RosterQuery } from "./api";
@@ -88,9 +89,10 @@ const useStyles = makeStyles({
 const EXAMPLES = ["Accounting", "Legal", "Sales"] as const;
 
 function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
-  const [name, setName] = useState(account?.companyName || "Office");
+  const [name, setName] = useState(account?.companyName || t("office.overview.defaultOfficeName"));
   const [examples, setExamples] = useState<Record<string, boolean>>({ Accounting: true, Legal: true, Sales: true });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +100,7 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
     setBusy(true);
     setError(null);
     try {
-      await office.setUp({ name: name.trim() || "Office", departments: EXAMPLES.filter((d) => examples[d]) });
+      await office.setUp({ name: name.trim() || t("office.overview.defaultOfficeName"), departments: EXAMPLES.filter((d) => examples[d]) });
       onDone();
     } catch (err) {
       setError(errorText(err));
@@ -110,7 +112,7 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
     <div className={s.setupWrap}>
       <form
         className={o.heroCard}
-        aria-label="Set up the office"
+        aria-label={t("office.overview.setupAria")}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -120,20 +122,20 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
           <IconBadge icon={<OfficeIcon size={22} active />} tone="brand" size="lg" />
           <div className={o.stack}>
             <Text weight="semibold" size={500} as="h2">
-              Set up your office
+              {t("office.overview.setupTitle")}
             </Text>
             <Text size={200} className={o.muted}>
-              Your office holds departments and the AI employees you hire into them. Setting it up needs no AI connection; hiring does.
+              {t("office.overview.setupLead")}
             </Text>
           </div>
         </div>
         <div className={o.divider} />
-        <Field label="Office name">
+        <Field label={t("office.overview.officeNameLabel")}>
           <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
         </Field>
-        <div role="group" aria-label="Start with example departments" className={o.stack}>
+        <div role="group" aria-label={t("office.overview.exampleDeptsGroup")} className={o.stack}>
           <Text weight="semibold" size={300}>
-            Start with example departments
+            {t("office.overview.exampleDeptsGroup")}
           </Text>
           <div className={o.row}>
             {EXAMPLES.map((d) => (
@@ -143,7 +145,7 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
             ))}
           </div>
           <Text size={200} className={o.muted}>
-            Untick any you do not want; you can add, rename and archive departments later.
+            {t("office.overview.exampleDeptsHint")}
           </Text>
         </div>
         {error && (
@@ -153,7 +155,7 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
         )}
         <div className={o.row}>
           <Button appearance="primary" type="submit" disabled={busy}>
-            {busy ? "Setting up…" : "Set up the office"}
+            {busy ? t("office.overview.settingUp") : t("office.overview.setupSubmit")}
           </Button>
         </div>
       </form>
@@ -178,6 +180,7 @@ function groupsOf(roster: Roster, employees: EmployeeCard[], filter: string): Gr
 
 // The unified company floor for one read of the roster, and any extra pages brought by "Load more".
 function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void }) {
+  const { t } = useI18n();
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -198,7 +201,7 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { 
   };
   const groups = groupsOf(roster, employees, filter);
   if (groups.length === 0) {
-    return <EmptyState icon={<RosterIcon size={22} />} tone="brand" title="No departments or employees yet" body="Add a department or hire your first AI employee to organize the office." />;
+    return <EmptyState icon={<RosterIcon size={22} />} tone="brand" title={t("office.overview.emptyTitle")} body={t("office.overview.emptyBody")} />;
   }
   return (
     <>
@@ -219,7 +222,7 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { 
       {cursor !== null && (
         <div>
           <Button disabled={loading} onClick={() => void loadMore()}>
-            {loading ? "Loading…" : "Load more"}
+            {loading ? t("office.overview.loading") : t("office.overview.loadMore")}
           </Button>
         </div>
       )}
@@ -228,6 +231,7 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { 
 }
 
 export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const { isMobile } = useViewport();
@@ -256,7 +260,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         <MessageBarBody>{roster.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner label="Reading the office…" />
+      <Spinner label={t("office.overview.readingOffice")} />
     );
   const r = roster.data;
   if (r.office === null)
@@ -275,20 +279,20 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   };
   const pickers = (
     <>
-      <Field label="Department" className={s.select}>
+      <Field label={t("office.overview.departmentLabel")} className={s.select}>
         <Select value={department} onChange={(_, d) => setDepartment(d.value)}>
-          <option value="all">All departments</option>
+          <option value="all">{t("office.overview.allDepartments")}</option>
           {live.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}
             </option>
           ))}
-          <option value="none">Unassigned</option>
+          <option value="none">{t("office.overview.unassigned")}</option>
         </Select>
       </Field>
-      <Field label="Status" className={s.select}>
+      <Field label={t("office.overview.statusLabel")} className={s.select}>
         <Select value={status} onChange={(_, d) => setStatus(d.value as WorkLabel | "all")}>
-          <option value="all">Any status</option>
+          <option value="all">{t("office.overview.anyStatus")}</option>
           {WORK_LABELS.map((l) => (
             <option key={l} value={l}>
               {WORK_LABEL_TEXT[l]}
@@ -308,22 +312,29 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
               {r.office.name}
             </Text>
             <Text size={200} className={o.muted}>
-              {c.employees} {c.employees === 1 ? "employee" : "employees"} · {c.ready} ready · {c.busy} busy · {c.notReady} not ready · {c.queued} queued ·{" "}
+              {t("office.overview.summaryLine", {
+                employees: c.employees,
+                employeeWord: c.employees === 1 ? t("office.overview.employeeOne") : t("office.overview.employeeMany"),
+                ready: c.ready,
+                busy: c.busy,
+                notReady: c.notReady,
+                queued: c.queued,
+              })}
               <Link as="button" onClick={() => go("inbox")}>
-                {c.inbox} need you
+                {t("office.overview.needYou", { count: c.inbox })}
               </Link>
             </Text>
             <AsOf at={r.asOf} />
           </div>
           <div className={o.row}>
             <Button className={o.touch} appearance="primary" icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
-              Hire employee
+              {t("office.overview.hireEmployee")}
             </Button>
             <Button className={o.touch} icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
-              Assign work
+              {t("office.overview.assignWork")}
             </Button>
             <Button className={o.touch} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
-              New department
+              {t("office.overview.newDepartment")}
             </Button>
           </div>
         </div>
@@ -331,7 +342,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={clearFilters}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
-                Total roster
+                {t("office.overview.statTotalRoster")}
               </Text>
               <IconBadge icon={<RosterIcon size={14} />} tone="brand" size="sm" />
             </div>
@@ -342,7 +353,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <button type="button" aria-pressed={status === "ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "ready" ? "all" : "ready"))}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
-                Ready
+                {t("office.overview.statReady")}
               </Text>
               <IconBadge icon={<ReadyIcon size={14} />} tone={c.ready > 0 ? "success" : "neutral"} size="sm" />
             </div>
@@ -353,7 +364,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <button type="button" aria-pressed={status === "working"} className={mergeClasses(o.statCard, o.statCardAction, status === "working" && s.statActive)} onClick={() => setStatus((cur) => (cur === "working" ? "all" : "working"))}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
-                Working
+                {t("office.overview.statWorking")}
               </Text>
               <IconBadge icon={<WorkingIcon size={14} />} tone={c.busy > 0 ? "brand" : "neutral"} size="sm" />
             </div>
@@ -364,7 +375,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={() => go("work")}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
-                Queued
+                {t("office.overview.statQueued")}
               </Text>
               <IconBadge icon={<QueuedIcon size={14} />} tone="neutral" size="sm" />
             </div>
@@ -375,7 +386,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <button type="button" aria-pressed={status === "not_ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "not_ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "not_ready" ? "all" : "not_ready"))}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
-                Not ready
+                {t("office.overview.statNotReady")}
               </Text>
               <IconBadge icon={<NotReadyIcon size={14} />} tone={c.notReady > 0 ? "danger" : "neutral"} size="sm" />
             </div>
@@ -383,10 +394,10 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
               {c.notReady}
             </Text>
           </button>
-          <button type="button" className={mergeClasses(o.statCard, o.statCardAction, c.inbox > 0 && s.statInboxAlert)} onClick={() => go("inbox")} aria-label={`Open Needs me (${c.inbox})`}>
+          <button type="button" className={mergeClasses(o.statCard, o.statCardAction, c.inbox > 0 && s.statInboxAlert)} onClick={() => go("inbox")} aria-label={t("office.overview.openNeedsMeAria", { count: c.inbox })}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={c.inbox > 0 ? s.statWarn : o.muted}>
-                Needs you
+                {t("office.overview.statNeedsYou")}
               </Text>
               <IconBadge icon={<InboxActionIcon size={14} />} tone={c.inbox > 0 ? "warning" : "neutral"} size="sm" />
             </div>
@@ -398,39 +409,39 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       </section>
       {!canHire && (
         <Callout tone={connections.data === null ? "info" : "warn"} icon={<PlugDisconnected16Regular />} role="status">
-          {connections.data === null ? "Checking your AI connections…" : "Connect an AI CLI first: hiring needs one connected CLI whose models were read from your account. "}
-          {connections.data !== null && <Link href={settingsHref("ai-connections")}>Open Settings → AI Connections</Link>}
+          {connections.data === null ? t("office.overview.checkingConnections") : t("office.overview.connectCliFirst")}
+          {connections.data !== null && <Link href={settingsHref("ai-connections")}>{t("office.overview.openAiConnections")}</Link>}
         </Callout>
       )}
       <div className={mergeClasses(s.filterBar, isMobile && s.toolbarMobile)}>
         {isMobile ? (
           <>
-            <SearchBox className={mergeClasses(s.search, s.searchMobile)} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+            <SearchBox className={mergeClasses(s.search, s.searchMobile)} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
             <Button className={o.touch} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
-              Filters{department !== "all" || status !== "all" ? " (on)" : ""}
+              {t("office.overview.filtersBtn", { on: department !== "all" || status !== "all" ? t("office.overview.filtersOn") : "" })}
             </Button>
           </>
         ) : (
           <>
-            <Field label="Search" className={s.search}>
-              <SearchBox style={{ width: "100%" }} placeholder="Search employees" aria-label="Search employees" value={typed} onChange={(_, d) => setTyped(d.value)} />
+            <Field label={t("office.overview.searchLabel")} className={s.search}>
+              <SearchBox style={{ width: "100%" }} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
             </Field>
             {pickers}
             {filtered && (
               <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={clearFilters}>
-                Clear
+                {t("office.overview.clear")}
               </Button>
             )}
           </>
         )}
       </div>
       {isMobile && (
-        <ResponsiveSheet open={filters} onOpenChange={setFilters} title="Filters">
+        <ResponsiveSheet open={filters} onOpenChange={setFilters} title={t("office.overview.filtersSheetTitle")}>
           <div className={mergeClasses(o.form, "orbit-touch")}>
             {pickers}
             {filtered && (
               <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={() => { clearFilters(); setFilters(false); }}>
-                Clear filters
+                {t("office.overview.clearFilters")}
               </Button>
             )}
           </div>

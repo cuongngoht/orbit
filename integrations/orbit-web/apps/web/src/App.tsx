@@ -30,6 +30,7 @@ import { rememberSession } from "./services/account";
 import { get } from "./services/api";
 import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
 import { ModelCatalogProvider } from "./services/models/ModelCatalog";
+import { I18nProvider, useI18n } from "./i18n";
 import { isDark, themeOf, useSystemDark } from "./themes/theme";
 
 const useStyles = makeStyles({
@@ -95,6 +96,7 @@ interface WorkspaceProps {
 // Everything a person can reach once signed in. Mounted only then, so nothing here asks the API before the sign-in,
 // and leaving it (signing out) closes every stream it opened.
 function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspaceProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCompact, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -202,7 +204,7 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
         {signOut.error && route.settings === null && (
           <MessageBar intent="error">
             <MessageBarBody>{signOut.error}</MessageBarBody>
-            <MessageBarActions containerAction={<Button appearance="transparent" aria-label="Dismiss" icon={<Dismiss20Regular />} onClick={signOut.clear} />} />
+            <MessageBarActions containerAction={<Button appearance="transparent" aria-label={t("common.app.dismiss")} icon={<Dismiss20Regular />} onClick={signOut.clear} />} />
           </MessageBar>
         )}
         <div className={s.view}>
@@ -260,18 +262,19 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
 // What opens: the access token (token mode), Orbit's sign-in (or the first administrator's setup), a new password the
 // user must choose first, or the workspace. Nothing else decides it, and none of it starts an AI provider's sign-in.
 function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resource<Settings> }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { reload: reloadAuth, set: setAuth } = auth;
   const reload = useCallback(() => void reloadAuth(), [reloadAuth]);
   const signOut = useSignOut(reload);
   if (auth.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={reload} />;
   if (auth.data === null) {
-    if (auth.loading) return <Spinner className={s.center} label="Checking this Orbit Web…" />;
+    if (auth.loading) return <Spinner className={s.center} label={t("common.app.checking")} />;
     return (
       <MessageBar intent="error" className={s.center}>
-        <MessageBarBody>Orbit Web did not answer: {auth.error ?? "no reason given"}</MessageBarBody>
+        <MessageBarBody>{t("common.app.noAnswer", { reason: auth.error ?? t("common.app.noReason") })}</MessageBarBody>
         <MessageBarActions>
-          <Button onClick={reload}>Try again</Button>
+          <Button onClick={reload}>{t("common.app.tryAgain")}</Button>
         </MessageBarActions>
       </MessageBar>
     );
@@ -301,9 +304,11 @@ export function App() {
 function Shared({ token }: { token: string }) {
   const dark = isDark("system", useSystemDark());
   return (
-    <FluentProvider theme={themeOf(dark)} style={{ minHeight: "100%" }}>
-      <SharedChatPage token={token} />
-    </FluentProvider>
+    <I18nProvider locale="en">
+      <FluentProvider theme={themeOf(dark)} style={{ minHeight: "100%" }}>
+        <SharedChatPage token={token} />
+      </FluentProvider>
+    </I18nProvider>
   );
 }
 
@@ -318,8 +323,10 @@ function OrbitWeb() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
   return (
-    <FluentProvider theme={themeOf(dark)} style={{ height: "100%" }}>
-      <Gate auth={auth} settings={settings} />
-    </FluentProvider>
+    <I18nProvider locale={auth.data?.account?.locale ?? "en"}>
+      <FluentProvider theme={themeOf(dark)} style={{ height: "100%" }}>
+        <Gate auth={auth} settings={settings} />
+      </FluentProvider>
+    </I18nProvider>
   );
 }

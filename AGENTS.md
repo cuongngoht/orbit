@@ -11,7 +11,8 @@ store or identity provider is named in this code; a project declares its own in
 
 This file is the ONE source of instructions for every host: Codex, Antigravity and Grok Build read it as it is, and
 Claude Code reads it through `CLAUDE.md`, which imports it; what is Claude Code's own is under
-[Claude Code](#claude-code). Read `README.md` first for what Orbit does and how a team uses it, and
+[Claude Code](#claude-code). Read [docs/plugin.md](docs/plugin.md) first for what the plugin does and how a team uses it
+(`README.md` presents Orbit as a whole, the Governed Agentic Workplace, of which the plugin is one direction), and
 [docs/architecture.md](docs/architecture.md) for how the code is built: the system, its layers and which way they
 depend, who owns what, the data and the main flows.
 
@@ -1064,16 +1065,16 @@ node cli/run-case.mjs <a-report.html> NAME=TC-1   # re-run a case from the repor
 # NB: EVERYTHING writes to ~/.orbit by default — one store, six rooms. Always set
 # ORBIT_STORE_DIR when trying any of these here; it relocates all of it. (A run against
 # test/fixtures/ui-tests no longer touches a committed fixture: the ledger left the repo in 1.4.2.)
-ORBIT_STORE_DIR=/tmp/l node cli/learn.mjs where|lessons|analyse   # the lessons (README)
-ORBIT_STORE_DIR=/tmp/l node cli/architecture.mjs ensure           # decide, and say why (README)
+ORBIT_STORE_DIR=/tmp/l node cli/learn.mjs where|lessons|analyse   # the lessons (docs/plugin.md)
+ORBIT_STORE_DIR=/tmp/l node cli/architecture.mjs ensure           # decide, and say why (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/architecture.mjs ensure --for="… through Acme Vault"  # a capability question
 ORBIT_STORE_DIR=/tmp/l node cli/architecture.mjs facts|why <id>|capabilities|diff|where
-ORBIT_STORE_DIR=/tmp/l node cli/engineering.mjs facts|why <id>|where     # how this project builds code (README)
+ORBIT_STORE_DIR=/tmp/l node cli/engineering.mjs facts|why <id>|where     # how this project builds code (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/engineering.mjs record [<file>] [--human]  # validated candidates only
-ORBIT_STORE_DIR=/tmp/l node cli/intelligence.mjs ensure [--for="…"]   # which technologies, what each is used for (README)
+ORBIT_STORE_DIR=/tmp/l node cli/intelligence.mjs ensure [--for="…"]   # which technologies, what each is used for (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/intelligence.mjs technologies|integrations|wiring|dependencies|why <id>
 ORBIT_STORE_DIR=/tmp/l node cli/intelligence.mjs resolve <intent> [--json]   # reuse · build · unknown · blocked
-ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l node cli/help.mjs  # where to start, and why (README)
+ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l node cli/help.mjs  # where to start, and why (docs/plugin.md)
 node cli/record-edge.mjs <p.jsonl> [--replace] [--dry]       # append new controls · --replace edits in place
 ORBIT_STORE_DIR=/tmp/l node cli/storage.mjs where|import [--apply]|export (--all|--screen=…|--case=…|--plan=…) [--apply --human]   # where test data lives; a person moves it
 ORBIT_STORE_DIR=/tmp/l node cli/engineering.mjs doctor [--json]   # is the observer on here, has it run, what stopped it
@@ -1088,7 +1089,7 @@ ORBIT_STORE_DIR=/tmp/l node cli/autonomous-qa.mjs derive|reconcile --investigati
 ORBIT_STORE_DIR=/tmp/l node cli/security-audit.mjs assess --investigation=<id>   # the controls in effect, from an investigation's own record
 node cli/qa-plan.mjs expects <openapi|asyncapi|schedule>.json [--operation=… --status=… | --channel=… --within=… | --at=…]   # candidate expectations
 node acceptance/run.mjs [--stack=…] [--variant=…] [--keep] [--record]   # native acceptance: two stacks, planted defects, a ground truth (Docker)
-ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (README)
+ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs where|list        # this project's own QC tools (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs new <id> <scratch-dir> [--tool=psql] [--mutates]
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs verify|register <dir>   # exit 2 if it would not load
 ORBIT_STORE_DIR=/tmp/l node cli/qc-tool.mjs status <id> <status>    # draft→verified→active→stale→retired
@@ -1100,13 +1101,13 @@ ORBIT_STORE_DIR=/tmp/l node cli/context.mjs --for="<task>" --work=<w-…> [--jso
 ORBIT_UI_TESTS=test/fixtures/ui-tests ORBIT_STORE_DIR=/tmp/l node cli/help.mjs --for="<task>"     # one NEXT for a task
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs extensions   # loaded, refused, and WHY
 ORBIT_UI_TESTS=test/fixtures/ui-tests node cli/query.mjs capabilities # what {"do":"call"} may ask
-ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs claims --for="…" [--context=k=v]   # project knowledge (README)
+ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs claims --for="…" [--context=k=v]   # project knowledge (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs record [<file>] [--human]          # candidate claims, all or nothing
 ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs verify --for="…" [--purpose=verification] [--workflow=<skill>]
 ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs opportunities|vocabulary|where|why <id>
 ORBIT_STORE_DIR=/tmp/l node cli/knowledge.mjs decide <opp-id> defer|accept|ignore|reopen --human
-ORBIT_STORE_DIR=/tmp/l node cli/trace.mjs turns|turn <id>|usage|where           # the session trail (README)
-ORBIT_STORE_DIR=/tmp/l node cli/live.mjs status|watch [<task>] [--plain|--jsonl|--logs]   # Orbit Live in a terminal (README)
+ORBIT_STORE_DIR=/tmp/l node cli/trace.mjs turns|turn <id>|usage|where           # the session trail (docs/plugin.md)
+ORBIT_STORE_DIR=/tmp/l node cli/live.mjs status|watch [<task>] [--plain|--jsonl|--logs]   # Orbit Live in a terminal (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs tui [<task>] [--ascii] [--logs] [--until-done[=<s>]]   # full screen, an interactive terminal only (ADR 0018)
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs open [<task>] [--print]   # that viewer beside this session (tmux · Windows Terminal · macOS window), a person's choice
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs ensure [<task>] [--json]   # what /orbit and /orbit-help run: this session's viewer, opened once and reused (ADR 0020)
@@ -1115,28 +1116,28 @@ claude plugin validate . && node skills/orbit-release/pane-check.mjs   # the Cla
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs settings --apply='{"pane":{"widthPercent":36,"focusCli":true}}' --revision=<r>   # how wide the viewer beside the CLI is
 ORBIT_BENCH=1 node --test --test-reporter=spec test/perf/activity.bench.mjs   # what observing a running check costs, measured
 ORBIT_STORE_DIR=/tmp/l node cli/live.mjs pin <task> | unpin | settings | where | doctor [--claude]
-ORBIT_STORE_DIR=/tmp/l node cli/automation.mjs status | doctor | plan --for="…" | where   # automation, read (README)
+ORBIT_STORE_DIR=/tmp/l node cli/automation.mjs status | doctor | plan --for="…" | where   # automation, read (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/automation.mjs start --for="…" [--ref=<item>] | context <task> | step <task> | settle <task> | reconcile <task> | finish <task>
 ORBIT_STORE_DIR=/tmp/l node cli/skill-factory.mjs list | drafts | show <id|pin> | put <id> <file.md> | verify <id> | where   # generated playbooks
 ORBIT_STORE_DIR=/tmp/l node cli/improve.mjs status | analyse [--dry] | opportunities | candidates | show <id> | metrics | doctor | where   # self-improvement (ADR 0045)
 ORBIT_STORE_DIR=/tmp/l node cli/improve.mjs start <opp> | step <imp> | resume <imp> | evaluate <imp> | candidate <imp> --file=… | link <imp> --mission=… --side=… | reconcile <imp>
 ORBIT_STORE_DIR=/tmp/l node cli/host.mjs render|apply|remove --host=claude --kind=statusline [--human]   # Claude Code's status line
-ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs resolve <ref>|acquire <ref>|status <root>|record <root>|ask <root>|snapshot <root>|show <rs>|where   # a requirement (README)
+ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs resolve <ref>|acquire <ref>|status <root>|record <root>|ask <root>|snapshot <root>|show <rs>|where   # a requirement (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/requirements.mjs answer <root> --question=rq-… --says="…" --human   # a person's word, relayed
 ORBIT_STORE_DIR=/tmp/l node cli/work.mjs start "<objective>" --ref=<id> [--snapshot=rs-…]   # the one work a requirement has
-ORBIT_STORE_DIR=/tmp/l node cli/work.mjs show|need|resolve|invoke|settle|claim|checkpoint|resume|recall|list|where   # a work (README)
+ORBIT_STORE_DIR=/tmp/l node cli/work.mjs show|need|resolve|invoke|settle|claim|checkpoint|resume|recall|list|where   # a work (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/work.mjs checkpoint <w-…> [--why="…"] [--asked="<source> · <target>" …]   # one round: what it asked, what it gained (0.6.0)
-ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs discover|status|doctor|design|proposal|settings|projects   # what a checkout needs to run (README)
+ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs discover|status|doctor|design|proposal|settings|projects   # what a checkout needs to run (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs start|stop [--component=<key>]   # what a file declared; only what Orbit can prove it started
 ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs adopt <id> --human              # the one command that writes the repository
-ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs sandboxes|sandbox|sandbox-prepare|sandbox-start|sandbox-stop|sandbox-release --task=<tsk>   # a task's own application (README)
-ORBIT_STORE_DIR=/tmp/l node cli/task.mjs create "<objective>" [--work=w-…] | stage | attempt | act | link | decide   # record an execution (README)
+ORBIT_STORE_DIR=/tmp/l node cli/runtime.mjs sandboxes|sandbox|sandbox-prepare|sandbox-start|sandbox-stop|sandbox-release --task=<tsk>   # a task's own application (docs/plugin.md)
+ORBIT_STORE_DIR=/tmp/l node cli/task.mjs create "<objective>" [--work=w-…] | stage | attempt | act | link | decide   # record an execution (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs pause|cancel <task> --human --expect=<revision>   # a person's, on the revision read; approve and resume are Control's
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs show <task> | events <task> | list | machine [--json]   # one task, or every task on this machine
 ORBIT_STORE_DIR=/tmp/l node cli/task.mjs why <task> [--json]   # each decision, how it settled, which receipt moved the task next (0.6.0)
-ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs start --ref=<item> | start "<objective>"   # a task taken to a verified change (README)
+ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs start --ref=<item> | start "<objective>"   # a task taken to a verified change (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/autonomous-engineering.mjs context <task> | step <task> < decision.json | reconcile <task> | finish <task> | resume <ref>
-ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs status|settings|runs|parts|where   # a PO report (README)
+ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs status|settings|runs|parts|where   # a PO report (docs/plugin.md)
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs run [--dry] [--months=N|--from=D --to=D|--all] [--as-of=D]
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs render [<run-id>|latest]          # again, asking no source
 ORBIT_STORE_DIR=/tmp/l node cli/project-report.mjs probe | connections | connect <id> --provider=… --organization=… [--auth=azure-cli|credential] [--credential-env=<NAME>]
@@ -1180,7 +1181,8 @@ recorded as before, never a gate.
    silently through two releases before it did. The same gate holds every other marketplace entry to
    that version too: they ship with the release. The two shipped packs' `extension.json` carry it as
    well, and `test/packs.test.mjs` holds them to the same number.
-5. `README.md` and the `skills/*/SKILL.md` playbooks say what the code now does.
+5. `docs/plugin.md` (the plugin's documentation; `README.md` only where it speaks of the plugin) and the
+   `skills/*/SKILL.md` playbooks say what the code now does.
 6. New agent-authored cases stay in machine-store drafts, including after PASS. Agents use
    `--report` for every live run; promotion to shared regression requires an explicit request.
    Discussion decisions and open questions belong in notes, not full conversation archives.

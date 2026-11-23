@@ -2,6 +2,7 @@
 import { Button, OverlayDrawer, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
+import { useI18n } from "../i18n";
 
 const useStyles = makeStyles({
   sheet: {
@@ -80,6 +81,7 @@ export interface ResponsiveSheetProps {
 }
 
 export function ResponsiveSheet({ open, onOpenChange, title, ariaLabel, children }: ResponsiveSheetProps) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
     <OverlayDrawer
@@ -101,7 +103,7 @@ export function ResponsiveSheet({ open, onOpenChange, title, ariaLabel, children
           className={s.close}
           appearance="subtle"
           icon={<Dismiss20Regular />}
-          aria-label="Close"
+          aria-label={t("common.sheet.close")}
           onClick={() => onOpenChange(false)}
         />
       </div>

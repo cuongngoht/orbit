@@ -1,6 +1,7 @@
 import { Button, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Checkmark16Regular, Copy16Regular } from "@fluentui/react-icons";
 import { useState } from "react";
+import { useI18n } from "../i18n";
 import { highlighted } from "./highlight";
 
 const useStyles = makeStyles({
@@ -49,6 +50,7 @@ const useStyles = makeStyles({
 });
 
 export function CodeBlock({ code, language }: { code: string; language?: string | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -64,17 +66,17 @@ export function CodeBlock({ code, language }: { code: string; language?: string 
     <div className={s.wrap}>
       <div className={s.bar}>
         <Text size={100} className={s.lang}>
-          {language ?? "code"}
+          {language ?? t("common.codeBlock.defaultLang")}
         </Text>
         <Button
           className={s.copyBtn}
           size="small"
           appearance="subtle"
           icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
-          aria-label="Copy code"
+          aria-label={t("common.codeBlock.copyAria")}
           onClick={() => void copy()}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("common.codeBlock.copied") : t("common.codeBlock.copy")}
         </Button>
       </div>
       <pre className={s.pre}>

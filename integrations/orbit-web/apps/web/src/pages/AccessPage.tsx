@@ -6,6 +6,7 @@ import { ClipboardPaste16Regular, Eye16Regular, EyeOff16Regular } from "@fluentu
 import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { useViewport } from "../hooks/useViewport";
+import { useI18n } from "../i18n";
 import { accessLinkToken, forgetAccessLink, onAccessLink } from "../services/accessLink";
 import { errorText, send } from "../services/api";
 
@@ -59,6 +60,7 @@ const useStyles = makeStyles({
 const tokenIn = (text: string): string => /#access=([A-Za-z0-9._~-]{16,512})/.exec(text)?.[1] ?? text.trim();
 
 export function AccessPage({ onGranted }: { onGranted: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const [fromLink] = useState(accessLinkToken);
@@ -71,7 +73,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
     try {
       text = await navigator.clipboard.readText();
     } catch {
-      setError("The clipboard could not be read here: paste into the field instead.");
+      setError(t("common.access.clipboardError"));
       return;
     }
     const pasted = tokenIn(text);
@@ -118,12 +120,12 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
     <main className={s.page}>
       <div className={s.panel}>
         <img src="/orbit.svg" alt="" className={s.logo} />
-        <h1 className={s.heading}>Sign in to Orbit Web</h1>
+        <h1 className={s.heading}>{t("common.access.title")}</h1>
         <Text align="center" className={s.lead}>
-          This Orbit Web is reachable from the internet, so it asks for its access token first. Then you sign in with your Orbit username and password.
+          {t("common.access.lead")}
         </Text>
       </div>
-      <section className={s.card} aria-label="Sign in to Orbit Web">
+      <section className={s.card} aria-label={t("common.access.title")}>
         <form
           className={s.step}
           onSubmit={(e) => {
@@ -133,9 +135,9 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
         >
           <div className={s.stepTitle}>
             <span className={s.number}>1</span>
-            <Text weight="semibold">Enter this Orbit Web's access token</Text>
+            <Text weight="semibold">{t("common.access.step1")}</Text>
           </div>
-          <Field label="Access token" hint="The token you were given with the link to this Orbit Web (made when it was deployed). Copied the access link? Paste takes it and goes on — and an opened link ending in #access=… needs nothing at all.">
+          <Field label={t("common.access.tokenLabel")} hint={t("common.access.tokenHint")}>
             <Input
               type={shown ? "text" : "password"}
               value={token}
@@ -144,9 +146,9 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
               autoFocus={!isMobile && !isCoarse}
               contentAfter={
                 <>
-                  <Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? "Hide the token" : "Show the token"} onClick={() => setShown(!shown)} />
+                  <Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? t("common.access.hideToken") : t("common.access.showToken")} onClick={() => setShown(!shown)} />
                   <Button appearance="transparent" size="small" icon={<ClipboardPaste16Regular />} onClick={() => void paste()}>
-                    Paste
+                    {t("common.access.paste")}
                   </Button>
                 </>
               }
@@ -158,30 +160,30 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
             </MessageBar>
           )}
           {busy ? (
-            <Spinner size="tiny" label="Checking the access token…" />
+            <Spinner size="tiny" label={t("common.access.checkingToken")} />
           ) : (
             <Button className={s.wide} appearance="primary" type="submit" disabled={token.length === 0}>
-              Continue
+              {t("common.access.continue")}
             </Button>
           )}
         </form>
-        <div className={s.step} aria-label="Next: sign in to Orbit">
+        <div className={s.step} aria-label={t("common.access.nextAria")}>
           <div className={s.stepTitle}>
             <span className={`${s.number} ${s.numberWaiting}`}>2</span>
             <Text weight="semibold" className={s.muted}>
-              Sign in with your Orbit username and password
+              {t("common.access.step2")}
             </Text>
           </div>
           <Button className={s.wide} appearance="secondary" disabled>
-            Sign in
+            {t("common.access.signIn")}
           </Button>
           <Text size={200} className={s.muted}>
-            Opens once the access token is accepted. Signing in to Orbit starts no AI provider's sign-in.
+            {t("common.access.step2Hint")}
           </Text>
         </div>
       </section>
       <Text size={200} className={s.foot}>
-        Orbit Web {ORBIT_WEB_VERSION}
+        {t("common.access.footer", { version: ORBIT_WEB_VERSION })}
       </Text>
     </main>
   );

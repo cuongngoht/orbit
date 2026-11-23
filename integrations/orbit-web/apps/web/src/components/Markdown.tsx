@@ -5,6 +5,7 @@ import { Link, makeStyles, shorthands, tokens } from "@fluentui/react-components
 import { createContext, useContext, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useI18n } from "../i18n";
 import { CodeBlock } from "./CodeBlock";
 
 const useStyles = makeStyles({
@@ -112,12 +113,13 @@ const CitingContext = createContext<Citing | null>(null);
 // A link -- or, in a research answer, a verified citation's chip. One component for both, so a re-render never swaps
 // the element under a pointer.
 function Anchor({ href, children }: { href?: string; children?: ReactNode }) {
+  const { t } = useI18n();
   const s = useStyles();
   const cite = useContext(CitingContext);
   if (cite !== null && href?.startsWith(CITE)) {
     const label = href.slice(CITE.length);
     return (
-      <button type="button" className={s.cite} onClick={() => cite.onCite(label)} aria-label={`Citation ${label}`}>
+      <button type="button" className={s.cite} onClick={() => cite.onCite(label)} aria-label={t("common.markdown.citation", { label })}>
         {label}
       </button>
     );

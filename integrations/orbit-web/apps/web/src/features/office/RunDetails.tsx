@@ -5,8 +5,9 @@ import { Badge, Table, TableBody, TableCell, TableHeader, TableHeaderCell, Table
 import { ErrorCircle16Regular, ShieldCheckmark16Regular, Warning16Regular } from "@fluentui/react-icons";
 import { effortLabel, type RunView, type UsageView } from "@orbit-web/contracts";
 import type { ReactNode } from "react";
+import { t as tr, useI18n } from "../../i18n";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
-import { Callout, RUN_STATE_TEXT, useOfficeStyles, when } from "./parts";
+import { Callout, RUN_STATE_KEYS, useOfficeStyles, when } from "./parts";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 },
@@ -32,11 +33,12 @@ const useStyles = makeStyles({
   num: { fontVariantNumeric: "tabular-nums" },
 });
 
-const said = (v: string | null | undefined): string => (v === undefined || v === null ? "not reported" : v === "unknown" ? "unknown" : v);
-const effortSaid = (v: string | null | undefined): string => (v === undefined ? "not asked" : v === null ? "none" : v === "unknown" ? "unknown" : effortLabel(v));
-const onOff = (v: boolean | undefined): string => (v === undefined ? "not asked" : v ? "on" : "off");
+const said = (v: string | null | undefined): string => (v === undefined || v === null ? tr("office.run.notReported") : v === "unknown" ? tr("office.run.unknown") : v);
+const effortSaid = (v: string | null | undefined): string => (v === undefined ? tr("office.run.notAsked") : v === null ? tr("office.run.none") : v === "unknown" ? tr("office.run.unknown") : effortLabel(v));
+const onOff = (v: boolean | undefined): string => (v === undefined ? tr("office.run.notAsked") : v ? tr("office.run.on") : tr("office.run.off"));
 
-function Rows({ label, rows }: { label: string; rows: [string, ReactNode, ReactNode, ReactNode][] }) {
+function Rows({ label, secondCol, rows }: { label: string; secondCol: string; rows: [string, ReactNode, ReactNode, ReactNode][] }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   return (
     <div className={o.tableWrap}>
@@ -44,9 +46,9 @@ function Rows({ label, rows }: { label: string; rows: [string, ReactNode, ReactN
         <TableHeader>
           <TableRow>
             <TableHeaderCell />
-            <TableHeaderCell>Requested</TableHeaderCell>
-            <TableHeaderCell>{label === "Resources" ? "Applied" : "Resolved"}</TableHeaderCell>
-            <TableHeaderCell>Observed</TableHeaderCell>
+            <TableHeaderCell>{t("office.run.colRequested")}</TableHeaderCell>
+            <TableHeaderCell>{secondCol}</TableHeaderCell>
+            <TableHeaderCell>{t("office.run.colObserved")}</TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -65,6 +67,7 @@ function Rows({ label, rows }: { label: string; rows: [string, ReactNode, ReactN
 }
 
 function Usage({ title, u }: { title: string; u: UsageView | null }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   if (u === null)
@@ -74,7 +77,7 @@ function Usage({ title, u }: { title: string; u: UsageView | null }) {
           {title}
         </Text>
         <Text size={200} className={o.muted}>
-          {title}: nothing measured.
+          {t("office.run.nothingMeasured", { title })}
         </Text>
       </div>
     );
@@ -84,47 +87,57 @@ function Usage({ title, u }: { title: string; u: UsageView | null }) {
         {title}
       </Text>
       <Text size={200} className={s.num}>
-        CPU time {u.cpuSeconds === null ? "unknown" : `${u.cpuSeconds.toLocaleString("en-US")} s`} · memory {sizeText(u.memoryCurrentMiB)} now, {sizeText(u.memoryPeakMiB)} at peak · processes at peak {u.pidsPeak ?? "unknown"} · disk {sizeText(u.diskUsedMiB)}
+        {t("office.run.usageStats", {
+          cpu: u.cpuSeconds === null ? t("office.run.unknown") : t("office.run.seconds", { count: u.cpuSeconds.toLocaleString("en-US") }),
+          memNow: sizeText(u.memoryCurrentMiB),
+          memPeak: sizeText(u.memoryPeakMiB),
+          pids: u.pidsPeak ?? t("office.run.unknown"),
+          disk: sizeText(u.diskUsedMiB),
+        })}
       </Text>
       {(u.networkBytesIn !== null || u.networkBytesOut !== null) && (
         <Text size={200} className={s.num}>
-          Network {u.networkBytesIn === null ? "unknown" : sizeText(u.networkBytesIn / 1048576)} in, {u.networkBytesOut === null ? "unknown" : sizeText(u.networkBytesOut / 1048576)} out
+          {t("office.run.networkStats", {
+            inBytes: u.networkBytesIn === null ? t("office.run.unknown") : sizeText(u.networkBytesIn / 1048576),
+            outBytes: u.networkBytesOut === null ? t("office.run.unknown") : sizeText(u.networkBytesOut / 1048576),
+          })}
         </Text>
       )}
       {u.oomKilled && (
         <Callout tone="danger" icon={<ErrorCircle16Regular />}>
-          Out of memory: the container was stopped at its memory limit — raise the limit or retry.
+          {t("office.run.oomError")}
         </Callout>
       )}
       <Text size={200} className={o.muted}>
-        Sampled {when(u.sampledAt)}
+        {t("office.run.sampled", { at: when(u.sampledAt) })}
       </Text>
     </div>
   );
 }
 
 export function RunDetails({ run }: { run: RunView }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const r = run.resources;
   const waiting = run.state === "waiting_for_resources" || run.state === "unschedulable";
   return (
-    <div className={s.root} aria-label={`Attempt ${run.attemptNo}`}>
+    <div className={s.root} aria-label={t("office.run.attemptTitle", { no: run.attemptNo })}>
       <div className={o.between}>
         <div className={o.row}>
-          <Text weight="semibold">Attempt {run.attemptNo}</Text>
+          <Text weight="semibold">{t("office.run.attemptTitle", { no: run.attemptNo })}</Text>
           <Badge appearance="tint" color={run.state === "failed" || run.state === "unschedulable" ? "danger" : run.state === "waiting_for_resources" ? "warning" : run.state === "succeeded" ? "success" : "informative"} style={{ borderRadius: "9999px" }}>
-            {RUN_STATE_TEXT[run.state]}
+            {t(RUN_STATE_KEYS[run.state])}
           </Badge>
         </div>
         <Text size={200} className={o.muted}>
-          started {when(run.startedAt)}
-          {run.endedAt ? ` · ended ${when(run.endedAt)}` : ""}
+          {t("office.run.started", { at: when(run.startedAt) })}
+          {run.endedAt ? t("office.run.ended", { at: when(run.endedAt) }) : ""}
         </Text>
       </div>
       {waiting && (
         <Callout tone={run.state === "unschedulable" ? "danger" : "warn"} icon={run.state === "unschedulable" ? <ErrorCircle16Regular /> : <Warning16Regular />}>
-          {run.state === "unschedulable" ? "It can never start as configured" : "It waits for resources"}: {run.waitingReason ?? "no reason given"}
+          {run.state === "unschedulable" ? t("office.run.unschedulablePrefix") : t("office.run.waitingPrefix")}: {run.waitingReason ?? t("office.run.noReasonGiven")}
         </Callout>
       )}
       {run.detail && (
@@ -133,31 +146,47 @@ export function RunDetails({ run }: { run: RunView }) {
         </Text>
       )}
       <Rows
-        label="Model and effort"
+        label={t("office.run.modelAndEffort")}
+        secondCol={t("office.run.colResolved")}
         rows={[
-          ["Model", said(run.requested.model), run.resolved ? said(run.resolved.model) : "not resolved", said(run.observed.model)],
-          ["Effort", effortSaid(run.requested.effort), run.resolved ? effortSaid(run.resolved.effort) : "not resolved", effortSaid(run.observed.effort)],
-          ["Web search", onOff(run.requested.webSearch), run.resolved ? onOff(run.resolved.webSearch) : "not resolved", "not reported"],
-          ["Plugins", onOff(run.requested.orbitPlugin), run.resolved ? onOff(run.resolved.orbitPlugin) : "not resolved", run.observed.plugins === "unknown" ? "unknown" : run.observed.plugins.length === 0 ? "none" : run.observed.plugins.join(", ")],
+          [t("office.run.rowModel"), said(run.requested.model), run.resolved ? said(run.resolved.model) : t("office.run.notResolved"), said(run.observed.model)],
+          [t("office.run.rowEffort"), effortSaid(run.requested.effort), run.resolved ? effortSaid(run.resolved.effort) : t("office.run.notResolved"), effortSaid(run.observed.effort)],
+          [t("office.run.rowWebSearch"), onOff(run.requested.webSearch), run.resolved ? onOff(run.resolved.webSearch) : t("office.run.notResolved"), t("office.run.notReported")],
+          [
+            t("office.run.rowPlugins"),
+            onOff(run.requested.orbitPlugin),
+            run.resolved ? onOff(run.resolved.orbitPlugin) : t("office.run.notResolved"),
+            run.observed.plugins === "unknown" ? t("office.run.unknown") : run.observed.plugins.length === 0 ? t("office.run.none") : run.observed.plugins.join(", "),
+          ],
         ]}
       />
       <div className={s.metaStrip}>
         <Text size={200} className={o.muted}>
-          Runtime version {run.observed.runtimeVersion ?? "not reported"} · cost {run.modelUsage.costUsd === null ? "not reported" : `$${run.modelUsage.costUsd.toFixed(2)}`} · turns {run.modelUsage.turns ?? "not reported"}
+          {t("office.run.metaLine", {
+            version: run.observed.runtimeVersion ?? t("office.run.notReported"),
+            cost: run.modelUsage.costUsd === null ? t("office.run.notReported") : `$${run.modelUsage.costUsd.toFixed(2)}`,
+            turns: run.modelUsage.turns ?? t("office.run.notReported"),
+          })}
         </Text>
       </div>
       {r && (
         <Rows
-          label="Resources"
+          label={t("office.run.resourcesLabel")}
+          secondCol={t("office.run.colApplied")}
           rows={[
-            ["CPU", cpuText(r.requested.cpuMillis), r.applied ? cpuText(r.applied.cpuMillis) : "not read back", r.observed ? said(r.observed.cpuQuota) : "not observed"],
-            ["Memory", sizeText(r.requested.memoryMiB), r.applied ? sizeText(r.applied.memoryMiB) : "not read back", r.observed ? said(r.observed.memoryLimit) : "not observed"],
-            ["Processes", String(r.requested.pidsLimit), r.applied ? (r.applied.pidsLimit === null ? "unknown" : String(r.applied.pidsLimit)) : "not read back", r.observed ? said(r.observed.pidsMax) : "not observed"],
+            [t("office.employee.tileCpu"), cpuText(r.requested.cpuMillis), r.applied ? cpuText(r.applied.cpuMillis) : t("office.run.notReadBack"), r.observed ? said(r.observed.cpuQuota) : t("office.run.notObserved")],
+            [t("office.employee.tileMemory"), sizeText(r.requested.memoryMiB), r.applied ? sizeText(r.applied.memoryMiB) : t("office.run.notReadBack"), r.observed ? said(r.observed.memoryLimit) : t("office.run.notObserved")],
+            [
+              t("office.employee.tileProcesses"),
+              String(r.requested.pidsLimit),
+              r.applied ? (r.applied.pidsLimit === null ? t("office.run.unknown") : String(r.applied.pidsLimit)) : t("office.run.notReadBack"),
+              r.observed ? said(r.observed.pidsMax) : t("office.run.notObserved"),
+            ],
           ]}
         />
       )}
       {r?.observed && r.observed.storage.length > 0 && (
-        <ul className={o.list} aria-label="Storage enforcement observed">
+        <ul className={o.list} aria-label={t("office.run.storageObservedAria")}>
           {r.observed.storage.map((a) => (
             <li key={a.area} className={o.item}>
               <div className={o.row}>
@@ -176,38 +205,44 @@ export function RunDetails({ run }: { run: RunView }) {
         </ul>
       )}
       <div className={s.usageGrid}>
-        <Usage title="The CLI's container (model plane)" u={run.usage.modelPlane} />
-        <Usage title="The sandbox container (tool plane)" u={run.usage.toolPlane} />
+        <Usage title={t("office.run.cliContainer")} u={run.usage.modelPlane} />
+        <Usage title={t("office.run.sandboxContainer")} u={run.usage.toolPlane} />
       </div>
       {run.sandbox && (
-        <div className={o.inset} aria-label="Isolation attestation">
+        <div className={o.inset} aria-label={t("office.run.isolationAria")}>
           <div className={o.between}>
             <div className={o.row}>
               <ShieldCheckmark16Regular aria-hidden />
               <Text weight="semibold" size={200}>
-                Isolation
+                {t("office.run.isolationTitle")}
               </Text>
               <Badge appearance="tint" color={run.sandbox.state === "attested" ? "success" : run.sandbox.state === "not_isolated" ? "warning" : "danger"} style={{ borderRadius: "9999px" }}>
-                {run.sandbox.state === "attested" ? "Attested" : run.sandbox.state === "not_isolated" ? "Not isolated (development)" : run.sandbox.state === "failed" ? "Failed" : "Expired"}
+                {run.sandbox.state === "attested"
+                  ? t("office.run.isolationAttested")
+                  : run.sandbox.state === "not_isolated"
+                    ? t("office.run.isolationNotIsolated")
+                    : run.sandbox.state === "failed"
+                      ? t("office.run.isolationFailed")
+                      : t("office.run.isolationExpired")}
               </Badge>
             </div>
             <Text size={200} className={o.muted}>
-              Shell {run.sandbox.shell ? "granted" : "not granted"}
+              {run.sandbox.shell ? t("office.run.shellGranted") : t("office.run.shellNotGranted")}
             </Text>
           </div>
           <Text size={200}>{run.sandbox.detail}</Text>
-          <ul className={o.list} aria-label="Attestation checks">
+          <ul className={o.list} aria-label={t("office.run.checksAria")}>
             {run.sandbox.checks.map((c) => (
               <li key={c.name}>
                 <Text size={200}>
-                  {c.ok ? "Held" : "Failed"}: {c.name}
+                  {c.ok ? t("office.run.checkHeld") : t("office.run.checkFailed")}: {c.name}
                   {c.detail ? ` — ${c.detail}` : ""}
                 </Text>
               </li>
             ))}
           </ul>
           <Text size={200} className={o.muted}>
-            Checked {when(run.sandbox.checkedAt)}
+            {t("office.run.checkedAt", { at: when(run.sandbox.checkedAt) })}
           </Text>
         </div>
       )}

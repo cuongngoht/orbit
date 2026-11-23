@@ -47,6 +47,7 @@ import { ConnectionRequired, isConnectionRequired } from "../../components/ApiEr
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { t as tr, useI18n } from "../../i18n";
 import { ApiError, errorText } from "../../services/api";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { cpuText, sizeText } from "../resources/format";
@@ -55,7 +56,13 @@ import { office } from "./api";
 import { Disclosure, useOfficeStyles } from "./parts";
 import { ResourceFields, profileLine, resourceProblems, storageProblem } from "./ResourceFields";
 
-export const HIRE_STEPS = ["Identity", "Department & role", "AI runtime, model & effort", "Personal sandbox & resources", "Review & hire"] as const;
+export const HIRE_STEPS = [
+  tr("office.hire.step.identity"),
+  tr("office.hire.step.role"),
+  tr("office.hire.step.runtime"),
+  tr("office.hire.step.resources"),
+  tr("office.hire.step.review"),
+] as const;
 
 const useStyles = makeStyles({
   surface: {
@@ -142,27 +149,27 @@ const list = (text: string): string[] =>
 // account (never a fallback list), and its model plane observed held to Orbit's tools.
 export const usableForEmployees = (c: RuntimeConnection): boolean => c.employeeReady.ready;
 
-const whyNot = (c: RuntimeConnection): string => c.employeeReady.reason ?? "it cannot run employees";
+const whyNot = (c: RuntimeConnection): string => c.employeeReady.reason ?? tr("office.hire.cannotRunEmployees");
 
 // The Orbit plugin may be asked for an employee only on Claude Code, with the owner's grant for employees on exactly the
 // plugin's current version.
 const pluginAllowed = (c: RuntimeConnection): boolean => c.runtime === "claude" && c.plugins !== null && c.plugins.installed && c.plugins.useCases.employee.approved && !c.plugins.useCases.employee.needsConfirmation;
 
 // What Anthropic's page says of a subscription used by something that works on its own, quoted with its source.
-const CLAUDE_PLAN_NOTE = { quote: "Advertised usage limits for Pro, Max, and Ultra plans assume ordinary, individual usage of Claude Code and the Agent SDK.", source: "https://code.claude.com/docs/en/legal-and-compliance" };
+const CLAUDE_PLAN_NOTE = { quote: tr("office.hire.claudePlanQuote"), source: "https://code.claude.com/docs/en/legal-and-compliance" };
 
 // When the employee could take work, from what the account holds now.
 export function availability(p: ResourceProfile, summary: ResourceSummary | null, runtime: string | null): string {
-  const sandbox = "Its Personal Sandbox is prepared first (its desk, toolbox and quotas; no container starts), and it takes work once that is ready.";
-  if (summary === null) return `${sandbox} Whether its work could start at once is not known: the account's budget could not be read.`;
+  const sandbox = tr("office.hire.sandboxPrepared");
+  if (summary === null) return tr("office.hire.availabilityUnknown", { sandbox });
   const overhead = summary.modelPlane.find((m) => m.runtime === runtime) ?? { cpuMillis: 0, memoryMiB: 0 };
   const cpu = p.cpuMillis + overhead.cpuMillis;
   const memory = p.memoryMiB + overhead.memoryMiB;
-  const needs = `${cpuText(cpu)} and ${sizeText(memory)} of memory per attempt`;
+  const needs = tr("office.hire.needsPerAttempt", { cpu: cpuText(cpu), memory: sizeText(memory) });
   if (cpu > summary.budget.cpuMillis || memory > summary.budget.memoryMiB || cpu > summary.capacity.usable.cpuMillis || memory > summary.capacity.usable.memoryMiB)
-    return `${sandbox} As configured its work could never start: it needs ${needs}, above the account's budget (${cpuText(summary.budget.cpuMillis)}, ${sizeText(summary.budget.memoryMiB)}) or what this host can give.`;
-  if (cpu <= summary.available.cpuMillis && memory <= summary.available.memoryMiB) return `${sandbox} Its work could start at once: it needs ${needs}, and that is free now.`;
-  return `${sandbox} Its work would wait for resources: it needs ${needs}; ${cpuText(summary.available.cpuMillis)} and ${sizeText(summary.available.memoryMiB)} are free now. It is hired all the same.`;
+    return tr("office.hire.availabilityNever", { sandbox, needs, budgetCpu: cpuText(summary.budget.cpuMillis), budgetMemory: sizeText(summary.budget.memoryMiB) });
+  if (cpu <= summary.available.cpuMillis && memory <= summary.available.memoryMiB) return tr("office.hire.availabilityNow", { sandbox, needs });
+  return tr("office.hire.availabilityWait", { sandbox, needs, freeCpu: cpuText(summary.available.cpuMillis), freeMemory: sizeText(summary.available.memoryMiB) });
 }
 
 // A refusal's reasons, when the API listed them beside its message.
@@ -178,9 +185,10 @@ function reasonsOf(err: unknown): string[] {
 }
 
 function Steps({ at }: { at: number }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
-    <ol className={s.steps} aria-label="Steps">
+    <ol className={s.steps} aria-label={t("office.hire.stepsAria")}>
       {HIRE_STEPS.map((label, i) => (
         <li key={label} className={mergeClasses(s.step, i === at && s.stepOn)} aria-current={i === at ? "step" : undefined}>
           <span className={s.dot} aria-hidden>
@@ -194,6 +202,7 @@ function Steps({ at }: { at: number }) {
 }
 
 export function HireWizard({ departments, onClose, onHired }: { departments: Department[]; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const { isMobile } = useViewport();
@@ -248,11 +257,11 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
 
   // What still stands between each step and the next.
   const missing: string[][] = [
-    draft.name.trim() === "" ? ["Give it a name."] : [],
-    draft.title.trim() === "" ? ["Give it a role title."] : [],
-    connection === null ? ["Choose a connected AI CLI with models read from your account."] : model === null ? ["Choose a model."] : [],
-    resources === null ? ["Choose a preset or your own numbers."] : [...resourceProblems(resources, summary.data?.budget.perEmployee ?? null), ...(storageProblem(resources, summary.data) ? [storageProblem(resources, summary.data) as string] : [])],
-    body === null ? ["Something above is missing."] : draft.skipProbation && draft.skipReason.trim() === "" ? ["Say why the trial is skipped: it is recorded with the decision."] : [],
+    draft.name.trim() === "" ? [t("office.hire.missingName")] : [],
+    draft.title.trim() === "" ? [t("office.hire.missingTitle")] : [],
+    connection === null ? [t("office.hire.missingConnection")] : model === null ? [t("office.hire.missingModel")] : [],
+    resources === null ? [t("office.hire.missingResources")] : [...resourceProblems(resources, summary.data?.budget.perEmployee ?? null), ...(storageProblem(resources, summary.data) ? [storageProblem(resources, summary.data) as string] : [])],
+    body === null ? [t("office.hire.missingSomething")] : draft.skipProbation && draft.skipReason.trim() === "" ? [t("office.hire.missingSkipReason")] : [],
   ];
   const blocked = missing[at] ?? [];
 
@@ -278,35 +287,35 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
     }
   };
 
-  const subscriptionNote = connection?.method === "subscription" ? (connection.runtime === "claude" ? null : (connections.data?.methods.find((m) => m.runtime === connection.runtime && m.method === "subscription")?.note ?? "Your provider's plan limits assume ordinary, individual use.")) : null;
+  const subscriptionNote = connection?.method === "subscription" ? (connection.runtime === "claude" ? null : (connections.data?.methods.find((m) => m.runtime === connection.runtime && m.method === "subscription")?.note ?? t("office.hire.subscriptionDefaultNote"))) : null;
 
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label="Hire an employee">
+      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label={t("office.hire.title")}>
         <DialogBody className={s.dialogBody}>
-          <DialogTitle>Hire an employee</DialogTitle>
+          <DialogTitle>{t("office.hire.title")}</DialogTitle>
           <DialogContent className={s.body}>
             <Steps at={at} />
             <Text weight="semibold" size={400} as="h3">
-              Step {at + 1} of 5: {HIRE_STEPS[at]}
+              {t("office.hire.stepHeading", { step: at + 1, total: HIRE_STEPS.length, label: HIRE_STEPS[at] })}
             </Text>
 
             {at === 0 && (
               <div className={o.formGrid}>
-                <Field label="Name" required hint="How the office names it.">
+                <Field label={t("office.hire.nameLabel")} required hint={t("office.hire.nameHint")}>
                   <Input value={draft.name} maxLength={80} onChange={(_, d) => set({ name: d.value })} />
                 </Field>
-                <Field label="Start from a template" hint="Optional: fills the role, which you can change.">
+                <Field label={t("office.hire.templateLabel")} hint={t("office.hire.templateHint")}>
                   <Select value={draft.templateId ?? ""} onChange={(_, d) => template(d.value)}>
-                    <option value="">No template</option>
-                    {(templates.data ?? []).map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
+                    <option value="">{t("office.hire.noTemplate")}</option>
+                    {(templates.data ?? []).map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.name}
                       </option>
                     ))}
                   </Select>
                 </Field>
-                <Field label="Languages" hint="Optional, separated by commas.">
+                <Field label={t("office.hire.languagesLabel")} hint={t("office.hire.languagesHint")}>
                   <Input value={draft.languages} onChange={(_, d) => set({ languages: d.value })} />
                 </Field>
               </div>
@@ -315,9 +324,9 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
             {at === 1 && (
               <div className={o.form}>
                 <div className={o.formGrid}>
-                  <Field label="Department">
+                  <Field label={t("office.hire.choiceDept")}>
                     <Select value={draft.departmentId ?? ""} onChange={(_, d) => set({ departmentId: d.value === "" ? null : d.value })}>
-                      <option value="">Unassigned</option>
+                      <option value="">{t("office.overview.unassigned")}</option>
                       {live.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name}
@@ -325,28 +334,28 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Role title" required>
+                  <Field label={t("office.hire.roleTitleLabel")} required>
                     <Input value={draft.title} maxLength={120} onChange={(_, d) => set({ title: d.value })} />
                   </Field>
                 </div>
-                <Field label="Duties" hint="What it is responsible for.">
+                <Field label={t("office.hire.dutiesLabel")} hint={t("office.hire.dutiesHint")}>
                   <Textarea value={draft.duties} resize="vertical" onChange={(_, d) => set({ duties: d.value })} />
                 </Field>
-                <Field label="Instructions" hint="How it should work.">
+                <Field label={t("office.hire.instructionsLabel")} hint={t("office.hire.instructionsHint")}>
                   <Textarea value={draft.instructions} resize="vertical" onChange={(_, d) => set({ instructions: d.value })} />
                 </Field>
                 <div className={o.formGrid}>
-                  <Field label="Skills" hint="Optional, separated by commas.">
+                  <Field label={t("office.hire.skillsLabel")} hint={t("office.hire.languagesHint")}>
                     <Input value={draft.skills} onChange={(_, d) => set({ skills: d.value })} />
                   </Field>
-                  <Field label="Handoff standard" hint="Optional: what every result it hands in must hold.">
+                  <Field label={t("office.hire.handoffLabel")} hint={t("office.hire.handoffHint")}>
                     <Input value={draft.handoffStandard} onChange={(_, d) => set({ handoffStandard: d.value })} />
                   </Field>
                 </div>
                 <div className={s.option}>
-                  <Switch label="Team lead: may give parts of its work to colleagues" checked={draft.canDelegate} onChange={(_, d) => set({ canDelegate: d.checked })} />
+                  <Switch label={t("office.hire.teamLeadLabel")} checked={draft.canDelegate} onChange={(_, d) => set({ canDelegate: d.checked })} />
                   <Text size={200}>
-                    A team lead splits an assignment into parts for other employees of the office, shares a team room with them for that mission, reviews each part as it is handed in, and hands the whole in to you. Its colleagues need no switch.
+                    {t("office.hire.teamLeadDesc")}
                   </Text>
                 </div>
               </div>
@@ -355,10 +364,10 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
             {at === 2 && (
               <div className={o.form}>
                 {connections.data === null ? (
-                  <Spinner size="tiny" label="Reading your AI connections…" />
+                  <Spinner size="tiny" label={t("office.hire.readingConnections")} />
                 ) : (
                   <>
-                    <Field label="AI connection" hint="Only a connection that is connected, with its models read from your account, can run an employee.">
+                    <Field label={t("office.hire.connectionLabel")} hint={t("office.hire.connectionHint")}>
                       <RadioGroup value={connection?.id ?? ""} onChange={(_, d) => set({ connectionId: d.value, model: null, effort: null, webSearch: false, orbitPlugin: false })}>
                         {all.map((c) => (
                           <Radio key={c.id} value={c.id} disabled={!usableForEmployees(c)} label={`${RUNTIME_LABELS[c.runtime]} — ${c.label}${usableForEmployees(c) ? "" : `: ${whyNot(c)}`}`} />
@@ -367,24 +376,25 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     </Field>
                     {all.length === 0 && (
                       <Text size={200}>
-                        No AI connection yet. <Link href={settingsHref("ai-connections")}>Connect one in Settings → AI Connections</Link>.
+                        {t("office.hire.noConnectionYet")}
+                        <Link href={settingsHref("ai-connections")}>{t("office.hire.connectInSettings")}</Link>.
                       </Text>
                     )}
                     {connection && (
                       <div className={o.formGrid}>
-                        <Field label="Model" hint="From this connection's own catalog.">
+                        <Field label={t("office.hire.modelLabel")} hint={t("office.hire.modelHint")}>
                           <Select value={model?.id ?? ""} onChange={(_, d) => set({ model: d.value, effort: null })}>
                             {models.map((m) => (
                               <option key={m.id} value={m.id}>
                                 {m.label}
-                                {connection.catalog.recommended === m.id ? " (recommended)" : ""}
+                                {connection.catalog.recommended === m.id ? t("office.hire.recommendedSuffix") : ""}
                               </option>
                             ))}
                           </Select>
                         </Field>
-                        <Field label="Effort" hint={model && model.efforts.length === 0 ? "This model takes no effort level." : "How thoroughly it works."}>
+                        <Field label={t("office.hire.effortLabel")} hint={model && model.efforts.length === 0 ? t("office.hire.effortNoLevelHint") : t("office.hire.effortHint")}>
                           <Select value={effort ?? ""} disabled={model === null || model.efforts.length === 0} onChange={(_, d) => set({ effort: d.value })}>
-                            {model?.efforts.length === 0 && <option value="">No effort level</option>}
+                            {model?.efforts.length === 0 && <option value="">{t("office.hire.noEffortOption")}</option>}
                             {(model?.efforts ?? []).map((e) => (
                               <option key={e} value={e}>
                                 {effortLabel(e)}
@@ -396,18 +406,19 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     )}
                     {connection &&
                       (connection.capabilities.webSearch === "yes" ? (
-                        <Switch label="Web search (the runtime's own search)" checked={draft.webSearch} onChange={(_, d) => set({ webSearch: d.checked })} />
+                        <Switch label={t("office.hire.webSearchLabel")} checked={draft.webSearch} onChange={(_, d) => set({ webSearch: d.checked })} />
                       ) : (
                         <Text size={200} className={o.muted}>
-                          Web search: not offered — this connection's CLI has no search Orbit can switch ({connection.capabilities.webSearch === "no" ? "it has none" : "not known"}).
+                          {t("office.hire.webSearchOff", { why: connection.capabilities.webSearch === "no" ? t("office.hire.webSearchNone") : t("office.hire.webSearchUnknown") })}
                         </Text>
                       ))}
                     {connection?.runtime === "claude" &&
                       (pluginAllowed(connection) ? (
-                        <Switch label="Orbit plugin (its skills; its hooks never run for an employee)" checked={draft.orbitPlugin} onChange={(_, d) => set({ orbitPlugin: d.checked })} />
+                        <Switch label={t("office.hire.pluginLabel")} checked={draft.orbitPlugin} onChange={(_, d) => set({ orbitPlugin: d.checked })} />
                       ) : (
                         <Text size={200} className={o.muted}>
-                          Orbit plugin: not approved for employees on this connection. <Link href={settingsHref("ai-connections")}>Settings → AI Connections → Claude Code → Plugins</Link>
+                          {t("office.hire.pluginNotApproved")}
+                          <Link href={settingsHref("ai-connections")}>{t("office.hire.pluginSettingsLink")}</Link>
                         </Text>
                       ))}
                   </>
@@ -419,40 +430,40 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
 
             {at === 4 && body && connection && model && resources && (
               <div className={o.form}>
-                <dl className={o.dl} aria-label="Your choices">
-                  <dt className={o.dt}>Name</dt>
+                <dl className={o.dl} aria-label={t("office.hire.choicesAria")}>
+                  <dt className={o.dt}>{t("office.hire.choiceName")}</dt>
                   <dd className={o.dd}>{body.name}</dd>
-                  <dt className={o.dt}>Role</dt>
+                  <dt className={o.dt}>{t("office.hire.choiceRole")}</dt>
                   <dd className={o.dd}>{body.profile.title}</dd>
-                  <dt className={o.dt}>Department</dt>
-                  <dd className={o.dd}>{department?.name ?? "Unassigned"}</dd>
-                  <dt className={o.dt}>Team lead</dt>
-                  <dd className={o.dd}>{draft.canDelegate ? "Yes: may give parts of its work to colleagues" : "No"}</dd>
-                  <dt className={o.dt}>Runtime</dt>
+                  <dt className={o.dt}>{t("office.hire.choiceDept")}</dt>
+                  <dd className={o.dd}>{department?.name ?? t("office.overview.unassigned")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choiceTeamLead")}</dt>
+                  <dd className={o.dd}>{draft.canDelegate ? t("office.hire.teamLeadYes") : t("office.hire.teamLeadNo")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choiceRuntime")}</dt>
                   <dd className={o.dd}>
                     {RUNTIME_LABELS[connection.runtime]} — {connection.label}
                   </dd>
-                  <dt className={o.dt}>Model</dt>
+                  <dt className={o.dt}>{t("office.hire.choiceModel")}</dt>
                   <dd className={o.dd}>{model.label}</dd>
-                  <dt className={o.dt}>Effort</dt>
-                  <dd className={o.dd}>{effort ? effortLabel(effort) : "None (this model takes none)"}</dd>
-                  <dt className={o.dt}>Web search</dt>
-                  <dd className={o.dd}>{webSearch ? "On" : "Off"}</dd>
-                  <dt className={o.dt}>Orbit plugin</dt>
-                  <dd className={o.dd}>{orbitPlugin ? "On" : "Off"}</dd>
-                  <dt className={o.dt}>Resources</dt>
+                  <dt className={o.dt}>{t("office.hire.choiceEffort")}</dt>
+                  <dd className={o.dd}>{effort ? effortLabel(effort) : t("office.hire.effortNone")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choiceWebSearch")}</dt>
+                  <dd className={o.dd}>{webSearch ? t("office.hire.on") : t("office.hire.off")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choicePlugin")}</dt>
+                  <dd className={o.dd}>{orbitPlugin ? t("office.hire.on") : t("office.hire.off")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choiceResources")}</dt>
                   <dd className={o.dd}>
-                    {resources.presetId ? `${presets.find((p) => p.id === resources.presetId)?.name ?? resources.presetId} preset` : "Custom"}: {profileLine(resources)}
+                    {resources.presetId ? t("office.hire.presetNameSuffix", { name: presets.find((p) => p.id === resources.presetId)?.name ?? resources.presetId }) : t("office.hire.customPreset")}: {profileLine(resources)}
                   </dd>
-                  <dt className={o.dt}>Limits and quotas</dt>
+                  <dt className={o.dt}>{t("office.hire.choiceLimits")}</dt>
                   <dd className={o.dd}>
-                    scratch {sizeText(resources.scratchStorageMiB)}, cache {sizeText(resources.cacheStorageMiB)}, {resources.pidsLimit} processes, {resources.timeoutMinutes} minutes per attempt
+                    {t("office.hire.limitsSummary", { scratch: sizeText(resources.scratchStorageMiB), cache: sizeText(resources.cacheStorageMiB), pids: resources.pidsLimit, timeout: resources.timeoutMinutes })}
                   </dd>
                 </dl>
                 <MessageBar intent="info" layout="multiline">
                   <MessageBarBody>
                     <Text weight="semibold" size={200} block>
-                      Estimated availability
+                      {t("office.hire.estimatedAvailability")}
                     </Text>
                     <Text size={200}>{availability(resources, summary.data, connection.runtime)}</Text>
                   </MessageBarBody>
@@ -462,7 +473,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                   <MessageBar intent="warning" layout="multiline">
                     <MessageBarBody>
                       <Text weight="semibold" size={200} block>
-                        A subscription sign-in
+                        {t("office.hire.subscriptionTitle")}
                       </Text>
                       {connection.runtime === "claude" ? (
                         <>
@@ -470,7 +481,10 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                             <Text size={200}>“{CLAUDE_PLAN_NOTE.quote}”</Text>
                           </blockquote>
                           <Text size={200}>
-                            An API key is recommended for an employee that works on its own. <Link href={CLAUDE_PLAN_NOTE.source} target="_blank" rel="noopener noreferrer">Source</Link>
+                            {t("office.hire.subscriptionClaudeHint")}
+                            <Link href={CLAUDE_PLAN_NOTE.source} target="_blank" rel="noopener noreferrer">
+                              {t("office.hire.sourceLink")}
+                            </Link>
                           </Text>
                         </>
                       ) : (
@@ -479,15 +493,15 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     </MessageBarBody>
                   </MessageBar>
                 )}
-                <Checkbox checked={draft.skipProbation} onChange={(_, d) => set({ skipProbation: d.checked === true })} label="Skip the trial: it starts active, without probation work" />
+                <Checkbox checked={draft.skipProbation} onChange={(_, d) => set({ skipProbation: d.checked === true })} label={t("office.hire.skipProbationLabel")} />
                 {draft.skipProbation && (
-                  <Field label="Why the trial is skipped" required hint="Recorded with the decision.">
+                  <Field label={t("office.hire.skipReasonLabel")} required hint={t("office.hire.skipReasonHint")}>
                     <Input value={draft.skipReason} onChange={(_, d) => set({ skipReason: d.value })} />
                   </Field>
                 )}
                 {!draft.skipProbation && (
                   <Text size={200} className={o.muted}>
-                    It starts on probation: you activate it once its trial work is done.
+                    {t("office.hire.probationNote")}
                   </Text>
                 )}
               </div>
@@ -495,7 +509,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
 
             {blocked.length > 0 && (
               <Text size={200} className={o.muted} role="status">
-                To continue: {blocked.join(" ")}
+                {t("office.hire.toContinue", { reasons: blocked.join(" ") })}
               </Text>
             )}
             {failure !== null &&
@@ -517,15 +531,15 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
               ))}
           </DialogContent>
           <DialogActions className={s.dialogActions}>
-            <Button onClick={onClose}>Cancel</Button>
-            {at > 0 && <Button onClick={() => setAt(at - 1)}>Back</Button>}
+            <Button onClick={onClose}>{t("office.assign.cancel")}</Button>
+            {at > 0 && <Button onClick={() => setAt(at - 1)}>{t("office.hire.back")}</Button>}
             {at < HIRE_STEPS.length - 1 ? (
               <Button appearance="primary" disabled={blocked.length > 0} onClick={() => setAt(at + 1)}>
-                Next
+                {t("office.hire.next")}
               </Button>
             ) : (
               <Button appearance="primary" disabled={busy || blocked.length > 0} onClick={() => void hire()}>
-                {busy ? "Hiring…" : "Hire"}
+                {busy ? t("office.hire.hiring") : t("office.hire.hire")}
               </Button>
             )}
           </DialogActions>

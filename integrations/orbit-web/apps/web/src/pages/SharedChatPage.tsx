@@ -8,6 +8,7 @@ import { SourceMark } from "../components/SourceMark";
 import { chatReducer, emptyChat } from "../features/chat/chatReducer";
 import { Timeline } from "../features/chat/Timeline";
 import { useResource } from "../hooks/useResource";
+import { useI18n } from "../i18n";
 import { get } from "../services/api";
 
 const useStyles = makeStyles({
@@ -37,6 +38,7 @@ export const sharedTokenOf = (hash: string): string | null => /^#\/share\/([A-Za
 const when = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export function SharedChatPage({ token }: { token: string }) {
+  const { t } = useI18n();
   const s = useStyles();
   const chat = useResource<SharedChat>(() => get(`/api/shared/${token}`), [token]);
   const items = useMemo(() => (chat.data?.events ?? []).reduce(chatReducer, emptyChat()).items, [chat.data]);
@@ -45,13 +47,13 @@ export function SharedChatPage({ token }: { token: string }) {
       <div className={s.inner}>
         <div className={s.brand}>
           <img src="/orbit.svg" alt="" className={s.logo} />
-          <Text weight="semibold">Orbit Web</Text>
-          <Text size={200}>· a shared chat</Text>
+          <Text weight="semibold">{t("common.sharedChat.brand")}</Text>
+          <Text size={200}>{t("common.sharedChat.subtitle")}</Text>
         </div>
-        {chat.loading && chat.data === null && <Spinner label="Opening the shared chat…" />}
+        {chat.loading && chat.data === null && <Spinner label={t("common.sharedChat.loading")} />}
         {chat.error && chat.data === null && (
           <MessageBar intent="warning">
-            <MessageBarBody>This chat is not shared, or no longer: the link may be wrong, or its owner stopped sharing it.</MessageBarBody>
+            <MessageBarBody>{t("common.sharedChat.notShared")}</MessageBarBody>
           </MessageBar>
         )}
         {chat.data && (
@@ -66,13 +68,13 @@ export function SharedChatPage({ token }: { token: string }) {
                     <Text size={200}>·</Text>
                   </>
                 )}
-                <Text size={200}>Shared {when(chat.data.sharedAt)}</Text>
-                {!chat.data.includeTools && <Text size={200}>· tools shown by their title only</Text>}
+                <Text size={200}>{t("common.sharedChat.sharedAt", { when: when(chat.data.sharedAt) })}</Text>
+                {!chat.data.includeTools && <Text size={200}>{t("common.sharedChat.toolsByTitleOnly")}</Text>}
               </div>
             </header>
             <Timeline items={items} />
             <Text size={200} className={s.foot}>
-              A read-only snapshot of this conversation, as it was when it was shared: it does not change as the chat goes on.
+              {t("common.sharedChat.footer")}
             </Text>
           </>
         )}

@@ -11,9 +11,10 @@ import { CodeBlock } from "../../components/CodeBlock";
 import { DesksIcon } from "../../components/SectionIcons";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { bytesText, sizeText } from "../resources/format";
-import { Card, ErrorBar, Word, useParts, when } from "./parts";
+import { Card, ErrorBar, Word, plural, useParts, when } from "./parts";
 
 // Past this, a file's text is shown plain: highlighting it would slow the page down.
 const HIGHLIGHT_MAX = 64 * 1024;
@@ -22,29 +23,36 @@ const kept = (e: DeskEntry): boolean => e.path === null || (DESK_TOOLBOX_DIRS as
 
 type Ask = { kind: "remove"; paths: string[] } | { kind: "empty" } | { kind: "cache" };
 
-const ASK_TEXT: Record<Ask["kind"], { title: (name: string, n: number) => string; act: string }> = {
-  remove: { title: (name, n) => `Remove ${n} from ${name}'s desk?`, act: "Remove" },
-  empty: { title: (name) => `Empty ${name}'s desk, keeping the toolbox?`, act: "Empty the desk" },
-  cache: { title: (name) => `Empty ${name}'s dependency cache?`, act: "Empty the cache" },
+const ASK_KEYS: Record<Ask["kind"], { titleKey: MessageKey; actKey: MessageKey }> = {
+  remove: { titleKey: "governance.desk.ask.removeTitle", actKey: "governance.desk.ask.removeAct" },
+  empty: { titleKey: "governance.desk.ask.emptyTitle", actKey: "governance.desk.ask.emptyAct" },
+  cache: { titleKey: "governance.desk.ask.cacheTitle", actKey: "governance.desk.ask.cacheAct" },
 };
 
-const resultText = (r: DeskCleanResult): string =>
-  `Removed ${r.removed} ${r.removed === 1 ? "entry" : "entries"}${r.paths.length > 0 ? ` (${r.paths.slice(0, 5).join(", ")}${r.paths.length > 5 ? ", …" : ""})` : ""}.` +
-  `${r.cacheEmptied ? " The cache was emptied." : ""}${r.missing.length > 0 ? ` Not there any more: ${r.missing.join(", ")}.` : ""}`;
+const resultText = (r: DeskCleanResult): string => {
+  const paths = r.paths.length > 0 ? ` (${r.paths.slice(0, 5).join(", ")}${r.paths.length > 5 ? ", …" : ""})` : "";
+  const removed = tr("governance.desk.result.removed", {
+    count: r.removed,
+    word: tr(r.removed === 1 ? "governance.desk.result.entryOne" : "governance.desk.result.entryMany"),
+    paths,
+  });
+  return `${removed}${r.cacheEmptied ? tr("governance.desk.result.cacheEmptied") : ""}${r.missing.length > 0 ? tr("governance.desk.result.missing", { missing: r.missing.join(", ") }) : ""}`;
+};
 
 function FileView({ base, path }: { base: string; path: string }) {
+  const { t } = useI18n();
   const s = useParts();
   const file = useResource<DeskFile>(() => get(`${base}/file?path=${encodeURIComponent(path)}`), [base, path]);
   const f = file.data;
   return (
-    <Card title={path} icon={<Document16Regular />} tone="neutral" description={f === null ? undefined : `${bytesText(f.bytes)} · changed ${when(f.modifiedAt)}`}>
+    <Card title={path} icon={<Document16Regular />} tone="neutral" description={f === null ? undefined : t("governance.desk.fileMeta", { bytes: bytesText(f.bytes), at: when(f.modifiedAt) })}>
       {f === null ? (
-        file.error ? <ErrorBar text={file.error} /> : <Spinner size="tiny" label="Reading the file…" />
+        file.error ? <ErrorBar text={file.error} /> : <Spinner size="tiny" label={t("governance.desk.readingFile")} />
       ) : f.text === null ? (
-        <Text className={s.muted}>Not text: {bytesText(f.bytes)}. What it holds is not shown here.</Text>
+        <Text className={s.muted}>{t("governance.desk.notText", { bytes: bytesText(f.bytes) })}</Text>
       ) : (
         <>
-          {f.truncated && <Text className={s.muted}>Only the first {bytesText(f.text.length)} of {bytesText(f.bytes)} is shown.</Text>}
+          {f.truncated && <Text className={s.muted}>{t("governance.desk.truncatedFile", { shown: bytesText(f.text.length), total: bytesText(f.bytes) })}</Text>}
           <CodeBlock code={f.text} language={f.text.length <= HIGHLIGHT_MAX ? languageOf(path) : null} />
         </>
       )}
@@ -53,6 +61,7 @@ function FileView({ base, path }: { base: string; path: string }) {
 }
 
 export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const [dir, setDir] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -66,7 +75,7 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
   const back = (
     <div>
       <Button appearance="subtle" shape="circular" icon={<ArrowLeft16Regular />} onClick={() => go("desks")}>
-        All desks
+        {t("governance.desk.allDesks")}
       </Button>
     </div>
   );
@@ -74,10 +83,10 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
     return (
       <div className={s.page}>
         {back}
-        {tree.error ? <ErrorBar text={tree.error} /> : <Spinner label="Reading the desk…" />}
+        {tree.error ? <ErrorBar text={tree.error} /> : <Spinner label={t("governance.desk.readingDesk")} />}
       </div>
     );
-  const t = tree.data;
+  const desk = tree.data;
   const into = (d: string) => {
     setDir(d);
     setOpen(null);
@@ -89,24 +98,30 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
     setSaid(null);
     const body: DeskCleanRequest = a.kind === "remove" ? { remove: a.paths } : a.kind === "empty" ? { empty: true } : { cache: true };
     try {
-      setSaid({ intent: "success", text: resultText(await send<DeskCleanResult>("POST", `${base}/clean`, body, ifMatch(t.deskVersion))) });
+      setSaid({ intent: "success", text: resultText(await send<DeskCleanResult>("POST", `${base}/clean`, body, ifMatch(desk.deskVersion))) });
       setChosen([]);
       setChoosing(false);
       setOpen(null);
     } catch (err) {
-      setSaid({ intent: "warning", text: isStale(err) ? "The desk changed since you opened it: nothing was removed. It is read again below." : errorText(err) });
+      setSaid({ intent: "warning", text: isStale(err) ? t("governance.desk.staleClean") : errorText(err) });
     } finally {
       setBusy(false);
       void tree.reload();
     }
   };
-  const segments = t.dir === "" ? [] : t.dir.split("/");
-  const used = t.storage;
+  const segments = desk.dir === "" ? [] : desk.dir.split("/");
+  const used = desk.storage;
+  const cachePart = used.cacheUsedMiB !== null && used.cacheQuotaMiB > 0 ? t("governance.desk.measuredCache", { used: sizeText(used.cacheUsedMiB), quota: sizeText(used.cacheQuotaMiB) }) : "";
   const measured =
     used.deskUsedMiB === null
-      ? "Not measured yet"
-      : `${sizeText(used.deskUsedMiB)} of ${sizeText(used.deskQuotaMiB)} measured in the desk${used.cacheUsedMiB !== null && used.cacheQuotaMiB > 0 ? `, ${sizeText(used.cacheUsedMiB)} of ${sizeText(used.cacheQuotaMiB)} in its cache` : ""} · ${when(used.measuredAt)}`;
-  const can = t.clean.allowed && !busy;
+      ? t("governance.desk.notMeasuredYet")
+      : t("governance.desk.measuredSummary", {
+          used: sizeText(used.deskUsedMiB),
+          quota: sizeText(used.deskQuotaMiB),
+          cache: cachePart,
+          at: when(used.measuredAt),
+        });
+  const can = desk.clean.allowed && !busy;
   const toggle = (path: string, on: boolean) => setChosen((c) => (on ? [...c, path] : c.filter((p) => p !== path)));
   return (
     <div className={s.page}>
@@ -114,37 +129,38 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
       <Card
         title={
           <>
-            {t.employee.name}'s desk <Word value={t.employee.employment} />
+            {t("governance.desk.title", { name: desk.employee.name })}
+            <Word value={desk.employee.employment} />
           </>
         }
         icon={<DesksIcon size={18} />}
         tone="neutral"
-        description={`${measured} · desk version ${t.deskVersion}. Read only: what its accepted work left, and the toolbox it wrote for itself. Every look is recorded in the audit.`}
+        description={t("governance.desk.description", { measured, version: desk.deskVersion })}
         actions={
           <>
             <Button size="small" disabled={!can} onClick={() => (setChoosing((c) => !c), setChosen([]))}>
-              {choosing ? "Done choosing" : "Clean up…"}
+              {choosing ? t("governance.desk.doneChoosing") : t("governance.desk.cleanUp")}
             </Button>
             <Button size="small" disabled={!can} onClick={() => setAsk({ kind: "empty" })}>
-              Empty the desk, keep the toolbox…
+              {t("governance.desk.emptyKeepToolbox")}
             </Button>
             {(used.cacheQuotaMiB > 0 || (used.cacheUsedMiB ?? 0) > 0) && (
               <Button size="small" disabled={!can} onClick={() => setAsk({ kind: "cache" })}>
-                Empty the cache…
+                {t("governance.desk.emptyCache")}
               </Button>
             )}
           </>
         }
       >
-        {!t.clean.allowed && t.clean.why !== null && <Text className={s.muted}>Not cleaned up now: {t.clean.why}</Text>}
+        {!desk.clean.allowed && desk.clean.why !== null && <Text className={s.muted}>{t("governance.desk.notCleanedNow", { why: desk.clean.why })}</Text>}
         {said !== null && (
           <MessageBar intent={said.intent}>
             <MessageBarBody>{said.text}</MessageBarBody>
           </MessageBar>
         )}
-        <nav aria-label="Folder" className={s.row}>
+        <nav aria-label={t("governance.desk.folderAria")} className={s.row}>
           <Button size="small" appearance="transparent" onClick={() => into("")}>
-            Desk
+            {t("governance.desk.rootName")}
           </Button>
           {segments.map((seg, i) => (
             <span key={`${i}:${seg}`} className={s.row}>
@@ -156,24 +172,28 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
           ))}
         </nav>
         <Text size={200} className={s.muted}>
-          {bytesText(t.bytes)} in {t.files} {t.files === 1 ? "file" : "files"}
-          {t.truncated ? ` · the ${t.entries.length} biggest are shown` : ""}
+          {t("governance.desk.fileCount", {
+            bytes: bytesText(desk.bytes),
+            count: desk.files,
+            word: t(desk.files === 1 ? "governance.desk.fileOne" : "governance.desk.fileMany"),
+            truncated: desk.truncated ? t("governance.desk.biggestShown", { count: desk.entries.length }) : "",
+          })}
         </Text>
-        <Table size="small" aria-label="What the desk holds">
+        <Table size="small" aria-label={t("governance.desk.holdsAria")}>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Name</TableHeaderCell>
-              <TableHeaderCell>Size</TableHeaderCell>
-              <TableHeaderCell>Files</TableHeaderCell>
-              <TableHeaderCell>Changed</TableHeaderCell>
+              <TableHeaderCell>{t("governance.desk.colName")}</TableHeaderCell>
+              <TableHeaderCell>{t("governance.desk.colSize")}</TableHeaderCell>
+              <TableHeaderCell>{t("governance.desk.colFiles")}</TableHeaderCell>
+              <TableHeaderCell>{t("governance.desk.colChanged")}</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {t.entries.map((e) => (
+            {desk.entries.map((e) => (
               <TableRow key={e.path ?? `?${e.name}`}>
                 <TableCell>
                   <span className={s.row}>
-                    {choosing && e.path !== null && !kept(e) && <Checkbox aria-label={`Choose ${e.name}`} checked={chosen.includes(e.path)} onChange={(_, d) => toggle(e.path as string, d.checked === true)} />}
+                    {choosing && e.path !== null && !kept(e) && <Checkbox aria-label={t("governance.desk.chooseAria", { name: e.name })} checked={chosen.includes(e.path)} onChange={(_, d) => toggle(e.path as string, d.checked === true)} />}
                     {e.type === "dir" ? <Folder16Regular aria-hidden /> : e.type === "link" ? <Link16Regular aria-hidden /> : <Document16Regular aria-hidden />}
                     {e.path === null || e.type === "link" || e.type === "other" ? (
                       <Text>{e.type === "link" ? `${e.name} → ${e.target ?? ""}` : e.name}</Text>
@@ -191,14 +211,14 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
             ))}
           </TableBody>
         </Table>
-        {t.entries.length === 0 && <Text className={s.muted}>This folder is empty.</Text>}
+        {desk.entries.length === 0 && <Text className={s.muted}>{t("governance.desk.emptyFolder")}</Text>}
         {choosing && (
           <div className={s.row}>
             <Button size="small" appearance="primary" icon={<Delete16Regular />} disabled={chosen.length === 0 || !can} onClick={() => setAsk({ kind: "remove", paths: chosen })}>
-              Remove {chosen.length}…
+              {t("governance.desk.removeCount", { count: chosen.length })}
             </Button>
             <Text size={200} className={s.muted}>
-              The toolbox's folders stay; what is in them may be chosen.
+              {t("governance.desk.toolboxFoldersStay")}
             </Text>
           </div>
         )}
@@ -208,7 +228,12 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
         <Dialog open onOpenChange={(_, v) => !v.open && setAsk(null)}>
           <DialogSurface className="orbit-touch">
             <DialogBody>
-              <DialogTitle>{ASK_TEXT[ask.kind].title(t.employee.name, ask.kind === "remove" ? ask.paths.length : 0)}</DialogTitle>
+              <DialogTitle>
+                {t(ASK_KEYS[ask.kind].titleKey, {
+                  name: desk.employee.name,
+                  count: ask.kind === "remove" ? plural(ask.paths.length, t("governance.desk.result.entryOne"), t("governance.desk.result.entryMany")).split(" ")[0] ? ask.paths.length : 0 : 0,
+                })}
+              </DialogTitle>
               <DialogContent>
                 {ask.kind === "remove" && (
                   <ul>
@@ -217,14 +242,14 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
                     ))}
                   </ul>
                 )}
-                {ask.kind === "empty" && <p>Everything in the desk but toolbox/ is removed: the files its accepted work left there.</p>}
-                {ask.kind === "cache" && <p>The packages it downloaded (pip, npm and the like) are removed; its tools download them again when they need them.</p>}
-                <p>This cannot be undone. Its next work starts from what is left.</p>
+                {ask.kind === "empty" && <p>{t("governance.desk.emptyWarning")}</p>}
+                {ask.kind === "cache" && <p>{t("governance.desk.cacheWarning")}</p>}
+                <p>{t("governance.desk.cannotBeUndone")}</p>
               </DialogContent>
               <DialogActions>
-                <Button onClick={() => setAsk(null)}>Cancel</Button>
+                <Button onClick={() => setAsk(null)}>{t("governance.approval.cancel")}</Button>
                 <Button appearance="primary" onClick={() => void clean(ask)}>
-                  {ASK_TEXT[ask.kind].act}
+                  {t(ASK_KEYS[ask.kind].actKey)}
                 </Button>
               </DialogActions>
             </DialogBody>

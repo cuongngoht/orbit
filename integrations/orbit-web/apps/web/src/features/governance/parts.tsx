@@ -4,6 +4,7 @@ import { Badge, MessageBar, MessageBarBody, Text, makeStyles, mergeClasses, shor
 import { ChevronDown16Regular, ChevronRight16Regular } from "@fluentui/react-icons";
 import type { ReactNode } from "react";
 import { IconBadge, type IconTone } from "../../components/SectionIcons";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 
 export const useParts = makeStyles({
   page: {
@@ -477,19 +478,20 @@ const TONES: Record<string, Tone> = {
   deleted: "subtle",
 };
 
-const LABELS: Record<string, string> = {
-  require_approval: "requires approval",
-  not_proven: "not proven",
+const LABEL_KEYS: Record<string, MessageKey> = {
+  require_approval: "governance.parts.word.require_approval",
+  not_proven: "governance.parts.word.not_proven",
 };
 
 // A word of governance, said as a badge whose colour says how much it allows or how bad it is.
 export function Word({ value, label }: { value: string; label?: string }) {
+  const { t } = useI18n();
   const s = useParts();
   return (
     <Badge appearance="tint" color={TONES[value] ?? "informative"} style={{ borderRadius: "9999px", flexShrink: 0, whiteSpace: "nowrap" }}>
       <span className={s.badgeInner}>
         <span className={s.badgeDot} aria-hidden />
-        <span>{label ?? LABELS[value] ?? value.replace(/_/g, " ").toLowerCase()}</span>
+        <span>{label ?? (LABEL_KEYS[value] ? t(LABEL_KEYS[value]) : value.replace(/_/g, " ").toLowerCase())}</span>
       </span>
     </Badge>
   );
@@ -503,20 +505,20 @@ export const short = (hex: string | null | undefined, n = 12): string => (hex ? 
 // reading it: the owner is "you", Orbit Web's own work is Orbit Web's, an agent is named by its id.
 export function byWhom(label: string | null | undefined): string {
   if (!label) return "—";
-  if (label.startsWith("owner:")) return "you";
-  if (label.startsWith("system:")) return "Orbit Web";
-  if (label.startsWith("agent:")) return `an agent (${short(label.slice("agent:".length), 16)})`;
-  if (label === "anonymous" || label === "agent-network") return "nobody verified";
+  if (label.startsWith("owner:")) return tr("governance.parts.byWhom.you");
+  if (label.startsWith("system:")) return tr("governance.parts.byWhom.orbitWeb");
+  if (label.startsWith("agent:")) return tr("governance.parts.byWhom.agent", { id: short(label.slice("agent:".length), 16) });
+  if (label === "anonymous" || label === "agent-network") return tr("governance.parts.byWhom.unverified");
   return label;
 }
 
 // Who a record or a decision says acted, by its principal type: the owner (a person), one of the account's agents,
 // Orbit Web itself, or somebody nobody verified.
 export function principalOf(type: string, id: string, agentId: string | null): string {
-  if (type === "human") return "you";
-  if (type === "agent") return `agent ${short(agentId ?? id, 16)}`;
-  if (type === "system" || type === "service") return `Orbit Web (${id})`;
-  return "nobody verified";
+  if (type === "human") return tr("governance.parts.principal.you");
+  if (type === "agent") return tr("governance.parts.principal.agent", { id: short(agentId ?? id, 16) });
+  if (type === "system" || type === "service") return tr("governance.parts.principal.orbitWeb", { id });
+  return tr("governance.parts.principal.unverified");
 }
 
 export function ErrorBar({ text }: { text: string | null }) {

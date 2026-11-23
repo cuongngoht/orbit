@@ -10,42 +10,45 @@ import type { ResourceGovernanceList, ResourceGovernanceSummary, ResourceGoverna
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { limitOf } from "./PolicyTable";
 import { overrideRowsOf, withOverrideRows, type Narrowing, type OverrideRow } from "./overrideRows";
 import { Card, CleanSelect, EmptyState, ErrorBar, Stat, Word, byWhom, principalOf, short, useParts, when } from "./parts";
 
-const GROUPS: Record<ResourceKind, { page: GovernancePage; path: string; title: string; one: string; all: string; empty: string; about: string }> = {
+const GROUPS: Record<ResourceKind, { page: GovernancePage; path: string; titleKey: MessageKey; oneKey: MessageKey; allKey: MessageKey; emptyKey: MessageKey; aboutKey: MessageKey; emptyBodyKey: MessageKey }> = {
   workspace: {
     page: "workspaces",
     path: "/api/governance/workspaces",
-    title: "Workspaces",
-    one: "chat",
-    all: "All workspaces",
-    empty: "No chat yet.",
-    about: "Your chats: each one a Claude Code workspace, under your policy.",
+    titleKey: "governance.resources.workspace.title",
+    oneKey: "governance.resources.workspace.one",
+    allKey: "governance.resources.workspace.all",
+    emptyKey: "governance.resources.workspace.empty",
+    aboutKey: "governance.resources.workspace.about",
+    emptyBodyKey: "governance.resources.workspace.emptyBody",
   },
   research_workspace: {
     page: "research",
     path: "/api/governance/research",
-    title: "Research workspaces",
-    one: "research workspace",
-    all: "All research workspaces",
-    empty: "No research workspace yet.",
-    about: "Your research workspaces, under your policy.",
+    titleKey: "governance.resources.research_workspace.title",
+    oneKey: "governance.resources.research_workspace.one",
+    allKey: "governance.resources.research_workspace.all",
+    emptyKey: "governance.resources.research_workspace.empty",
+    aboutKey: "governance.resources.research_workspace.about",
+    emptyBodyKey: "governance.resources.research_workspace.emptyBody",
   },
 };
 
-const NARROWING_OPTIONS: { value: Narrowing; label: string }[] = [
-  { value: "inherit", label: "As your policy says" },
-  { value: "require_approval", label: "You approve first" },
-  { value: "deny", label: "Denied" },
+const NARROWING_KEYS: ReadonlyArray<{ value: Narrowing; labelKey: MessageKey }> = [
+  { value: "inherit", labelKey: "governance.resources.narrowing.inherit" },
+  { value: "require_approval", labelKey: "governance.resources.narrowing.require_approval" },
+  { value: "deny", labelKey: "governance.resources.narrowing.deny" },
 ];
 
 // What an override says about an action nobody may be granted, or that holds every host.
-const OVERRIDE_NOTES: Partial<Record<string, string>> = {
-  "network.egress": "Every host, Claude Code's own service included: denied, a run here cannot reach the model.",
+const OVERRIDE_NOTE_KEYS: Partial<Record<string, MessageKey>> = {
+  "network.egress": "governance.resources.overrideEgressNote",
 };
 
 const useStyles = makeStyles({
@@ -96,27 +99,30 @@ const useStyles = makeStyles({
 });
 
 function Counts({ r }: { r: ResourceGovernanceSummary }) {
+  const { t } = useI18n();
   const s = useParts();
   return (
     <div className={s.row}>
       {r.deletedAt !== null && <Word value="deleted" />}
       {r.overridden && <Word value="overridden" />}
       <Text size={200} className={s.muted}>
-        {r.runningRuns} running · {r.pendingApprovals} waiting for you
+        {t("governance.resources.countsLine", { running: r.runningRuns, waiting: r.pendingApprovals })}
       </Text>
     </div>
   );
 }
 
 function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const styles = useStyles();
   const group = GROUPS[kind];
+  const title = t(group.titleKey);
   const list = useResource<ResourceGovernanceList>(() => get(group.path), [group.path]);
   useAppEvent("governance.changed", (e) => (e.data.area === "resources" || e.data.area === "overrides") && void list.reload());
   useAppEvent("approval.changed", () => void list.reload());
   return (
-    <Card title={group.title} icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />} tone={kind === "workspace" ? "brand" : "teal"} description={group.about}>
+    <Card title={title} icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />} tone={kind === "workspace" ? "brand" : "teal"} description={t(group.aboutKey)}>
       {list.data === null ? (
         list.error ? (
           <ErrorBar text={list.error} />
@@ -127,11 +133,11 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
         <EmptyState
           icon={kind === "workspace" ? <WorkspacesIcon size={22} /> : <ResearchIcon size={22} />}
           tone={kind === "workspace" ? "brand" : "teal"}
-          title={group.empty}
-          body={kind === "workspace" ? "Chats you start will appear here with per-workspace policy overrides." : "Research workspaces you create will appear here with per-workspace policy overrides."}
+          title={t(group.emptyKey)}
+          body={t(group.emptyBodyKey)}
         />
       ) : (
-        <ul className={styles.rowList} aria-label={group.title}>
+        <ul className={styles.rowList} aria-label={title}>
           {list.data.resources.map((r) => (
             <li key={r.id} className={styles.resourceRow}>
               <div className={s.cardTitleStack}>
@@ -139,8 +145,8 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
                   {r.title || short(r.id, 13)}
                 </Button>
                 <Text size={200} className={s.muted}>
-                  Created {when(r.createdAt)}
-                  {r.deletedAt !== null ? ` · deleted ${when(r.deletedAt)}` : ""}
+                  {t("governance.resources.created", { at: when(r.createdAt) })}
+                  {r.deletedAt !== null ? t("governance.resources.deletedSuffix", { at: when(r.deletedAt) }) : ""}
                 </Text>
               </div>
               <div className={s.row}>
@@ -156,9 +162,11 @@ function ResourceList({ kind, go }: { kind: ResourceKind; go: (page: GovernanceP
 }
 
 function OverrideEditor({ resource, onChanged, onRemoved }: { resource: ResourceGovernanceView; onChanged: (v: ResourceGovernanceView) => void; onRemoved: () => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const styles = useStyles();
   const group = GROUPS[resource.kind];
+  const one = t(group.oneKey);
   const rules: Rule[] = resource.override?.override.rules ?? [];
   const [rows, setRows] = useState<OverrideRow[]>(() => overrideRowsOf(rules).rows);
   const [dirty, setDirty] = useState(false);
@@ -167,6 +175,7 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
   const kept = overrideRowsOf(rules).kept;
   const deleted = resource.deletedAt !== null;
   const path = `${group.path}/${encodeURIComponent(resource.id)}/override`;
+  const narrowingOptions = NARROWING_KEYS.map((o) => ({ value: o.value, label: t(o.labelKey) }));
   const choose = (row: OverrideRow, narrowing: Narrowing) => {
     setRows(rows.map((r) => (r.action === row.action ? { ...r, narrowing } : r)));
     setDirty(true);
@@ -192,18 +201,19 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
   };
   return (
     <Card
-      title={<>Override {resource.override ? <Word value="overridden" label="in effect" /> : <Word value="none" label="none" />}</>}
+      title={<>{t("governance.resources.overrideTitle")}{resource.override ? <Word value="overridden" label={t("governance.resources.inEffect")} /> : <Word value="none" label={t("governance.resources.none")} />}</>}
       icon={<ShieldTask16Regular />}
-      description={`It narrows your policy for this ${group.one} alone: an action can wait for your approval or be denied here, never be allowed more. An allow in an override changes nothing -- loosening is done in your policy.`}
+      description={t("governance.resources.overrideDesc", { one })}
     >
       {deleted && (
         <MessageBar intent="info">
-          <MessageBarBody>It was deleted: nothing runs there to narrow, so its override cannot change.</MessageBarBody>
+          <MessageBarBody>{t("governance.resources.deletedBanner")}</MessageBarBody>
         </MessageBar>
       )}
       {resource.override && (
         <Text size={200} className={s.muted}>
-          Set {when(resource.override.setAt)} by {byWhom(resource.override.setBy)} · digest <span className={s.codeChip}>{short(resource.override.digest, 16)}</span>
+          {t("governance.resources.setMetaBefore", { at: when(resource.override.setAt), by: byWhom(resource.override.setBy) })}
+          <span className={s.codeChip}>{short(resource.override.digest, 16)}</span>
         </Text>
       )}
       {resource.override?.warnings.map((w) => (
@@ -213,10 +223,10 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
           </MessageBarBody>
         </MessageBar>
       ))}
-      <ul className={styles.rowList} aria-label="What the override narrows">
+      <ul className={styles.rowList} aria-label={t("governance.resources.whatNarrowsAria")}>
         {rows.map((row) => {
           const limit = limitOf(row.action);
-          const note = limit.fixed ? limit.note : OVERRIDE_NOTES[row.action];
+          const note = limit.fixed ? limit.note : OVERRIDE_NOTE_KEYS[row.action] ? t(OVERRIDE_NOTE_KEYS[row.action]!) : undefined;
           return (
             <li key={row.action} className={styles.overrideRow}>
               <div className={styles.overrideAction}>
@@ -228,7 +238,7 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
                   </Text>
                 )}
               </div>
-              <CleanSelect className={styles.overrideSelect} ariaLabel={`In this ${group.one}: ${row.action}`} value={row.narrowing} disabled={deleted || limit.fixed || busy} options={NARROWING_OPTIONS} onChange={(v) => choose(row, v as Narrowing)} />
+              <CleanSelect className={styles.overrideSelect} ariaLabel={t("governance.resources.selectAria", { one, action: row.action })} value={row.narrowing} disabled={deleted || limit.fixed || busy} options={narrowingOptions} onChange={(v) => choose(row, v as Narrowing)} />
             </li>
           );
         })}
@@ -236,17 +246,17 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
       {kept.length > 0 && (
         <div className={s.inset}>
           <Text weight="semibold" size={300}>
-            Rules these rows do not show
+            {t("governance.resources.rulesNotShown")}
           </Text>
-          <ul className={s.list} aria-label="Rules these rows do not show">
+          <ul className={s.list} aria-label={t("governance.resources.rulesNotShown")}>
             {kept.map((r) => (
               <li key={r.id}>
                 <Text size={200}>
                   <span className={s.mono}>{r.id}</span> · {r.action}
-                  {r.principalType ? ` · for ${r.principalType === "human" ? "you" : `${r.principalType}s`}` : ""}
-                  {r.environment ? ` · in ${r.environment}` : ""}
-                  {r.resource ? ` · on ${r.resource}` : ""} · <Word value={r.effect} />
-                  {r.effect === "allow" ? " — changes nothing" : ""}
+                  {r.principalType ? t("governance.policyTable.keptFor", { who: r.principalType === "human" ? t("governance.parts.principal.you") : t("governance.policy.principalPlural", { type: r.principalType }) }) : ""}
+                  {r.environment ? t("governance.policyTable.keptIn", { env: r.environment }) : ""}
+                  {r.resource ? t("governance.policyTable.keptOn", { resource: r.resource }) : ""} · <Word value={r.effect} />
+                  {r.effect === "allow" ? t("governance.resources.changesNothing") : ""}
                 </Text>
               </li>
             ))}
@@ -256,11 +266,11 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
       {!deleted && (
         <div className={s.row}>
           <Button appearance="primary" disabled={busy || !dirty} onClick={save}>
-            Save override
+            {t("governance.resources.saveOverride")}
           </Button>
           {resource.override && (
             <Button disabled={busy} onClick={remove}>
-              Remove override
+              {t("governance.resources.removeOverride")}
             </Button>
           )}
         </div>
@@ -271,15 +281,17 @@ function OverrideEditor({ resource, onChanged, onRemoved }: { resource: Resource
 }
 
 function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const group = GROUPS[kind];
+  const one = t(group.oneKey);
   const view = useResource<ResourceGovernanceView>(() => get(`${group.path}/${encodeURIComponent(id)}`), [group.path, id]);
   useAppEvent("governance.changed", (e) => e.data.area !== "reports" && e.data.area !== "isolation" && void view.reload());
   useAppEvent("approval.changed", () => void view.reload());
   const back = (
     <div>
       <Button appearance="subtle" shape="circular" icon={<ArrowLeft16Regular />} onClick={() => go(group.page)}>
-        {group.all}
+        {t(group.allKey)}
       </Button>
     </div>
   );
@@ -294,40 +306,52 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
   return (
     <div className={s.page}>
       {back}
-      <Card title={<>{r.title || short(r.id, 13)} {r.deletedAt !== null && <Word value="deleted" />}</>} icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />} tone={kind === "workspace" ? "brand" : "teal"} description={`A ${group.one} of your account · created ${when(r.createdAt)}${r.deletedAt !== null ? ` · deleted ${when(r.deletedAt)}` : ""}`}>
+      <Card
+        title={<>{r.title || short(r.id, 13)} {r.deletedAt !== null && <Word value="deleted" />}</>}
+        icon={kind === "workspace" ? <WorkspacesIcon size={18} /> : <ResearchIcon size={18} />}
+        tone={kind === "workspace" ? "brand" : "teal"}
+        description={t("governance.resources.detailDesc", {
+          one,
+          at: when(r.createdAt),
+          deleted: r.deletedAt !== null ? t("governance.resources.deletedSuffix", { at: when(r.deletedAt) }) : "",
+        })}
+      >
         <div className={s.grid}>
-          <Stat label="Runs running" value={r.runningRuns} />
-          <Stat label="Approvals waiting" value={r.pendingApprovals} tone={r.pendingApprovals > 0 ? "warning" : "neutral"} onClick={() => go("approvals")} />
+          <Stat label={t("governance.overview.statRunning")} value={r.runningRuns} />
+          <Stat label={t("governance.overview.statApprovals")} value={r.pendingApprovals} tone={r.pendingApprovals > 0 ? "warning" : "neutral"} onClick={() => go("approvals")} />
         </div>
       </Card>
       <Card
-        title="Policy it inherits"
+        title={t("governance.resources.policyInherits")}
         icon={<PolicyIcon size={18} />}
         tone="brand"
         actions={
           r.policy ? (
             <Button size="small" shape="circular" onClick={() => go("policy", r.policy?.revisionId ?? null)}>
-              Open
+              {t("governance.overview.open")}
             </Button>
           ) : undefined
         }
       >
         {r.policy ? (
           <Text>
-            {r.policy.revision !== null ? `Revision ${r.policy.revision}` : "A revision"} of your policy · digest <span className={s.codeChip}>{short(r.policy.digest, 16)}</span>
+            {t("governance.resources.policyMetaBefore", {
+              revLabel: r.policy.revision !== null ? t("governance.resources.policyRevision", { revision: r.policy.revision }) : t("governance.resources.aRevision"),
+            })}
+            <span className={s.codeChip}>{short(r.policy.digest, 16)}</span>
           </Text>
         ) : (
           <MessageBar intent="warning">
-            <MessageBarBody>No policy is in effect: nothing a run asks here is allowed until you publish one.</MessageBarBody>
+            <MessageBarBody>{t("governance.resources.noPolicyInEffect")}</MessageBarBody>
           </MessageBar>
         )}
       </Card>
       <OverrideEditor key={`${r.override?.digest ?? "none"}:${r.deletedAt ?? ""}`} resource={r} onChanged={view.set} onRemoved={() => void view.reload()} />
-      <Card title="Recent activity" icon={<AuditChainIcon size={18} />} tone="teal">
+      <Card title={t("governance.resources.recentActivity")} icon={<AuditChainIcon size={18} />} tone="teal">
         {r.activity.length === 0 ? (
-          <EmptyState icon={<AuditChainIcon size={22} />} tone="teal" title="Nothing on record yet." />
+          <EmptyState icon={<AuditChainIcon size={22} />} tone="teal" title={t("governance.resources.nothingOnRecord")} />
         ) : (
-          <ul className={s.list} aria-label="Recent activity">
+          <ul className={s.list} aria-label={t("governance.resources.recentActivity")}>
             {r.activity.map((e) => (
               <li key={e.eventId} className={s.inset}>
                 <div className={s.between}>
@@ -341,7 +365,7 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
                     <Word value={e.outcome} label={e.outcome} />
                   </div>
                   <Button size="small" appearance="transparent" onClick={() => go("audit", e.eventId)}>
-                    Record #{e.seq}
+                    {t("governance.resources.recordNumber", { seq: e.seq })}
                   </Button>
                 </div>
                 <Text size={200}>{principalOf(e.principalType, e.principalId, e.agentId)}</Text>

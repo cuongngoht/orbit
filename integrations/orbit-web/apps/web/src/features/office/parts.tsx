@@ -5,11 +5,12 @@ import { Badge, Button, MessageBar, MessageBarActions, MessageBarBody, Text, mak
 import { WORK_LABEL_TEXT, type AssignmentState, type RunState, type WorkLabel } from "@orbit-web/contracts";
 import { useState, type ReactNode } from "react";
 import { IconBadge, type IconTone } from "../../components/SectionIcons";
+import { t, useI18n, type MessageKey } from "../../i18n";
 import { errorText, isStale } from "../../services/api";
 import { useAppStream } from "../../services/events/AppEvents";
 
 // The one sentence a person reads wherever an employee's network access matters: Governance, Hire → Review, Assign.
-export const NETWORK_DISCLOSURE = "In Autonomous mode an employee can send the data of its assignment to any public website. Use Restricted mode, or do not give it data that must not leave.";
+export const NETWORK_DISCLOSURE = t("office.shared.networkDisclosure");
 
 export const useOfficeStyles = makeStyles({
   page: { display: "flex", flexDirection: "column", gap: "20px", maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", boxSizing: "border-box", minWidth: 0 },
@@ -337,16 +338,29 @@ export function EmptyState({ icon, tone = "brand", title, body, action }: { icon
 }
 
 export const RUN_STATE_TEXT: Record<RunState, string> = {
-  requested: "Requested",
-  waiting_for_resources: "Waiting for resources",
-  unschedulable: "Cannot start as configured",
-  starting: "Starting",
-  running: "Running",
-  succeeded: "Succeeded",
-  failed: "Failed",
-  interrupted: "Interrupted",
-  cancelled: "Cancelled",
-  unknown: "Unknown",
+  requested: t("office.shared.runState.requested"),
+  waiting_for_resources: t("office.shared.runState.waiting_for_resources"),
+  unschedulable: t("office.shared.runState.unschedulable"),
+  starting: t("office.shared.runState.starting"),
+  running: t("office.shared.runState.running"),
+  succeeded: t("office.shared.runState.succeeded"),
+  failed: t("office.shared.runState.failed"),
+  interrupted: t("office.shared.runState.interrupted"),
+  cancelled: t("office.shared.runState.cancelled"),
+  unknown: t("office.shared.runState.unknown"),
+};
+
+export const RUN_STATE_KEYS: Record<RunState, MessageKey> = {
+  requested: "office.shared.runState.requested",
+  waiting_for_resources: "office.shared.runState.waiting_for_resources",
+  unschedulable: "office.shared.runState.unschedulable",
+  starting: "office.shared.runState.starting",
+  running: "office.shared.runState.running",
+  succeeded: "office.shared.runState.succeeded",
+  failed: "office.shared.runState.failed",
+  interrupted: "office.shared.runState.interrupted",
+  cancelled: "office.shared.runState.cancelled",
+  unknown: "office.shared.runState.unknown",
 };
 
 export const when = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -356,6 +370,7 @@ export const short = (hex: string | null | undefined, n = 12): string => (hex ? 
 // When the page's data was read -- or, once the live connection was open and is not now, that it is reconnecting (the
 // data shown may be behind until it is back).
 export function AsOf({ at }: { at: string | null }) {
+  const { t: tr } = useI18n();
   const s = useOfficeStyles();
   const { connected, generation } = useAppStream();
   if (generation > 0 && !connected)
@@ -363,7 +378,7 @@ export function AsOf({ at }: { at: string | null }) {
       <span className={s.asOfRow}>
         <span className={s.lostDot} aria-hidden />
         <Text size={200} className={s.warn} role="status">
-          Connection lost — reconnecting…
+          {tr("office.shared.connectionLost")}
         </Text>
       </span>
     );
@@ -371,7 +386,7 @@ export function AsOf({ at }: { at: string | null }) {
     <span className={s.asOfRow}>
       <span className={s.liveDot} aria-hidden />
       <Text size={200} className={s.muted}>
-        {at ? `Data as of ${when(at)}` : "Reading…"}
+        {at ? tr("office.shared.dataAsOf", { at: when(at) }) : tr("office.shared.reading")}
       </Text>
     </span>
   );
@@ -383,9 +398,10 @@ export interface Problem {
   stale: boolean;
 }
 
-export const problemOf = (err: unknown, staleText = "This changed since the page read it: nothing was done."): Problem => ({ text: isStale(err) ? staleText : errorText(err), stale: isStale(err) });
+export const problemOf = (err: unknown, staleText = t("office.shared.staleDefault")): Problem => ({ text: isStale(err) ? staleText : errorText(err), stale: isStale(err) });
 
 export function ProblemBar({ problem, onLoadLatest }: { problem: Problem | null; onLoadLatest?: () => void }) {
+  const { t: tr } = useI18n();
   if (problem === null) return null;
   return (
     <MessageBar intent={problem.stale ? "warning" : "error"} layout="multiline">
@@ -393,7 +409,7 @@ export function ProblemBar({ problem, onLoadLatest }: { problem: Problem | null;
       {problem.stale && onLoadLatest && (
         <MessageBarActions>
           <Button size="small" onClick={onLoadLatest}>
-            Load the latest
+            {tr("office.shared.loadLatest")}
           </Button>
         </MessageBarActions>
       )}
@@ -422,15 +438,16 @@ export function useAction() {
 }
 
 export function Disclosure() {
+  const { t: tr } = useI18n();
   const s = useOfficeStyles();
   return (
     <MessageBar intent="warning" layout="multiline">
       <MessageBarBody>
         <span className={s.disclosure}>
           <Text weight="semibold" size={200}>
-            Network access
+            {tr("office.shared.networkAccessTitle")}
           </Text>
-          <Text size={200}>{NETWORK_DISCLOSURE}</Text>
+          <Text size={200}>{tr("office.shared.networkDisclosure")}</Text>
         </span>
       </MessageBarBody>
     </MessageBar>

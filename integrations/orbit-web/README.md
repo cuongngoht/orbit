@@ -1,7 +1,8 @@
 # Orbit Web 0.8.0
 
-A self-hosted, browser-based Claude Code experience with the [Orbit](../../README.md) plugin -- and, from 0.8.0, a
-**virtual office of AI employees** -- in Docker.
+Orbit's **Governed Agentic Workplace** ([what it is](../../README.md)), self-hosted in Docker: a **virtual office of AI
+employees**, each working in containers of its own under the account's policy, approvals and audit record -- and,
+beside it, a browser-based Claude Code experience with the [Orbit plugin](../../docs/plugin.md).
 
 Run it (the image beside PostgreSQL and the allocator), open http://localhost:3000 and **sign in to Orbit Web**: its own
 accounts, a username and a password, independent of every AI CLI. The first administrator is set up with a one-time

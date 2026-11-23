@@ -24,6 +24,7 @@ import {
 } from "../../components/SectionIcons";
 import { GOVERNANCE_PAGES, type GovernancePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { AuditPage } from "./AuditPage";
 import { DecisionsPage } from "./DecisionsPage";
@@ -34,17 +35,17 @@ import { PolicyPage } from "./PolicyPage";
 import { ReportsPage } from "./ReportsPage";
 import { ResourcesPage } from "./ResourcesPage";
 
-const TITLES: Record<GovernancePage, string> = {
-  overview: "Overview",
-  policy: "Policy",
-  workspaces: "Workspaces",
-  research: "Research",
-  desks: "Employee desks",
-  approvals: "Approvals",
-  decisions: "Decisions",
-  audit: "Audit timeline",
-  findings: "Security findings",
-  reports: "Daily reports",
+const TITLE_KEYS: Record<GovernancePage, MessageKey> = {
+  overview: "governance.nav.overview",
+  policy: "governance.nav.policy",
+  workspaces: "governance.nav.workspaces",
+  research: "governance.nav.research",
+  desks: "governance.nav.desks",
+  approvals: "governance.nav.approvals",
+  decisions: "governance.nav.decisions",
+  audit: "governance.nav.audit",
+  findings: "governance.nav.findings",
+  reports: "governance.nav.reports",
 };
 
 const NAV_META: Record<GovernancePage, { tone: IconTone; icon: (active: boolean) => ReactElement }> = {
@@ -211,19 +212,21 @@ export function GovernanceView({
   account?: GovernedAccount | null;
   onOpenNav?: () => void;
 }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const name = account ? account.displayName || account.email : null;
+  const emailSuffix = account?.displayName ? t("governance.view.accountEmailSuffix", { email: account.email }) : "";
 
   return (
     <div className={s.root}>
       <header className={s.top}>
         <div className={s.topInner}>
-          {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+          {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("governance.view.openNav")} onClick={onOpenNav} />}
           {!isMobile && <IconBadge icon={<GovernanceIcon size={18} active />} tone="brand" size="md" />}
           <div className={s.title}>
             <Text weight="semibold" size={isMobile ? 400 : 500}>
-              Governance · {TITLES[page]}
+              {t("governance.view.headerTitle", { page: t(TITLE_KEYS[page]) })}
             </Text>
             {name !== null && isMobile && (
               <Text size={200} className={s.muted}>
@@ -232,7 +235,7 @@ export function GovernanceView({
             )}
           </div>
           {name !== null && !isMobile && (
-            <div className={s.accountPill} title={`The account you govern: ${name}${account?.displayName ? ` (${account.email})` : ""}`}>
+            <div className={s.accountPill} title={t("governance.view.accountTooltip", { name, email: emailSuffix })}>
               <Avatar name={name} size={20} />
               <Text size={200} className={s.accountText}>
                 {name}
@@ -242,7 +245,7 @@ export function GovernanceView({
         </div>
       </header>
       <div className={s.subnavBar}>
-        <nav className={mergeClasses(s.subnav, "orbit-hscroll", isMobile && "orbit-hscroll-fade")} aria-label="Governance">
+        <nav className={mergeClasses(s.subnav, "orbit-hscroll", isMobile && "orbit-hscroll-fade")} aria-label={t("governance.view.navAria")}>
           {GOVERNANCE_PAGES.map((p) => {
             const active = p === page;
             const meta = NAV_META[p];
@@ -256,7 +259,7 @@ export function GovernanceView({
                 aria-current={active ? "page" : undefined}
                 onClick={() => go(p)}
               >
-                {TITLES[p]}
+                {t(TITLE_KEYS[p])}
               </Button>
             );
           })}

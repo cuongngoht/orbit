@@ -17,23 +17,23 @@ import type { ChainVerification, Deployment, GovernanceOverview, RevisionSource 
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, ErrorBar, Stat, Word, plural, short, useParts, when } from "./parts";
 
 // The deployment, said as what it is. In the single deployment every account's runs share one container with Orbit
 // Web: an account id on a record separates their data, not their processes.
-const DEPLOYMENT: Record<Deployment, string> = {
-  single:
-    "Single-container deployment: the agent runs in Orbit Web's own container, beside every other account's runs. Your records are your account's alone, but the agent's isolation from Orbit Web is not proven here.",
-  governed: "Governed deployment: the agent runs in a container of its own, reached through a runner, and reaches the network only through Orbit Web's egress proxy.",
+const DEPLOYMENT_KEYS: Record<Deployment, MessageKey> = {
+  single: "governance.overview.deployment.single",
+  governed: "governance.overview.deployment.governed",
 };
 
-const SOURCE: Record<RevisionSource, string> = {
-  owner: "Written by you",
-  agent: "Proposed by an agent and confirmed by you",
-  default: "The default policy Orbit Web published for your account",
-  copy: "A copy of an earlier revision",
+const SOURCE_KEYS: Record<RevisionSource, MessageKey> = {
+  owner: "governance.overview.source.owner",
+  agent: "governance.overview.source.agent",
+  default: "governance.overview.source.default",
+  copy: "governance.overview.source.copy",
 };
 
 const useStyles = makeStyles({
@@ -42,6 +42,7 @@ const useStyles = makeStyles({
 });
 
 export function OverviewPage({ go }: { go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
   const overview = useResource<GovernanceOverview>(() => get("/api/governance/overview"), []);
@@ -57,7 +58,7 @@ export function OverviewPage({ go }: { go: (page: GovernancePage, item?: string 
         <MessageBarBody>{overview.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner label="Reading the overview…" />
+      <Spinner label={t("governance.overview.reading")} />
     );
   const o = overview.data;
   const c = o.counts;
@@ -74,90 +75,106 @@ export function OverviewPage({ go }: { go: (page: GovernancePage, item?: string 
 
   return (
     <div className={s.page}>
-      <Card title="Now" icon={<OverviewIcon size={18} active />} tone="brand" description={`The governance of ${name}: your chats, your research and your policy. Nobody else's, and nobody else decides here.`}>
+      <Card title={t("governance.overview.nowTitle")} icon={<OverviewIcon size={18} active />} tone="brand" description={t("governance.overview.nowDescription", { name })}>
         <div className={s.grid}>
-          <Stat label="Workspaces" value={c.workspaces} icon={<WorkspacesIcon size={14} />} iconTone="brand" onClick={() => go("workspaces")} />
-          <Stat label="Research workspaces" value={c.researchWorkspaces} icon={<ResearchIcon size={14} />} iconTone="teal" onClick={() => go("research")} />
-          <Stat label="Runs running" value={c.runningRuns} icon={<WorkingIcon size={14} />} iconTone={c.runningRuns > 0 ? "success" : "neutral"} />
-          <Stat label="Approvals waiting" value={c.pendingApprovals} icon={<ApprovalsIcon size={14} />} iconTone={c.pendingApprovals > 0 ? "warning" : "neutral"} tone={c.pendingApprovals > 0 ? "warning" : "neutral"} onClick={() => go("approvals")} />
-          <Stat label="Open findings" value={c.openFindings} icon={<FindingsIcon size={14} />} iconTone={c.openFindings > 0 ? "danger" : "neutral"} tone={c.openFindings > 0 ? "danger" : "neutral"} onClick={() => go("findings")} />
-          <Stat label="Drafts" value={c.draftRevisions} icon={<PolicyIcon size={14} />} iconTone={c.draftRevisions > 0 ? "warning" : "neutral"} tone={c.draftRevisions > 0 ? "warning" : "neutral"} onClick={() => go("policy")} />
+          <Stat label={t("governance.overview.statWorkspaces")} value={c.workspaces} icon={<WorkspacesIcon size={14} />} iconTone="brand" onClick={() => go("workspaces")} />
+          <Stat label={t("governance.overview.statResearch")} value={c.researchWorkspaces} icon={<ResearchIcon size={14} />} iconTone="teal" onClick={() => go("research")} />
+          <Stat label={t("governance.overview.statRunning")} value={c.runningRuns} icon={<WorkingIcon size={14} />} iconTone={c.runningRuns > 0 ? "success" : "neutral"} />
+          <Stat label={t("governance.overview.statApprovals")} value={c.pendingApprovals} icon={<ApprovalsIcon size={14} />} iconTone={c.pendingApprovals > 0 ? "warning" : "neutral"} tone={c.pendingApprovals > 0 ? "warning" : "neutral"} onClick={() => go("approvals")} />
+          <Stat label={t("governance.overview.statFindings")} value={c.openFindings} icon={<FindingsIcon size={14} />} iconTone={c.openFindings > 0 ? "danger" : "neutral"} tone={c.openFindings > 0 ? "danger" : "neutral"} onClick={() => go("findings")} />
+          <Stat label={t("governance.overview.statDrafts")} value={c.draftRevisions} icon={<PolicyIcon size={14} />} iconTone={c.draftRevisions > 0 ? "warning" : "neutral"} tone={c.draftRevisions > 0 ? "warning" : "neutral"} onClick={() => go("policy")} />
         </div>
       </Card>
       <div className={s.bento}>
         <Card
-          title="Policy in effect"
+          title={t("governance.overview.policyTitle")}
           icon={<PolicyIcon size={18} />}
           tone="brand"
           actions={
             <Button size="small" shape="circular" onClick={() => go("policy")}>
-              Open
+              {t("governance.overview.open")}
             </Button>
           }
         >
           {o.effective === null ? (
             <MessageBar intent="warning">
-              <MessageBarBody>No policy is in effect: nothing a run asks is allowed until you publish one.</MessageBarBody>
+              <MessageBarBody>{t("governance.overview.noPolicy")}</MessageBarBody>
             </MessageBar>
           ) : (
             <div className={s.inset}>
               <Text>
-                Revision {o.effective.revision}, published {when(o.effective.publishedAt)} · digest <span className={s.codeChip}>{short(o.effective.digest, 16)}</span>
+                {t("governance.overview.policyMetaBefore", { revision: o.effective.revision, at: when(o.effective.publishedAt) })}
+                <span className={s.codeChip}>{short(o.effective.digest, 16)}</span>
               </Text>
               <Text size={200} className={s.muted}>
-                {SOURCE[o.effective.source]}.
+                {t(SOURCE_KEYS[o.effective.source])}.
               </Text>
             </div>
           )}
           <Text size={200} className={s.muted}>
-            {c.overrides === 0 ? "No override narrows it anywhere." : `${plural(c.overrides, "override")} narrow it, each for one chat or research workspace.`}
+            {c.overrides === 0
+              ? t("governance.overview.noOverrides")
+              : t("governance.overview.overridesCount", {
+                  countText: plural(c.overrides, t("governance.overview.overrideOne"), t("governance.overview.overrideMany")),
+                })}
           </Text>
         </Card>
         <Card
-          title="Audit record"
+          title={t("governance.overview.auditTitle")}
           icon={<AuditChainIcon size={18} />}
           tone="teal"
           actions={
             <Button size="small" shape="circular" disabled={verifying} onClick={verify}>
-              {verifying ? "Verifying…" : "Verify the chain"}
+              {verifying ? t("governance.audit.verifying") : t("governance.audit.verifyChain")}
             </Button>
           }
         >
           <div className={s.inset}>
             <Text>
-              {plural(o.audit.count, "record")} · head <span className={s.codeChip}>{short(o.audit.head, 16)}</span>
+              {t("governance.overview.auditMetaBefore", {
+                records: plural(o.audit.count, t("governance.audit.recordOne"), t("governance.audit.recordMany")),
+              })}
+              <span className={s.codeChip}>{short(o.audit.head, 16)}</span>
             </Text>
           </div>
           {chain && (
             <MessageBar intent={chain.ok ? "success" : "error"}>
-              <MessageBarBody>{chain.ok ? `The chain holds: ${plural(chain.count, "record")}, checked ${when(chain.checkedAt)}.` : `The chain does NOT hold at record ${chain.brokenAt} (${chain.problem}).`}</MessageBarBody>
+              <MessageBarBody>
+                {chain.ok
+                  ? t("governance.overview.chainChecked", {
+                      records: plural(chain.count, t("governance.audit.recordOne"), t("governance.audit.recordMany")),
+                      at: when(chain.checkedAt),
+                    })
+                  : t("governance.overview.chainBroken", { at: chain.brokenAt ?? "", problem: chain.problem ?? "" })}
+              </MessageBarBody>
             </MessageBar>
           )}
           <ErrorBar text={error} />
           <Text size={200} className={s.muted}>
-            The chain shows a record of your account changed, removed or reordered after it was written. It is tamper evidence on this host, not proof against somebody who controls the host and every copy of its head.
+            {t("governance.overview.chainNote")}
           </Text>
         </Card>
       </div>
       <Card
         title={
           <>
-            Agent isolation <Word value={o.isolation.state} />
+            {t("governance.overview.isolationTitle")}
+            <Word value={o.isolation.state} />
           </>
         }
         icon={o.isolation.state === "attested" ? <ShieldClearIcon size={18} /> : <FindingsIcon size={18} />}
         tone={o.isolation.state === "attested" ? "success" : o.isolation.state === "failed" ? "danger" : "warning"}
       >
-        <Text>{DEPLOYMENT[o.deployment]}</Text>
+        <Text>{t(DEPLOYMENT_KEYS[o.deployment])}</Text>
         <Text size={200} className={s.muted}>
           {o.isolation.detail.replace(/ -- /g, " — ")}
         </Text>
         {o.isolation.checks.length > 0 && (
-          <ul className={s.list} aria-label="Isolation checks">
+          <ul className={s.list} aria-label={t("governance.overview.isolationChecksAria")}>
             {o.isolation.checks.map((check) => (
               <li key={check.name} className={mergeClasses(s.inset, check.ok ? st.checkOk : st.checkFail)}>
                 <div className={s.row}>
-                  <Word value={check.ok ? "allow" : "deny"} label={check.ok ? "held" : "failed"} />
+                  <Word value={check.ok ? "allow" : "deny"} label={t(check.ok ? "governance.overview.checkHeld" : "governance.overview.checkFailed")} />
                   <Text className={s.mono}>{check.name}</Text>
                 </div>
                 <Text size={200} className={s.muted}>
@@ -169,7 +186,7 @@ export function OverviewPage({ go }: { go: (page: GovernancePage, item?: string 
         )}
         {o.isolation.checkedAt && (
           <Text size={200} className={s.muted}>
-            Checked {when(o.isolation.checkedAt)} — the agent container's own answer: a check of the deployment's wiring, not proof against a runner the agent has taken over.
+            {t("governance.overview.isolationChecked", { at: when(o.isolation.checkedAt) })}
           </Text>
         )}
       </Card>

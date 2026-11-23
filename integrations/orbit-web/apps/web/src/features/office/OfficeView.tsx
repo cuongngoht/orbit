@@ -18,6 +18,7 @@ import {
 } from "../../components/SectionIcons";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { EmployeePage } from "./EmployeePage";
 import { InboxPage } from "./InboxPage";
 import { MissionPage } from "./MissionPage";
@@ -27,14 +28,21 @@ import { WorkPage } from "./WorkPage";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
-const NAV: { page: OfficePage; label: string; tone: IconTone; icon: (active: boolean) => ReactElement }[] = [
-  { page: "overview", label: "Overview", tone: "brand", icon: (active) => <OverviewIcon size={16} active={active} /> },
-  { page: "work", label: "Work", tone: "teal", icon: (active) => <WorkMissionIcon size={16} active={active} /> },
-  { page: "inbox", label: "Needs me", tone: "warning", icon: (active) => <InboxActionIcon size={16} active={active} /> },
-  { page: "schedule", label: "Schedule", tone: "teal", icon: (active) => <ScheduleIcon size={16} active={active} /> },
+const NAV: { page: OfficePage; labelKey: MessageKey; tone: IconTone; icon: (active: boolean) => ReactElement }[] = [
+  { page: "overview", labelKey: "office.nav.overview", tone: "brand", icon: (active) => <OverviewIcon size={16} active={active} /> },
+  { page: "work", labelKey: "office.nav.work", tone: "teal", icon: (active) => <WorkMissionIcon size={16} active={active} /> },
+  { page: "inbox", labelKey: "office.nav.inbox", tone: "warning", icon: (active) => <InboxActionIcon size={16} active={active} /> },
+  { page: "schedule", labelKey: "office.nav.schedule", tone: "teal", icon: (active) => <ScheduleIcon size={16} active={active} /> },
 ];
 
-const TITLES: Record<OfficePage, string> = { overview: "Overview", work: "Work", inbox: "Needs me", schedule: "Schedule", employee: "Employee", mission: "Mission" };
+const TITLE_KEYS: Record<OfficePage, MessageKey> = {
+  overview: "office.nav.overview",
+  work: "office.nav.work",
+  inbox: "office.nav.inbox",
+  schedule: "office.nav.schedule",
+  employee: "office.nav.employee",
+  mission: "office.nav.mission",
+};
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0, backgroundColor: tokens.colorNeutralBackground1 },
@@ -121,9 +129,10 @@ function Page({ page, item, tab, go, account }: { page: OfficePage; item: string
 }
 
 function OfficeNav({ page, go, mobile }: { page: OfficePage; go: Go; mobile: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
-    <nav className={mobile ? mergeClasses(s.subnavMobile, "orbit-hscroll") : s.pillTrack} aria-label="Office">
+    <nav className={mobile ? mergeClasses(s.subnavMobile, "orbit-hscroll") : s.pillTrack} aria-label={t("office.nav.ariaOffice")}>
       {NAV.map((n) => {
         const active = n.page === page;
         return (
@@ -136,7 +145,7 @@ function OfficeNav({ page, go, mobile }: { page: OfficePage; go: Go; mobile: boo
             aria-current={active ? "page" : undefined}
             onClick={() => go(n.page)}
           >
-            {n.label}
+            {t(n.labelKey)}
           </Button>
         );
       })}
@@ -145,6 +154,7 @@ function OfficeNav({ page, go, mobile }: { page: OfficePage; go: Go; mobile: boo
 }
 
 export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: OfficePage; item: string | null; tab: string | null; go: Go; account: AuthAccount | null; onOpenNav?: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const detail = page === "employee" || page === "mission";
@@ -155,16 +165,16 @@ export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: 
       <header className={s.top}>
         <div className={s.topInner}>
           <div className={s.left}>
-            {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+            {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("office.nav.openNav")} onClick={onOpenNav} />}
             {detail ? (
               <Button className={s.touch} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => go(back)}>
-                Back
+                {t("office.nav.back")}
               </Button>
             ) : (
               !isMobile && <IconBadge icon={<OfficeIcon size={18} active />} tone="brand" size="md" />
             )}
             <Text as="h1" weight="semibold" size={isMobile ? 400 : 500} className={s.title}>
-              Office · {TITLES[page]}
+              {t("office.nav.headerTitle", { title: t(TITLE_KEYS[page]) })}
             </Text>
           </div>
           {!isMobile && <OfficeNav page={page} go={go} mobile={false} />}

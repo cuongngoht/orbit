@@ -10,6 +10,7 @@ import { useState } from "react";
 import { IconBadge } from "../../components/SectionIcons";
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { Callout, useOfficeStyles } from "./parts";
 
@@ -84,6 +85,7 @@ const scopeOf = (a: ConnectorAccess): string[] | null => (a.repositories === nul
 const same = (a: string[] | null, b: string[] | null): boolean => (a === null || b === null ? a === b : a.length === b.length && a.every((x) => b.includes(x)));
 
 function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; start: ConnectorAccess; source: { state: string; account: string | null } | undefined }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const label = ACCESS_CONNECTOR_LABELS[start.connector];
@@ -127,34 +129,35 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
             </Text>
             {signedIn ? (
               <Text size={200} className={o.muted}>
-                signed in as {source?.account ?? "the installation's sign-in"}
+                {t("office.access.signedInAs", { account: source?.account ?? t("office.access.installSignIn") })}
               </Text>
             ) : (
               <Text size={200} className={o.muted}>
-                Not connected: sign it in at <Link href={settingsHref("connectors")}>Settings → Connectors</Link>.
+                {t("office.access.notConnectedLead")}
+                <Link href={settingsHref("connectors")}>{t("office.access.settingsConnectors")}</Link>.
               </Text>
             )}
           </div>
         </div>
         <Badge appearance="tint" color={!signedIn ? "subtle" : enabled ? "brand" : "success"} style={{ borderRadius: "9999px" }}>
-          {!signedIn ? "Disconnected" : enabled ? "Enabled" : "Connected"}
+          {!signedIn ? t("office.access.badgeDisconnected") : enabled ? t("office.access.badgeEnabled") : t("office.access.badgeConnected")}
         </Badge>
       </div>
       <div className={o.divider} />
-      <Switch checked={enabled} disabled={!signedIn && !enabled} label={`Let ${employee.name} use ${label}`} onChange={(_, d) => setEnabled(d.checked)} />
+      <Switch checked={enabled} disabled={!signedIn && !enabled} label={t("office.access.letUse", { name: employee.name, label })} onChange={(_, d) => setEnabled(d.checked)} />
       {enabled && (
         <div className={s.configBox}>
-          <RadioGroup value={every ? "every" : "chosen"} onChange={(_, d) => setEvery(d.value === "every")} aria-label={`What ${employee.name} may reach on ${label}`}>
-            <Radio value="every" label="Every repository this sign-in reaches" />
-            <Radio value="chosen" label="Only the repositories chosen" />
+          <RadioGroup value={every ? "every" : "chosen"} onChange={(_, d) => setEvery(d.value === "every")} aria-label={t("office.access.reachAria", { name: employee.name, label })}>
+            <Radio value="every" label={t("office.access.everyRepo")} />
+            <Radio value="chosen" label={t("office.access.chosenRepos")} />
           </RadioGroup>
           {!every && (
             <>
               <div className={o.between}>
                 <Text size={200} className={o.muted}>
-                  Repositories ({chosen.length} selected)
+                  {t("office.access.selectedCount", { count: chosen.length })}
                 </Text>
-                {(listing.data?.repositories.length ?? 0) > 8 && <Input size="small" placeholder="Filter the repositories" value={filter} onChange={(_, d) => setFilter(d.value)} aria-label="Filter the repositories" />}
+                {(listing.data?.repositories.length ?? 0) > 8 && <Input size="small" placeholder={t("office.repos.filterPlaceholder")} value={filter} onChange={(_, d) => setFilter(d.value)} aria-label={t("office.repos.filterPlaceholder")} />}
               </div>
               {listing.data === null ? (
                 listing.error !== null ? (
@@ -162,13 +165,13 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
                     {listing.error}
                   </Text>
                 ) : (
-                  <Spinner size="tiny" label="Reading the repositories…" />
+                  <Spinner size="tiny" label={t("office.repos.readingRepos")} />
                 )
               ) : (
                 <div className={s.repoList}>
                   {repos.length === 0 && (
                     <Text size={200} className={o.muted}>
-                      No repository here.
+                      {t("office.access.noRepoHere")}
                     </Text>
                   )}
                   {repos.map((r) => (
@@ -182,18 +185,18 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
           <Checkbox
             checked={write}
             onChange={(_, d) => setWrite(d.checked === true)}
-            label={`Also write: propose comments${start.connector === "azure" ? " and work item states" : ""} -- each one waits for the account's approval (Governance → Approvals) unless its policy allows it`}
+            label={t("office.access.alsoWrite", { extra: start.connector === "azure" ? t("office.access.alsoWriteAzure") : "" })}
           />
         </div>
       )}
       <div className={o.row}>
         <Button appearance="primary" size="small" disabled={busy || unchanged || (enabled && !every && chosen.length === 0)} onClick={() => void save()}>
-          Save
+          {t("office.access.save")}
         </Button>
         {said && unchanged && (
           <Text size={200} className={s.savedTag}>
             <CheckmarkCircle16Regular aria-hidden />
-            Saved.
+            {t("office.access.saved")}
           </Text>
         )}
       </div>
@@ -207,6 +210,7 @@ function ConnectorCard({ employee, start, source }: { employee: EmployeeDetail; 
 }
 
 function KnowledgeCard({ employee, start }: { employee: EmployeeDetail; start: KnowledgeAccess[] }) {
+  const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
   const [items, setItems] = useState(start);
@@ -225,42 +229,50 @@ function KnowledgeCard({ employee, start }: { employee: EmployeeDetail; start: K
     }
   };
   return (
-    <section className={o.card} aria-label="Knowledge bases (MCP)">
+    <section className={o.card} aria-label={t("office.access.kbTitle")}>
       <div className={o.between}>
         <div className={s.sectionHead}>
           <IconBadge icon={<BookDatabase20Regular />} tone={enabledCount > 0 ? "teal" : "neutral"} size="md" />
           <div className={s.sectionTitleWrap}>
             <Text weight="semibold" size={400}>
-              Knowledge bases (MCP)
+              {t("office.access.kbTitle")}
             </Text>
             <Text size={200} className={o.muted}>
-              Toggle each server immediately; tools are governed in Settings.
+              {t("office.access.kbSub")}
             </Text>
           </div>
         </div>
         {items.length > 0 && (
           <Badge appearance="tint" color={enabledCount > 0 ? "brand" : "subtle"} style={{ borderRadius: "9999px" }}>
-            {enabledCount} / {items.length} active
+            {t("office.access.kbActiveCount", { enabled: enabledCount, total: items.length })}
           </Badge>
         )}
       </div>
       <div className={o.divider} />
       {items.length === 0 ? (
         <Text size={200} className={o.muted}>
-          The account has no MCP server: add one at <Link href={settingsHref("mcp-servers")}>Settings → MCP servers</Link>.
+          {t("office.access.kbEmptyPrefix")}
+          <Link href={settingsHref("mcp-servers")}>{t("office.access.settingsMcp")}</Link>.
         </Text>
       ) : (
         <div className={s.mcpList}>
           {items.map((k) => (
             <div key={k.serverId} className={s.mcpRow}>
-              <Switch checked={k.enabled} disabled={busy !== null} label={`${k.name} (${k.tools} ${k.tools === 1 ? "tool" : "tools"} allowed)`} onChange={(_, d) => void turn(k, d.checked)} />
+              <Switch
+                checked={k.enabled}
+                disabled={busy !== null}
+                label={t("office.access.kbRowLabel", { name: k.name, count: k.tools, word: k.tools === 1 ? t("office.access.toolOne") : t("office.access.toolMany") })}
+                onChange={(_, d) => void turn(k, d.checked)}
+              />
             </div>
           ))}
         </div>
       )}
       {items.length > 0 && (
         <Text size={200} className={o.muted}>
-          Orbit Web asks each server for {employee.name} with the sign-in kept in <Link href={settingsHref("mcp-servers")}>Settings → MCP servers</Link>, where the tools it may use are chosen.
+          {t("office.access.kbNoteBefore", { name: employee.name })}
+          <Link href={settingsHref("mcp-servers")}>{t("office.access.settingsMcp")}</Link>
+          {t("office.access.kbNoteAfter")}
         </Text>
       )}
       {error !== null && (
@@ -273,6 +285,7 @@ function KnowledgeCard({ employee, start }: { employee: EmployeeDetail; start: K
 }
 
 export function AccessTab({ e }: { e: EmployeeDetail }) {
+  const { t } = useI18n();
   const s = useStyles();
   const access = useResource<EmployeeAccess>(() => get(`/api/employees/${e.id}/access`), [e.id]);
   const status = useResource<SourcesStatus>(() => get("/api/sources"), []);
@@ -282,12 +295,12 @@ export function AccessTab({ e }: { e: EmployeeDetail }) {
         <MessageBarBody>{access.error ?? status.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner size="tiny" label="Reading…" />
+      <Spinner size="tiny" label={t("office.shared.reading")} />
     );
   return (
     <div className={s.root}>
       <Callout tone="info" icon={<ShieldLock16Regular />}>
-        What {e.name} may use of the account's connectors. Orbit Web reads on {e.name}'s behalf with that sign-in -- it never enters its sandbox -- and only reads: work items, wiki pages, issues, pull requests and files.
+        {t("office.access.intro", { name: e.name })}
       </Callout>
       <div className={s.connectorGrid}>
         {access.data.connectors.map((c) => (

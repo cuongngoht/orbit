@@ -8,11 +8,13 @@ import { useState } from "react";
 import { Markdown } from "../../components/Markdown";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, EmptyState, ErrorBar, Word, byWhom, useParts, when } from "./parts";
 
 export function ReportsPage({ item, go }: { item: string | null; go: (page: GovernancePage, item?: string | null) => void }) {
+  const { t } = useI18n();
   const s = useParts();
   const list = useResource<ReportList>(() => get("/api/governance/reports"), []);
   const report = useResource<ReportView>(item ? () => get(`/api/governance/reports/${encodeURIComponent(item)}`) : null, [item]);
@@ -27,24 +29,24 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
   };
   return (
     <div className={s.page}>
-      <Card title="Generate a report" icon={<ReportsIcon size={18} />} tone="teal" description="Produces a frozen, cited summary of one UTC day from the audit record alone.">
+      <Card title={t("governance.reports.generateTitle")} icon={<ReportsIcon size={18} />} tone="teal" description={t("governance.reports.generateDesc")}>
         <div className={s.row} style={{ alignItems: "flex-end" }}>
-          <Field label="UTC day">
+          <Field label={t("governance.reports.utcDay")}>
             <Input type="date" value={day} onChange={(_, d) => setDay(d.value)} />
           </Field>
           <Button appearance="primary" onClick={generate}>
-            Generate
+            {t("governance.reports.generate")}
           </Button>
         </div>
         <ErrorBar text={error} />
       </Card>
       {item && report.data && (
-        <Card title={`Report of ${report.data.day}`} icon={<ReportsIcon size={18} />} tone="teal" actions={<Button as="a" href={`/api/governance/reports/${report.data.id}/markdown`}>Download</Button>}>
+        <Card title={t("governance.reports.reportOf", { day: report.data.day })} icon={<ReportsIcon size={18} />} tone="teal" actions={<Button as="a" href={`/api/governance/reports/${report.data.id}/markdown`}>{t("governance.reports.download")}</Button>}>
           <Markdown text={report.data.markdown} />
         </Card>
       )}
       {item && <ErrorBar text={report.error} />}
-      <Card title="Reports" icon={<ReportsIcon size={18} />} tone="teal">
+      <Card title={t("governance.reports.title")} icon={<ReportsIcon size={18} />} tone="teal">
         {list.data === null ? (
           list.error ? (
             <ErrorBar text={list.error} />
@@ -55,19 +57,19 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
           <EmptyState
             icon={<ReportsIcon size={22} />}
             tone="teal"
-            title="No report yet."
-            body="Select a UTC day above and click Generate to create your first daily report."
+            title={t("governance.reports.emptyTitle")}
+            body={t("governance.reports.emptyBody")}
           />
         ) : (
           <div className={s.tableWrap}>
-            <Table size="small" aria-label="Reports">
+            <Table size="small" aria-label={t("governance.reports.title")}>
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell>Day</TableHeaderCell>
-                  <TableHeaderCell>Generated</TableHeaderCell>
-                  <TableHeaderCell>Findings</TableHeaderCell>
-                  <TableHeaderCell>Denied</TableHeaderCell>
-                  <TableHeaderCell>Chain</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.reports.colDay")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.reports.colGenerated")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.reports.colFindings")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.reports.colDenied")}</TableHeaderCell>
+                  <TableHeaderCell>{t("governance.reports.colChain")}</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -79,12 +81,12 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
                       </Button>
                     </TableCell>
                     <TableCell>
-                      {when(r.generatedAt)} by {byWhom(r.generatedBy)}
+                      {t("governance.reports.generatedMeta", { at: when(r.generatedAt), by: byWhom(r.generatedBy) })}
                     </TableCell>
                     <TableCell>{r.findings}</TableCell>
                     <TableCell>{r.denied}</TableCell>
                     <TableCell>
-                      <Word value={r.integrityOk ? "allow" : "deny"} label={r.integrityOk ? "holds" : "broken"} />
+                      <Word value={r.integrityOk ? "allow" : "deny"} label={t(r.integrityOk ? "governance.reports.holds" : "governance.reports.broken")} />
                     </TableCell>
                   </TableRow>
                 ))}

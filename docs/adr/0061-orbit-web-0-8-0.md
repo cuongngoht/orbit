@@ -20,8 +20,8 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   sign-in" is the owner's privileged switch, decided by the policy (6); beside Docker a person needs PostgreSQL and, for
   AI employees, the allocator and its images (2, 8, 11).
 - **Kept**: every program a file and an argument list, no endpoint taking a command; GitHub CLI's and the Azure CLI's
-  device sign-ins, the installation's; Orbit decides what Orbit decides, and a protected boundary of the plugin is shown,
-  never granted; changes read from git; a restart resumes no run; the pinned image; the two scoped workflows.
+  device sign-ins, the installation's; Orbit decides what Orbit decides, and a protected boundary of the plugin is
+  shown, never granted; changes read from git; a restart resumes no run; the pinned image; the two scoped workflows.
 
 ## Context
 
@@ -37,9 +37,10 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
    including where a platform hosts it.
 4. The CLIs, read from themselves (Claude Code 2.1.328, codex-cli 0.169.0, agy 1.5.14): `claude auth login --claudeai`
    prints a URL and asks for a code; `codex login --device-auth` prints a link and a one-time code, and `codex login
-   status` names no ChatGPT account; `agy` has no sign-in command and no non-interactive mode with a closed tool set, and
-   Antigravity's terms do not permit its Google sign-in from another product. Claude Code takes an image headless only
-   inside a stream-json user message, and answers its control protocol (`initialize`, `mcp_status`) calling no model.
+   status` names no ChatGPT account; `agy` has no sign-in command and no non-interactive mode with a closed tool set,
+   and Antigravity's terms do not permit its Google sign-in from another product. Claude Code takes an image headless
+   only inside a stream-json user message, and answers its control protocol (`initialize`, `mcp_status`) calling no
+   model.
 5. Documents, screenshots and an office's work may be confidential; storing them on the server does not keep them from
    the model's provider.
 
@@ -107,19 +108,19 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
 - **One initial schema.** 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration, remembered in
   `orbit.schema_migrations` with the SHA-256 of its text and applied at start under an advisory lock (`cli/db.js
   status|migrate|verify` from a terminal); one that changed after it was applied, or a database a newer build migrated,
-  is refused at start. Nothing a development build made is upgraded: while 0.8.0 is unreleased a schema change edits the
-  initial migration in place, and an installation of a development build starts afresh with `db.js reset
-  --confirm=<database> [--with-data]` (refused unless it names the database) or `docker compose down -v` -- the command
-  Orbit Web names when it refuses such a database. Nothing of an earlier Orbit Web is read, imported or deleted: neither
-  its SQLite files nor the Claude CLI's sign-in in `/data/claude`.
+  is refused at start. Nothing a development build made is upgraded: while 0.8.0 is unreleased a schema change edits
+  the initial migration in place, and an installation of a development build starts afresh with `db.js reset
+  --confirm=<database> [--with-data]` (refused unless it names the database) or `docker compose down -v`, the command
+  Orbit Web names when it refuses such a database. Nothing of an earlier Orbit Web is read, imported or deleted:
+  neither its SQLite files nor the Claude CLI's sign-in in `/data/claude`.
 - **pgvector is enabled, and nothing stores a vector yet** ("just enable pgvector; no need to integrate it yet"): the
   image's init script runs `CREATE EXTENSION vector` as the database's superuser, and every start checks it. Embeddings
   and semantic retrieval are a later step.
 - **One `Db`, asynchronous.** `pg` (an exact version) behind a bounded pool with connect and statement timeouts. A
   transaction holds ONE client for its whole life and travels with the async context (AsyncLocalStorage), never in a
   variable concurrent requests share; one begun inside another is a savepoint. What a change tells the rest of Orbit
-  Web -- an event to a stream, an app-stream notice -- runs AFTER COMMIT, never for work rolled back, and a callback that
-  fails then is logged and changes nothing.
+  Web -- an event to a stream, an app-stream notice -- runs AFTER COMMIT, never for work rolled back, and a callback
+  that fails then is logged and changes nothing.
 - **Concurrency by design, not by a single writer.** Journal numbers come from an `UPDATE … RETURNING` of the session's
   own counter in the change's transaction; a source's revision numbers from a counter on the source; policy revisions
   from a locked head row; an audit record from its chain's head row locked `FOR UPDATE` -- one chain per account and one
@@ -151,9 +152,9 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   each under `/data/control/credentials`, outside every mount, never in a home, an answer, a log or an event), given to
   that connection's process alone; a CLOUD PROVIDER for Claude Code (Bedrock, Vertex AI, Foundry), saved and shown
   *blocked* -- documented, not verified here, never used. Never accepted: a subscription token pasted by hand, a copied
-  `.credentials.json` or `auth.json`, a setup token for anybody else's use. The hire step quotes Anthropic -- the Pro,
-  Max and Ultra limits "assume ordinary, individual usage of Claude Code and the Agent SDK" -- and recommends an API key
-  for employees.
+  `.credentials.json` or `auth.json`, a setup token for anybody else's use. The hire step quotes Anthropic ("ordinary,
+  individual usage of Claude Code and the Agent SDK" is what the Pro, Max and Ultra limits assume) and recommends an API
+  key for employees.
 - **A subscription is signed in from its card** ("clicking Add connection shows the link to sign in … as before"):
   *Add a connection* starts it at once, *Sign in* and *Reconnect* again. `POST /api/connections/:id/sign-in` runs the
   runtime's own sign-in (`claude auth login --claudeai`, `codex login --device-auth`) with that connection's home and
@@ -183,10 +184,9 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
 - **The models and efforts are the account's**, asked of the connection's own CLI at every sign-in and Re-check:
   Claude Code's over its control protocol (one `initialize` request, restricted, no tool, no model call), OpenAI
   Codex's from its app server's `model/list` (failing that, the catalog bundled in the binary), none for Antigravity.
-  Every choice is held to them; an effort a model does not take moves to one it does, and a model that takes none is
-  passed none. A fallback list is labelled, holds a choice to its shape alone, and is never used for an employee. A
-  card also shows the runtime's capabilities as observed (`--help`; Codex's web search modes, asked in a scratch home)
-  and whether an employee can run on it, and why not (8).
+  Every choice is held to them: an effort a model does not take moves to one it does, and a model that takes none is
+  passed none. A fallback list is labelled, holds a choice to its shape alone, and never serves an employee. A card
+  also shows the runtime's capabilities as observed and whether an employee can run on it, and why not (8).
 - **The Orbit plugin** loads only for the use cases the account's owner approved (chats, employees) and only for the
   exact DIGEST the page showed -- the SHA-256 of every file of the parts Claude Code loads and runs, never through a
   link -- so an upgraded plugin waits for its owner again (`plugin_grants`).
@@ -199,23 +199,22 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
 
 ### 4. The Claude Code workspace
 
-- **Laid out like Claude Code** (web only) and open once signed in: a sidebar (New session -- *Chat / Coding* or
-  *Research* -- Search, the account's chats and research sessions, the Office, Governance) and ONE composer at the
-  bottom whose toolbar holds what a chat starts from and how it runs; Settings is a dialog over any view.
+- **Laid out like Claude Code** (web only), open once signed in: a sidebar (New session, Search, the account's chats
+  and research sessions, the Office, Governance), ONE composer at the bottom, Settings as a dialog over any view.
 - **A chat runs with or without a repository.** With none (the default), its workspace is an empty repository of its
   own (`git init -b main`, one empty commit, the account's email as the local identity, Orbit seated in it), so
   Changes, the Orbit panel and resuming work as for any chat. Either way it works on a branch of its own
   (`orbit-web/<id>`), so the branch picked is never written, and its repository is fixed for its life.
 - **Two sources, behind one interface** (`modules/sources/`): GitHub and Azure DevOps, each listing repositories and
-  branches and cloning one. A repository is named back by its source and the id that source listed it under and opens
-  only if that source lists it; its clone URL comes from the listing, never from a request. GitHub clones with `gh repo
+  branches and cloning one. A repository is named back by its source and the id that source listed it under, and opens
+  only if that source lists it; its clone URL comes from the listing, never a request. GitHub clones with `gh repo
   clone`. Azure DevOps is read with `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798` (the Azure CLI holds the
-  token): the profile, up to 50 organisations four at a time, their repositories (disabled ones left out) and a
-  repository's branches, kept five minutes. Its clone is `git clone -c credential.helper= -c credential.helper=<the
-  image's helper>`: `docker/git-credential-azure-cli.mjs` answers git's `get` for `dev.azure.com` and
-  `*.visualstudio.com` only, by asking the Azure CLI (Orbit Web's profile) for an Azure DevOps access token -- THE ONE
-  PLACE A TOKEN IS ASKED FOR: from az to git for that clone, never through Orbit Web's process, never written; the
-  remote URL and `.git/config` carry nothing, and Claude Code has no helper. Both CLIs' sign-ins are the installation's.
+  token): the profile, up to 50 organisations four at a time, their enabled repositories and a repository's branches,
+  kept five minutes. Its clone names the image's helper alone (`-c credential.helper= -c credential.helper=…`):
+  `docker/git-credential-azure-cli.mjs` answers git's `get` for `dev.azure.com` and `*.visualstudio.com` only, by asking
+  the Azure CLI (Orbit Web's profile) for an Azure DevOps token -- THE ONE PLACE A TOKEN IS ASKED FOR: from az to git for
+  that clone, never through Orbit Web's process, never written, nothing in the remote URL or `.git/config`, no helper
+  for Claude Code. Both CLIs' sign-ins are the installation's.
 - **The AI first, then model · effort · mode, in the CLI's own words.** A chat runs for its whole life on the
   connection chosen -- else the default Claude Code connection, else the account's first chat connection (Settings'
   `defaultRuntime`; an AI not signed in is a 409 naming where to sign it in, and with none no model is offered) -- its
@@ -244,18 +243,18 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   sign-ins, never to be read or sent) replaced; no allow rule lets a network command past the classifier. `WebFetch`
   and `WebSearch` are on by default and never pre-approved: a fetch can carry data in its URL.
 - **Commit always; push and open pull requests when the owner allows it.** One of two fixed sentences appended to the
-  system prompt, which nothing a request or a repository said writes, tells Claude Code what the workspace allows: it
-  commits locally and never chains a refused push into another command, so no commit is lost with a refused push.
-  *Let Claude Code push and open pull requests with this GitHub sign-in* (`githubForClaude`, off by default) gives a
-  chat whose repository came from GitHub, and no other, GitHub CLI's configuration (`GH_CONFIG_DIR`, never a token
-  variable) and a git credential helper for `https://github.com` alone (`GIT_CONFIG_*`: `gh auth git-credential`; no
-  git configuration file written). `git push` and `gh` then leave the deny list, while `gh auth`, `gh api`, extensions,
-  aliases, gh's configuration, workflows, runs, releases, gists, secrets, variables, keys, codespaces, the
-  organisation, rulesets, caches, deleting, renaming, archiving or editing a repository and `git credential` stay on it
-  (an allow rule never carves an exception out of a deny rule); the sentence then says to push the branch it works on
-  and open a pull request, never force-push and never push to the default branch -- rules on the command as written,
-  not a wall. *Let Claude Code use this Azure sign-in* (`azureForClaude`) lets its `az` act as that account, and a third
-  fixed sentence says to read Azure DevOps with `az rest` (no azure-devops extension is here). Both are privileged (6).
+  system prompt, written by nothing a request or a repository said, tells Claude Code what the workspace allows: it
+  commits locally and never chains a refused push into another command. *Let Claude Code push and open pull requests
+  with this GitHub sign-in* (`githubForClaude`, off by default) gives a chat whose repository came from GitHub, and no
+  other, GitHub CLI's configuration (`GH_CONFIG_DIR`, never a token variable) and a credential helper for
+  `https://github.com` alone (`GIT_CONFIG_*`: `gh auth git-credential`; no git configuration file written): `git push`
+  and `gh` leave the deny list, while `gh auth`, `gh api`, extensions, aliases, gh's configuration, workflows, runs,
+  releases, gists, secrets, variables, keys, codespaces, the organisation, rulesets, caches, deleting, renaming,
+  archiving or editing a repository and `git credential` stay on it (an allow rule never carves an exception out of a
+  deny rule), and the sentence says to push the branch it works on and open a pull request, never force-push, never to
+  the default branch -- rules on the command as written, not a wall. *Let Claude Code use this Azure sign-in*
+  (`azureForClaude`) lets its `az` act as that account, told to read Azure DevOps with `az rest`. Both are privileged
+  (6).
 - **What a repository brings, read on its first fetch.** A last workspace step reads its files only -- regular files,
   never through a symbolic link (every path component checked), bounded (200 items a kind, 256 KB a file, 4 levels,
   2,000 entries a directory): `.claude/skills/*/SKILL.md`, `.claude/commands/**/*.md`, `.claude/agents/*.md`,
@@ -272,22 +271,20 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
     user`, then `claude plugin disable --scope user`, uninstalled again if disabling fails), enabled for that chat's
     runs only (`--settings '{"enabledPlugins":…}'`); off, each is *Not run*.
   - Every state is an event (`project.inventory`, `project.plugin`); a failure never fails the workspace. Claude Code
-    reads `CLAUDE.md` itself; the rest of the repository's settings, its hooks, `env` and `.mcp.json` servers are never
-    loaded (`--setting-sources user`: its `env` could send the credential to another API host, its hooks would run
-    before any tool call).
+    reads `CLAUDE.md` itself; the repository's other settings, hooks, `env` and `.mcp.json` servers are never loaded
+    (`--setting-sources user`: its `env` could send the credential elsewhere, its hooks run before any tool call).
 - **A chat reaches the account's connectors** ("turn it on for every chat": Claude makes its documents through the
   claude.ai connector Claude Docs, and no MCP config can declare one alone): it runs without `--strict-mcp-config`,
   reaching its connection's connectors and the MCP servers of the user's settings and of the plugins loaded, as far as
   Claude connectors and the policy allow (3, 6). A repository's `.mcp.json` stays unstarted.
 - **A chat on OpenAI Codex** runs `codex exec --json` in its workspace with that connection's `CODEX_HOME`, nobody's
   configuration (`--ignore-user-config`, `--ignore-rules`), no MCP server (`mcp_servers={}`) and none of Codex's apps,
-  plugins, hooks, browser or desktop tools; each message resumes the thread the first started, and its images are files
-  beside the workspace. Its commands run only where something holds them: in a run's own sandbox (below) the container
-  does; elsewhere, where Codex's own sandbox starts (`codex sandbox -- true`, asked once), a permission profile lets
-  them read the system and nothing of Orbit Web's data but the chat's own room (written in Autonomous, read in Plan),
-  with no network and no explicit `--sandbox` (on codex-cli 0.169.0 one beside the profile let a command read the
-  denied path); where it cannot, the chat gets no shell and says so. `ORBIT_WEB_MAX_BUDGET_USD`, a cap Codex cannot be
-  held to, refuses its runs.
+  plugins, hooks, browser or desktop tools; each message resumes the thread the first started. Its commands run only
+  where something holds them: in a run's own sandbox (below) the container does; elsewhere, where Codex's own sandbox
+  starts (`codex sandbox -- true`, asked once), a permission profile lets them read the system and nothing of Orbit
+  Web's data but the chat's own room (written in Autonomous, read in Plan), with no network and no explicit
+  `--sandbox` (on codex-cli 0.169.0 one beside the profile let a command read the denied path); where it cannot, the
+  chat gets no shell and says so. `ORBIT_WEB_MAX_BUDGET_USD`, a cap Codex cannot be held to, refuses its runs.
 - **Each run in a sandbox of its own, where the allocator is** (the single deployment's default,
   `ORBIT_WEB_SANDBOX=container`): every chat's and research question's CLI starts in a container made for that run
   alone -- Orbit Web's image and runner, as Orbit Web's user, read-only, no capability, limits of its own
@@ -296,31 +293,27 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   home, the account's Orbit store, the installation's GitHub or Azure sign-in only where the account turned that switch
   on, and nothing else; a research run holds its connection's home alone. The allocator works the mounts out from ids
   and removes the container when the run ends, however it ends. At most `ORBIT_WEB_SESSION_SANDBOX_MAX` (4) run at
-  once; one beyond waits and says so. An allocator named and unusable refuses runs: a sandbox asked for is never
-  silently dropped.
-- **Images go with a message** ("add copying images into the chat: take a screenshot, then paste it into the chat").
-  An image is uploaded first, as its own bytes (`POST /api/images`), read as what its first bytes say -- PNG, JPEG, GIF
-  or WebP, never SVG -- and held to Claude's own limits (6 a message, 5 MB, 8000 pixels a side); it is kept as
-  `/data/app/images/<id>` (the control plane's room), named by an id the server made, the uploading account's. A
-  message names only its sender's unsent uploads, claimed for that chat and read back only through it (under the chat's
-  access rule, `nosniff`, `default-src 'none'`). A message with images runs with `--input-format stream-json`, one user
-  message on stdin (the words, then each image as base64); events and logs keep an image's id and kind, never its
-  bytes. A shared snapshot drops them, an unclaimed upload is swept after a day, a chat's images go with it; research
-  takes none.
+  once, one beyond waiting and saying so; an allocator named and unusable refuses runs, never silently dropped.
+- **Images go with a message** ("add copying images into the chat: take a screenshot, then paste it into the chat"),
+  uploaded first as their own bytes (`POST /api/images`), read as what their first bytes say -- PNG, JPEG, GIF or
+  WebP, never SVG -- and held to Claude's own limits (6 a message, 5 MB, 8000 pixels a side); each is kept as
+  `/data/app/images/<id>` (the control plane's room), named by the server, the uploading account's. A message names
+  only its sender's unsent uploads, which go with that one message and are read back only through its chat (`nosniff`,
+  `default-src 'none'`); its run takes `--input-format stream-json` and one user message on stdin (the words, then each
+  image as base64), and events and logs keep an image's id and kind, never its bytes. A shared snapshot drops them, an
+  unclaimed upload is swept after a day, a chat's images go with it; research takes none.
 - **Event-driven streams.** `packages/contracts/src/events/catalog.ts` is the one list of the events there are: each
   type, its stream (`session`, `app`, `research`) and whether it is stored, in one envelope `{ id, type, stream,
   sessionId, seq, runId, at, data }`. One event bus refuses a type the catalog lacks or a stream it does not travel on,
-  stores what is durable BEFORE delivering, and hands each event to its subscribers (a throwing one is logged; the
-  others still get it). One gateway serves a chat's stream (`GET /api/sessions/:id/events`, replayed after
-  `Last-Event-ID`; a message being written is sent whole) and the app stream (`GET /api/events`: notifications only,
-  never stored; a page that reconnects reads the read models again). Adding an event is a catalog row and its payload
-  type.
+  stores what is durable BEFORE delivering, and hands each event to its subscribers (a throwing one is logged, the
+  others still served). One gateway serves a chat's stream (`GET /api/sessions/:id/events`, replayed after
+  `Last-Event-ID`, a message being written sent whole) and the app stream (`GET /api/events`: notifications only, never
+  stored; a page that reconnects reads the read models again). Adding an event is a catalog row and its payload type.
 - **Around the conversation.** A Stop sends SIGINT, SIGTERM, then SIGKILL to the run's group; a stopped run is
   `interrupted`, never `completed`, and one stopped before its CLI started never starts it. The working branch moves
-  only between runs, never to the default branch or over uncommitted work. A shared chat is a read-only snapshot behind
-  `#/share/<token>` (32 random bytes in the fragment): the conversation alone, tools by title unless the owner includes
-  what they did, every text masked again, `no-store`, `noindex`. Telemetry, with a collector named, is Claude Code's
-  alone and never holds a prompt, a response, a tool's content or a raw API body.
+  only between runs, never to the default branch or over uncommitted work. A shared chat is a read-only snapshot
+  (`#/share/<token>`, 32 random bytes in the fragment) of the conversation alone, every text masked again. Telemetry,
+  once a collector is named, is Claude Code's alone and holds no prompt, response, tool content or raw API body.
 
 ### 5. Research
 
@@ -341,10 +334,10 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   proxy. Pasted text is a source too. Files live under `/data/research/workspaces/<id>/objects/` by their SHA-256,
   written whole and renamed; nothing a client typed becomes a path. PDF (unpdf, page numbers kept; a scan is said to
   have no text -- no OCR), Word (a bounded in-memory ZIP reader, `word/document.xml` only), HTML (parse5, the readable
-  content), Markdown and text are read in a worker thread with a time and memory bound, two at once by default, and
-  chunked without crossing a page, anew at each heading; the two dependencies are pure JavaScript and pinned. A
-  revision is immutable; a URL fetched again makes a new one only when its bytes changed, and a failed refresh leaves
-  the source `stale` on its last snapshot.
+  content), Markdown and text are read in a worker thread with a time and memory bound and chunked without crossing a
+  page, anew at each heading; the two dependencies are pure JavaScript and pinned. A revision is immutable; a URL
+  fetched again makes a new one only when its bytes changed, and a failed refresh leaves the source `stale` on its last
+  snapshot.
 - **Retrieval is the server's, from what the session selected alone.** A passage is indexed as a `tsvector` of its
   text with its diacritics folded by Orbit Web (so "ro ri" finds "rò rỉ"), English words stemmed, no stop word
   dropped. A question's evidence is frozen first: the revisions the selected sources are indexed at, and passages from
@@ -379,17 +372,17 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
 - **The rules are a package of their own.** `packages/governance-core` -- no dependency, clock, HTTP or storage --
   holds the action vocabulary, the policy and its validation, the ONE deterministic decision function, the revision
   lifecycle, impact analysis, approvals bound to fingerprints, the audit envelope and hash chain, the auditor and the
-  daily report; the API binds them to its stores, routes and clock, so another agent runtime would be governed by the
-  same rules. Its words may follow the plugin's protected-boundary words without importing them.
+  daily report; the API binds them to its stores, routes and clock, so another agent runtime would be held to the same.
 - **Every action says where it is enforced**: `boundary` (the container, the broker or the egress proxy: the agent
   cannot change it), `control` (the API's authorization), `runtime` (the agent runtime's configuration: defence in
   depth, never called enforcement) or `none` (nothing here can carry it out, so it is denied); only a boundary action
   may be reported PREVENTED. A CEILING per kind of principal caps what any rule may grant: nobody reads a raw
-  credential (`credential.read_raw`) or changes an audit record (`governance.audit.modify`); the policy's modification,
-  an approval's decision, a privileged setting and the office's management are people-only; an agent gets at most one
-  approval of exactly one production action (`deployment.production`, `database.production.migrate`,
-  `data.production.destroy`, all `none`) and may only hand in a draft of the policy (`governance.policy.propose`).
-  `repository.push` has no ceiling: git is the policy's to decide for an agent as for a person.
+  credential (`credential.read_raw`) or changes an audit record (`governance.audit.modify`); modifying the policy,
+  deciding an approval, a privileged setting and the office's management (departments, roster, hiring, an employee's
+  resources and desk, the budget, connections) are people-only; for an agent a production action
+  (`deployment.production`, `database.production.migrate`, `data.production.destroy`, all `none`) is at most one
+  approval of exactly it, and the policy at most a draft it hands in (`governance.policy.propose`). `repository.push`
+  has no ceiling: git is the policy's to decide for an agent as for a person.
 - **The policy is a document over a closed set of actions** (canonical JSON, `orbit.governance/v2`, kind
   `AccountPolicy`; an override is a `PolicyOverride`), validated by hand like the contracts: `agent.run.start`,
   `repository.read`, `repository.write`, `workspace.execute`, `tool.web`, `tool.connector`, `network.egress` (by
@@ -399,8 +392,8 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   `employee.resources.change`, `employee.desk.read`, `employee.desk.clean`, `work.assign`, `work.delegate`,
   `artifact.publish`, `notification.send`, `budget.change`, `connection.manage`). A rule is `allow`,
   `require_approval` or `deny`; the default decision is `deny`, never `allow` (an action nobody thought of is not
-  permitted); the strictest wins. Its OBLIGATIONS (every decision audited or only those not simply allowed, a daily
-  report, isolation required or optional) and its employee network access (8) are part of it. The owner edits it as a
+  permitted); the strictest wins. Its OBLIGATIONS (`auditDecisions`: every decision or those not simply allowed; a daily
+  report; isolation required or optional) and its employee network access (8) are part of it. The owner edits it as a
   table: a row per action with *Allowed* and *A person approves first* (neither: denied; what nobody may be granted
   cannot be ticked), the hosts the agent may reach as a list, the obligations as boxes; a rule the table cannot show is
   kept as written.
@@ -425,12 +418,12 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   second approver, on purpose: a confirmation is the owner's own, recorded as such, never shown as another person's
   approval. A published revision never changes -- the database refuses it too -- and a rollback is a copy published
   anew. *Simulate* asks a revision what it would decide and records nothing.
-- **Every decision is an audit record written before it is acted on**; an unknown action, no published policy, an
-  unverified principal and another account are denied. Every run -- a chat's, a research session's and an employee's
-  assignment, in both deployments -- is bound and decided under its account's policy in effect before it starts
-  (scopes `ACCOUNT_WORKSPACE`, `ACCOUNT_RESEARCH`, `ACCOUNT_EMPLOYEE`): `agent.run.start`, the resource's override,
-  isolation where the policy requires it, and `tool.connector` for each connector its owner checked. Governance is a
-  profile on the run, never a third mode.
+- **A decision is an audit record written before it is acted on** (as `auditDecisions` says); an unknown action, no
+  published policy, an unverified principal and another account are denied. Every run -- a chat's, a research
+  session's and an employee's assignment, in both deployments -- is bound and decided under its account's policy in
+  effect before it starts (scopes `ACCOUNT_WORKSPACE`, `ACCOUNT_RESEARCH`, `ACCOUNT_EMPLOYEE`): `agent.run.start`, the
+  resource's override, isolation where the policy requires it, and `tool.connector` for each connector its owner
+  checked. Governance is a profile on the run, never a third mode.
 - **A run's token is never a person.** Minted at the run's start and ended with it, it opens one door: a chat run's the
   AGENT GATEWAY (`/api/agent`: who it is, a decision, a push, its workspace's approvals, a draft of the policy), an
   employee attempt's the tool endpoint (8), a research run's neither (in the governed deployment, the proxy alone).
@@ -445,16 +438,15 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   session and CSRF token and the policy's decision (`settings.privileged.write`); turning one off needs nobody; a
   request from anything else -- the agent's shell included -- is refused and recorded. The governed deployment refuses
   the two sign-in switches to everybody (7).
-- **The push broker** carries a chat's working branch to GitHub or Azure DevOps, asked by the chat's owner (*Push*:
-  *Prepare the push* shows exactly what, and its fingerprint) or by the agent through its gateway. The commit is
-  carried into Orbit Web's own bare copy of the repository with every object checked (governed: as a bundle the agent's
-  git writes), the remote is asked where the branch stands, and `repository.push` is decided on exactly that: where the
+- **The push broker** carries a chat's working branch to GitHub or Azure DevOps, asked by the chat's owner (*Prepare
+  the push* shows exactly what, and its fingerprint) or by the agent through its gateway. The commit is carried into
+  Orbit Web's own bare copy of the repository with every object checked (governed: as a bundle the agent's git
+  writes), the remote is asked where the branch stands, and `repository.push` is decided on exactly that: where the
   policy simply allows it, the chat's own working branch is pushed at once under that decision (another branch still
   asks); otherwise the owner's approval of the fingerprint is spent first. The push uses the source's own sign-in
-  (GitHub CLI's helper, or the Azure CLI's one-shot helper) and never Claude Code; it is never forced (git refuses what
-  is not a fast-forward), never to the default or a protected branch, and refused when the default cannot be
-  established (`push-target.ts` decides alone); a story branch a chat started from, neither default nor protected, is
-  pushed like any other.
+  (GitHub CLI's helper, the Azure CLI's one-shot helper), never Claude Code, never force, never the default or a
+  protected branch, and is refused when the default cannot be established (`push-target.ts` decides alone); a story
+  branch a chat started from, neither default nor protected, is pushed like any other.
 - **The audit record**: one hash chain per account and one for the deployment -- records idempotent by id, refused any
   change or removal by the database, allow-listed per type (a credential pasted into a username is masked), checked
   whole at every start with the head said in the log, and on demand (`governance.js verify-audit [--account=<id> |
@@ -465,10 +457,10 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   `UNAUTHORIZED_POLICY_CHANGE`, `AGENT_PRIVILEGE_ESCALATION`, `APPROVAL_REPLAY`, `CROSS_WORKSPACE_ACCESS`,
   `CREDENTIAL_ACCESS_ATTEMPT`, `AUDIT_INTEGRITY_FAILURE` -- each CONFIRMED, SUSPECTED or INCONCLUSIVE and citing its
   records, and the daily report is the same fold over one UTC day, by hand or, when the policy asks, after the day
-  ends; no model is asked. Every count, page and export is the account's own, filtered in SQL: its Workspaces, Research
-  and Office, each resource with the policy that applies, its runs, approvals and activity, a deleted one still listed.
-  `cli/governance.js` is the terminal's door: `status`, `verify-audit`, `owner setup-code | reset-password |
-  revoke-sessions`, `revoke-sessions`, `budget show | set` (8).
+  ends; no model is asked. Every count, page and export is the account's own, filtered in SQL: its Workspaces,
+  Research and Office, each resource with the policy that applies, its runs, approvals and activity, a deleted one
+  still listed. The terminal's door is `cli/governance.js` (`status`, `verify-audit`, `owner …`, `revoke-sessions`,
+  `budget`).
 
 ### 7. Two deployments
 
@@ -483,14 +475,14 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   (`orbit-web`) holds the API and the page, the database's credentials, the GitHub and Azure sign-ins, the credential
   store, its own bare copies of the repositories and the egress proxy. The AGENT container (`orbit-agent`) runs Claude
   Code and every program that touches a workspace through a RUNNER (TCP on an internal network, newline-delimited JSON
-  in frames bounded at 4 MB -- a long stdin carried in several, never cutting a character in two -- a file and an
-  argument list, signals to the group, killed when the connection ends). It mounts only the AI connections' homes, the
+  in frames bounded at 4 MB -- a long stdin in several, never cutting a character in two -- a file and an argument
+  list, signals to the group, killed when the connection ends). It mounts only the AI connections' homes, the
   workspaces, the sessions, Orbit's store and a home, and the repositories' copies read-only, on a read-only root with
   no capability and no Docker socket: no database, no governance record, no API key but in a run's own environment, no
-  GitHub or Azure sign-in. Its network is internal: requests from it reach the agent gateway alone, public names do not
-  resolve, and its only way out is the proxy, which decides each connection as the run whose token it carries, under
-  that run's account policy (`network.egress`), never to an address off the public internet unless the installation
-  names an internal range (`ORBIT_WEB_EGRESS_PRIVATE_ALLOW`).
+  GitHub or Azure sign-in. Its network is internal: requests from it reach the agent gateway alone, public names do
+  not resolve, and its only way out is the proxy, which decides each connection as the run whose token it carries,
+  under that run's account policy (`network.egress`), never to an address off the public internet unless the
+  installation names an internal range (`ORBIT_WEB_EGRESS_PRIVATE_ALLOW`).
 - **The control plane never creates, writes, deletes or reads in a directory the agent can write** (a link planted
   there would resolve in its own mounts): the runner makes and removes directories, a workspace's project is read
   there, run logs move to the control plane's room (`/data/app/run-logs/`), and a credentialed clone or fetch goes into
@@ -585,14 +577,13 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
 - **Resources and admission.** Capacity (detected by the allocator, or `ORBIT_WEB_CAPACITY_*`) less the control
   plane's limits (`ORBIT_WEB_CONTROL_PLANE_LIMITS`) and a reserve (10 %) → the account's BUDGET (authorized by the
   operator; the owner may lower it, never raise it) → each employee's RESOURCE PROFILE (immutable revisions; an attempt
-  pins the one it was admitted under) → each attempt's containers (with its model plane's,
-  `ORBIT_WEB_MODEL_PLANE_<RUNTIME>_*`). An idle employee reserves no CPU or memory; a hire is refused only above a
-  per-employee ceiling or the account's storage budget, never because CPU or memory are busy now. An attempt reserves at
-  admission and releases only once its containers are verified gone; one that could fit but not now is
-  `waiting_for_resources` and starts by itself; one that never can as configured is `unschedulable`, with the numbers,
-  in *Needs me*. One serialized admission pass: dominant-resource fairness across accounts, aged priority within one
-  (`ORBIT_WEB_AGING_MINUTES`, 30), and a starvation guard after which freed capacity is held for the longest waiter
-  (`ORBIT_WEB_STARVATION_GUARD_MINUTES`, 60).
+  pins the one it was admitted under) → each attempt's containers, its model plane's included. An idle employee
+  reserves no CPU or memory; a hire is refused only above a per-employee ceiling or the account's storage budget, never
+  because CPU or memory are busy now. An attempt reserves at admission and releases only once its containers are
+  verified gone; one that could fit but not now is `waiting_for_resources` and starts by itself; one that never can as
+  configured is `unschedulable`, with the numbers, in *Needs me*. One serialized admission pass: dominant-resource
+  fairness across accounts, aged priority within one (`ORBIT_WEB_AGING_MINUTES`, 30), and a starvation guard after
+  which freed capacity is held for the longest waiter (`ORBIT_WEB_STARVATION_GUARD_MINUTES`, 60).
 - **The host is read again** ("a Re-check that reads the new configuration") at every start and at *Re-check*
   (Settings → Compute & storage, `POST /api/office/resources/capacity/check`, two at once being one): the provider is
   asked, the capacity row rewritten, and every authorization that comes from the capacity follows it -- a budget value
@@ -630,16 +621,15 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   connector off until turned on, then for EVERY repository that sign-in reaches or ONLY the ones chosen (an Azure
   DevOps project's work items and wiki come with a chosen repository's project). Grants live in
   `workforce.connection_grants` -- one live row per employee and operation; a change revokes the last and writes the
-  next, so the history stays -- changed by a signed-in person of the account under `connection.manage`, recorded. The
-  employee's tools, through its one bridge, then include for Azure DevOps reading a work item by its URL (fields,
-  description, acceptance criteria, comments, attachments' names), finding work items (WIQL), reading a wiki page and
-  reading a file or listing a folder, and for GitHub reading an issue, a pull request and a file. Orbit Web makes each
-  ask itself, on the control plane, with the installation's sign-in (`az rest`, `gh api`): THE SIGN-IN NEVER ENTERS THE
-  SANDBOX. Each ask is held to the grant -- a query's items, a wiki and a work item to the granted projects, whatever
-  the organisation holds -- decided by the policy (`tool.connector`, the repository or project its resource) and
-  recorded, and its answer is data the employee must not take instructions from: fenced by lines carrying a nonce made
-  for that answer (stripped from the body, so a body cannot close the fence), cut to 256 KiB. Turned off, the next ask
-  is refused.
+  next, so the history stays -- changed by a signed-in person of the account under `connection.manage`, recorded.
+  Through its one bridge the employee may then read, for Azure DevOps, a work item by its URL (fields, description,
+  acceptance criteria, comments, attachments' names), work items found by WIQL and a wiki page; for GitHub, an issue
+  and a pull request; for both, a file or a folder's listing. Orbit Web makes each ask itself, on the control plane,
+  with the installation's sign-in (`az rest`, `gh api`): THE SIGN-IN NEVER ENTERS THE SANDBOX. Each ask is held to the
+  grant (a query's items, a wiki and a work item to the granted projects, whatever the organisation holds), decided by
+  the policy (`tool.connector`, the repository or project its resource) and recorded; its answer is data the employee
+  must not take instructions from, fenced by lines carrying a nonce made for that answer (stripped from the body, so a
+  body cannot close the fence) and cut to 256 KiB. Turned off, the next ask is refused.
 - **A write waits for the owner.** An employee reads only, unless a person also checks *Also write* on that connector:
   it may then PROPOSE a comment on a work item, an issue or a pull request, or a work item's new state -- inside what it
   may read, a work item only under its own project. A write passes every gate a read does first (the grant, its scope,
@@ -654,13 +644,13 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   or logged, and a server with one is reached over https only. Orbit Web reads a server's tools at once (one that
   cannot be read yet is kept, saying why) and ALLOWS ONLY THOSE THE SERVER MARKS READ-ONLY; any other, and any tool it
   adds later, is offered to employees only once a person checks it. Each server is OFF for every employee until a
-  person turns it on, on the employee's *Access* tab. The employee sees its allowed tools as `kb_<server>_<tool>`;
-  Orbit Web asks each itself, with the server's credential, on the control plane -- the credential never enters the
+  person turns it on, on the employee's *Access* tab; the employee then sees its allowed tools as `kb_<server>_<tool>`,
+  and Orbit Web asks each itself, with the server's credential, on the control plane -- the credential never enters the
   sandbox, and the employee's CLI keeps its one MCP server, the bridge. Each ask is held to the grant and the tools
   allowed now, decided by the policy (`tool.connector`, resource `mcp:<server>/<tool>`), recorded, fenced as data and
   cut. Orbit Web connects only to the public internet (or a range the installation named), never to its own host,
-  loopback or a cloud metadata service, to the very address it checked, and never follows a redirect. Removing a server
-  takes its tools from every employee at their next ask.
+  loopback or a cloud metadata service, to the very address it checked, following no redirect. Removing a server takes
+  its tools from every employee at their next ask.
 - **Repositories, as git bundles.** Work may bring up to five repositories, only ones its employee may use on its
   *Access* tab (any other is refused when the work is given; the mission keeps them as grants of its own). Every
   attempt gets a snapshot of each at its default branch as a git bundle in `/input` (`repo-<name>.bundle`: one root
@@ -668,15 +658,15 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   is told to `git clone` it. Orbit Web clones it itself -- bare, one commit deep, through the source's sign-in, in a
   room of the control plane's own -- and removes its copy once the attempt has the bundle (and, at start, every room a
   restart left): the sign-in never leaves the control plane. A repository the employee may no longer use when an
-  attempt starts (its grants then, not when the work was given), or whose snapshot is larger than an attempt takes (48
-  MiB for all of them), is not brought in, and the employee is told why.
+  attempt starts (its grants then, not when the work was given), or whose snapshot is larger than an attempt takes
+  (48 MiB for all of them), is not brought in, and the employee is told why.
 
 ### 10. Employee desks
 
-Governance → Employee desks lists every employee's desk -- of those in the office first, then of those who left --
-with what its desk and cache commit of the account's storage and what was last measured in them, measured again when
-accepted work reaches the desk, when it is opened and after a clean-up ("this part should still be shown, so one can
-see what is on the desk ... it can be refreshed when the data grows").
+Governance → Employee desks lists every employee's desk -- of those in the office, then of those who left -- with what
+its desk and cache commit of the account's storage and what was last measured in them, measured again when accepted
+work reaches it, when it is opened and after a clean-up ("this part should still be shown, so one can see what is on
+the desk ... it can be refreshed when the data grows").
 
 - **Looked into, read only.** The desk is the account's -- the directory it keeps for an employee's work -- so
   reviewing it is the owner's: one folder at a time, the biggest first; a file's first 512 KiB as text, shown and never
@@ -710,61 +700,50 @@ see what is on the desk ... it can be refreshed when the data grows").
   Antigravity CLI (`agy`, the release archive its official installer fetches, pinned by the SHA-512 its manifest names,
   per architecture), in the control plane's image and the model plane's; `build-info.json`, `GET /api/setup/status`
   and Settings → System name every version, the Orbit commit included. What each may do is decided in 3 and 8.
-- **Three employee images** from the same Dockerfile's targets, never pulled or built by Orbit Web itself:
-  `workstation` (the pinned Debian base with git, a C toolchain, the pinned CPython with pip and venv, Node and npm,
-  and jq, as one non-root user with no sudo), `model-plane` (the CLIs with Orbit Web's runner and tool bridge, and no
-  `/etc/claude-code`) and `storage-helper` (the filesystem tools of the employees' quotas).
-- **The image's Python**: CPython 3.15.2 from python-build-standalone (release 20261110), pinned by SHA-256 per
-  architecture, with pip and venv, root's and on the PATH for Claude Code (a project installs into its own virtual
-  environment or with `pip --user`; `AGENT_PYTHON=0` leaves it out); the System card, health and build info report it.
-- **A pin moves without a new Orbit Web.** Settings → System → Updates compares each program with its publisher's
-  newest release from public feeds, sending nothing of the installation (*Couldn't check* is never *Up to date*), and
-  `scripts/update-pins.mjs` (a dry run unless `--apply`) moves Claude Code and OpenAI Codex to npm's newest and GitHub
-  CLI to its newest release with the SHA-256 from that release's own checksums file, or not at all, naming what a
-  person moves by hand (the Azure CLI's hashed lock, Antigravity's manifest, the base images' digests, Python's
-  builds). An image never takes a file's mode from the checkout it was built from.
+- **Three employee images** from the same Dockerfile's targets, never pulled or built by Orbit Web: `workstation` (the
+  pinned Debian base with git, a C toolchain, the pinned CPython with pip and venv, Node, npm and jq, one non-root user
+  with no sudo), `model-plane` (the CLIs, Orbit Web's runner and tool bridge, no `/etc/claude-code`) and
+  `storage-helper` (the filesystem tools of the employees' quotas).
+- **The image's Python**: CPython 3.15.2 from python-build-standalone (release 20261110), SHA-256 per architecture,
+  with pip and venv, root's and on the PATH for Claude Code (a project installs into its own virtual environment or
+  with `pip --user`; `AGENT_PYTHON=0` leaves it out), reported by the System card, health and build info.
+- **A pin moves without a new Orbit Web**: Settings → System → Updates compares each program with its publisher's
+  newest release from public feeds, sending nothing of the installation, and `scripts/update-pins.mjs` (a dry run
+  unless `--apply`) moves the npm CLIs and GitHub CLI -- with the SHA-256 its release publishes, or not at all -- and
+  names what a person moves by hand. An image never takes a file's mode from the checkout it was built from.
 
 ## Consequences
 
 - A person needs Docker: `docker compose up -d --build` brings PostgreSQL with pgvector, Orbit Web and the allocator
   (its secret in `allocator.secret`, the three employee images built first), then *Set up Orbit Web* with the code its
-  terminal prints. A hosted installation asks for a username and a password, nothing else unless its operator sets a
-  token, and its accounts sign their connections in without anybody at a terminal of the server.
-- Nothing of an earlier Orbit Web is carried over: a 0.7.0 installation starts with empty records (its SQLite files and
-  `/data/claude` stay where they were, as do the workspaces on disk and the GitHub and Azure sign-ins), each account
-  connects its own AI CLIs, and an installation of a development build of 0.8.0 starts afresh with `db.js reset`. The
-  upgrade acceptance case is not applicable, by the owner's decision.
+  terminal prints. A hosted installation asks for a username and a password alone unless its operator sets a token,
+  and its accounts sign their connections in with nobody at a terminal of the server.
+- Nothing of an earlier Orbit Web is carried over: a 0.7.0 installation starts with empty records (its SQLite files,
+  `/data/claude`, the workspaces on disk and the GitHub and Azure sign-ins stay where they were) and each account
+  connects its own AI CLIs; a development build of 0.8.0 starts afresh with `db.js reset`, so the upgrade acceptance
+  case is not applicable.
 - What was verified is reported per acceptance case (`integrations/orbit-web/docs/0.8.0-acceptance.md`, A01-A19):
   every native AI CLI row is BLOCKED -- no account was used for the tests, by the owner's decision -- and the logic is
-  tested with scripted CLIs against Orbit Web's real endpoints on PostgreSQL and, for the sandbox, in real containers.
-  The security lab (`tests/security-lab/`), which attacks the governed deployment from the agent's own container and
-  reads each verdict outside it, still drives a sign-in this version no longer has and was not run for 0.8.0.
-- **Said plainly.**
-  - In the single deployment a run's sandbox holds what it holds for real -- its chat's workspace, its connection's
-    login, its account's Orbit store and, with a switch on, the installation's GitHub or Azure sign-in (with GitHub's,
-    Claude Code pushes and opens pull requests as the person by design, and a prompt injection could drive it to the
-    stored sign-in) -- and its network reaches the internet. Without an allocator, runs sit in Orbit Web's own
-    container beside every sign-in. A Codex chat has no deny rule by path: confined by Codex's own sandbox or a run's
-    container, or it gets no shell.
-  - The governed deployment's one agent container mounts every account's workspaces and connection homes: an agent can
-    read another workspace's files on disk (the gateway refuses another's approvals, the disk does not), so trust
-    domains that must not see each other run as separate deployments. A run's Claude configuration is necessarily
-    readable by it and the model API is reachable by design; the isolation check is the agent container's own answer --
-    a check of the wiring, not proof against a runner the agent took over. `runtime` rules are defence in depth.
-  - Accounts on one Orbit Web are separated at the API, in the rows and per sandbox; they are not tenants of an
-    isolated system: the GitHub and Azure CLIs' sign-ins are the installation's, shared, and Orbit Web's own container
-    holds every account's data.
-  - An attempt's isolation is Docker's: whoever controls the allocator controls the host. The model plane's login is
-    readable by the CLI that uses it, the provider's own program, and its connections are held to the providers' hosts
-    but not logged per run. A storage area only measured can be filled past its quota until it is noticed. In
-    Autonomous mode an employee can send the data of its assignment to any public website.
-  - What a question retrieves, a chat's words and its images go to the model's provider: storing them locally does not
-    keep them from it. A checked connector acts as the account in its service; in research no classifier reviews the
-    call -- the guard is the person's checkbox and the model's rule. The control protocol the model catalog and the
-    connector list read is the one the Agent SDK speaks, not a documented CLI command. The card's sign-in relays a
-    person's one-time code through Orbit Web's API: an installation that must not relay it sets
-    `ORBIT_WEB_SIGN_IN_ON_PAGE=0`. The audit chain is tamper evidence on this host, not proof against whoever controls
-    it.
+  tested with scripted CLIs against the real endpoints on PostgreSQL and, for the sandbox, in real containers. The
+  security lab (`tests/security-lab/`), which attacks the governed deployment from the agent's own container and reads
+  each verdict outside it, still drives a sign-in this version no longer has and was not run for 0.8.0.
+- **Said plainly.** A run's sandbox in the single deployment holds what it holds for real -- its chat's workspace, its
+  connection's login, its account's Orbit store and, with a switch on, the installation's GitHub or Azure sign-in (with
+  GitHub's, Claude Code pushes as the person by design, and a prompt injection could drive it to the sign-in) -- and it
+  reaches the internet; without an allocator, runs sit in Orbit Web's own container beside every sign-in. The governed
+  deployment's one agent container mounts every account's workspaces and connection homes, so an agent can read
+  another workspace's files on disk (the gateway refuses another's approvals, the disk does not): trust domains that
+  must not see each other run as separate deployments. A run's Claude configuration is readable by it and the model
+  API reachable by design; the isolation check is the agent container's own answer -- a check of the wiring, not proof
+  against a runner the agent took over. Accounts are separated at the API, in the rows and per sandbox, not as tenants
+  of an isolated system: the GitHub and Azure sign-ins are the installation's, and Orbit Web's container holds every
+  account's data. An attempt's isolation is Docker's, so whoever controls the allocator controls the host; the model
+  plane's login is readable by the provider's own CLI that uses it, and its connections are held to the providers'
+  hosts but not logged per run; a storage area only measured can be filled past its quota until noticed. What a
+  question retrieves, a chat's words and its images go to the model's provider; a checked connector acts as the
+  account in its service, and in research the guard is the person's checkbox and the model's rule, with no classifier
+  reviewing the call. The model catalog and the connector list come from the control protocol the Agent SDK speaks,
+  not a documented CLI command. The audit chain is tamper evidence on this host, not proof against whoever controls it.
 - Not built in 0.8.0: semantic retrieval, OCR, web search or "deep research" in research, a local model, temporary
   assistants, an external delivery channel, email verification, OIDC or a single sign-on of Orbit Web's own, billing,
   audit pruning, and any run of an employee on Antigravity.

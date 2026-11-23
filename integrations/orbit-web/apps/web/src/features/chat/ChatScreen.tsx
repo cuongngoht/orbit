@@ -13,6 +13,7 @@ import { SourceMark } from "../../components/SourceMark";
 import { useResource } from "../../hooks/useResource";
 import { useSessionStream } from "../../hooks/useSessionStream";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { get, send } from "../../services/api";
 import { uploadImage } from "../../services/images";
 import { ChangesPanel } from "../changes/ChangesPanel";

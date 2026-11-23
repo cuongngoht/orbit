@@ -4,6 +4,7 @@ import { Button, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } f
 import { CheckmarkCircle16Regular, ChevronDown16Regular, ChevronRight16Regular, ErrorCircle16Regular, Warning16Regular } from "@fluentui/react-icons";
 import { useState, type ReactNode } from "react";
 import { CodeBlock } from "../../components/CodeBlock";
+import { useI18n } from "../../i18n";
 import type { ToolItem } from "./chatReducer";
 
 const useStyles = makeStyles({

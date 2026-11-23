@@ -6,6 +6,7 @@ import type { ChangeKind, ChangesReport, FileDiff } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { errorText, get } from "../../services/api";
 import { DiffView } from "./DiffView";
 

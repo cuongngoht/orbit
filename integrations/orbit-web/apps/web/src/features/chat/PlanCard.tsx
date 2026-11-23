@@ -3,6 +3,7 @@
 import { Button, Card, CardHeader, Text, makeStyles, tokens } from "@fluentui/react-components";
 import { ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icons";
 import { Markdown } from "../../components/Markdown";
+import { useI18n } from "../../i18n";
 
 const useStyles = makeStyles({
   card: {
@@ -17,17 +18,18 @@ const useStyles = makeStyles({
 });
 
 export function PlanCard({ plan, truncated, onRun, canRun }: { plan: string; truncated: boolean; onRun?: () => void; canRun: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
-    <Card className={s.card} aria-label="Plan">
-      <CardHeader image={<ClipboardTaskList16Regular />} header={<Text weight="semibold">Plan</Text>} description={<Text size={200} className={s.muted}>Proposed in Plan mode. Nothing was changed.</Text>} />
+    <Card className={s.card} aria-label={t("chat.plan.title")}>
+      <CardHeader image={<ClipboardTaskList16Regular />} header={<Text weight="semibold">{t("chat.plan.title")}</Text>} description={<Text size={200} className={s.muted}>{t("chat.plan.description")}</Text>} />
       <div className={s.body}>
         <Markdown text={plan} />
-        {truncated && <Text size={200} className={s.muted}>(the plan was longer; this is its beginning)</Text>}
+        {truncated && <Text size={200} className={s.muted}>{t("chat.plan.truncated")}</Text>}
         {onRun && (
           <div>
             <Button className={s.runBtn} appearance="primary" icon={<Flash16Regular />} disabled={!canRun} onClick={onRun}>
-              Run it in Autonomous
+              {t("chat.plan.runAutonomous")}
             </Button>
           </div>
         )}

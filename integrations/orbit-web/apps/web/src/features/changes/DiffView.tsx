@@ -2,6 +2,7 @@
 import { makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { useMemo } from "react";
 import { highlighted } from "../../components/highlight";
+import { useI18n } from "../../i18n";
 
 export interface DiffLine {
   kind: "add" | "del" | "ctx" | "hunk" | "meta";

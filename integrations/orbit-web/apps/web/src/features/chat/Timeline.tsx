@@ -4,6 +4,7 @@ import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } 
 import { Markdown } from "../../components/Markdown";
 import { effortLabel, MODE_LABELS, RUNTIME_LABELS, type RuntimeKind } from "@orbit-web/contracts";
 import { BranchFork16Regular } from "@fluentui/react-icons";
+import { useI18n, type MessageKey } from "../../i18n";
 import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
 import { PlanCard } from "./PlanCard";
 import { ToolCard } from "./ToolCard";

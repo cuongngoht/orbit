@@ -356,6 +356,40 @@ const useStyles = makeStyles({
     ...shorthands.border("0", "none", "transparent"),
     minWidth: 0,
   },
+  deskStage: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    width: "100%",
+  },
+  staticAvatarBtn: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    ...shorthands.border("0", "none", "transparent"),
+    backgroundColor: "transparent",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    color: tokens.colorNeutralForeground1,
+    transitionProperty: "filter",
+    transitionDuration: "140ms",
+    ":hover": {
+      filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.22))",
+    },
+    ":focus-visible": {
+      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
+      outlineOffset: "2px",
+      borderRadius: "8px",
+    },
+    ":disabled": {
+      cursor: "default",
+      opacity: 0.7,
+    },
+  },
   deskStageBtn: {
     display: "flex",
     flexDirection: "column",
@@ -367,15 +401,16 @@ const useStyles = makeStyles({
     paddingLeft: "4px",
     borderRadius: "10px",
     backgroundColor: "transparent",
-    ...shorthands.border("0", "none", "transparent"),
+    ...shorthands.border("1px", "solid", "transparent"),
     cursor: "pointer",
     fontFamily: "inherit",
     color: tokens.colorNeutralForeground1,
     width: "100%",
-    transitionProperty: "background-color",
+    transitionProperty: "background-color, border-color",
     transitionDuration: "140ms",
     ":hover": {
       backgroundColor: "rgba(91, 88, 212, 0.08)",
+      ...shorthands.borderColor(tokens.colorBrandStroke2),
     },
     ":focus-visible": {
       ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
@@ -633,7 +668,7 @@ export function OfficeFloorMap({
           </span>
         </div>
         <Text size={100} className={s.muted} aria-hidden>
-          Click any teammate to pause &amp; talk
+          Click a desk for profile · Click a teammate to assign work
         </Text>
       </div>
 
@@ -775,23 +810,23 @@ export function OfficeFloorMap({
 
                     return (
                       <article key={e.id} className={s.deskArticle} aria-label={e.name}>
-                        <button
-                          type="button"
-                          className={s.deskStageBtn}
-                          aria-label={`Assign work to ${e.name}`}
-                          disabled={e.employment === "archived"}
-                          title={e.employment === "archived" ? e.name : `Click to assign work to ${e.name}`}
-                          onClick={() => onAssign(e.id)}
-                          {...restore}
-                        >
-                          <div className={s.chairAnchorWrap}>
-                            <span
-                              data-wp={`desk-${e.id}`}
-                              style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
-                              aria-hidden
-                            />
-                            {!measured ? (
-                              <>
+                        {!measured ? (
+                          <div className={s.deskStage}>
+                            <div className={s.chairAnchorWrap}>
+                              <span
+                                data-wp={`desk-${e.id}`}
+                                style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
+                                aria-hidden
+                              />
+                              <button
+                                type="button"
+                                className={s.staticAvatarBtn}
+                                aria-label={`Assign work to ${e.name}`}
+                                disabled={e.employment === "archived"}
+                                title={e.employment === "archived" ? `${e.name} — Archived` : `Assign work to ${e.name}`}
+                                onClick={() => onAssign(e.id)}
+                                {...restore}
+                              >
                                 <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
                                 <div style={{ marginBottom: "-8px" }}>
                                   <PixelChibiSvg
@@ -801,22 +836,49 @@ export function OfficeFloorMap({
                                     size={38}
                                   />
                                 </div>
-                              </>
-                            ) : (
-                              !atDeskNow &&
-                              awayReason && (
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              className={s.deskStageBtn}
+                              aria-label={`Open ${e.name}'s profile`}
+                              title={`Open ${e.name}'s profile`}
+                              onClick={() => onOpenEmployee(e.id)}
+                            >
+                              <PixelModernDeskSvg
+                                workLabel={e.workLabel}
+                                occupied={atDeskNow}
+                                penSpinning={atDeskNow && e.workLabel === "ready"}
+                              />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className={s.deskStageBtn}
+                            aria-label={`Open ${e.name}'s profile`}
+                            title={`Open ${e.name}'s profile`}
+                            onClick={() => onOpenEmployee(e.id)}
+                          >
+                            <div className={s.chairAnchorWrap}>
+                              <span
+                                data-wp={`desk-${e.id}`}
+                                style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
+                                aria-hidden
+                              />
+                              {!atDeskNow && awayReason && (
                                 <span className={s.awayNote} aria-hidden>
                                   {awayReason}
                                 </span>
-                              )
-                            )}
-                          </div>
-                          <PixelModernDeskSvg
-                            workLabel={e.workLabel}
-                            occupied={atDeskNow}
-                            penSpinning={atDeskNow && e.workLabel === "ready"}
-                          />
-                        </button>
+                              )}
+                            </div>
+                            <PixelModernDeskSvg
+                              workLabel={e.workLabel}
+                              occupied={atDeskNow}
+                              penSpinning={atDeskNow && e.workLabel === "ready"}
+                            />
+                          </button>
+                        )}
 
                         <div className={o.between} style={{ gap: "4px", width: "100%" }}>
                           <Button className={s.empNameBtn} appearance="transparent" onClick={() => onOpenEmployee(e.id)}>
@@ -891,12 +953,13 @@ export function OfficeFloorMap({
                 key={w.id}
                 type="button"
                 className={s.walkerBtn}
-                aria-label={`Talk to ${e.name}`}
-                title={e.employment === "archived" ? `${e.name} — Open profile` : `Click to assign work to ${e.name}`}
+                aria-label={`Assign work to ${e.name}`}
+                title={e.employment === "archived" ? `${e.name} — Open profile` : `Assign work to ${e.name}`}
                 style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -76%)` }}
                 onMouseEnter={() => setHoveredId(e.id)}
                 onMouseLeave={() => setHoveredId((cur) => (cur === e.id ? null : cur))}
                 onClick={() => (e.employment === "archived" ? onOpenEmployee(e.id) : onAssign(e.id))}
+                {...restore}
               >
                 <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
                 <PixelChibiSvg

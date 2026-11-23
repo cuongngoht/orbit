@@ -11,7 +11,7 @@ import { contained } from "../../../../common/workspace-path.js";
 import type { SandboxConfig } from "../../../../config/sandbox-config.js";
 import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../../../infra/process/runner-port.js";
-import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../../application/sandbox.port.js";
+import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../../application/sandbox.port.js";
 import { AllocatorClient } from "./allocator-client.js";
 import { readSecret, type AllocatorApi, type AttemptRecord, type AttestProbes } from "./allocator-protocol.js";
 import { planeNames, runnerToken } from "./ids.js";
@@ -75,6 +75,18 @@ export class ContainerSandboxProvider implements SandboxProvider {
 
   removeWorkspace(ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }> {
     return this.allocator.removeWorkspace(ids, assignmentId);
+  }
+
+  listDesk(ids: SandboxIds, dir: string, maxEntries: number): Promise<DeskListing> {
+    return this.allocator.listDesk(ids, dir, maxEntries);
+  }
+
+  readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead> {
+    return this.allocator.readDesk(ids, path, maxBytes);
+  }
+
+  cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expectedDeskVersion: number): Promise<DeskCleaned> {
+    return this.allocator.cleanDesk(ids, order, expectedDeskVersion);
   }
 
   private handleOf(r: AttemptRecord): AttemptHandle {

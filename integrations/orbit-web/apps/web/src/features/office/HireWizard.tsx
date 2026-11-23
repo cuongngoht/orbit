@@ -58,13 +58,52 @@ import { ResourceFields, profileLine, resourceProblems, storageProblem } from ".
 export const HIRE_STEPS = ["Identity", "Department & role", "AI runtime, model & effort", "Personal sandbox & resources", "Review & hire"] as const;
 
 const useStyles = makeStyles({
-  surface: { width: "min(960px, 96vw)", maxWidth: "min(960px, 96vw)", maxHeight: "92dvh" },
-  surfaceMobile: { width: "100vw", maxWidth: "100vw", height: "var(--orbit-app-height, 100dvh)", maxHeight: "var(--orbit-app-height, 100dvh)", marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, borderRadius: 0 },
+  surface: {
+    width: "min(960px, 96vw)",
+    maxWidth: "min(960px, 96vw)",
+    maxHeight: "92dvh",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
+  surfaceMobile: {
+    width: "100vw",
+    maxWidth: "100vw",
+    height: "var(--orbit-app-height, 100dvh)",
+    maxHeight: "var(--orbit-app-height, 100dvh)",
+    marginTop: 0,
+    marginRight: 0,
+    marginBottom: 0,
+    marginLeft: 0,
+    borderRadius: 0,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+  },
+  dialogBody: {
+    display: "grid",
+    gridTemplateRows: "auto minmax(0, 1fr) auto",
+    maxHeight: "100%",
+    minHeight: 0,
+    flexGrow: 1,
+    overflow: "hidden",
+  },
   steps: { display: "flex", gap: "6px", flexWrap: "wrap", listStyleType: "none", margin: 0, paddingLeft: 0 },
   step: { display: "inline-flex", alignItems: "center", gap: "6px", paddingTop: "4px", paddingRight: "10px", paddingBottom: "4px", paddingLeft: "6px", borderRadius: "9999px", backgroundColor: tokens.colorNeutralBackground2, color: tokens.colorNeutralForeground2, fontSize: tokens.fontSizeBase200 },
   stepOn: { backgroundColor: tokens.colorBrandBackground2, color: tokens.colorBrandForeground1, fontWeight: tokens.fontWeightSemibold },
   dot: { width: "20px", height: "20px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: tokens.colorNeutralBackground5, fontSize: tokens.fontSizeBase100 },
-  body: { display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 },
+  body: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+    minWidth: 0,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingTop: "2px",
+    paddingRight: "4px",
+    paddingBottom: "4px",
+  },
+  dialogActions: { paddingTop: "8px" },
   option: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 },
   quote: { borderLeft: `3px solid ${tokens.colorNeutralStroke1}`, paddingLeft: "10px", margin: 0 },
 });
@@ -244,7 +283,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
       <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label="Hire an employee">
-        <DialogBody>
+        <DialogBody className={s.dialogBody}>
           <DialogTitle>Hire an employee</DialogTitle>
           <DialogContent className={s.body}>
             <Steps at={at} />
@@ -477,7 +516,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                 </MessageBar>
               ))}
           </DialogContent>
-          <DialogActions>
+          <DialogActions className={s.dialogActions}>
             <Button onClick={onClose}>Cancel</Button>
             {at > 0 && <Button onClick={() => setAt(at - 1)}>Back</Button>}
             {at < HIRE_STEPS.length - 1 ? (

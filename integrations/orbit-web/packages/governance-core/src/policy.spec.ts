@@ -103,6 +103,23 @@ test("an employee's write through a connector waits for one approval by default,
   assert.deepEqual(ACTIONS["connector.write"].fingerprint, ["connector", "target", "operation", "digest"]);
 });
 
+test("an employee's desk is a person's to look into and to clean up, never an agent's: allowed by default, every decision recorded", () => {
+  const owner = { principalType: "human", principalId: "owner:acc-1" } as const;
+  for (const deployment of ["single", "governed"] as const) {
+    for (const action of ["employee.desk.read", "employee.desk.clean"] as const) {
+      const p = policy(defaultAccountPolicy(ACCOUNT, deployment));
+      assert.equal(evaluate(p, ask({ ...owner, action, resource: "emp-1" })).verdict, "allow", `${deployment} ${action}`);
+      const agent = evaluate(policy(withRules([{ id: "all", action, effect: "allow" }])), ask({ action, resource: "emp-1" }));
+      assert.equal(agent.verdict, "deny", action);
+      assert.ok(agent.reasonCodes.includes("PRINCIPAL_CEILING"), action);
+    }
+  }
+  for (const action of ["employee.desk.read", "employee.desk.clean"] as const) {
+    assert.equal(ACTIONS[action].sensitive, true, `${action} is recorded even where only refusals are`);
+    assert.deepEqual(ACTIONS[action].fingerprint, ["employee"]);
+  }
+});
+
 test("a production action is never simply allowed to an agent: the most it gets is one approval", () => {
   for (const action of ["deployment.production", "database.production.migrate", "data.production.destroy"] as const) {
     const most = (ACTIONS[action].ceiling as Partial<Record<string, string>>).agent;

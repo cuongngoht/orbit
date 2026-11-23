@@ -38,6 +38,14 @@ async function dispatch(api: AllocatorApi, op: Operation, a: Record<string, unkn
       return api.publishWorkspace(a.ids as never, s("assignmentId"), n("expectedDeskVersion"));
     case "removeWorkspace":
       return api.removeWorkspace(a.ids as never, s("assignmentId"));
+    case "listDesk":
+      return api.listDesk(a.ids as never, s("dir"), n("maxEntries"));
+    case "readDesk": {
+      const r = await api.readDesk(a.ids as never, s("path"), n("maxBytes"));
+      return { deskVersion: r.deskVersion, bytes: r.bytes, base64: r.data.toString("base64"), truncated: r.truncated, modifiedAt: r.modifiedAt };
+    }
+    case "cleanDesk":
+      return api.cleanDesk(a.ids as never, a.order as never, n("expectedDeskVersion"));
     case "startAttempt":
       return api.startAttempt(a.spec as never);
     case "findAttempt":

@@ -61,6 +61,7 @@ export const AUDIT_EVENTS = {
   "report.generated": row("A daily audit report was generated.", "reportId", "day", "head"),
   "office.command": row("A command of the virtual office changed what an account's office keeps.", "command", "aggregate", "aggregateId", "version", "detail"),
   "office.refused": row("A command of the virtual office was refused.", "command", "aggregateId", "cause"),
+  "office.desk.read": row("A person looked into an employee's desk: a folder's listing or a file (what was looked at, never what it holds).", "employeeId", "path", "kind", "bytes", "deskVersion"),
   "office.resources.changed": row("An employee's resources or the account's budget changed (they apply to future attempts).", "scope", "target", "before", "after"),
   "office.run.admitted": row("An employee's attempt was admitted with the resources it reserved.", "runId", "cpuMillis", "memoryMiB", "scratchMiB", "resourceRevision"),
   "office.run.released": row("An attempt's reserved resources were released once its containers were verified gone.", "runId", "reason"),

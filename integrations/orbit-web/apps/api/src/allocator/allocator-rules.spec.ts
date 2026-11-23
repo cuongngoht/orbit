@@ -3,7 +3,7 @@
 // checks find wrong, how the desk is copied (links never followed, `.orbit/` never carried), and the signed HTTP door.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -17,7 +17,7 @@ import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountI
 import { cgroupUsage, limitsMatch, observedLimits } from "./cgroup.js";
 import type { ContainerInspect } from "./docker/engine.js";
 import { demuxAll, StdStreamDemuxer } from "./docker/stdstream.js";
-import { nodeScript, syncScript } from "./scripts/node-scripts.js";
+import { deskScript, nodeScript, syncScript } from "./scripts/node-scripts.js";
 import { allocatorServer } from "./server.js";
 import { MiB, modelPlaneBody, sessionPlaneBody, toolPlaneBody, toolPlaneMounts } from "./specs.js";
 import { quotaHeld } from "./storage.js";
@@ -170,6 +170,128 @@ describe("the desk's copy (the same program a storage worker runs)", () => {
     assert.deepEqual([existsSync(join(desk, "link")), existsSync(join(desk, ".orbit")), existsSync(join(desk, ".orbit-publish"))], [false, false, false]);
     assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [] });
   });
+
+  test("an isolation check's marker in the desk is neither seeded into work, published over, nor taken from a work tree", () => {
+    const desk = join(dir, "desk2");
+    const work = join(dir, "work2");
+    mkdirSync(desk);
+    mkdirSync(work);
+    writeFileSync(join(desk, ".orbit-canary-0123456789abcdef"), "nonce");
+    writeFileSync(join(desk, "kept.md"), "kept");
+    assert.deepEqual(run("seed", desk, work).out, { seeded: true, entries: 1 });
+    assert.equal(existsSync(join(work, ".orbit-canary-0123456789abcdef")), false);
+    // A publish while the marker sits in the desk leaves it there; a marker-named file of the work tree never reaches it.
+    writeFileSync(join(work, ".orbit-canary-fedcba9876543210"), "the employee's");
+    assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [] });
+    assert.equal(readFileSync(join(desk, ".orbit-canary-0123456789abcdef"), "utf8"), "nonce");
+    assert.equal(existsSync(join(desk, ".orbit-canary-fedcba9876543210")), false);
+  });
+});
+
+describe("an employee's desk, looked into and cleaned up (the program a storage worker runs)", () => {
+  let dir: string;
+  let desk: string;
+  let cache: string;
+  const run = (args: string[], stdin?: unknown) => {
+    const r = spawnSync(process.execPath, ["-e", nodeScript(deskScript), ...args], { encoding: "utf8", input: stdin === undefined ? "" : JSON.stringify(stdin) });
+    return { code: r.status, out: JSON.parse(r.stdout || "{}") as Record<string, unknown>, err: r.stderr };
+  };
+  const list = (d: string, max = 100) => run(["list", desk, d, String(max)]);
+  const names = (out: Record<string, unknown>): string[] => (out.entries as { name: string }[]).map((e) => e.name);
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "desk-look-"));
+    desk = join(dir, "desk");
+    cache = join(dir, "cache");
+    mkdirSync(join(desk, "toolbox/skills/report"), { recursive: true });
+    mkdirSync(join(desk, "toolbox/scripts"), { recursive: true });
+    mkdirSync(join(desk, "notes/old"), { recursive: true });
+    mkdirSync(join(desk, ".orbit-publish"));
+    mkdirSync(join(desk, "lost+found"));
+    mkdirSync(join(cache, "npm"), { recursive: true });
+    writeFileSync(join(desk, "toolbox/skills/report/SKILL.md"), "# report\n");
+    writeFileSync(join(desk, "notes/plan.md"), "plan");
+    writeFileSync(join(desk, "notes/old/big.log"), "x".repeat(5000));
+    writeFileSync(join(desk, "notes/.orbit-canary-0123456789abcdef"), "deeper down, only a name");
+    writeFileSync(join(desk, "report.html"), "<script>alert(1)</script>");
+    writeFileSync(join(desk, "data.bin"), Buffer.from([0x50, 0x4b, 0x00, 0x01]));
+    writeFileSync(join(desk, ".orbit-canary-0123456789abcdef"), "a marker");
+    writeFileSync(join(desk, ".orbit-mine"), "the employee's own");
+    writeFileSync(join(cache, "npm/pkg.tgz"), "cached");
+    writeFileSync(join(dir, "secret"), "outside the desk");
+    mkdirSync(join(dir, "elsewhere"));
+    writeFileSync(join(dir, "elsewhere/x"), "outside");
+    symlinkSync(join(dir, "secret"), join(desk, "to-secret"));
+    symlinkSync(join(dir, "elsewhere"), join(desk, "to-elsewhere"));
+  });
+  after(() => {
+    spawnSync("chmod", ["-R", "u+w", dir]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a folder's listing: the biggest first, each folder with what is under it, links never followed, Orbit Web's own names never shown", () => {
+    const r = list("");
+    assert.equal(r.code, 0, r.err);
+    // notes 5028 bytes, report.html 25, .orbit-mine 18, toolbox 9, data.bin 4, then the links (nothing) by name.
+    assert.deepEqual(names(r.out), ["notes", "report.html", ".orbit-mine", "toolbox", "data.bin", "to-elsewhere", "to-secret"]);
+    const notes = (r.out.entries as { name: string; path: string; type: string; bytes: number; files: number }[]).find((e) => e.name === "notes");
+    assert.deepEqual([notes?.path, notes?.type, notes?.bytes, notes?.files], ["notes", "dir", 4 + 5000 + "deeper down, only a name".length, 3]);
+    const link = (r.out.entries as { name: string; type: string; bytes: number; target: string | null }[]).find((e) => e.name === "to-elsewhere");
+    assert.deepEqual([link?.type, link?.bytes, link?.target], ["link", 0, join(dir, "elsewhere")]);
+    assert.equal(r.out.truncated, false);
+    assert.deepEqual([r.out.files, r.out.bytes], [7, 5028 + 25 + 18 + 9 + 4]);
+    // Deeper down, a marker-shaped name is the employee's own.
+    assert.deepEqual(new Set(names(list("notes").out)), new Set(["old", "plan.md", ".orbit-canary-0123456789abcdef"]));
+    const cut = list("", 2);
+    assert.deepEqual([names(cut.out).length, cut.out.truncated], [2, true]);
+  });
+
+  test("a folder is never listed through a link, nor one that is not there or not a folder", () => {
+    assert.equal(list("to-elsewhere").code, 4);
+    assert.equal(list("nowhere").code, 3);
+    assert.equal(list("report.html").code, 6);
+    assert.equal(list("../").code, 2);
+    assert.equal(list(".orbit-publish").code, 2);
+  });
+
+  test("a file's bytes, at most what is asked; never through a link, never a folder", () => {
+    const r = run(["read", desk, "report.html", "1000"]);
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual([Buffer.from(r.out.base64 as string, "base64").toString("utf8"), r.out.bytes, r.out.truncated], ["<script>alert(1)</script>", 25, false]);
+    const cut = run(["read", desk, "notes/old/big.log", "10"]);
+    assert.deepEqual([Buffer.from(cut.out.base64 as string, "base64").length, cut.out.bytes, cut.out.truncated], [10, 5000, true]);
+    assert.equal(run(["read", desk, "to-secret", "1000"]).code, 4, "a link to a file is never opened");
+    assert.equal(run(["read", desk, "to-elsewhere/x", "1000"]).code, 4, "nor a file through a linked folder");
+    assert.equal(run(["read", desk, "notes", "1000"]).code, 6);
+    assert.equal(run(["read", desk, "nowhere.md", "1000"]).code, 3);
+    assert.equal(run(["read", desk, ".orbit-canary-0123456789abcdef", "1000"]).code, 2);
+  });
+
+  test("a clean that names a path through a link removes nothing", () => {
+    const r = run(["clean", desk, cache], { remove: ["notes/plan.md", "to-elsewhere/x"], empty: false, cache: false });
+    assert.equal(r.code, 4);
+    assert.equal(existsSync(join(desk, "notes/plan.md")), true);
+    assert.equal(existsSync(join(dir, "elsewhere/x")), true);
+    assert.equal(run(["clean", desk, cache], { remove: ["../secret"], empty: false, cache: false }).code, 2);
+  });
+
+  test("a clean removes the named paths -- a read-only folder too, a link as a link -- and says what was not there", () => {
+    spawnSync("chmod", ["0555", join(desk, "notes/old")]);
+    const r = run(["clean", desk, cache], { remove: ["notes/old", "to-secret", "gone.txt"], empty: false, cache: false });
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual([r.out.removed, r.out.paths, r.out.missing, r.out.cacheEmptied], [3, ["notes/old", "to-secret"], ["gone.txt"], false]);
+    assert.deepEqual([existsSync(join(desk, "notes/old")), existsSync(join(desk, "to-secret")), existsSync(join(desk, "notes/plan.md"))], [false, false, true]);
+    assert.equal(readFileSync(join(dir, "secret"), "utf8"), "outside the desk", "a link's target is never touched");
+  });
+
+  test("emptying the desk keeps the toolbox and Orbit Web's own names; emptying the cache empties it", () => {
+    const r = run(["clean", desk, cache], { remove: [], empty: true, cache: true });
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out.cacheEmptied, true);
+    assert.deepEqual(new Set(readdirSync(desk)), new Set(["toolbox", ".orbit-canary-0123456789abcdef", ".orbit-publish", "lost+found"]));
+    assert.equal(readFileSync(join(desk, "toolbox/skills/report/SKILL.md"), "utf8"), "# report\n");
+    assert.deepEqual(readdirSync(cache), []);
+    assert.equal(existsSync(join(dir, "elsewhere/x")), true, "a link's target is never touched");
+  });
 });
 
 describe("the allocator's HTTP door", () => {
@@ -188,6 +310,12 @@ describe("the allocator's HTTP door", () => {
     writeFile: async (_k: string, p: string, b: Buffer) => {
       calls.push(`write ${p} ${[...b].join(",")}`);
     },
+    listDesk: async (_ids: unknown, dir: string, max: number) => ({ deskVersion: 3, entries: [{ name: "a.md", path: `${dir}/a.md`, type: "file", bytes: max, files: 1, modifiedAt: "2026-11-23T00:00:00.000Z", target: null }], truncated: false, bytes: max, files: 1 }),
+    readDesk: async (_ids: unknown, path: string) => ({ deskVersion: 3, bytes: 4, data: Buffer.from([0, 1, 2, 255]), truncated: false, modifiedAt: `for ${path}` }),
+    cleanDesk: async (_ids: unknown, req: { remove: string[] }, expected: number) => {
+      if (expected !== 3) throw new AllocatorError("conflict", "the desk is at version 3");
+      return { removed: req.remove.length, paths: req.remove, missing: [], cacheEmptied: false, deskVersion: 3 };
+    },
   } as unknown as AllocatorApi;
   before(async () => {
     server = allocatorServer(fake, secret);
@@ -203,6 +331,15 @@ describe("the allocator's HTTP door", () => {
     assert.deepEqual([...((await client.readFile("k:1", "/work/a", 10)) as Buffer)], [0, 1, 2, 255]);
     await client.writeFile("k:1", "/work/b", Buffer.from([255, 0]));
     assert.deepEqual(calls.slice(-1), ["write /work/b 255,0"]);
+  });
+
+  test("a look into a desk and its clean-up pass through as they were: a file's bytes as bytes, a refusal with its code", async () => {
+    const ids = { orbitId: "o", employeeId: "e", sandboxId: "s" };
+    assert.deepEqual((await client.listDesk(ids, "notes", 7)).entries.map((e) => [e.path, e.bytes]), [["notes/a.md", 7]]);
+    const read = await client.readDesk(ids, "notes/a.md", 10);
+    assert.deepEqual([[...read.data], read.bytes, read.modifiedAt], [[0, 1, 2, 255], 4, "for notes/a.md"]);
+    assert.deepEqual((await client.cleanDesk(ids, { remove: ["notes"], empty: false, cache: false }, 3)).paths, ["notes"]);
+    await assert.rejects(client.cleanDesk(ids, { remove: ["notes"], empty: false, cache: false }, 2), (e: unknown) => e instanceof AllocatorError && e.code === "conflict");
   });
 
   test("an unsigned, wrongly signed or replayed request is refused before it is read", async () => {

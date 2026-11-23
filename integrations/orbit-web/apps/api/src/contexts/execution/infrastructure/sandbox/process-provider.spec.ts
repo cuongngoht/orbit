@@ -2,7 +2,7 @@
 // shell, ever; file tools held to the attempt's own places through links; the desk published under its version check,
 // once per assignment; every removal read back.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -118,5 +118,38 @@ describe("the process provider (development only)", () => {
     assert.equal((await again.removeWorkspace(ids, "asg-1")).gone, true);
     assert.equal((await again.removeWorkspace(ids, "asg-1")).gone, true);
     assert.equal((await again.removeWorkspace(ids, "never-existed")).gone, true);
+  });
+
+  test("a person's look into the desk: one folder, the biggest first; a file's first bytes; never through a link", async () => {
+    const desk = join(data, "workforce/accounts", O, "employees/emp-1/desk/files");
+    mkdirSync(join(desk, "reports"), { recursive: true });
+    writeFileSync(join(desk, "reports/q3.md"), `# Q3\n${"x".repeat(100)}`);
+    writeFileSync(join(desk, ".orbit-canary-0123456789abcdef"), "a marker");
+    symlinkSync(join(data, "connections"), join(desk, "out"));
+    const top = await provider.listDesk(ids, "", 100);
+    assert.deepEqual([top.deskVersion, top.entries[0]?.path], [1, "reports"]);
+    assert.equal(top.entries.some((e) => e.name.startsWith(".orbit-canary-")), false);
+    assert.equal(top.entries.find((e) => e.name === "out")?.type, "link");
+    const file = await provider.readDesk(ids, "reports/q3.md", 4);
+    assert.deepEqual([file.data.toString("utf8"), file.bytes, file.truncated, file.deskVersion], ["# Q3", 105, true, 1]);
+    const code = (c: string) => (e: unknown) => e instanceof AllocatorError && e.code === c;
+    await assert.rejects(provider.readDesk(ids, "out/x", 10), code("bad_request"));
+    await assert.rejects(provider.readDesk(ids, "nowhere.md", 10), code("not_found"));
+    await assert.rejects(provider.listDesk(ids, "../", 10), code("bad_request"));
+    await assert.rejects(provider.listDesk({ ...ids, sandboxId: "sbx-other" }, "", 10), code("not_found"));
+  });
+
+  test("a clean: refused while a workspace of the employee exists or at another desk version; then it goes, the toolbox stays", async () => {
+    const desk = join(data, "workforce/accounts", O, "employees/emp-1/desk/files");
+    const conflict = (said: RegExp) => (e: unknown) => e instanceof AllocatorError && e.code === "conflict" && said.test(e.message);
+    await provider.prepareWorkspace(ids, "asg-3", 64);
+    await assert.rejects(provider.cleanDesk(ids, { remove: ["reports"], empty: false, cache: false }, 1), conflict(/workspace/));
+    assert.equal(existsSync(join(desk, "reports/q3.md")), true);
+    await provider.removeWorkspace(ids, "asg-3");
+    await assert.rejects(provider.cleanDesk(ids, { remove: ["reports"], empty: false, cache: false }, 0), conflict(/version 1/));
+    const r = await provider.cleanDesk(ids, { remove: [], empty: true, cache: false }, 1);
+    assert.equal(r.deskVersion, 1, "a clean does not move the desk's version");
+    assert.deepEqual(readdirSync(desk).sort(), [".orbit-canary-0123456789abcdef", "toolbox"]);
+    assert.equal(existsSync(join(data, "connections", O)), true, "a link's target is never touched");
   });
 });

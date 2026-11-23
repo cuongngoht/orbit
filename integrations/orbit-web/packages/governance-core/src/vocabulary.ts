@@ -90,6 +90,10 @@ export const ACTIONS = {
   "employee.hire": { summary: "Hire a permanent AI employee, or change one's employment.", subject: "execution", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
   "employee.hire_assistant": { summary: "Engage a temporary assistant for one mission, within a manager's grant.", subject: "execution", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["mission", "employee"] },
   "employee.resources.change": { summary: "Change the CPU, memory or storage an employee's attempts may use.", subject: "resources", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
+  // AN EMPLOYEE'S DESK is the account's: a person looks into it (read only, every look recorded) and cleans it up when
+  // it fills -- never while its work could still change it, and never an agent.
+  "employee.desk.read": { summary: "Look into an employee's desk: what it holds, and a file's text (read only).", subject: "resources", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
+  "employee.desk.clean": { summary: "Remove files from an employee's desk, or empty its dependency cache, while it holds no work.", subject: "resources", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
   "work.assign": { summary: "Give a mission to an employee, or decide on its result.", subject: "execution", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["employee"] },
   "work.delegate": { summary: "Give a part of an assignment to another employee.", subject: "execution", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["employee"] },
   "artifact.publish": { summary: "Publish a handoff's files as immutable artifacts of the account.", subject: "resources", enforcement: "control", sensitive: false, ceiling: {}, fingerprint: ["assignment"] },

@@ -60,6 +60,10 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorPaletteDarkOrangeBackground1,
     ...shorthands.borderColor(tokens.colorPaletteDarkOrangeBorder1),
   },
+  statActive: {
+    ...shorthands.borderColor(tokens.colorBrandStroke1),
+    backgroundColor: tokens.colorSubtleBackgroundSelected,
+  },
   filterBar: {
     display: "flex",
     alignItems: "flex-end",
@@ -324,8 +328,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </div>
         </div>
         <div className={o.statGrid}>
-          <div className={o.statCard}>
-            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+          <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={clearFilters}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
                 Total roster
               </Text>
@@ -334,9 +338,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Text size={600} weight="semibold" className={s.statValue}>
               {c.employees}
             </Text>
-          </div>
-          <div className={o.statCard}>
-            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+          </button>
+          <button type="button" aria-pressed={status === "ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "ready" ? "all" : "ready"))}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
                 Ready
               </Text>
@@ -345,9 +349,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.ready > 0 && s.statReady)}>
               {c.ready}
             </Text>
-          </div>
-          <div className={o.statCard}>
-            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+          </button>
+          <button type="button" aria-pressed={status === "working"} className={mergeClasses(o.statCard, o.statCardAction, status === "working" && s.statActive)} onClick={() => setStatus((cur) => (cur === "working" ? "all" : "working"))}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
                 Working
               </Text>
@@ -356,9 +360,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.busy > 0 && s.statBusy)}>
               {c.busy}
             </Text>
-          </div>
-          <div className={o.statCard}>
-            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+          </button>
+          <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={() => go("work")}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
                 Queued
               </Text>
@@ -367,9 +371,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Text size={600} weight="semibold" className={s.statValue}>
               {c.queued}
             </Text>
-          </div>
-          <div className={o.statCard}>
-            <div className={o.between} style={{ flexWrap: "nowrap" }}>
+          </button>
+          <button type="button" aria-pressed={status === "not_ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "not_ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "not_ready" ? "all" : "not_ready"))}>
+            <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={o.muted}>
                 Not ready
               </Text>
@@ -378,7 +382,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Text size={600} weight="semibold" className={mergeClasses(s.statValue, c.notReady > 0 && s.statDanger)}>
               {c.notReady}
             </Text>
-          </div>
+          </button>
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction, c.inbox > 0 && s.statInboxAlert)} onClick={() => go("inbox")} aria-label={`Open Needs me (${c.inbox})`}>
             <div className={o.between} style={{ flexWrap: "nowrap", width: "100%" }}>
               <Text size={200} className={c.inbox > 0 ? s.statWarn : o.muted}>

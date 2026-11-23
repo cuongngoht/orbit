@@ -238,21 +238,32 @@ export interface EmployeeDetail extends EmployeeCard {
   activeRun: RunView | null;
 }
 
-// GOVERNANCE → EMPLOYEE DESKS (ADR 0069): every employee who left -- archived, or rejected at the trial -- and the desk it
-// still holds: its storage stays committed until its owner deletes the desk here (POST /api/employees/:id/employment
-// { command: "delete" }, If-Match the employee's version). A desk being deleted is listed until it is gone.
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0069): every employee's desk -- of those in the office, and of those who left (archived,
+// or rejected at the trial), whose storage stays committed until the owner deletes the desk here (POST
+// /api/employees/:id/employment { command: "delete" }, If-Match the employee's version). A desk being deleted is listed
+// until it is gone. Each one may be looked into (desks.ts); one whose employee is in the office and holds no work may
+// be cleaned up.
 export interface EmployeeDesk {
   employeeId: string;
   name: string;
   employment: Employment;
-  // Why it left, as the owner said.
+  // Why it left, as the owner said (null while it is in the office).
   reason: string | null;
-  leftAt: string;
+  // When it left; null while it is in the office.
+  leftAt: string | null;
   sandbox: { state: SandboxState; reason: string | null } | null;
-  // What its desk and cache hold committed of the account's storage budget, and what was last measured in them.
+  // What its desk and cache hold committed of the account's storage budget, and what was last measured in them, when.
   deskMiB: number;
   cacheMiB: number;
-  usedMiB: number | null;
+  deskUsedMiB: number | null;
+  cacheUsedMiB: number | null;
+  measuredAt: string | null;
+  // How many accepted results changed the desk.
+  deskVersion: number;
+  // It holds an assignment, or an attempt of it is running: its desk is not cleaned now.
+  busy: boolean;
+  canBrowse: boolean;
+  canClean: boolean;
   // The employee's version: the delete names it.
   version: number;
 }

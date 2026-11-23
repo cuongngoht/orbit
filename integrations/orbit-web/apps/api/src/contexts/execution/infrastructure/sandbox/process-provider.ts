@@ -9,14 +9,14 @@ import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readd
 import { availableParallelism, totalmem } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { UsageView } from "@orbit-web/contracts";
+import { checkDeskDir, checkDeskPath, DESK_LIMITS, type UsageView } from "@orbit-web/contracts";
 import { contained } from "../../../../common/workspace-path.js";
 import type { ProcessPort } from "../../../../infra/process/process.port.js";
-import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
+import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import type { SandboxProvider } from "../../application/sandbox.port.js";
-import { AllocatorError, checkAttemptSpec, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
+import { AllocatorError, checkAttemptSpec, checkDeskOrder, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, deskRefusal, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
 import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
-import { nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
+import { deskScript, nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
 
 const MiB = 1024 * 1024;
 const NOT_ISOLATED = "development provider: the CLI runs as a local process beside Orbit Web, with no container, no limit and no isolation -- no shell is granted, file tools only";
@@ -207,6 +207,67 @@ export class ProcessSandboxProvider implements SandboxProvider {
     const dir = this.at(assignmentDir(ids, assignmentId));
     rmSync(dir, { recursive: true, force: true });
     return existsSync(dir) ? { gone: false, detail: "the workspace is still there" } : { gone: true, detail: "the workspace's directory is gone (read back)" };
+  }
+
+  // ---- a person looking into the desk, and cleaning it up: the storage worker's program, run here ------------------
+
+  private deskRun(args: string[], stdin = ""): { code: number | null; out: string; said: string } {
+    const r = spawnSync(process.execPath, ["-e", nodeScript(deskScript), ...args], { encoding: "utf8", input: stdin, maxBuffer: 64 * MiB });
+    return { code: r.status, out: r.stdout, said: r.stderr };
+  }
+
+  private ownSandbox(ids: SandboxIds): { cacheMiB: number; archived: boolean } {
+    const record = this.readJson<{ sandboxId: string; cacheMiB: number; archived: boolean }>(sandboxMeta(ids));
+    if (record === null || record.sandboxId !== ids.sandboxId) throw new AllocatorError("not_found", "no such sandbox");
+    return record;
+  }
+
+  private deskVersionOf(ids: SandboxIds): number {
+    return this.readJson<{ version: number }>(`${deskArea(ids)}/version`)?.version ?? 0;
+  }
+
+  async listDesk(idsIn: SandboxIds, dirIn: string, maxEntriesIn: number): Promise<DeskListing> {
+    const ids = checkSandboxIds(idsIn);
+    const dir = checkDeskDir(dirIn);
+    if (dir === null) throw new AllocatorError("bad_request", "dir is not a folder of the desk");
+    const maxEntries = intIn(maxEntriesIn, 1, 10_000, "maxEntries");
+    this.ownSandbox(ids);
+    const deskVersion = this.deskVersionOf(ids);
+    const r = this.deskRun(["list", this.at(`${deskArea(ids)}/files`), dir, String(maxEntries)]);
+    if (r.code !== 0) throw deskRefusal(r.code, r.said, `listing ${dir === "" ? "the desk" : dir}`);
+    return { deskVersion, ...(JSON.parse(r.out) as Omit<DeskListing, "deskVersion">) };
+  }
+
+  async readDesk(idsIn: SandboxIds, pathIn: string, maxBytesIn: number): Promise<DeskRead> {
+    const ids = checkSandboxIds(idsIn);
+    const path = checkDeskPath(pathIn);
+    if (path === null) throw new AllocatorError("bad_request", "path is not a file of the desk");
+    const maxBytes = intIn(maxBytesIn, 0, DESK_LIMITS.readBytes, "maxBytes");
+    this.ownSandbox(ids);
+    const deskVersion = this.deskVersionOf(ids);
+    const r = this.deskRun(["read", this.at(`${deskArea(ids)}/files`), path, String(maxBytes)]);
+    if (r.code !== 0) throw deskRefusal(r.code, r.said, `reading ${path}`);
+    const o = JSON.parse(r.out) as { bytes: number; base64: string; truncated: boolean; modifiedAt: string };
+    return { deskVersion, bytes: o.bytes, data: Buffer.from(o.base64, "base64"), truncated: o.truncated, modifiedAt: o.modifiedAt };
+  }
+
+  // As the allocator does: never while a workspace of the employee exists (an attempt here always has one), never at
+  // another version of the desk than the one the person chose at; the version does not move.
+  async cleanDesk(idsIn: SandboxIds, orderIn: DeskCleanOrder, expectedIn: number): Promise<DeskCleaned> {
+    const ids = checkSandboxIds(idsIn);
+    const order = checkDeskOrder(orderIn);
+    const expected = intIn(expectedIn, 0, Number.MAX_SAFE_INTEGER, "expectedDeskVersion");
+    const record = this.ownSandbox(ids);
+    if (record.archived) throw new AllocatorError("conflict", "the employee is archived: its desk is read only");
+    const deskVersion = this.deskVersionOf(ids);
+    if (deskVersion !== expected) throw new AllocatorError("conflict", `the desk is at version ${deskVersion}, not ${expected}: accepted work reached it since it was read`);
+    const assignments = this.at(`${employeeDir(ids)}/assignments`);
+    const workspaces = existsSync(assignments) ? readdirSync(assignments) : [];
+    if (workspaces.length > 0) throw new AllocatorError("conflict", `a workspace of this employee's work still exists (assignment ${workspaces[0]}): what it holds could still reach the desk`);
+    const cache = order.cache && record.cacheMiB > 0;
+    const r = this.deskRun(["clean", this.at(`${deskArea(ids)}/files`), cache ? this.at(cacheArea(ids)) : ""], JSON.stringify(order));
+    if (r.code !== 0) throw deskRefusal(r.code, r.said, "cleaning the desk");
+    return { ...(JSON.parse(r.out) as Omit<DeskCleaned, "deskVersion">), deskVersion };
   }
 
   private attemptDir(dispatchKey: string): string {

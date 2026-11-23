@@ -77,6 +77,11 @@ describe("the office: its overview", () => {
     expect(go).toHaveBeenCalledWith("mission", "a1000000-0000-4000-8000-000000000002");
     await userEvent.click(within(ana).getByRole("button", { name: "Ana" }));
     expect(go).toHaveBeenCalledWith("employee", EMP_ANA);
+    await userEvent.click(within(ana).getByRole("button", { name: "Open Ana's profile" }));
+    expect(go).toHaveBeenCalledTimes(3);
+    expect(go).toHaveBeenLastCalledWith("employee", EMP_ANA);
+    await userEvent.click(within(ana).getByRole("button", { name: "Assign work to Ana" }));
+    expect(await screen.findByRole("dialog", { name: "Assign work" })).toBeInTheDocument();
   });
 
   test("hiring needs one connected AI CLI: without one, Hire is disabled and says where to connect one; departments still work", async () => {

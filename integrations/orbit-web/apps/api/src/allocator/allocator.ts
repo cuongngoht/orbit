@@ -10,13 +10,15 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { constants as osConstants } from "node:os";
-import type { EnforcementLevel, StorageArea, UsageView } from "@orbit-web/contracts";
+import { checkDeskDir, checkDeskPath, DESK_LIMITS, type EnforcementLevel, type StorageArea, type UsageView } from "@orbit-web/contracts";
 import type { SandboxConfig } from "../config/sandbox-config.js";
-import type { AreaState, AttemptEvidence, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../contexts/execution/application/sandbox.port.js";
+import type { AreaState, AttemptEvidence, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../contexts/execution/application/sandbox.port.js";
 import {
   AllocatorError,
   checkAttemptSpec,
   checkAttestSpec,
+  checkDeskOrder,
+  deskRefusal,
   checkExecRequest,
   checkProbes,
   checkQuotas,
@@ -41,7 +43,7 @@ import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountI
 import { cgroupUsage, limitsMatch, observedLimits, parseReading, type CgroupReading } from "./cgroup.js";
 import { execIn, failure, text, type ExecOutcome } from "./containers.js";
 import { DockerEngine, DockerError, type ContainerInspect, type NetworkInspect as NetworkInfo } from "./docker/engine.js";
-import { attestProbeScript, cgroupScript, modelPlaneScript, nodeScript, syncScript, toolFileScript, writeTestScript, type AttestProbeConfig } from "./scripts/node-scripts.js";
+import { attestProbeScript, cgroupScript, deskScript, modelPlaneScript, nodeScript, syncScript, toolFileScript, writeTestScript, type AttestProbeConfig } from "./scripts/node-scripts.js";
 import { limitsProbeBody, MiB, MODEL_PLANE_PIDS, MODEL_PLANE_TMPFS, modelPlaneBody, modelPlaneMounts, PROBE_LIMITS, sessionPlaneBody, toolPlaneBody, toolPlaneMounts, type VolumeMount } from "./specs.js";
 import { WorkforceStorage, type StorageState } from "./storage.js";
 
@@ -415,6 +417,84 @@ export class Allocator implements AllocatorApi {
       const still = (await this.storage.get(workspaceMeta(ids, assignmentId))) !== null || (await this.storage.usage(scratchArea(ids, assignmentId))) !== null;
       return still ? { gone: false, detail: "the workspace is still there after its removal" } : { gone: true, detail: "the scratch area and its record are gone (read back)" };
     });
+  }
+
+  // ---- a person looking into the desk, and cleaning it up (Governance → Employee desks) ------------------------------
+  // Each is one storage worker -- as the employee, no network, the desk mounted read only but for a clean -- under the
+  // employee's lock, so it never runs beside a publish, a workspace's seeding or the sandbox's deletion.
+
+  async listDesk(idsIn: SandboxIds, dirIn: string, maxEntriesIn: number): Promise<DeskListing> {
+    const ids = checkSandboxIds(idsIn);
+    const checked = checkDeskDir(dirIn);
+    if (checked === null) throw new AllocatorError("bad_request", "dir is not a folder of the desk");
+    const dir: string = checked;
+    const maxEntries = intIn(maxEntriesIn, 1, 10_000, "maxEntries");
+    return this.locks.run(`employee:${ids.orbitId}/${ids.employeeId}`, async () => {
+      const st = await this.ready();
+      await this.ownSandbox(ids);
+      const desk = await this.deskVersion(ids);
+      const r = await this.deskWorker(st, ids, ["list", "/desk", dir, String(maxEntries)], null);
+      if (r.code !== 0 || r.truncated) throw this.deskError(r, `listing ${dir === "" ? "the desk" : dir}`);
+      return { deskVersion: desk.version, ...(JSON.parse(text(r.stdout)) as Omit<DeskListing, "deskVersion">) };
+    });
+  }
+
+  async readDesk(idsIn: SandboxIds, pathIn: string, maxBytesIn: number): Promise<DeskRead> {
+    const ids = checkSandboxIds(idsIn);
+    const path = checkDeskPath(pathIn);
+    if (path === null) throw new AllocatorError("bad_request", "path is not a file of the desk");
+    const maxBytes = intIn(maxBytesIn, 0, DESK_LIMITS.readBytes, "maxBytes");
+    return this.locks.run(`employee:${ids.orbitId}/${ids.employeeId}`, async () => {
+      const st = await this.ready();
+      await this.ownSandbox(ids);
+      const desk = await this.deskVersion(ids);
+      const r = await this.deskWorker(st, ids, ["read", "/desk", path, String(maxBytes)], null);
+      if (r.code !== 0 || r.truncated) throw this.deskError(r, `reading ${path}`);
+      const o = JSON.parse(text(r.stdout)) as { bytes: number; base64: string; truncated: boolean; modifiedAt: string };
+      return { deskVersion: desk.version, bytes: o.bytes, data: Buffer.from(o.base64, "base64"), truncated: o.truncated, modifiedAt: o.modifiedAt };
+    });
+  }
+
+  // Only while nothing of the employee's work could still change the desk: no workspace (a work tree seeded before the
+  // clean would put back, when published, what the clean removed) and no attempt's container -- and only at the version
+  // the person chose what to remove at. The version does not move: it counts accepted results.
+  async cleanDesk(idsIn: SandboxIds, orderIn: DeskCleanOrder, expectedIn: number): Promise<DeskCleaned> {
+    const ids = checkSandboxIds(idsIn);
+    const order = checkDeskOrder(orderIn);
+    const expected = intIn(expectedIn, 0, Number.MAX_SAFE_INTEGER, "expectedDeskVersion");
+    return this.locks.run(`employee:${ids.orbitId}/${ids.employeeId}`, async () => {
+      const st = await this.ready();
+      const record = await this.readySandbox(ids);
+      const desk = await this.deskVersion(ids);
+      if (desk.version !== expected) throw new AllocatorError("conflict", `the desk is at version ${desk.version}, not ${expected}: accepted work reached it since it was read`);
+      const workspaces = await this.storage.subdirs(`${employeeDir(ids)}/assignments`);
+      if (workspaces.length > 0) throw new AllocatorError("conflict", `a workspace of this employee's work still exists (assignment ${workspaces[0]}): what it holds could still reach the desk`);
+      const planes = (await this.employeeContainers(ids)).filter((c) => c.Labels[LABELS.role] === "tool-plane" || c.Labels[LABELS.role] === "model-plane");
+      if (planes.length > 0) throw new AllocatorError("conflict", `${planes.length} container(s) of this employee's attempts exist`);
+      const cache = order.cache && record.cacheMiB > 0;
+      const r = await this.deskWorker(st, ids, ["clean", "/desk", cache ? "/cache" : ""], { cache }, Buffer.from(JSON.stringify(order)));
+      if (r.code !== 0 || r.truncated) throw this.deskError(r, "cleaning the desk");
+      return { ...(JSON.parse(text(r.stdout)) as Omit<DeskCleaned, "deskVersion">), deskVersion: desk.version };
+    });
+  }
+
+  // The employee's sandbox, as Orbit Web names it (an archived one too: it is read only, never unreadable).
+  private async ownSandbox(ids: SandboxIds): Promise<SandboxRecord> {
+    const record = await this.sandboxRecord(ids);
+    if (record === null || record.sandboxId !== ids.sandboxId) throw new AllocatorError("not_found", "no such sandbox");
+    return record;
+  }
+
+  private deskWorker(st: StorageState, ids: EmployeeIds, args: string[], clean: { cache: boolean } | null, stdin: Buffer | null = null): Promise<ExecOutcome> {
+    const mounts: VolumeMount[] = [{ volume: st.volume, subpath: `${deskArea(ids)}/files`, target: "/desk", readOnly: clean === null }];
+    if (clean?.cache === true) mounts.push({ volume: st.volume, subpath: cacheArea(ids), target: "/cache", readOnly: false });
+    return this.storage.worker(mounts, ["node", "-e", nodeScript(deskScript), ...args], stdin, 120_000);
+  }
+
+  private deskError(r: ExecOutcome, what: string): AllocatorError {
+    if (r.code === 0 && r.truncated) return new AllocatorError("internal", `${what}: the answer was larger than a storage worker may give`);
+    if (r.timedOut) return new AllocatorError("unavailable", `${what}: it took longer than a storage worker may run`);
+    return deskRefusal(r.code, text(r.stderr), what);
   }
 
   // ---- an attempt ----------------------------------------------------------------------------------------------------

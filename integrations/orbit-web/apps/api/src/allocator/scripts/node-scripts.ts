@@ -290,6 +290,10 @@ export function syncScript(): void {
   const [mode, a, b] = process.argv.slice(1);
   const STAGE = ".orbit-publish";
   const SKIP = new Set([".orbit", STAGE, "lost+found"]);
+  // The marker an isolation check plants in ANOTHER employee's desk for a moment: never seeded into a work tree, never
+  // published over (the check would find it gone), and never taken from a work tree -- so no employee can put a file the
+  // desk's review never shows (deskScript) into its desk.
+  const CANARY = /^\.orbit-canary-[0-9a-f]+$/;
   const errCode = (e: unknown): string => ((e as { errno?: number }).errno === -122 ? "EDQUOT" : ((e as { code?: string }).code ?? String(e)));
   type Entry = { type: "file" | "dir" | "link"; size: number; mtimeMs: number; mode: number; target: string };
   const walk = (root: string): Map<string, Entry> => {
@@ -297,7 +301,7 @@ export function syncScript(): void {
     const visit = (rel: string): void => {
       const abs = rel === "" ? root : path.join(root, rel);
       for (const name of fs.readdirSync(abs).sort()) {
-        if (rel === "" && SKIP.has(name)) continue;
+        if (rel === "" && (SKIP.has(name) || CANARY.test(name))) continue;
         const r = rel === "" ? name : `${rel}/${name}`;
         const st = fs.lstatSync(path.join(abs, name));
         if (st.isSymbolicLink()) out.set(r, { type: "link", size: 0, mtimeMs: 0, mode: 0, target: fs.readlinkSync(path.join(abs, name)) });
@@ -405,6 +409,211 @@ export function syncScript(): void {
     return finish({ inputs: inputs.length });
   }
   finish({ error: "unknown mode" }, 2);
+}
+
+// list <desk> <dir> <maxEntries> | read <desk> <path> <maxBytes> | clean <desk> <cache> (what to remove as JSON on stdin)
+// -- a person looking into ONE employee's desk, or cleaning it up, in a storage worker that mounts that desk (read only
+// but for a clean) and, for a clean, its cache, as that employee. Nothing is followed: a path with a link among its
+// folders is refused, a link is listed with its target and removed as a link. Orbit Web's own names at the desk's top
+// (the publishing's stage, lost+found, an isolation check's marker) are never shown, read or removed, and a clean keeps
+// the toolbox's folders. A clean looks at every path it names before it removes anything.
+//   2 not a path in the desk (or a kept one) · 3 not found · 4 through a link · 6 not a folder / not a file
+export function deskScript(): void {
+  const fs = process.getBuiltinModule("node:fs");
+  const path = process.getBuiltinModule("node:path");
+  const [op, root, arg, limitRaw] = process.argv.slice(1);
+  const desk = root as string;
+  const limit = Number(limitRaw ?? "0");
+  const RESERVED = new Set([".orbit", ".orbit-publish", "lost+found"]);
+  const CANARY = /^\.orbit-canary-[0-9a-f]+$/;
+  const KEPT = new Set(["toolbox", "toolbox/skills", "toolbox/scripts"]);
+  // eslint-disable-next-line no-control-regex -- control characters are what is refused
+  const CONTROL = /[\u0000-\u001f\u007f]/;
+  const reserved = (name: string): boolean => RESERVED.has(name) || CANARY.test(name);
+  const die = (code: number, message: string): never => {
+    process.stderr.write(message);
+    process.exit(code);
+  };
+  const errCode = (e: unknown): string => ((e as { errno?: number }).errno === -122 ? "EDQUOT" : ((e as { code?: string }).code ?? String(e)));
+  const out = (v: unknown): void => {
+    process.stdout.write(JSON.stringify(v));
+  };
+  const iso = (ms: number): string => new Date(ms).toISOString();
+  // A path in the desk from its root: relative, plain, never one of Orbit Web's own names at the top.
+  const segmentsOf = (p: string, rootAllowed: boolean): string[] => {
+    if (p === "") return rootAllowed ? [] : die(2, "no path");
+    const segs = p.split("/");
+    if (p.length > 1024 || CONTROL.test(p) || segs.some((s) => s === "" || s === "." || s === "..") || reserved(segs[0] as string)) die(2, `not a path in the desk: ${JSON.stringify(p).slice(0, 200)}`);
+    return segs;
+  };
+  // Each folder on the way, looked at itself: a link refuses; a missing one is not found (null, when that is asked).
+  const folderOf = (segs: string[], missingOk = false): string | null => {
+    let dir = desk;
+    for (const seg of segs) {
+      dir = path.join(dir, seg);
+      let st: import("node:fs").Stats;
+      try {
+        st = fs.lstatSync(dir);
+      } catch (e) {
+        if (errCode(e) === "ENOENT" && missingOk) return null;
+        return errCode(e) === "ENOENT" ? die(3, "not found") : die(1, errCode(e));
+      }
+      if (st.isSymbolicLink()) die(4, "a folder of the path is a link");
+      if (!st.isDirectory()) die(6, "a part of the path is not a folder");
+    }
+    return dir;
+  };
+  const child = (dir: Buffer | string, name: Buffer): Buffer => Buffer.concat([Buffer.from(dir), Buffer.from("/"), name]);
+  // What everything under a folder holds, walked without following a link (an unreadable folder counts as empty).
+  const under = (dir: Buffer): { bytes: number; files: number } => {
+    let bytes = 0;
+    let files = 0;
+    const stack: Buffer[] = [dir];
+    for (let d = stack.pop(); d !== undefined; d = stack.pop()) {
+      let names: Buffer[] = [];
+      try {
+        names = fs.readdirSync(d, { encoding: "buffer" });
+      } catch {
+        continue;
+      }
+      for (const n of names) {
+        const p = child(d, n);
+        let st: import("node:fs").Stats;
+        try {
+          st = fs.lstatSync(p);
+        } catch {
+          continue;
+        }
+        if (st.isDirectory()) stack.push(p);
+        else if (st.isFile()) {
+          bytes += st.size;
+          files += 1;
+        }
+      }
+    }
+    return { bytes, files };
+  };
+
+  if (op === "list") {
+    const segs = segmentsOf(arg ?? "", true);
+    const dir = folderOf(segs) as string;
+    const top = segs.length === 0;
+    type Entry = { name: string; path: string | null; type: string; bytes: number; files: number; modifiedAt: string; target: string | null };
+    const entries: Entry[] = [];
+    for (const n of fs.readdirSync(dir, { encoding: "buffer" })) {
+      const name = n.toString("utf8");
+      if (top && reserved(name)) continue;
+      const p = child(dir, n);
+      let st: import("node:fs").Stats;
+      try {
+        st = fs.lstatSync(p);
+      } catch {
+        continue;
+      }
+      // A name that is not UTF-8 (or holds a control character) is shown; only "empty" can remove it.
+      const plain = Buffer.from(name, "utf8").equals(n) && !CONTROL.test(name);
+      const e: Entry = { name, path: plain ? [...segs, name].join("/") : null, type: "other", bytes: 0, files: 0, modifiedAt: iso(st.mtimeMs), target: null };
+      if (st.isSymbolicLink()) Object.assign(e, { type: "link", target: fs.readlinkSync(p).toString() });
+      else if (st.isDirectory()) Object.assign(e, { type: "dir" }, under(p));
+      else if (st.isFile()) Object.assign(e, { type: "file", bytes: st.size, files: 1 });
+      entries.push(e);
+    }
+    entries.sort((x, y) => y.bytes - x.bytes || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+    const max = Number.isInteger(limit) && limit > 0 ? limit : 2000;
+    return out({ entries: entries.slice(0, max), truncated: entries.length > max, bytes: entries.reduce((s, e) => s + e.bytes, 0), files: entries.reduce((s, e) => s + e.files, 0) });
+  }
+
+  if (op === "read") {
+    const segs = segmentsOf(arg ?? "", false);
+    const file = path.join(folderOf(segs.slice(0, -1)) as string, segs[segs.length - 1] as string);
+    let st: import("node:fs").Stats;
+    try {
+      st = fs.lstatSync(file);
+    } catch (e) {
+      return errCode(e) === "ENOENT" ? die(3, "not found") : die(1, errCode(e));
+    }
+    if (st.isSymbolicLink()) die(4, "the file is a link");
+    if (!st.isFile()) die(6, "not a file");
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+    const size = fs.fstatSync(fd).size;
+    const buf = Buffer.alloc(Math.max(0, Math.min(size, limit)));
+    let n = 0;
+    while (n < buf.length) {
+      const r = fs.readSync(fd, buf, n, buf.length - n, n);
+      if (r === 0) break;
+      n += r;
+    }
+    fs.closeSync(fd);
+    return out({ bytes: size, base64: buf.subarray(0, n).toString("base64"), truncated: size > n, modifiedAt: iso(st.mtimeMs) });
+  }
+
+  if (op === "clean") {
+    const req = JSON.parse(fs.readFileSync(0, "utf8") || "{}") as { remove?: unknown; empty?: unknown; cache?: unknown };
+    const cache = arg ?? "";
+    const named = Array.isArray(req.remove) ? req.remove : [];
+    // Every named path first: one through a link, or one that may not be removed, refuses the whole clean.
+    const exists = (p: Buffer): boolean => {
+      try {
+        fs.lstatSync(p);
+        return true;
+      } catch (e) {
+        return errCode(e) === "ENOENT" ? false : die(1, errCode(e));
+      }
+    };
+    const targets: { rel: string; abs: Buffer }[] = [];
+    const missing: string[] = [];
+    for (const rel of named) {
+      if (typeof rel !== "string") die(2, "a path must be text");
+      const segs = segmentsOf(rel as string, false);
+      if (KEPT.has(rel as string)) die(2, `${rel as string} is kept`);
+      const dir = folderOf(segs.slice(0, -1), true);
+      const abs = dir === null ? null : Buffer.from(path.join(dir, segs[segs.length - 1] as string));
+      if (abs !== null && exists(abs)) targets.push({ rel: rel as string, abs });
+      else missing.push(rel as string);
+    }
+    let removed = 0;
+    // A folder is opened up for its owner (a read-only one too) and emptied; a link goes as a link; nothing is followed.
+    const rm = (abs: Buffer): void => {
+      const st = fs.lstatSync(abs);
+      if (st.isDirectory()) {
+        if ((st.mode & 0o700) !== 0o700) fs.chmodSync(abs, (st.mode & 0o7777) | 0o700);
+        for (const n of fs.readdirSync(abs, { encoding: "buffer" })) rm(child(abs, n));
+        fs.rmdirSync(abs);
+      } else fs.unlinkSync(abs);
+      removed += 1;
+    };
+    // Removing an entry asks its folder to be writable: a read-only one is opened for that and closed again.
+    const remove = (abs: Buffer): void => {
+      const parent = abs.subarray(0, abs.lastIndexOf(0x2f));
+      const mode = fs.statSync(parent).mode & 0o7777;
+      if ((mode & 0o300) !== 0o300) fs.chmodSync(parent, mode | 0o300);
+      try {
+        rm(abs);
+      } finally {
+        if ((mode & 0o300) !== 0o300) fs.chmodSync(parent, mode);
+      }
+    };
+    const paths: string[] = [];
+    try {
+      for (const t of targets) {
+        remove(t.abs);
+        paths.push(t.rel);
+      }
+      if (req.empty === true)
+        for (const n of fs.readdirSync(desk, { encoding: "buffer" })) {
+          const name = n.toString("utf8");
+          if (reserved(name) || n.equals(Buffer.from("toolbox"))) continue;
+          remove(child(desk, n));
+          paths.push(name);
+        }
+      if (req.cache === true && cache !== "")
+        for (const n of fs.readdirSync(cache, { encoding: "buffer" })) if (!n.equals(Buffer.from("lost+found"))) remove(child(cache, n));
+    } catch (e) {
+      return die(1, `${errCode(e)} after ${removed} removed`);
+    }
+    return out({ removed, paths: paths.slice(0, 50), missing, cacheEmptied: req.cache === true && cache !== "" });
+  }
+  die(2, "unknown operation");
 }
 
 // plant <path> <nonce> | unplant <path> | absent <path> | ready <port>  -- in a MODEL PLANE, as its user.

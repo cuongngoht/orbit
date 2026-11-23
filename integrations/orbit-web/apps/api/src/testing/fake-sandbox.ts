@@ -3,8 +3,9 @@
 // employee below calls Orbit Web's real tool endpoint over HTTP with its run's token, as the real bridge would). What it
 // attests is what the test sets (a shell by default). It isolates nothing: it is the logic's stand-in, never evidence of
 // isolation (the container provider's own tests are).
-import type { EnforcementLevel, UsageView } from "@orbit-web/contracts";
-import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../contexts/execution/application/sandbox.port.js";
+import type { DeskEntry, EnforcementLevel, UsageView } from "@orbit-web/contracts";
+import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../contexts/execution/application/sandbox.port.js";
+import { AllocatorError } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
 import { FakeProcessPort, type Call, type FakeChild, type SpawnScript } from "./fake-process.js";
 
 interface Attempt {
@@ -16,6 +17,10 @@ interface Attempt {
 }
 
 const HARD: EnforcementLevel = "HARD_ENFORCED";
+const MiB = 1024 * 1024;
+
+// The desk as a person sees it: what /work held is at its root ("work/x" is x), the toolbox under toolbox/.
+const seen = (key: string): string => (key.startsWith("work/") ? key.slice("work/".length) : key);
 
 const usage = (): UsageView => ({ cpuSeconds: 1.5, memoryCurrentMiB: 120, memoryPeakMiB: 180, oomKilled: false, pidsPeak: 12, diskUsedMiB: 3, networkBytesIn: 0, networkBytesOut: 0, sampledAt: new Date().toISOString() });
 
@@ -26,6 +31,12 @@ export class FakeSandboxProvider implements SandboxProvider {
   readonly desks = new Map<string, { version: number; files: Map<string, Buffer>; publishedBy: string | null }>();
   // By assignment id: the workspace's files ("/work/…", "/output/…", "/toolbox/…").
   readonly workspaces = new Map<string, Map<string, Buffer>>();
+  // By assignment id: the sandbox its workspace belongs to (a clean is refused while one of the employee's is there).
+  readonly workspaceOf = new Map<string, string>();
+  // By sandbox id: the quotas it was provisioned with, and what the cache holds (bytes).
+  readonly quotas = new Map<string, { deskMiB: number; cacheMiB: number }>();
+  readonly caches = new Map<string, number>();
+  readonly cleans: { sandboxId: string; order: DeskCleanOrder; expected: number }[] = [];
   readonly attempts = new Map<string, Attempt>();
   readonly execs: { dispatchKey: string; argv: string[]; cwd: string | undefined }[] = [];
   // What the test controls.
@@ -56,6 +67,7 @@ export class FakeSandboxProvider implements SandboxProvider {
       throw new Error("the fake volume could not be made");
     }
     if (!this.desks.has(ids.sandboxId)) this.desks.set(ids.sandboxId, { version: 0, files: new Map(), publishedBy: null });
+    this.quotas.set(ids.sandboxId, { ...quotas });
     return {
       state: "READY",
       reason: null,
@@ -77,8 +89,15 @@ export class FakeSandboxProvider implements SandboxProvider {
     return this.deleteGone ? { gone: true, detail: "the fake sandbox is gone" } : { gone: false, detail: "1 container(s) of this employee's attempts still exist: they are removed first" };
   }
 
-  async measure(): Promise<AreaState[]> {
-    return [];
+  async measure(ids: SandboxIds): Promise<AreaState[]> {
+    const quotas = this.quotas.get(ids.sandboxId);
+    if (quotas === undefined) throw new AllocatorError("not_found", "no such sandbox");
+    const deskBytes = [...(this.desks.get(ids.sandboxId)?.files.values() ?? [])].reduce((n, b) => n + b.length, 0);
+    const mib = (bytes: number): number => Math.round((bytes / MiB) * 100) / 100;
+    return [
+      { area: "desk", quotaMiB: quotas.deskMiB, level: HARD, evidence: "fake: measured", usedMiB: mib(deskBytes) },
+      ...(quotas.cacheMiB > 0 ? [{ area: "cache" as const, quotaMiB: quotas.cacheMiB, level: HARD, evidence: "fake: measured", usedMiB: mib(this.caches.get(ids.sandboxId) ?? 0) }] : []),
+    ];
   }
 
   async prepareWorkspace(ids: SandboxIds, assignmentId: string, scratchMiB: number): Promise<AreaState> {
@@ -87,6 +106,7 @@ export class FakeSandboxProvider implements SandboxProvider {
       const files = new Map<string, Buffer>();
       for (const [p, b] of desk?.files ?? []) files.set(`/${p}`, Buffer.from(b));
       this.workspaces.set(assignmentId, files);
+      this.workspaceOf.set(assignmentId, ids.sandboxId);
     }
     return { area: "scratch", quotaMiB: scratchMiB, level: HARD, evidence: "fake", usedMiB: 0 };
   }
@@ -111,7 +131,59 @@ export class FakeSandboxProvider implements SandboxProvider {
 
   async removeWorkspace(_ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }> {
     this.workspaces.delete(assignmentId);
+    this.workspaceOf.delete(assignmentId);
     return { gone: true, detail: "removed" };
+  }
+
+  // ---- a person looking into the desk, and cleaning it up -----------------------------------------------------------
+
+  private deskOf(ids: SandboxIds) {
+    const desk = this.desks.get(ids.sandboxId);
+    if (desk === undefined) throw new AllocatorError("not_found", "no such sandbox");
+    return desk;
+  }
+
+  async listDesk(ids: SandboxIds, dir: string, maxEntries: number): Promise<DeskListing> {
+    const desk = this.deskOf(ids);
+    const prefix = dir === "" ? "" : `${dir}/`;
+    const children = new Map<string, DeskEntry>();
+    for (const [key, bytes] of desk.files) {
+      const path = seen(key);
+      if (!path.startsWith(prefix)) continue;
+      const [name, ...deeper] = path.slice(prefix.length).split("/") as [string, ...string[]];
+      const e = children.get(name) ?? { name, path: `${prefix}${name}`, type: deeper.length > 0 ? "dir" : "file", bytes: 0, files: 0, modifiedAt: "2026-11-23T00:00:00.000Z", target: null };
+      children.set(name, { ...e, bytes: e.bytes + bytes.length, files: e.files + 1 });
+    }
+    if (dir !== "" && children.size === 0) throw new AllocatorError("not_found", `listing ${dir}: it is not in the desk`);
+    const entries = [...children.values()].sort((x, y) => y.bytes - x.bytes || (x.name < y.name ? -1 : 1));
+    return { deskVersion: desk.version, entries: entries.slice(0, maxEntries), truncated: entries.length > maxEntries, bytes: entries.reduce((n, e) => n + e.bytes, 0), files: entries.reduce((n, e) => n + e.files, 0) };
+  }
+
+  async readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead> {
+    const desk = this.deskOf(ids);
+    const key = [...desk.files.keys()].find((k) => seen(k) === path);
+    if (key === undefined) throw new AllocatorError("not_found", `reading ${path}: it is not in the desk`);
+    const bytes = desk.files.get(key) as Buffer;
+    return { deskVersion: desk.version, bytes: bytes.length, data: bytes.subarray(0, maxBytes), truncated: bytes.length > maxBytes, modifiedAt: "2026-11-23T00:00:00.000Z" };
+  }
+
+  // What the test controls: a clean the allocator refuses (conflict) for a reason of its own.
+  cleanRefusal: string | null = null;
+
+  async cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expected: number): Promise<DeskCleaned> {
+    const desk = this.deskOf(ids);
+    this.cleans.push({ sandboxId: ids.sandboxId, order, expected });
+    if (this.cleanRefusal !== null) throw new AllocatorError("conflict", this.cleanRefusal);
+    const held = [...this.workspaceOf].find(([, sandboxId]) => sandboxId === ids.sandboxId);
+    if (held !== undefined) throw new AllocatorError("conflict", `a workspace of this employee's work still exists (assignment ${held[0]}): what it holds could still reach the desk`);
+    if (desk.version !== expected) throw new AllocatorError("conflict", `the desk is at version ${desk.version}, not ${expected}: accepted work reached it since it was read`);
+    const goes = (path: string): boolean => (order.empty ? !path.startsWith("toolbox/") : order.remove.some((r) => path === r || path.startsWith(`${r}/`)));
+    const gone = [...desk.files.keys()].filter((k) => goes(seen(k)));
+    for (const k of gone) desk.files.delete(k);
+    const cacheEmptied = order.cache && (this.quotas.get(ids.sandboxId)?.cacheMiB ?? 0) > 0;
+    if (cacheEmptied) this.caches.set(ids.sandboxId, 0);
+    const missing = order.remove.filter((r) => !gone.some((k) => seen(k) === r || seen(k).startsWith(`${r}/`)));
+    return { removed: gone.length, paths: order.empty ? [...new Set(gone.map((k) => seen(k).split("/")[0] as string))] : order.remove.filter((r) => !missing.includes(r)), missing, cacheEmptied, deskVersion: desk.version };
   }
 
   async startAttempt(spec: AttemptSpec): Promise<AttemptHandle> {

@@ -16,7 +16,7 @@
 //
 // Every operation is idempotent by the ids it is given (a retry after a crash finds what the first call made), and a
 // stop or a removal is VERIFIED (read back from the runtime) before the worker releases what the attempt held.
-import type { EnforcementLevel, ResourceProfile, SandboxAttestation, StorageArea, StorageCapability, UsageView } from "@orbit-web/contracts";
+import type { DeskCleanRequest, DeskEntry, EnforcementLevel, ResourceProfile, SandboxAttestation, StorageArea, StorageCapability, UsageView } from "@orbit-web/contracts";
 import type { ProcessPort } from "../../../infra/process/process.port.js";
 
 export const SANDBOX_PROVIDER = Symbol("SANDBOX_PROVIDER");
@@ -51,6 +51,37 @@ export interface AreaState {
   // How the level was established: the over-quota write that was refused, the measurement, or why nothing enforces it.
   evidence: string;
   usedMiB: number | null;
+}
+
+// A person looking into an employee's desk (Governance → Employee desks): one folder's entries, the biggest first, or a
+// file's first bytes, with the desk's version they were read at.
+export interface DeskListing {
+  deskVersion: number;
+  entries: DeskEntry[];
+  truncated: boolean;
+  bytes: number;
+  files: number;
+}
+
+export interface DeskRead {
+  deskVersion: number;
+  // The file's size; `data` is at most what was asked of it (`truncated` when the file holds more).
+  bytes: number;
+  data: Buffer;
+  truncated: boolean;
+  modifiedAt: string;
+}
+
+// A person's clean-up of a desk: what went (the first paths of it), what was named and not there, and the desk's
+// version, which a clean does not move.
+export type DeskCleanOrder = Required<DeskCleanRequest>;
+
+export interface DeskCleaned {
+  removed: number;
+  paths: string[];
+  missing: string[];
+  cacheEmptied: boolean;
+  deskVersion: number;
 }
 
 export interface ProvisionResult {
@@ -162,6 +193,17 @@ export interface SandboxProvider {
   publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<{ published: boolean; deskVersion: number; changed: string[]; reason: string | null }>;
   // When the assignment ends: its workspace is removed (verified).
   removeWorkspace(ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }>;
+
+  // A PERSON LOOKING INTO THE DESK (Governance → Employee desks), under the employee's lock: one folder, or a file's
+  // first bytes -- never through a link, never Orbit Web's own names at its top. A path that is not one is refused
+  // (bad_request), one that is not there is not_found, one through a link is bad_request.
+  listDesk(ids: SandboxIds, dir: string, maxEntries: number): Promise<DeskListing>;
+  readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead>;
+  // A person cleaning it up: named paths, everything but the toolbox, and/or the cache. Refused (conflict) while the
+  // desk is not at `expectedDeskVersion`, or while any workspace or attempt container of the employee exists -- so no work
+  // is disturbed, and no later publish of a work tree seeded before the clean puts back what went. The desk's version
+  // does not move (it counts accepted results).
+  cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expectedDeskVersion: number): Promise<DeskCleaned>;
 
   // Both planes of one attempt. Idempotent by `dispatchKey`.
   startAttempt(spec: AttemptSpec): Promise<AttemptHandle>;

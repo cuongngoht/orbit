@@ -8,8 +8,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { posix } from "node:path";
-import { checkResourceProfile, type UsageView } from "@orbit-web/contracts";
-import type { AreaState, AttemptEvidence, AttemptSpec, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
+import { checkDeskClean, checkResourceProfile, type UsageView } from "@orbit-web/contracts";
+import type { AreaState, AttemptEvidence, AttemptSpec, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import { checkDispatchKey, checkEmployeeIds, checkId, connectionSubpath, SandboxInputError, type SessionPlaces } from "./ids.js";
 
 // ---- the operations ------------------------------------------------------------------------------------------------
@@ -92,6 +92,9 @@ export interface AllocatorApi {
   prepareWorkspace(ids: SandboxIds, assignmentId: string, scratchMiB: number): Promise<AreaState>;
   publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<PublishResult>;
   removeWorkspace(ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }>;
+  listDesk(ids: SandboxIds, dir: string, maxEntries: number): Promise<DeskListing>;
+  readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead>;
+  cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expectedDeskVersion: number): Promise<DeskCleaned>;
   startAttempt(spec: AllocatorAttemptSpec): Promise<AttemptRecord>;
   findAttempt(dispatchKey: string): Promise<AttemptStatusRecord | null>;
   attest(dispatchKey: string, request: AttestRequest): Promise<AttemptEvidence>;
@@ -108,7 +111,7 @@ export interface AllocatorApi {
   sweepSessions(): Promise<{ removed: number }>;
 }
 
-export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove", "startSession", "removeSession", "sweepSessions"] as const;
+export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "listDesk", "readDesk", "cleanDesk", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove", "startSession", "removeSession", "sweepSessions"] as const;
 export type Operation = (typeof OPERATIONS)[number];
 
 // An error the allocator says on purpose: a code a caller can act on, and words.
@@ -183,6 +186,22 @@ function checkUrl(v: unknown, name: string): string {
 
 export function checkSandboxIds(v: unknown): SandboxIds {
   return checkEmployeeIds(v);
+}
+
+// What the desk's program said by its exit code (deskScript), as the allocator's error.
+export function deskRefusal(code: number | null, said: string, what: string): AllocatorError {
+  const why = said.trim().slice(0, 300);
+  if (code === 2 || code === 6) return new AllocatorError("bad_request", `${what}: ${why}`);
+  if (code === 3) return new AllocatorError("not_found", `${what}: it is not in the desk`);
+  if (code === 4) return new AllocatorError("bad_request", `${what}: a link is in the way (a link in a desk is never followed)`);
+  return new AllocatorError("internal", `${what} failed (exit ${code ?? "none"})${why === "" ? "" : `: ${why}`}`);
+}
+
+// What a person's clean-up of a desk removes, held to the same rules the API holds the request to.
+export function checkDeskOrder(v: unknown): DeskCleanOrder {
+  const c = checkDeskClean(v);
+  if (!c.ok) throw new AllocatorError("bad_request", c.errors.join("; "));
+  return c.value;
 }
 
 export function checkQuotas(v: unknown): { deskMiB: number; cacheMiB: number } {

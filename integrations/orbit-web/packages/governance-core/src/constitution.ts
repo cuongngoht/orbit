@@ -254,6 +254,8 @@ export function defaultAccountPolicy(accountId: string, deployment: PolicyDeploy
       { id: "office-hire", action: "employee.hire", effect: "allow" },
       { id: "office-assistants", action: "employee.hire_assistant", effect: "allow" },
       { id: "office-resources", action: "employee.resources.change", effect: "allow" },
+      { id: "office-desk-read", action: "employee.desk.read", effect: "allow" },
+      { id: "office-desk-clean", action: "employee.desk.clean", effect: "allow" },
       { id: "office-assign", action: "work.assign", effect: "allow" },
       { id: "office-delegate", action: "work.delegate", effect: "allow" },
       { id: "office-artifacts", action: "artifact.publish", effect: "allow" },

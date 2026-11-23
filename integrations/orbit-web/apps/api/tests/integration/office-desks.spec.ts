@@ -1,5 +1,6 @@
-// GOVERNANCE → EMPLOYEE DESKS (ADR 0069), through the real API and a scripted sandbox provider: an employee who left keeps
-// its desk -- listed, with what it holds of the account's storage -- until its owner deletes the desk; then the sandbox
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0069), through the real API and a scripted sandbox provider: every employee's desk is
+// listed -- of one in the office, and of one who left, which keeps it, with what it holds of the account's storage, read
+// only, until its owner deletes the desk (office-desk-browse.spec.ts looks into one and cleans it up); then the sandbox
 // goes DELETING, the provider removes it, and only once it is read back gone is it DELETED and the storage released. A
 // provider that cannot remove it yet is tried again; only an archived employee's desk is deleted, against the version
 // read; another account's is not found.
@@ -53,7 +54,8 @@ describe("Governance → Employee desks: a desk kept after leaving, deleted by i
   test("an employee who left keeps its desk, listed with what it holds; deleting it removes the sandbox, then releases the storage", async () => {
     const e = await hire("Leaving");
     const profile = DEFAULT_PRESETS[0]?.profile as { deskStorageMiB: number; cacheStorageMiB: number };
-    assert.deepEqual((await desks()).desks, [], "nobody left yet");
+    const working = (await desks()).desks;
+    assert.deepEqual(working.map((d) => [d.employeeId, d.employment, d.leftAt, d.canBrowse, d.canClean]), [[e.id, "active", null, true, true]], "an employee in the office: its desk is listed, to look into and clean up");
     const before = await committed();
 
     // Only an archived employee's desk is deleted.
@@ -64,7 +66,7 @@ describe("Governance → Employee desks: a desk kept after leaving, deleted by i
     assert.equal(list.desks.length, 1);
     const d = list.desks[0];
     assert.ok(d !== undefined);
-    assert.deepEqual([d.employeeId, d.name, d.employment, d.reason, d.deskMiB, d.cacheMiB, d.sandbox?.state], [e.id, "Leaving", "archived", "the project ended", profile.deskStorageMiB, 0, "ARCHIVED"]);
+    assert.deepEqual([d.employeeId, d.name, d.employment, d.reason, d.deskMiB, d.cacheMiB, d.sandbox?.state, d.canBrowse, d.canClean], [e.id, "Leaving", "archived", "the project ended", profile.deskStorageMiB, 0, "ARCHIVED", true, false]);
     assert.equal(await committed(), before - profile.cacheStorageMiB, "an archive releases the cache, and keeps the desk");
     assert.equal(list.storage.committedMiB, await committed());
 

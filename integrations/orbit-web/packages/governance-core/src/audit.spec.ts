@@ -21,6 +21,8 @@ test("an audit record carries only the metadata its type declares, bounded", () 
   assert.equal(String(pickData("authz.denied", { route: "x".repeat(2000) }).route).length, 500);
   const [event] = chainOf([{ type: "auth.signed_in", data: { sessionId: "s1", token: "secret-session-token" } }]);
   assert.deepEqual(event?.data, { sessionId: "s1" });
+  // A look into an employee's desk names what was looked at, never what it holds.
+  assert.deepEqual(pickData("office.desk.read", { employeeId: "emp-1", path: "notes/plan.md", kind: "file", bytes: 120, deskVersion: 3, text: "the file itself" }), { employeeId: "emp-1", path: "notes/plan.md", kind: "file", bytes: 120, deskVersion: 3 });
   for (const type of Object.keys(AUDIT_EVENTS)) assert.ok(AUDIT_EVENTS[type as keyof typeof AUDIT_EVENTS].summary.length > 0, type);
 });
 

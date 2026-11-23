@@ -3,10 +3,11 @@
 // the worker treats it as an outage, never as an answer.
 import { request } from "node:http";
 import type { UsageView } from "@orbit-web/contracts";
-import type { AreaState, AttemptEvidence, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
+import type { AreaState, AttemptEvidence, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import { AllocatorError, ERROR_STATUS, signedHeaders, type AllocatorApi, type AllocatorAttemptSpec, type AllocatorErrorCode, type AttemptRecord, type AttemptStatusRecord, type AttestRequest, type SessionRecord, type SessionSpec, type Operation, type PublishResult } from "./allocator-protocol.js";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
+const DESK_TIMEOUT_MS = 3 * 60_000;
 
 export class AllocatorClient implements AllocatorApi {
   private readonly url: URL;
@@ -81,6 +82,20 @@ export class AllocatorClient implements AllocatorApi {
 
   removeWorkspace(ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }> {
     return this.call("removeWorkspace", { ids, assignmentId });
+  }
+
+  // A person's look into a desk, and its clean-up: one storage worker each (bounded by the allocator's own timeout).
+  listDesk(ids: SandboxIds, dir: string, maxEntries: number): Promise<DeskListing> {
+    return this.call("listDesk", { ids, dir, maxEntries }, DESK_TIMEOUT_MS);
+  }
+
+  async readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead> {
+    const r = await this.call<Omit<DeskRead, "data"> & { base64: string }>("readDesk", { ids, path, maxBytes }, DESK_TIMEOUT_MS);
+    return { deskVersion: r.deskVersion, bytes: r.bytes, data: Buffer.from(r.base64, "base64"), truncated: r.truncated, modifiedAt: r.modifiedAt };
+  }
+
+  cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expectedDeskVersion: number): Promise<DeskCleaned> {
+    return this.call("cleanDesk", { ids, order, expectedDeskVersion }, DESK_TIMEOUT_MS);
   }
 
   startAttempt(spec: AllocatorAttemptSpec): Promise<AttemptRecord> {

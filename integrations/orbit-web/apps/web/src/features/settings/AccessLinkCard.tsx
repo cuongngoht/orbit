@@ -7,6 +7,7 @@ import { Copy16Regular, Open16Regular } from "@fluentui/react-icons";
 import type { AccessLink } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { get } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -19,6 +20,7 @@ const useStyles = makeStyles({
 export const accessLinkOf = (token: string): string => `${window.location.origin}/#access=${token}`;
 
 export function AccessLinkCard() {
+  const { t } = useI18n();
   const s = useStyles();
   const access = useResource<AccessLink>(() => get("/api/access/link"), []);
   const [copied, setCopied] = useState(false);
@@ -33,30 +35,29 @@ export function AccessLinkCard() {
     }
   };
   return (
-    <section className={s.root} aria-label="Access link">
-      <Text weight="semibold">Access link</Text>
-      {access.data === null && (access.error ? <Text size={200}>{access.error}</Text> : <Spinner size="tiny" label="Reading the access link…" />)}
+    <section className={s.root} aria-label={t("settings.accessLink.title")}>
+      <Text weight="semibold">{t("settings.accessLink.title")}</Text>
+      {access.data === null && (access.error ? <Text size={200}>{access.error}</Text> : <Spinner size="tiny" label={t("settings.accessLink.loading")} />)}
       {access.data !== null && link === null && (
         <Text size={200} className={s.hint}>
-          This Orbit Web answers this machine only, so it asks for no access token and has no access link.
+          {t("settings.accessLink.localOnly")}
         </Text>
       )}
       {link !== null && (
         <>
-          <Field label="Access link">
+          <Field label={t("settings.accessLink.title")}>
             <Input readOnly value={link} onFocus={(e) => e.target.select()} />
           </Field>
           <div className={s.actions}>
             <Button className={s.actionBtn} icon={<Copy16Regular />} onClick={() => void copy(link)}>
-              {copied ? "Copied" : "Copy link"}
+              {copied ? t("settings.accessLink.copied") : t("settings.accessLink.copy")}
             </Button>
             <Button className={s.actionBtn} icon={<Open16Regular />} onClick={() => window.open(link, "_blank", "noopener,noreferrer")}>
-              Open in a new tab
+              {t("settings.accessLink.open")}
             </Button>
           </div>
           <Text size={200} className={s.hint}>
-            Anyone with this link can sign in to this Orbit Web: open it once in each browser you use (it is then remembered 30 days), and keep it to
-            yourself.
+            {t("settings.accessLink.hint")}
           </Text>
         </>
       )}

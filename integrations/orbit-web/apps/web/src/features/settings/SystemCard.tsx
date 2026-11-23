@@ -7,6 +7,7 @@ import { ArrowSync16Regular, CheckmarkCircle16Filled, DismissCircle16Filled } fr
 import { UPDATE_LABELS, type ComponentCheck, type ComponentUpdate, type DatabaseCheck, type SetupStatus, type SystemUpdates } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey, type MessageVars } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -23,12 +24,13 @@ const useStyles = makeStyles({
 });
 
 function Check({ label, check }: { label: string; check: ComponentCheck }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
     <>
       <Text>{label}</Text>
       <Text>
-        {check.ok ? <CheckmarkCircle16Filled className={s.ok} aria-label="ok" /> : <DismissCircle16Filled className={s.bad} aria-label="not ok" />} <span className={s.muted}>{check.detail ?? (check.ok ? "ok" : "not usable")}</span>
+        {check.ok ? <CheckmarkCircle16Filled className={s.ok} aria-label={t("settings.system.ok")} /> : <DismissCircle16Filled className={s.bad} aria-label={t("settings.system.notOk")} />} <span className={s.muted}>{check.detail ?? (check.ok ? t("settings.system.ok") : t("settings.system.notUsable"))}</span>
       </Text>
     </>
   );
@@ -36,21 +38,22 @@ function Check({ label, check }: { label: string; check: ComponentCheck }) {
 
 // What the database row says: PostgreSQL's own version, the schema applied against the one this build needs, and
 // pgvector's version -- or, when it does not answer, what the health check said.
-function databaseLine(db: DatabaseCheck): string {
+function databaseLine(db: DatabaseCheck, t: (k: MessageKey, v?: MessageVars) => string): string {
   const server = db.server ? `PostgreSQL ${db.server}` : "PostgreSQL";
-  const schema = db.schema === null ? "no schema applied" : db.schema === db.latestSchema ? `schema ${db.schema}` : `schema ${db.schema} of ${db.latestSchema}`;
-  const vector = db.pgvector ? `pgvector ${db.pgvector}` : "pgvector not enabled";
+  const schema = db.schema === null ? t("settings.system.db.noSchema") : db.schema === db.latestSchema ? t("settings.system.db.schemaExact", { schema: db.schema }) : t("settings.system.db.schemaOf", { schema: db.schema, latest: db.latestSchema });
+  const vector = db.pgvector ? t("settings.system.db.pgvector", { version: db.pgvector }) : t("settings.system.db.pgvectorNone");
   const parts = [server, schema, vector].join(" · ");
-  return db.ok ? parts : `${db.detail ?? "not usable"} (${parts})`;
+  return db.ok ? parts : `${db.detail ?? t("settings.system.notUsable")} (${parts})`;
 }
 
 function Database({ check }: { check: DatabaseCheck }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
     <>
-      <Text>Database</Text>
+      <Text>{t("settings.system.db.label")}</Text>
       <Text>
-        {check.ok ? <CheckmarkCircle16Filled className={s.ok} aria-label="ok" /> : <DismissCircle16Filled className={s.bad} aria-label="not ok" />} <span className={s.muted}>{databaseLine(check)}</span>
+        {check.ok ? <CheckmarkCircle16Filled className={s.ok} aria-label={t("settings.system.ok")} /> : <DismissCircle16Filled className={s.bad} aria-label={t("settings.system.notOk")} />} <span className={s.muted}>{databaseLine(check, t)}</span>
       </Text>
     </>
   );
@@ -58,35 +61,38 @@ function Database({ check }: { check: DatabaseCheck }) {
 
 // One component's word: what the check found, said as plainly as it is known.
 function UpdateState({ u }: { u: ComponentUpdate }) {
+  const { t } = useI18n();
   const s = useStyles();
   if (u.state === "update_available")
     return u.security === true ? (
       <Badge appearance="filled" color="danger" size="small">
-        Security update
+        {t("settings.system.updates.security")}
       </Badge>
     ) : (
       <Badge appearance="filled" color="warning" size="small">
-        Update available
+        {t("settings.system.updates.available")}
       </Badge>
     );
   if (u.state === "up_to_date")
     return (
       <Badge appearance="tint" color="success" size="small">
-        Up to date
+        {t("settings.system.updates.upToDate")}
       </Badge>
     );
-  const said = u.detail === "Not checked yet." ? u.detail : `${u.state === "unknown" ? "Couldn't check" : "Not checked"}: ${u.detail ?? "no reason given"}`;
+  const said = u.detail === "Not checked yet." ? t("settings.system.updates.notCheckedYetShort") : t("settings.system.updates.detail", { prefix: u.state === "unknown" ? t("settings.system.updates.couldntCheck") : t("settings.system.updates.notChecked"), reason: u.detail ?? t("settings.system.updates.noReason") });
   return <Text className={s.muted}>{said}</Text>;
 }
 
-function summary(u: SystemUpdates): string {
-  if (u.checkedAt === null) return "Not checked yet: the publishers are asked when you check, and once a day.";
+function summary(u: SystemUpdates, t: (k: MessageKey, v?: MessageVars) => string): string {
+  if (u.checkedAt === null) return t("settings.system.updates.summaryUnchecked");
   const n = u.components.filter((c) => c.state === "update_available").length;
-  return `Checked ${new Date(u.checkedAt).toLocaleString()} · ${n === 0 ? "nothing newer found" : `${n} update${n === 1 ? "" : "s"} available`}.`;
+  const result = n === 0 ? t("settings.system.updates.nothingNewer") : n === 1 ? t("settings.system.updates.oneAvailable") : t("settings.system.updates.manyAvailable", { count: n });
+  return t("settings.system.updates.summaryChecked", { when: new Date(u.checkedAt).toLocaleString(), result });
 }
 
 // Whether each component's publisher has a newer release; a check is a person's (and the server's, once a day).
 function Updates() {
+  const { t } = useI18n();
   const s = useStyles();
   const read = useResource<SystemUpdates>(() => get("/api/system/updates"), []);
   const [checked, setChecked] = useState<SystemUpdates | null>(null);
@@ -105,27 +111,27 @@ function Updates() {
     }
   };
   return (
-    <section className={s.updates} aria-label="Updates">
+    <section className={s.updates} aria-label={t("settings.system.updates.title")}>
       <div className={s.head}>
-        <Text weight="semibold">Updates</Text>
+        <Text weight="semibold">{t("settings.system.updates.title")}</Text>
         <Button size="small" icon={<ArrowSync16Regular />} disabled={busy} onClick={() => void check()}>
-          {busy ? "Checking…" : "Check for updates"}
+          {busy ? t("settings.system.updates.checking") : t("settings.system.updates.check")}
         </Button>
       </div>
       {error !== null && <Text className={s.bad}>{error}</Text>}
       {u === null ? (
-        <Text className={s.muted}>{read.error ?? "Reading…"}</Text>
+        <Text className={s.muted}>{read.error ?? t("settings.system.updates.reading")}</Text>
       ) : (
         <>
-          <Text className={s.muted}>{summary(u)}</Text>
+          <Text className={s.muted}>{summary(u, t)}</Text>
           <div className={s.updatesTable}>
-            <Table size="small" aria-label="Updates of what this image holds">
+            <Table size="small" aria-label={t("settings.system.updates.tableAria")}>
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell>Component</TableHeaderCell>
-                  <TableHeaderCell>Here</TableHeaderCell>
-                  <TableHeaderCell>Newest</TableHeaderCell>
-                  <TableHeaderCell>State</TableHeaderCell>
+                  <TableHeaderCell>{t("settings.system.updates.colComponent")}</TableHeaderCell>
+                  <TableHeaderCell>{t("settings.system.updates.colHere")}</TableHeaderCell>
+                  <TableHeaderCell>{t("settings.system.updates.colNewest")}</TableHeaderCell>
+                  <TableHeaderCell>{t("settings.system.updates.colState")}</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -144,7 +150,7 @@ function Updates() {
           </div>
           <div className={s.how}>
             <Text size={200} className={s.muted}>
-              These are pinned in Orbit Web's image. A newer release reaches this installation without waiting for a new Orbit Web -- an operator, in a terminal of the server:
+              {t("settings.system.updates.how")}
             </Text>
             {u.howToUpdate.map((line) => (
               <Text key={line} size={200} className={s.mono}>
@@ -159,33 +165,34 @@ function Updates() {
 }
 
 export function SystemCard({ status }: { status: SetupStatus | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   if (status === null) return null;
   const v = status.versions;
   return (
-    <section className={s.root} aria-label="System Status">
-      <Text className={s.muted}>{status.health.status === "ok" ? "Everything is in place." : "Something here is not usable."}</Text>
+    <section className={s.root} aria-label={t("settings.system.aria")}>
+      <Text className={s.muted}>{status.health.status === "ok" ? t("settings.system.statusOk") : t("settings.system.statusBad")}</Text>
       <div className={s.table}>
-        <Check label="Claude CLI" check={status.health.claude} />
-        <Check label="GitHub CLI" check={status.health.gh} />
-        <Check label="Git" check={status.health.git} />
-        <Check label="Azure CLI (optional)" check={status.health.az} />
-        <Check label="Python (optional)" check={status.health.python} />
-        <Check label="Orbit plugin" check={status.health.orbitPlugin} />
-        <Check label="Storage" check={status.health.storage} />
+        <Check label={t("settings.system.check.claude")} check={status.health.claude} />
+        <Check label={t("settings.system.check.gh")} check={status.health.gh} />
+        <Check label={t("settings.system.check.git")} check={status.health.git} />
+        <Check label={t("settings.system.check.az")} check={status.health.az} />
+        <Check label={t("settings.system.check.python")} check={status.health.python} />
+        <Check label={t("settings.system.check.orbitPlugin")} check={status.health.orbitPlugin} />
+        <Check label={t("settings.system.check.storage")} check={status.health.storage} />
         <Database check={status.health.database} />
-        <Text>Orbit Engine</Text>
+        <Text>{t("settings.system.label.orbitEngine")}</Text>
         <Text className={s.mono}>
-          {v.orbit ?? "unknown"}
+          {v.orbit ?? t("settings.connections.unknown")}
           {v.orbitCommit ? ` (${v.orbitCommit.slice(0, 12)})` : ""}
         </Text>
-        <Text>Orbit Web</Text>
+        <Text>{t("settings.system.label.orbitWeb")}</Text>
         <Text className={s.mono}>{v.web}</Text>
-        <Text>OpenAI Codex CLI</Text>
-        <Text className={s.mono}>{v.codex ?? "not in this image"}</Text>
-        <Text>Antigravity CLI</Text>
-        <Text className={s.mono}>{v.agy ?? "not in this image"}</Text>
-        <Text>Node.js</Text>
+        <Text>{t("settings.system.label.codex")}</Text>
+        <Text className={s.mono}>{v.codex ?? t("settings.system.notInImage")}</Text>
+        <Text>{t("settings.system.label.agy")}</Text>
+        <Text className={s.mono}>{v.agy ?? t("settings.system.notInImage")}</Text>
+        <Text>{t("settings.system.label.node")}</Text>
         <Text className={s.mono}>{v.node}</Text>
       </div>
       <Updates />

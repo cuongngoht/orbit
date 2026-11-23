@@ -33,6 +33,7 @@ import { Add20Regular, ArrowClockwise16Regular, ArrowSync16Regular, Delete16Regu
 import type { ResearchSourceSummary } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { research } from "./api";
 import { searchable, SourceIcon, SourceState, when } from "./labels";
@@ -283,6 +284,7 @@ export interface SourcesPanelProps {
 }
 
 export function SourcesPanel(p: SourcesPanelProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -311,12 +313,12 @@ export function SourcesPanel(p: SourcesPanelProps) {
   const toggle = (id: string, on: boolean) => p.onSelect(on ? [...p.selection, id] : p.selection.filter((x) => x !== id));
 
   return (
-    <section className={s.root} aria-label="Sources">
+    <section className={s.root} aria-label={t("research.page.sourcesLabel")}>
       <div className={s.head}>
         <Text weight="semibold" className={s.title}>
-          Sources ({sources.length})
+          {t("research.sources.headCount", { count: sources.length })}
         </Text>
-        <Tooltip content="Search the sources" relationship="label">
+        <Tooltip content={t("research.sources.searchTooltip")} relationship="label">
           <Button
             className={mergeClasses(s.iconBtn, touch && s.iconBtnTouch)}
             appearance={searching ? "secondary" : "subtle"}
@@ -326,7 +328,7 @@ export function SourcesPanel(p: SourcesPanelProps) {
             aria-pressed={searching}
           />
         </Tooltip>
-        <Tooltip content="New note" relationship="label">
+        <Tooltip content={t("research.sources.newNoteTooltip")} relationship="label">
           <Button
             className={mergeClasses(s.iconBtn, touch && s.iconBtnTouch)}
             appearance="subtle"
@@ -343,22 +345,22 @@ export function SourcesPanel(p: SourcesPanelProps) {
           onClick={p.onAdd}
           disabled={p.disabled}
         >
-          Add
+          {t("research.sources.add")}
         </Button>
       </div>
       {(searching || sources.length > 0 || error !== null || p.error !== null) && (
         <div className={s.tools}>
-          {searching && <SearchBox className={s.searchBox} size={isMobile ? "medium" : "small"} autoFocus placeholder="Search sources" aria-label="Search sources" value={query} onChange={(_, d) => setQuery(d.value)} />}
+          {searching && <SearchBox className={s.searchBox} size={isMobile ? "medium" : "small"} autoFocus placeholder={t("research.sources.searchPlaceholder")} aria-label={t("research.sources.searchAria")} value={query} onChange={(_, d) => setQuery(d.value)} />}
           {sources.length > 0 && (
             <div className={s.selectAll}>
               <Checkbox
                 checked={all ? true : some ? "mixed" : false}
                 onChange={(_, d) => p.onSelect(d.checked === true ? sources.map((x) => x.id) : [])}
-                label={all ? "Deselect all" : "Select all"}
+                label={t(all ? "research.sources.deselectAll" : "research.sources.selectAll")}
                 disabled={p.disabled}
               />
               <Text size={200} className={s.inUseCount}>
-                {inUse} in use
+                {t("research.sources.inUseCount", { count: inUse })}
               </Text>
             </div>
           )}
@@ -371,7 +373,7 @@ export function SourcesPanel(p: SourcesPanelProps) {
       )}
       {p.sources === null && !p.error ? (
         <div className={s.loadingWrap}>
-          <Spinner size="tiny" label="Reading the sources…" />
+          <Spinner size="tiny" label={t("research.sources.reading")} />
         </div>
       ) : sources.length === 0 ? (
         <div className={s.emptyWrap}>
@@ -379,9 +381,9 @@ export function SourcesPanel(p: SourcesPanelProps) {
             <span className={s.emptyEmblem} aria-hidden>
               <DocumentText20Regular />
             </span>
-            <Text weight="semibold">No sources yet.</Text>
+            <Text weight="semibold">{t("research.sources.emptyTitle")}</Text>
             <Text size={200} className={s.muted}>
-              Add PDFs, Word documents, text, Markdown or web pages. Questions are answered from the sources you select.
+              {t("research.sources.emptyBody")}
             </Text>
             <div className={s.formatRow} aria-hidden>
               {FORMAT_CHIPS.map((fmt) => (
@@ -391,52 +393,52 @@ export function SourcesPanel(p: SourcesPanelProps) {
               ))}
             </div>
             <Button className={mergeClasses(s.emptyCta, touch && s.emptyCtaTouch)} appearance="primary" icon={<Add20Regular />} onClick={p.onAdd} disabled={p.disabled}>
-              Add sources
+              {t("research.addSources.title")}
             </Button>
           </div>
         </div>
       ) : (
-        <ul className={s.list} aria-label="Sources of this workspace">
+        <ul className={s.list} aria-label={t("research.sources.listAria")}>
           {shown.map((x) => {
             const isSelected = selected.has(x.id);
             return (
               <li key={x.id} className={mergeClasses(s.row, isSelected && s.rowSelected, x.state === "failed" && s.rowFailed)}>
-                <Checkbox checked={isSelected} disabled={p.disabled} onChange={(_, d) => toggle(x.id, d.checked === true)} aria-label={`Use ${x.title} in this session`} />
+                <Checkbox checked={isSelected} disabled={p.disabled} onChange={(_, d) => toggle(x.id, d.checked === true)} aria-label={t("research.sources.useInSessionAria", { title: x.title })} />
                 <button type="button" className={mergeClasses(s.open, !isSelected && s.openMuted)} onClick={() => p.onPreview(x)} title={x.origin ?? x.title} disabled={x.revision === null}>
                   <SourceIcon source={x} />
                   <span className={s.name}>
                     <span className={s.titleRow}>{x.title}</span>
                     <Text size={100} className={mergeClasses(s.muted, s.ellipsis)}>
-                      {x.revision?.pages ? `${x.revision.pages} pages · ` : ""}
-                      {x.revision?.fetchedAt ? `snapshot ${when(x.revision.fetchedAt)}` : `added ${when(x.createdAt)}`}
+                      {x.revision?.pages ? t("research.sources.pagesPrefix", { pages: x.revision.pages }) : ""}
+                      {x.revision?.fetchedAt ? t("research.sources.snapshotAt", { at: when(x.revision.fetchedAt) }) : t("research.sources.addedAt", { at: when(x.createdAt) })}
                     </Text>
                   </span>
                   <SourceState source={x} />
                 </button>
                 <Menu>
                   <MenuTrigger disableButtonEnhancement>
-                    <Button data-row-actions="" className={mergeClasses(s.iconBtn, touch && s.touch)} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={`Actions for ${x.title}`} />
+                    <Button data-row-actions="" className={mergeClasses(s.iconBtn, touch && s.touch)} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={t("research.sources.actionsAria", { title: x.title })} />
                   </MenuTrigger>
                   <MenuPopover>
                     <MenuList>
                       <MenuItem icon={<DocumentSearch20Regular />} disabled={x.revision === null} onClick={() => p.onPreview(x)}>
-                        Preview
+                        {t("research.sources.preview")}
                       </MenuItem>
                       <MenuItem icon={<Rename16Regular />} onClick={() => setRenaming(x)}>
-                        Rename
+                        {t("research.sources.rename")}
                       </MenuItem>
                       {x.state === "failed" && (
                         <MenuItem icon={<ArrowClockwise16Regular />} onClick={() => void act(() => research.retrySource(x.id))}>
-                          Try again
+                          {t("research.sources.tryAgain")}
                         </MenuItem>
                       )}
                       {x.kind === "url" && x.state !== "queued" && x.state !== "processing" && (
                         <MenuItem icon={<ArrowSync16Regular />} onClick={() => void act(() => research.refreshSource(x.id))}>
-                          Fetch again
+                          {t("research.sources.fetchAgain")}
                         </MenuItem>
                       )}
                       <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(x)}>
-                        Delete
+                        {t("research.sources.delete")}
                       </MenuItem>
                     </MenuList>
                   </MenuPopover>
@@ -444,12 +446,12 @@ export function SourcesPanel(p: SourcesPanelProps) {
               </li>
             );
           })}
-          {shown.length === 0 && <li className={s.emptyFilter}>No source matches.</li>}
+          {shown.length === 0 && <li className={s.emptyFilter}>{t("research.sources.noMatch")}</li>}
         </ul>
       )}
       <div className={s.privacy}>
         <ShieldCheckmark16Regular className={s.privacyIcon} />
-        <Text size={100}>Sources are stored on this Orbit server. The passages a question retrieves are sent to Claude (Anthropic) to answer it.</Text>
+        <Text size={100}>{t("research.sources.privacy")}</Text>
       </div>
       {renaming && <RenameSource source={renaming} onClose={() => setRenaming(null)} />}
       {deleting && <DeleteSource source={deleting} onClose={() => setDeleting(null)} />}
@@ -458,6 +460,7 @@ export function SourcesPanel(p: SourcesPanelProps) {
 }
 
 function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onClose: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [title, setTitle] = useState(source.title);
   const [error, setError] = useState<string | null>(null);
@@ -474,21 +477,21 @@ function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onCl
             <DialogTitle
               action={
                 <DialogTrigger action="close" disableButtonEnhancement>
-                  <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} onClick={onClose} />
+                  <Button appearance="subtle" size="small" aria-label={t("research.addSources.closeAria")} icon={<Dismiss20Regular />} onClick={onClose} />
                 </DialogTrigger>
               }
             >
-              Rename source
+              {t("research.sources.renameTitle")}
             </DialogTitle>
             <DialogContent>
-              <Field className={s.dialogField} label="Title" validationMessage={error ?? undefined}>
+              <Field className={s.dialogField} label={t("research.addSources.titleRequired")} validationMessage={error ?? undefined}>
                 <Input className={s.dialogInput} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={200} autoFocus />
               </Field>
             </DialogContent>
             <DialogActions>
-              <Button onClick={onClose}>Cancel</Button>
+              <Button onClick={onClose}>{t("research.evidence.cancel")}</Button>
               <Button appearance="primary" type="submit" disabled={title.trim() === ""}>
-                Save
+                {t("research.sources.save")}
               </Button>
             </DialogActions>
           </DialogBody>
@@ -499,6 +502,7 @@ function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onCl
 }
 
 function DeleteSource({ source, onClose }: { source: ResearchSourceSummary; onClose: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [error, setError] = useState<string | null>(null);
   return (
@@ -508,15 +512,14 @@ function DeleteSource({ source, onClose }: { source: ResearchSourceSummary; onCl
           <DialogTitle
             action={
               <DialogTrigger action="close" disableButtonEnhancement>
-                <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} onClick={onClose} />
+                <Button appearance="subtle" size="small" aria-label={t("research.addSources.closeAria")} icon={<Dismiss20Regular />} onClick={onClose} />
               </DialogTrigger>
             }
           >
-            Delete “{source.title}”?
+            {t("research.sources.deleteTitle", { title: source.title })}
           </DialogTitle>
           <DialogContent>
-            This removes the source, its text and its file from this workspace, for every session of it. Citations that quoted it keep their quote, marked as from a
-            deleted source.
+            {t("research.sources.deleteBody")}
             {error && (
               <MessageBar intent="error">
                 <MessageBarBody>{error}</MessageBarBody>
@@ -524,9 +527,9 @@ function DeleteSource({ source, onClose }: { source: ResearchSourceSummary; onCl
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t("research.evidence.cancel")}</Button>
             <Button appearance="primary" onClick={() => research.deleteSource(source.id).then(onClose, (err: unknown) => setError(errorText(err)))}>
-              Delete
+              {t("research.sources.delete")}
             </Button>
           </DialogActions>
         </DialogBody>

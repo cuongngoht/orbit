@@ -30,6 +30,7 @@ import { ConnectionBadge } from "../../components/StatusBadge";
 import { SourceMark } from "../../components/SourceMark";
 import { flowActive, useConnectorFlow } from "../../hooks/useLoginFlow";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -72,37 +73,42 @@ const useStyles = makeStyles({
   cardTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" },
 });
 
-const CLI: Record<ConnectorName, string> = { github: "GitHub CLI", azure: "the Azure CLI" };
+const CLI_KEYS: Record<ConnectorName, MessageKey> = {
+  github: "settings.connectors.cli.github",
+  azure: "settings.connectors.cli.azure",
+};
 
 function DeviceFlow({ connector, flow, onCancel, busy }: { connector: ConnectorName; flow: LoginSnapshot | null; onCancel: () => void; busy: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
+  const cli = t(CLI_KEYS[connector]);
   if (flow === null || flow.state === "idle" || flow.state === "connected") return null;
-  if (flow.state === "starting") return <Spinner size="tiny" label={`Starting ${CLI[connector]}'s sign-in…`} />;
-  if (flow.state === "verifying") return <Spinner size="tiny" label={flow.message ?? "Checking the sign-in…"} />;
+  if (flow.state === "starting") return <Spinner size="tiny" label={t("settings.connectors.device.starting", { cli })} />;
+  if (flow.state === "verifying") return <Spinner size="tiny" label={flow.message ?? t("settings.connectors.device.verifying")} />;
   if (flow.state === "awaiting_user")
     return (
       <div className={s.root}>
         <Text>
-          Open{" "}
+          {t("settings.connectors.device.openPrefix")}{" "}
           <Link href={flow.url ?? "#"} target="_blank" rel="noopener noreferrer">
             {flow.url}
           </Link>{" "}
-          and enter the code {CLI[connector]} printed:
+          {t("settings.connectors.device.enterCode", { cli })}
         </Text>
-        <Text className={s.code} aria-label={connector === "github" ? "one-time code" : "Azure one-time code"}>
+        <Text className={s.code} aria-label={connector === "github" ? t("settings.connectors.device.codeAriaGithub") : t("settings.connectors.device.codeAriaAzure")}>
           {flow.code}
         </Text>
-        <Spinner size="tiny" label="Waiting for authorization…" labelPosition="after" />
+        <Spinner size="tiny" label={t("settings.connectors.device.waiting")} labelPosition="after" />
         <div>
           <Button appearance="subtle" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("settings.connections.cancel")}
           </Button>
         </div>
       </div>
     );
   return (
     <MessageBar intent={flow.state === "cancelled" ? "info" : "error"}>
-      <MessageBarBody>{flow.message ?? `Sign-in ${flow.state.replace("_", " ")}.`}</MessageBarBody>
+      <MessageBarBody>{flow.message ?? t("settings.connectors.device.signInStatus", { state: flow.state.replace("_", " ") })}</MessageBarBody>
     </MessageBar>
   );
 }
@@ -127,6 +133,7 @@ function useAct(onChanged: () => void) {
 }
 
 function GitHubDetail({ status, onChanged }: { status: GitHubStatus; onChanged: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const flow = useConnectorFlow("github", status.flow);
   const { error, busy, act } = useAct(onChanged);
@@ -138,13 +145,13 @@ function GitHubDetail({ status, onChanged }: { status: GitHubStatus; onChanged: 
     <>
       {connected && status.account && (
         <Text>
-          Connected as <strong>@{status.account.login}</strong>
+          {t("settings.connectors.github.connectedAs")} <strong>@{status.account.login}</strong>
           {status.account.name ? ` (${status.account.name})` : ""}
         </Text>
       )}
       {status.state === "expired" && (
         <MessageBar intent="warning">
-          <MessageBarBody>{status.detail ?? "The GitHub sign-in has expired."} Your chats are kept; connect again to continue.</MessageBarBody>
+          <MessageBarBody>{t("settings.connectors.github.expiredRest", { detail: status.detail ?? t("settings.connectors.github.expiredDefault") })}</MessageBarBody>
         </MessageBar>
       )}
       {status.state === "unavailable" && status.detail && <Text size={200} className={s.muted}>{status.detail}</Text>}
@@ -158,28 +165,29 @@ function GitHubDetail({ status, onChanged }: { status: GitHubStatus; onChanged: 
         <div className={s.buttons}>
           {!connected && (
             <Button className={s.actionBtn} appearance="primary" disabled={busy} onClick={() => act(() => send<LoginSnapshot>("POST", "/api/github/login"))}>
-              Connect GitHub
+              {t("settings.connectors.github.connect")}
             </Button>
           )}
           {connected && (
             <Button className={s.actionBtn} appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/github/logout"))}>
-              Disconnect
+              {t("settings.connectors.github.disconnect")}
             </Button>
           )}
         </div>
       )}
-      <Switch checked={status.availableToClaude} disabled={busy} onChange={(_, d) => void act(() => send("PATCH", "/api/settings", { githubForClaude: d.checked }))} label="Let Claude Code push and open pull requests with this GitHub sign-in" />
+      <Switch checked={status.availableToClaude} disabled={busy} onChange={(_, d) => void act(() => send("PATCH", "/api/settings", { githubForClaude: d.checked }))} label={t("settings.connectors.github.switchLabel")} />
       <Text size={200} className={s.muted}>
-        Off, Claude Code commits in its workspace and you push. On, it may push branches and open pull requests with <code>gh</code> as this account in any chat (never a force-push or the default branch, by its instructions); the sign-in itself stays out of its reach (<code>gh auth</code> is refused). Turn it on only for repositories you trust.
+        {t("settings.connectors.github.switchHintBeforeGh")} <code>gh</code> {t("settings.connectors.github.switchHintMiddle")}<code>gh auth</code> {t("settings.connectors.github.switchHintAfterAuth")}
       </Text>
       <Text size={200} className={s.muted}>
-        Uses GitHub CLI's own sign-in; no GitHub App and no personal access token. Disconnecting ends the CLI's sign-in in this container; to revoke the authorization itself, use GitHub's Settings → Applications.
+        {t("settings.connectors.github.cliHint")}
       </Text>
     </>
   );
 }
 
 function AzureDetail({ status, onChanged }: { status: AzureStatus; onChanged: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const flow = useConnectorFlow("azure", status.flow);
   const { error, busy, act } = useAct(onChanged);
@@ -193,7 +201,7 @@ function AzureDetail({ status, onChanged }: { status: AzureStatus; onChanged: ()
     <>
       {connected && status.account && (
         <Text>
-          Signed in as <strong>{status.account.user}</strong>
+          {t("settings.connectors.azure.signedInAs")} <strong>{status.account.user}</strong>
           {status.account.subscription ? ` · ${status.account.subscription}` : ""}
         </Text>
       )}
@@ -212,24 +220,24 @@ function AzureDetail({ status, onChanged }: { status: AzureStatus; onChanged: ()
             void act(() => send<LoginSnapshot>("POST", "/api/azure/login", tenant.trim() ? { tenant: tenant.trim() } : {}));
           }}
         >
-          <Field label="Tenant (optional)">
-            <Input value={tenant} onChange={(_, d) => setTenant(d.value)} placeholder="contoso.onmicrosoft.com" autoComplete="off" spellCheck={false} />
+          <Field label={t("settings.connectors.azure.tenantLabel")}>
+            <Input value={tenant} onChange={(_, d) => setTenant(d.value)} placeholder={t("settings.connectors.azure.tenantPlaceholder")} autoComplete="off" spellCheck={false} />
           </Field>
           <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy}>
-            Connect Azure
+            {t("settings.connectors.azure.connect")}
           </Button>
         </form>
       )}
       {connected && !flowActive(flow) && (
         <div className={s.buttons}>
           <Button className={s.actionBtn} appearance="secondary" disabled={busy} onClick={() => act(() => send("POST", "/api/azure/logout"))}>
-            Sign out
+            {t("settings.connectors.azure.signOut")}
           </Button>
         </div>
       )}
-      <Switch checked={status.availableToClaude} disabled={busy} onChange={(_, d) => void act(() => send("PATCH", "/api/settings", { azureForClaude: d.checked }))} label="Let Claude Code use this Azure sign-in" />
+      <Switch checked={status.availableToClaude} disabled={busy} onChange={(_, d) => void act(() => send("PATCH", "/api/settings", { azureForClaude: d.checked }))} label={t("settings.connectors.azure.switchLabel")} />
       <Text size={200} className={s.muted}>
-        Lists and clones your Azure DevOps repositories with the Azure CLI's own sign-in, kept in this container. With the switch on, Claude Code may also run <code>az</code> as this account in any chat — including against resources that matter — so turn it on only for accounts and repositories you trust.
+        {t("settings.connectors.azure.switchHintBefore")} <code>az</code> {t("settings.connectors.azure.switchHintAfter")}
       </Text>
     </>
   );
@@ -242,10 +250,11 @@ interface Row {
 }
 
 export function ConnectorsSection({ status, onChanged, initial }: { status: SetupStatus | null; onChanged: () => void; initial?: ConnectorName | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState<ConnectorName | null>(initial ?? null);
-  if (status === null) return <Spinner label="Reading the connectors…" />;
+  if (status === null) return <Spinner label={t("settings.connectors.loading")} />;
   const rows: Row[] = [
     { connector: "github", state: status.github.state, account: status.github.account ? `@${status.github.account.login}` : null },
     { connector: "azure", state: status.azure.state, account: status.azure.account?.user ?? null },
@@ -253,7 +262,7 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
   return (
     <div className={s.root}>
       {isMobile ? (
-        <div className={s.cardList} role="list" aria-label="Connectors">
+        <div className={s.cardList} role="list" aria-label={t("settings.connectors.listAria")}>
           {rows.map((r) => {
             const connected = r.state === "connected";
             return (
@@ -267,7 +276,7 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
                     <ConnectionBadge state={r.state} />
                   </span>
                   <Text size={200} className={s.accountWrap}>
-                    CLI · {r.connector === "github" ? "gh" : "az"}
+                    {t("settings.connectors.cliMeta", { cmd: r.connector === "github" ? "gh" : "az" })}
                     {connected && r.account ? ` · ${r.account}` : ""}
                   </Text>
                 </span>
@@ -276,13 +285,13 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
           })}
         </div>
       ) : (
-        <Table aria-label="Connectors">
+        <Table aria-label={t("settings.connectors.listAria")}>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Connector</TableHeaderCell>
-              <TableHeaderCell>Type</TableHeaderCell>
-              <TableHeaderCell>Authorization</TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell>{t("settings.connectors.colConnector")}</TableHeaderCell>
+              <TableHeaderCell>{t("settings.connectors.colType")}</TableHeaderCell>
+              <TableHeaderCell>{t("settings.connectors.colAuthorization")}</TableHeaderCell>
+              <TableHeaderCell>{t("settings.connectors.colStatus")}</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -299,20 +308,20 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className={s.muted}>CLI · {r.connector === "github" ? "gh" : "az"}</span>
+                    <span className={s.muted}>{t("settings.connectors.cliMeta", { cmd: r.connector === "github" ? "gh" : "az" })}</span>
                   </TableCell>
-                  <TableCell>{connected ? "Individual" : <span className={s.muted}>—</span>}</TableCell>
+                  <TableCell>{connected ? t("settings.connectors.individual") : <span className={s.muted}>—</span>}</TableCell>
                   <TableCell>
                     {connected ? (
                       <span className={s.status}>
-                        <Checkmark16Regular aria-label="connected" />
+                        <Checkmark16Regular aria-label={t("settings.connectors.connectedAria")} />
                         <Text size={200} className={s.accountWrap}>
                           {r.account}
                         </Text>
                       </span>
                     ) : r.state === "not_connected" ? (
                       <Button size="small" onClick={() => setOpen(r.connector)}>
-                        Connect
+                        {t("settings.connectors.connect")}
                       </Button>
                     ) : (
                       <ConnectionBadge state={r.state} />
@@ -325,7 +334,7 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
         </Table>
       )}
       {open !== null && (
-        <section className={s.detail} aria-label={`${SOURCE_LABELS[open]} connection`}>
+        <section className={s.detail} aria-label={t("settings.connectors.detailAria", { label: SOURCE_LABELS[open] })}>
           <div className={s.detailHead}>
             <span className={s.icon}>
               <SourceMark source={open} />

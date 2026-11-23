@@ -9,9 +9,10 @@ import { STORAGE_CATEGORIES } from "@orbit-web/contracts";
 import { ArrowSync16Regular } from "@fluentui/react-icons";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
-import { CAPACITY_SOURCE_TEXT, CATEGORY_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, fromGiB, fromVcpu, sizeText, toGiB, toVcpu } from "./format";
+import { CAPACITY_SOURCE_KEYS, CATEGORY_KEYS, LEVEL_KEYS, LEVEL_TONE, cpuText, fromGiB, fromVcpu, sizeText, toGiB, toVcpu } from "./format";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 },
@@ -27,7 +28,10 @@ const useStyles = makeStyles({
   code: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, wordBreak: "break-all" },
 });
 
-const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "not yet");
+const useWhen = () => {
+  const { t } = useI18n();
+  return (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : t("settings.resources.notYet"));
+};
 
 // The account's resources, read again when the office changes (a hire commits storage) and when the stream reopens.
 export function useResourceSummary() {
@@ -78,8 +82,9 @@ const draftOf = (b: AccountResourceBudget): Draft => ({
 
 interface Limit {
   key: keyof Draft;
-  label: string;
-  unit: string;
+  labelKey: MessageKey;
+  unitKey: MessageKey;
+  unitKind: "vcpu" | "gib" | "attempts";
   step: number;
   // The value in the API's units, from the typed one.
   toApi: (v: number) => number;
@@ -90,22 +95,23 @@ interface Limit {
 const per = (k: keyof PerEmployeeCeiling) => ({ current: (b: AccountResourceBudget) => b.perEmployee[k], authorized: (b: AccountResourceBudget) => b.authorized.perEmployee[k] });
 
 const LIMITS: Limit[] = [
-  { key: "cpu", label: "CPU", unit: "vCPU", step: 0.25, toApi: fromVcpu, current: (b) => b.cpuMillis, authorized: (b) => b.authorized.cpuMillis },
-  { key: "memory", label: "Memory", unit: "GiB", step: 0.5, toApi: fromGiB, current: (b) => b.memoryMiB, authorized: (b) => b.authorized.memoryMiB },
-  { key: "storage", label: "Persistent storage", unit: "GiB", step: 1, toApi: fromGiB, current: (b) => b.storageMiB, authorized: (b) => b.authorized.storageMiB },
-  { key: "concurrent", label: "Work at the same time", unit: "attempts", step: 1, toApi: (v) => Math.round(v), current: (b) => b.maxConcurrent, authorized: (b) => b.authorized.maxConcurrent },
-  { key: "perCpu", label: "Per employee: CPU", unit: "vCPU", step: 0.25, toApi: fromVcpu, ...per("cpuMillis") },
-  { key: "perMemory", label: "Per employee: memory", unit: "GiB", step: 0.5, toApi: fromGiB, ...per("memoryMiB") },
-  { key: "perDesk", label: "Per employee: desk", unit: "GiB", step: 1, toApi: fromGiB, ...per("deskStorageMiB") },
-  { key: "perScratch", label: "Per employee: scratch", unit: "GiB", step: 1, toApi: fromGiB, ...per("scratchStorageMiB") },
-  { key: "perCache", label: "Per employee: cache", unit: "GiB", step: 1, toApi: fromGiB, ...per("cacheStorageMiB") },
+  { key: "cpu", labelKey: "settings.resources.limit.cpu", unitKey: "settings.resources.unit.vcpu", unitKind: "vcpu", step: 0.25, toApi: fromVcpu, current: (b) => b.cpuMillis, authorized: (b) => b.authorized.cpuMillis },
+  { key: "memory", labelKey: "settings.resources.limit.memory", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 0.5, toApi: fromGiB, current: (b) => b.memoryMiB, authorized: (b) => b.authorized.memoryMiB },
+  { key: "storage", labelKey: "settings.resources.limit.storage", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 1, toApi: fromGiB, current: (b) => b.storageMiB, authorized: (b) => b.authorized.storageMiB },
+  { key: "concurrent", labelKey: "settings.resources.limit.concurrent", unitKey: "settings.resources.unit.attempts", unitKind: "attempts", step: 1, toApi: (v) => Math.round(v), current: (b) => b.maxConcurrent, authorized: (b) => b.authorized.maxConcurrent },
+  { key: "perCpu", labelKey: "settings.resources.limit.perCpu", unitKey: "settings.resources.unit.vcpu", unitKind: "vcpu", step: 0.25, toApi: fromVcpu, ...per("cpuMillis") },
+  { key: "perMemory", labelKey: "settings.resources.limit.perMemory", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 0.5, toApi: fromGiB, ...per("memoryMiB") },
+  { key: "perDesk", labelKey: "settings.resources.limit.perDesk", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 1, toApi: fromGiB, ...per("deskStorageMiB") },
+  { key: "perScratch", labelKey: "settings.resources.limit.perScratch", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 1, toApi: fromGiB, ...per("scratchStorageMiB") },
+  { key: "perCache", labelKey: "settings.resources.limit.perCache", unitKey: "settings.resources.unit.gib", unitKind: "gib", step: 1, toApi: fromGiB, ...per("cacheStorageMiB") },
 ];
 
-const isCpu = (l: Limit) => l.unit === "vCPU";
-const isCount = (l: Limit) => l.unit === "attempts";
+const isCpu = (l: Limit) => l.unitKind === "vcpu";
+const isCount = (l: Limit) => l.unitKind === "attempts";
 const shown = (l: Limit, v: number): string => (isCpu(l) ? cpuText(v) : isCount(l) ? String(v) : sizeText(v));
 
 function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResourceBudget; onSaved: (r: ResourceSummary) => void; onLoadLatest: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [draft, setDraft] = useState<Draft>(() => draftOf(budget));
   // What each field said when the form opened: a field is a change only once its text differs from it -- comparing the
@@ -138,7 +144,7 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
     try {
       onSaved(await send<ResourceSummary>("PATCH", "/api/office/resources/budget", change, ifMatch(budget.version)));
     } catch (err) {
-      setError({ text: isStale(err) ? "The budget changed since this page read it: nothing was saved." : errorText(err), stale: isStale(err) });
+      setError({ text: isStale(err) ? t("settings.resources.budget.stale") : errorText(err), stale: isStale(err) });
     } finally {
       setBusy(false);
     }
@@ -146,7 +152,7 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
   return (
     <form
       className={s.block}
-      aria-label="Change the budget"
+      aria-label={t("settings.resources.budget.formTitle")}
       // The form checks each value itself (a number, at least 0, at most the authorization): the browser's own check
       // refused any value off the arrows' step -- an authorization of 0.05 vCPU on a 0.25 step could not be saved.
       noValidate
@@ -155,16 +161,16 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
         void save();
       }}
     >
-      <Text weight="semibold">Change the budget</Text>
+      <Text weight="semibold">{t("settings.resources.budget.formTitle")}</Text>
       <Text size={200} className={s.muted}>
-        You can lower any of these, and raise it back up to what the operator authorized — never above. Lowering it never stops running work: new work waits until running work ends.
+        {t("settings.resources.budget.formHint")}
       </Text>
       <div className={s.grid}>
         {LIMITS.map((l) => {
           const typed = draft[l.key];
-          const bad = invalid.some((v) => v.l === l) ? "Type a number of at least 0." : above.some((v) => v.l === l) ? `At most ${shown(l, l.authorized(budget))}, the operator's authorization.` : undefined;
+          const bad = invalid.some((v) => v.l === l) ? t("settings.resources.budget.invalid") : above.some((v) => v.l === l) ? t("settings.resources.budget.above", { max: shown(l, l.authorized(budget)) }) : undefined;
           return (
-            <Field key={l.key} label={`${l.label} (${l.unit})`} validationState={bad ? "error" : "none"} validationMessage={bad} hint={`Authorized: ${shown(l, l.authorized(budget))}`}>
+            <Field key={l.key} label={t("settings.resources.budget.fieldLabel", { label: t(l.labelKey), unit: t(l.unitKey) })} validationState={bad ? "error" : "none"} validationMessage={bad} hint={t("settings.resources.budget.authorizedHint", { value: shown(l, l.authorized(budget)) })}>
               <Input type="number" inputMode="decimal" min={0} step={l.step} max={isCpu(l) ? toVcpu(l.authorized(budget)) : isCount(l) ? l.authorized(budget) : toGiB(l.authorized(budget))} value={typed} onChange={(_, d) => setDraft((x) => ({ ...x, [l.key]: d.value }))} />
             </Field>
           );
@@ -176,17 +182,17 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
           {error.stale && (
             <MessageBarActions>
               <Button size="small" onClick={onLoadLatest}>
-                Load the latest
+                {t("settings.connections.loadLatest")}
               </Button>
             </MessageBarActions>
           )}
         </MessageBar>
       )}
       <Button className={s.button} appearance="primary" type="submit" disabled={busy || !changed || invalid.length > 0 || above.length > 0}>
-        {busy ? "Saving…" : "Save the budget"}
+        {busy ? t("settings.resources.budget.saving") : t("settings.resources.budget.save")}
       </Button>
       <Text size={200} className={s.muted}>
-        To raise the authorization itself, the operator runs <span className={s.code}>node dist/cli/governance.js budget set</span> on the server.
+        {t("settings.resources.budget.operatorPrefix")} <span className={s.code}>node dist/cli/governance.js budget set</span> {t("settings.resources.budget.operatorSuffix")}
       </Text>
     </form>
   );
@@ -194,6 +200,7 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
 
 // Re-check: the host's capacity read again now; the budgets that follow it move with it.
 function Recheck({ onDone }: { onDone: (r: ResourceSummary) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,8 +217,8 @@ function Recheck({ onDone }: { onDone: (r: ResourceSummary) => void }) {
   };
   return (
     <>
-      <Button className={s.button} size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowSync16Regular />} disabled={busy} onClick={() => void recheck()} title="Reads this host's CPU, memory and storage again now.">
-        Re-check
+      <Button className={s.button} size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowSync16Regular />} disabled={busy} onClick={() => void recheck()} title={t("settings.resources.recheck.title")}>
+        {t("settings.resources.recheck")}
       </Button>
       {error && (
         <MessageBar intent="error">
@@ -223,6 +230,8 @@ function Recheck({ onDone }: { onDone: (r: ResourceSummary) => void }) {
 }
 
 export function ComputeStorageSection() {
+  const { t } = useI18n();
+  const when = useWhen();
   const s = useStyles();
   const summary = useResourceSummary();
   if (summary.data === null)
@@ -231,7 +240,7 @@ export function ComputeStorageSection() {
         <MessageBarBody>{summary.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner size="tiny" label="Reading the account's resources…" />
+      <Spinner size="tiny" label={t("settings.resources.loading")} />
     );
   const r = summary.data;
   const cap = r.capacity;
@@ -239,40 +248,40 @@ export function ComputeStorageSection() {
   const overBudget = r.reserved.cpuMillis > b.cpuMillis || r.reserved.memoryMiB > b.memoryMiB;
   return (
     <div className={`${s.root} orbit-touch`}>
-      <section className={s.block} aria-label="Infrastructure capacity">
+      <section className={s.block} aria-label={t("settings.resources.capacity.title")}>
         <div className={s.row}>
-          <Text weight="semibold">Infrastructure capacity</Text>
-          <Badge appearance="outline">{CAPACITY_SOURCE_TEXT[cap.source]}</Badge>
+          <Text weight="semibold">{t("settings.resources.capacity.title")}</Text>
+          <Badge appearance="outline">{t(CAPACITY_SOURCE_KEYS[cap.source])}</Badge>
           <Recheck onDone={summary.set} />
         </div>
         <Text size={200} className={s.muted}>
-          What this host can give employees: its total, minus what Orbit, the database, the proxy and the system keep. Checked {when(cap.checkedAt)}. Re-check reads the host again now (after the server was resized, or its settings changed); a budget that follows the host's capacity follows it.
+          {t("settings.resources.capacity.hint", { when: when(cap.checkedAt) })}
         </Text>
         <div className={s.table}>
-          <Table size="small" aria-label="Capacity">
+          <Table size="small" aria-label={t("settings.resources.capacity.tableAria")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Resource</TableHeaderCell>
-                <TableHeaderCell>Total</TableHeaderCell>
-                <TableHeaderCell>Kept back</TableHeaderCell>
-                <TableHeaderCell>Usable</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.capacity.colResource")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.capacity.colTotal")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.capacity.colKeptBack")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.capacity.colUsable")}</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow>
-                <TableCell>CPU</TableCell>
+                <TableCell>{t("settings.resources.row.cpu")}</TableCell>
                 <TableCell>{cpuText(cap.total.cpuMillis)}</TableCell>
                 <TableCell>{cpuText(cap.headroom.cpuMillis)}</TableCell>
                 <TableCell>{cpuText(cap.usable.cpuMillis)}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>Memory</TableCell>
+                <TableCell>{t("settings.resources.row.memory")}</TableCell>
                 <TableCell>{sizeText(cap.total.memoryMiB)}</TableCell>
                 <TableCell>{sizeText(cap.headroom.memoryMiB)}</TableCell>
                 <TableCell>{sizeText(cap.usable.memoryMiB)}</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell>Storage</TableCell>
+                <TableCell>{t("settings.resources.row.storage")}</TableCell>
                 <TableCell>{sizeText(cap.total.storageMiB)}</TableCell>
                 <TableCell>{sizeText(cap.headroom.storageMiB)}</TableCell>
                 <TableCell>{sizeText(cap.usable.storageMiB)}</TableCell>
@@ -281,35 +290,35 @@ export function ComputeStorageSection() {
           </Table>
         </div>
         <div className={s.row}>
-          <Text size={200}>Storage limits per area:</Text>
+          <Text size={200}>{t("settings.resources.storageLimitsPerArea")}</Text>
           <Badge appearance="tint" color={LEVEL_TONE[cap.storage.perArea]}>
-            {LEVEL_TEXT[cap.storage.perArea]}
+            {t(LEVEL_KEYS[cap.storage.perArea])}
           </Badge>
-          <Text size={200}>Host disk protection:</Text>
+          <Text size={200}>{t("settings.resources.hostDiskProtection")}</Text>
           <Badge appearance="tint" color={LEVEL_TONE[cap.storage.hostProtection]}>
-            {LEVEL_TEXT[cap.storage.hostProtection]}
+            {t(LEVEL_KEYS[cap.storage.hostProtection])}
           </Badge>
         </div>
         <Text size={200} className={s.muted}>
-          Mechanism: {cap.storage.mechanism}. {cap.storage.evidence} (probed {when(cap.storage.probedAt)})
+          {t("settings.resources.mechanism", { mechanism: cap.storage.mechanism, evidence: cap.storage.evidence, when: when(cap.storage.probedAt) })}
         </Text>
       </section>
 
-      <section className={s.block} aria-label="Account budget">
-        <Text weight="semibold">Account budget</Text>
+      <section className={s.block} aria-label={t("settings.resources.accountBudget.title")}>
+        <Text weight="semibold">{t("settings.resources.accountBudget.title")}</Text>
         <div className={s.table}>
-          <Table size="small" aria-label="Budget and authorization">
+          <Table size="small" aria-label={t("settings.resources.accountBudget.tableAria")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Limit</TableHeaderCell>
-                <TableHeaderCell>Budget</TableHeaderCell>
-                <TableHeaderCell>Authorized</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.accountBudget.colLimit")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.accountBudget.colBudget")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.accountBudget.colAuthorized")}</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
               {LIMITS.map((l) => (
                 <TableRow key={l.key}>
-                  <TableCell>{l.label}</TableCell>
+                  <TableCell>{t(l.labelKey)}</TableCell>
                   <TableCell>{shown(l, l.current(b))}</TableCell>
                   <TableCell>{shown(l, l.authorized(b))}</TableCell>
                 </TableRow>
@@ -319,51 +328,51 @@ export function ComputeStorageSection() {
         </div>
       </section>
 
-      <section className={s.block} aria-label="Now">
-        <Text weight="semibold">Now</Text>
+      <section className={s.block} aria-label={t("settings.resources.now.title")}>
+        <Text weight="semibold">{t("settings.resources.now.title")}</Text>
         {overBudget && (
           <MessageBar intent="warning">
-            <MessageBarBody>Over budget until running work ends: new work waits; nothing running is stopped.</MessageBarBody>
+            <MessageBarBody>{t("settings.resources.now.overBudget")}</MessageBarBody>
           </MessageBar>
         )}
         <div className={s.stats}>
-          <Stat label="CPU reserved" value={cpuText(r.reserved.cpuMillis)} />
-          <Stat label="CPU available" value={cpuText(r.available.cpuMillis)} />
-          <Stat label="Memory reserved" value={sizeText(r.reserved.memoryMiB)} />
-          <Stat label="Memory available" value={sizeText(r.available.memoryMiB)} />
-          <Stat label="Scratch reserved" value={sizeText(r.reserved.scratchMiB)} />
-          <Stat label="Running" value={r.running} />
-          <Stat label="Waiting for resources" value={r.waiting} />
-          <Stat label="Cannot start as configured" value={r.unschedulable} />
+          <Stat label={t("settings.resources.now.cpuReserved")} value={cpuText(r.reserved.cpuMillis)} />
+          <Stat label={t("settings.resources.now.cpuAvailable")} value={cpuText(r.available.cpuMillis)} />
+          <Stat label={t("settings.resources.now.memoryReserved")} value={sizeText(r.reserved.memoryMiB)} />
+          <Stat label={t("settings.resources.now.memoryAvailable")} value={sizeText(r.available.memoryMiB)} />
+          <Stat label={t("settings.resources.now.scratchReserved")} value={sizeText(r.reserved.scratchMiB)} />
+          <Stat label={t("settings.resources.now.running")} value={r.running} />
+          <Stat label={t("settings.resources.now.waiting")} value={r.waiting} />
+          <Stat label={t("settings.resources.now.unschedulable")} value={r.unschedulable} />
         </div>
         <Text size={200} className={s.muted}>
-          An idle employee reserves no CPU or memory: it is reserved when its work starts, and released once its containers are gone.
+          {t("settings.resources.now.idleNote")}
         </Text>
         {r.modelPlane.length > 0 && (
           <Text size={200} className={s.muted}>
-            Each attempt also reserves its CLI's own container: {r.modelPlane.map((m) => `${m.runtime} ${cpuText(m.cpuMillis)} and ${sizeText(m.memoryMiB)}`).join("; ")}.
+            {t("settings.resources.now.modelPlanePrefix", { items: r.modelPlane.map((m) => t("settings.resources.now.modelPlaneItem", { runtime: m.runtime, cpu: cpuText(m.cpuMillis), memory: sizeText(m.memoryMiB) })).join("; ") })}
           </Text>
         )}
       </section>
 
-      <section className={s.block} aria-label="Storage">
-        <Text weight="semibold">Storage</Text>
+      <section className={s.block} aria-label={t("settings.resources.storage.title")}>
+        <Text weight="semibold">{t("settings.resources.storage.title")}</Text>
         <Text size={200}>
-          {sizeText(r.storage.committedMiB)} committed and {sizeText(r.storage.usedMiB)} used, of a budget of {sizeText(r.storage.budgetMiB)}. Measured {when(r.storage.measuredAt)}.
+          {t("settings.resources.storage.summary", { committed: sizeText(r.storage.committedMiB), used: sizeText(r.storage.usedMiB), budget: sizeText(r.storage.budgetMiB), when: when(r.storage.measuredAt) })}
         </Text>
         <div className={s.table}>
-          <Table size="small" aria-label="Storage by category">
+          <Table size="small" aria-label={t("settings.resources.storage.tableAria")}>
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Category</TableHeaderCell>
-                <TableHeaderCell>Committed</TableHeaderCell>
-                <TableHeaderCell>Used</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.storage.colCategory")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.storage.colCommitted")}</TableHeaderCell>
+                <TableHeaderCell>{t("settings.resources.storage.colUsed")}</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
               {STORAGE_CATEGORIES.map((c: StorageCategory) => (
                 <TableRow key={c}>
-                  <TableCell>{CATEGORY_TEXT[c]}</TableCell>
+                  <TableCell>{t(CATEGORY_KEYS[c])}</TableCell>
                   <TableCell>{sizeText(r.storage.byCategory[c]?.committedMiB ?? 0)}</TableCell>
                   <TableCell>{sizeText(r.storage.byCategory[c]?.usedMiB ?? 0)}</TableCell>
                 </TableRow>
@@ -372,13 +381,13 @@ export function ComputeStorageSection() {
           </Table>
         </div>
         <Text size={200} className={s.muted}>
-          Committed is what quotas promise (desks, caches, team rooms) and what admitted work holds for scratch; used is what was measured.
+          {t("settings.resources.storage.hint")}
         </Text>
       </section>
 
       <BudgetForm key={b.version} budget={b} onSaved={summary.set} onLoadLatest={() => void summary.reload()} />
       <Text size={200} className={s.muted}>
-        Data as of {when(r.asOf)}.
+        {t("settings.resources.asOf", { when: when(r.asOf) })}
       </Text>
     </div>
   );

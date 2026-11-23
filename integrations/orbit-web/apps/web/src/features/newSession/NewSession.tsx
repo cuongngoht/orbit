@@ -10,6 +10,7 @@ import { DEFAULT_CHAT_RUNTIME, DEFAULT_EFFORT, DEFAULT_MODE, DEFAULT_MODEL, effo
 import { useState } from "react";
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { send } from "../../services/api";
 import { uploadImage } from "../../services/images";
@@ -77,16 +78,17 @@ const useStyles = makeStyles({
 
 export type SessionKind = "coding" | "research";
 
-const KINDS: { kind: SessionKind; title: string; text: string }[] = [
-  { kind: "coding", title: "Chat / Coding", text: "Chat with Claude Code or OpenAI Codex, work with repositories, run tools and develop software." },
-  { kind: "research", title: "Research", text: "Research topics, organize sources, ask grounded questions and collect evidence." },
+const KINDS: { kind: SessionKind; titleKey: MessageKey; textKey: MessageKey }[] = [
+  { kind: "coding", titleKey: "chat.newSession.kind.coding.title", textKey: "chat.newSession.kind.coding.text" },
+  { kind: "research", titleKey: "chat.newSession.kind.research.title", textKey: "chat.newSession.kind.research.text" },
 ];
 
 // The two kinds of session, as a radio group of two cards.
 function KindChooser({ kind, onKind }: { kind: SessionKind; onKind: (k: SessionKind) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
-    <div className={s.kinds} role="radiogroup" aria-label="Kind of session">
+    <div className={s.kinds} role="radiogroup" aria-label={t("chat.newSession.kindAria")}>
       {KINDS.map((k) => (
         <button
           key={k.kind}
@@ -101,9 +103,9 @@ function KindChooser({ kind, onKind }: { kind: SessionKind; onKind: (k: SessionK
         >
           {k.kind === "coding" ? <Code20Regular className={s.kindIcon} /> : <BookOpen20Regular className={s.kindIcon} />}
           <span className={s.kindText}>
-            <Text weight="semibold">{k.title}</Text>
+            <Text weight="semibold">{t(k.titleKey)}</Text>
             <Text size={200} className={s.muted}>
-              {k.text}
+              {t(k.textKey)}
             </Text>
           </span>
         </button>
@@ -132,6 +134,7 @@ export function NewSession({
   userName?: string | null;
   onOpenAccount?: () => void;
 }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [kind, setKind] = useState<SessionKind>("coding");
   const { isMobile, isCoarse } = useViewport();
@@ -197,7 +200,7 @@ export function NewSession({
   const composer = (
     <Composer
       autoFocus={!isMobile && !isCoarse}
-      placeholder="Describe a task or ask a question"
+      placeholder={t("chat.newSession.placeholder")}
       canSend={!busy && !noAi}
       running={false}
       busy={busy}
@@ -222,7 +225,7 @@ export function NewSession({
       right={
         <ModelCatalogOverride catalog={catalog}>
           {noAi ? (
-            <Link href={settingsHref("ai-connections")}>Sign in to an AI first</Link>
+            <Link href={settingsHref("ai-connections")}>{t("chat.newSession.signInFirst")}</Link>
           ) : (
             <>
               {effective !== null && <AiPicker choices={chatConnections} value={effective.id} onChange={chooseConnection} />}
@@ -236,20 +239,20 @@ export function NewSession({
   );
 
   return (
-    <section className={s.root} aria-label="New session">
+    <section className={s.root} aria-label={t("chat.newSession.sectionAria")}>
       {(onOpenNav || onOpenAccount) && (
         <div className={mergeClasses(s.top, isMobile && s.topMobile)}>
           <div className={s.topLeft}>
-            {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+            {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("chat.screen.openNavAria")} onClick={onOpenNav} />}
             <img src="/orbit.svg" alt="" className={s.topLogo} />
-            <Text weight="semibold">Orbit</Text>
+            <Text weight="semibold">{t("chat.newSession.brand")}</Text>
           </div>
           {onOpenAccount && (
             <Button
               className={s.touchBtn}
               appearance="subtle"
-              icon={<Avatar name={userName ?? "Account"} size={24} />}
-              aria-label="Account and settings"
+              icon={<Avatar name={userName ?? t("chat.newSession.accountFallback")} size={24} />}
+              aria-label={t("chat.newSession.accountAria")}
               onClick={onOpenAccount}
             />
           )}
@@ -260,9 +263,9 @@ export function NewSession({
           <div className={s.hero}>
             <img src="/orbit.svg" alt="" className={s.logo} />
             <Title2 as="h1" className={s.heading}>
-              What do you want to research?
+              {t("chat.newSession.researchHeading")}
             </Title2>
-            <Text className={s.muted}>Gather sources in a workspace and ask anything: Claude reads them as references, cites what it takes from them, and can use your Claude connectors. Keep what you find -- with citations you can open.</Text>
+            <Text className={s.muted}>{t("chat.newSession.researchSub")}</Text>
           </div>
           <KindChooser kind={kind} onKind={setKind} />
           <NewResearchSession settings={settings} onCreated={(created) => onResearchCreated?.(created)} />
@@ -272,9 +275,9 @@ export function NewSession({
           <div className={mergeClasses(s.hero, s.heroMobile)}>
             <img src="/orbit.svg" alt="" className={s.logo} />
             <Title2 as="h1" className={s.heading}>
-              What should Orbit work on?
+              {t("chat.newSession.codingHeading")}
             </Title2>
-            <Text className={s.muted}>Describe a task or ask a question. Start from a repository on GitHub or Azure DevOps — or from none, in an empty workspace of its own.</Text>
+            <Text className={s.muted}>{t("chat.newSession.codingSub")}</Text>
             <KindChooser kind={kind} onKind={setKind} />
           </div>
           <div className={s.bottomMobile}>{composer}</div>
@@ -284,9 +287,9 @@ export function NewSession({
           <div className={s.hero}>
             <img src="/orbit.svg" alt="" className={s.logo} />
             <Title2 as="h1" className={s.heading}>
-              What should Orbit work on?
+              {t("chat.newSession.codingHeading")}
             </Title2>
-            <Text className={s.muted}>Describe a task or ask a question. Start from a repository on GitHub or Azure DevOps — or from none, in an empty workspace of its own.</Text>
+            <Text className={s.muted}>{t("chat.newSession.codingSub")}</Text>
           </div>
           <KindChooser kind={kind} onKind={setKind} />
           <div className={s.composerDesktop}>{composer}</div>

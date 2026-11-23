@@ -23,6 +23,7 @@ import { FINDING_MOVES, FINDING_STATUS_LABELS, RESEARCH_LIMITS, type FindingStat
 import { useState, type ReactNode } from "react";
 import { Markdown } from "../../components/Markdown";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText } from "../../services/api";
 import { research } from "./api";
 import { placeOf, when } from "./labels";
@@ -231,31 +232,32 @@ export interface EvidencePanelProps {
 export const previewOf = (c: ResearchCitation): PreviewTarget => ({ sourceId: c.sourceId, revisionId: c.revisionId, chunkOrdinal: c.chunkOrdinal, title: c.sourceTitle, quote: c.quote });
 
 export function EvidencePanel(p: EvidencePanelProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
   return (
-    <section className={s.root} aria-label="Evidence">
+    <section className={s.root} aria-label={t("research.evidence.aria")}>
       {p.onClose && (
         <div className={s.drawerBar}>
           <Text weight="semibold" className={s.drawerTitle}>
-            Evidence
+            {t("research.evidence.title")}
           </Text>
           <Button
             className={mergeClasses(s.closeBtn, touch && s.touchBtn)}
             appearance="subtle"
             size="small"
             icon={<Dismiss20Regular />}
-            aria-label="Close the evidence"
+            aria-label={t("research.evidence.closeAria")}
             onClick={p.onClose}
           />
         </div>
       )}
       <div className={mergeClasses(s.tabs, Boolean(p.onClose) && s.tabsDrawer)}>
         <TabList className={s.tabList} size="small" selectedValue={p.tab} onTabSelect={(_, d) => (p.onPreview(null), p.onTab(d.value as EvidenceTab))}>
-          <Tab value="citations">Citations</Tab>
-          <Tab value="notes">Notes{p.notes && p.notes.length > 0 ? ` (${p.notes.length})` : ""}</Tab>
-          <Tab value="findings">Findings{p.findings && p.findings.length > 0 ? ` (${p.findings.length})` : ""}</Tab>
+          <Tab value="citations">{t("research.evidence.tabCitations")}</Tab>
+          <Tab value="notes">{t("research.evidence.tabNotes", { count: p.notes && p.notes.length > 0 ? ` (${p.notes.length})` : "" })}</Tab>
+          <Tab value="findings">{t("research.evidence.tabFindings", { count: p.findings && p.findings.length > 0 ? ` (${p.findings.length})` : "" })}</Tab>
         </TabList>
       </div>
       <div className={s.body}>
@@ -288,18 +290,19 @@ function EmptyState({ icon, message }: { icon: ReactNode; message: string }) {
 }
 
 function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null; onOpen: (c: ResearchCitation) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   if (citations === null || citations.length === 0)
     return (
       <EmptyState
         icon={<BookOpen20Regular />}
-        message={citations === null ? "Ask a question: the passages an answer cites are listed here, each opening at its place in the source." : "This answer cites no passage of the selected sources."}
+        message={t(citations === null ? "research.evidence.citationsEmptyAsk" : "research.evidence.citationsEmptyNone")}
       />
     );
   return (
     <>
       {citations.map((c) => (
-        <button key={c.id} type="button" className={mergeClasses(s.card, s.cardButton)} onClick={() => onOpen(c)} aria-label={`Open citation ${c.label}: ${c.sourceTitle}`}>
+        <button key={c.id} type="button" className={mergeClasses(s.card, s.cardButton)} onClick={() => onOpen(c)} aria-label={t("research.evidence.openCitationAria", { label: c.label, title: c.sourceTitle })}>
           <span className={s.line}>
             <Badge className={s.badge} appearance="filled" color="brand" size="small">
               {c.label}
@@ -309,18 +312,18 @@ function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null
             </Text>
             {!c.sourceAvailable && (
               <Badge className={s.badge} appearance="tint" color="warning" size="small">
-                deleted
+                {t("research.evidence.deletedBadge")}
               </Badge>
             )}
             {c.sourceAvailable && !c.revisionCurrent && (
               <Badge className={s.badge} appearance="tint" color="informative" size="small">
-                older revision
+                {t("research.evidence.olderRevBadge")}
               </Badge>
             )}
             <ChevronRight16Regular className={s.chevron} aria-hidden />
           </span>
           <Text size={100} className={s.muted}>
-            {placeOf(c) || "—"} · {c.match === "fts" ? "matched the question" : "opening of the source"}
+            {placeOf(c) || "—"} · {t(c.match === "fts" ? "research.evidence.matchFts" : "research.evidence.matchOpening")}
           </Text>
           <span className={s.quoteBox}>
             <span className={s.quoteText}>{c.quote}</span>
@@ -332,6 +335,7 @@ function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null
 }
 
 function Notes(p: EvidencePanelProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [editing, setEditing] = useState<ResearchNote | null>(null);
   const draft = p.noteDraft;
@@ -339,7 +343,7 @@ function Notes(p: EvidencePanelProps) {
     <>
       {p.onNewNote && draft === null && editing === null && (
         <Button className={s.topAction} appearance="secondary" size="small" icon={<NoteAdd20Regular />} onClick={p.onNewNote}>
-          Write a note
+          {t("research.evidence.writeNote")}
         </Button>
       )}
       {(draft !== null || editing !== null) && (
@@ -359,16 +363,16 @@ function Notes(p: EvidencePanelProps) {
       {p.notes === null ? (
         <Spinner size="tiny" />
       ) : p.notes.length === 0 && draft === null ? (
-        <EmptyState icon={<NoteAdd20Regular />} message="No notes yet. Save an answer as a note, or write one from the sources panel." />
+        <EmptyState icon={<NoteAdd20Regular />} message={t("research.evidence.notesEmpty")} />
       ) : (
         p.notes.map((n) => (
-          <article key={n.id} className={s.card} aria-label={`Note: ${n.title}`}>
+          <article key={n.id} className={s.card} aria-label={t("research.evidence.noteArticleAria", { title: n.title })}>
             <div className={s.line}>
               <Text weight="semibold" className={s.grow}>
                 {n.title}
               </Text>
-              <Button appearance="subtle" size="small" icon={<Edit16Regular />} aria-label={`Edit ${n.title}`} onClick={() => setEditing(n)} />
-              <Button appearance="subtle" size="small" icon={<Delete16Regular />} aria-label={`Delete ${n.title}`} onClick={() => void research.deleteNote(n.id).then(p.onChanged)} />
+              <Button appearance="subtle" size="small" icon={<Edit16Regular />} aria-label={t("research.evidence.editAria", { title: n.title })} onClick={() => setEditing(n)} />
+              <Button appearance="subtle" size="small" icon={<Delete16Regular />} aria-label={t("research.evidence.deleteAria", { title: n.title })} onClick={() => void research.deleteNote(n.id).then(p.onChanged)} />
             </div>
             <Markdown text={n.body} />
             {n.citation && (
@@ -387,6 +391,7 @@ function Notes(p: EvidencePanelProps) {
 }
 
 function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId: string; sessionId: string; note: ResearchNote | null; draft: NoteDraft | null; onDone: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [title, setTitle] = useState(note?.title ?? draft?.title ?? "");
   const [body, setBody] = useState(note?.body ?? draft?.body ?? "");
@@ -407,12 +412,12 @@ function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId
         e.preventDefault();
         void save();
       }}
-      aria-label={note ? "Edit note" : "New note"}
+      aria-label={t(note ? "research.evidence.editNoteAria" : "research.evidence.newNoteAria")}
     >
-      <Field className={s.field} label="Title">
+      <Field className={s.field} label={t("research.addSources.titleRequired")}>
         <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} autoFocus />
       </Field>
-      <Field className={s.field} label="Note (Markdown)">
+      <Field className={s.field} label={t("research.evidence.noteMarkdownLabel")}>
         <Textarea className={s.input} value={body} onChange={(_, d) => setBody(d.value)} rows={6} resize="vertical" maxLength={RESEARCH_LIMITS.noteBodyLength} />
       </Field>
       {error && (
@@ -422,9 +427,9 @@ function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId
       )}
       <div className={s.actions}>
         <Button appearance="primary" type="submit" disabled={title.trim() === "" || body.trim() === ""}>
-          Save note
+          {t("research.evidence.saveNote")}
         </Button>
-        <Button onClick={onDone}>Cancel</Button>
+        <Button onClick={onDone}>{t("research.evidence.cancel")}</Button>
       </div>
     </form>
   );
@@ -432,9 +437,15 @@ function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId
 
 const STATUS_COLOR: Record<FindingStatus, "informative" | "warning" | "success" | "danger"> = { draft: "informative", needs_review: "warning", reviewed: "success", rejected: "danger" };
 
-const MOVE_LABEL: Record<FindingStatus, string> = { draft: "Back to draft", needs_review: "Ask for review", reviewed: "Mark reviewed", rejected: "Reject" };
+const MOVE_LABEL_KEYS: Record<FindingStatus, MessageKey> = {
+  draft: "research.evidence.move.draft",
+  needs_review: "research.evidence.move.needs_review",
+  reviewed: "research.evidence.move.reviewed",
+  rejected: "research.evidence.move.rejected",
+};
 
 function Findings(p: EvidencePanelProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [error, setError] = useState<string | null>(null);
   const move = async (f: ResearchFinding, status: FindingStatus) => {
@@ -450,7 +461,7 @@ function Findings(p: EvidencePanelProps) {
     <>
       <div className={s.noticeBox}>
         <Text size={200}>
-          A finding is a research conclusion a person reviews. Reviewed means reviewed -- it is not an approved policy, and nothing here changes Orbit's governance.
+          {t("research.evidence.findingDisclaimer")}
         </Text>
       </div>
       {p.findingDraft !== null && <FindingForm workspaceId={p.workspaceId} sessionId={p.sessionId} draft={p.findingDraft} onDone={() => (p.onDrafted(), p.onChanged())} />}
@@ -462,10 +473,10 @@ function Findings(p: EvidencePanelProps) {
       {p.findings === null ? (
         <Spinner size="tiny" />
       ) : p.findings.length === 0 && p.findingDraft === null ? (
-        <EmptyState icon={<Lightbulb20Regular />} message="No findings yet. Add an answer as a finding to start one." />
+        <EmptyState icon={<Lightbulb20Regular />} message={t("research.evidence.findingsEmpty")} />
       ) : (
         p.findings.map((f) => (
-          <article key={f.id} className={s.card} aria-label={`Finding ${f.code}`}>
+          <article key={f.id} className={s.card} aria-label={t("research.evidence.findingArticleAria", { code: f.code })}>
             <div className={s.line}>
               <Badge className={s.codeBadge} appearance="outline" size="small">
                 {f.code}
@@ -490,13 +501,19 @@ function Findings(p: EvidencePanelProps) {
             <div className={s.actions}>
               {FINDING_MOVES[f.status].map((to) => (
                 <Button key={to} size="small" appearance={to === "reviewed" ? "primary" : "secondary"} onClick={() => void move(f, to)}>
-                  {MOVE_LABEL[to]}
+                  {t(MOVE_LABEL_KEYS[to])}
                 </Button>
               ))}
-              <Button size="small" appearance="subtle" icon={<Delete16Regular />} aria-label={`Delete ${f.code}`} onClick={() => void research.deleteFinding(f.id).then(p.onChanged, (err: unknown) => setError(errorText(err)))} />
+              <Button size="small" appearance="subtle" icon={<Delete16Regular />} aria-label={t("research.evidence.deleteAria", { title: f.code })} onClick={() => void research.deleteFinding(f.id).then(p.onChanged, (err: unknown) => setError(errorText(err)))} />
             </div>
             <Text size={100} className={s.muted}>
-              {f.reviewedBy ? `${FINDING_STATUS_LABELS[f.status]} by ${f.reviewedBy}${f.reviewedAt ? ` · ${when(f.reviewedAt)}` : ""}` : `Written by ${f.createdBy} · ${when(f.updatedAt)}`}
+              {f.reviewedBy
+                ? t("research.evidence.findingReviewedMeta", {
+                    status: FINDING_STATUS_LABELS[f.status],
+                    by: f.reviewedBy,
+                    at: f.reviewedAt ? ` · ${when(f.reviewedAt)}` : "",
+                  })
+                : t("research.evidence.findingWrittenMeta", { by: f.createdBy, at: when(f.updatedAt) })}
             </Text>
           </article>
         ))
@@ -506,6 +523,7 @@ function Findings(p: EvidencePanelProps) {
 }
 
 function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: string; sessionId: string; draft: FindingDraft; onDone: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [title, setTitle] = useState(draft.title);
   const [statement, setStatement] = useState(draft.statement);
@@ -513,16 +531,24 @@ function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: s
   return (
     <form
       className={mergeClasses(s.card, s.form)}
-      aria-label="New finding"
+      aria-label={t("research.evidence.newFindingAria")}
       onSubmit={(e) => {
         e.preventDefault();
         research.createFinding(workspaceId, { title, statement, sessionId, citations: draft.citations }).then(onDone, (err: unknown) => setError(errorText(err)));
       }}
     >
-      <Field className={s.field} label="Finding">
+      <Field className={s.field} label={t("research.evidence.findingLabel")}>
         <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} autoFocus />
       </Field>
-      <Field className={s.field} label="Statement (Markdown)" hint={draft.citations.length > 0 ? `Rests on ${draft.citations.length} citation${draft.citations.length === 1 ? "" : "s"}.` : "No citation: it rests on nothing yet."}>
+      <Field
+        className={s.field}
+        label={t("research.evidence.statementLabel")}
+        hint={
+          draft.citations.length > 0
+            ? t("research.evidence.restsOnCitations", { count: draft.citations.length, plural: draft.citations.length === 1 ? "" : "s" })
+            : t("research.evidence.restsOnNothing")
+        }
+      >
         <Textarea className={s.input} value={statement} onChange={(_, d) => setStatement(d.value)} rows={5} resize="vertical" maxLength={RESEARCH_LIMITS.findingStatementLength} />
       </Field>
       {error && (
@@ -532,9 +558,9 @@ function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: s
       )}
       <div className={s.actions}>
         <Button appearance="primary" type="submit" disabled={title.trim() === "" || statement.trim() === ""}>
-          Save as draft
+          {t("research.evidence.saveAsDraft")}
         </Button>
-        <Button onClick={onDone}>Cancel</Button>
+        <Button onClick={onDone}>{t("research.evidence.cancel")}</Button>
       </div>
     </form>
   );

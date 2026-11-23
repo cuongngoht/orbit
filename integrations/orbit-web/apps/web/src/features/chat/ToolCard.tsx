@@ -45,14 +45,16 @@ const useStyles = makeStyles({
 });
 
 function StateIcon({ tool }: { tool: ToolItem }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (tool.state === "running") return <span className={s.spinnerWrap}><Spinner size="extra-tiny" aria-label="running" /></span>;
-  if (tool.interrupted) return <Warning16Regular className={s.warn} aria-label="interrupted" />;
-  if (tool.state === "failed") return <ErrorCircle16Regular className={s.bad} aria-label="failed" />;
-  return <CheckmarkCircle16Regular className={s.ok} aria-label="done" />;
+  if (tool.state === "running") return <span className={s.spinnerWrap}><Spinner size="extra-tiny" aria-label={t("chat.tool.stateRunning")} /></span>;
+  if (tool.interrupted) return <Warning16Regular className={s.warn} aria-label={t("chat.tool.stateInterrupted")} />;
+  if (tool.state === "failed") return <ErrorCircle16Regular className={s.bad} aria-label={t("chat.tool.stateFailed")} />;
+  return <CheckmarkCircle16Regular className={s.ok} aria-label={t("chat.tool.stateDone")} />;
 }
 
 export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactNode }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [open, setOpen] = useState(false);
   // A call always has an input; none at all is a shared chat's tool, said by its title only: nothing to show.
@@ -70,7 +72,7 @@ export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactN
               e.stopPropagation();
               setOpen((o) => !o);
             }}
-            aria-label={open ? "Hide details" : "Show details"}
+            aria-label={open ? t("chat.tool.hideDetails") : t("chat.tool.showDetails")}
             aria-expanded={open}
           />
         )}
@@ -81,16 +83,18 @@ export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactN
       {open && detailed && (
         <>
           <Text size={200} className={s.label}>
-            Input{tool.agent ? ` — subagent ${tool.agent.subagentType ?? "general"}` : ""}
+            {t("chat.tool.inputLabel", {
+              subagent: tool.agent ? t("chat.tool.subagentSuffix", { type: tool.agent.subagentType ?? t("chat.tool.subagentGeneral") }) : "",
+            })}
           </Text>
           <CodeBlock code={tool.input} language="json" />
           {tool.output !== null && (
             <>
               <Text size={200} className={s.label}>
-                {tool.state === "failed" ? "Error" : "Output"}
-                {tool.truncated ? " (cut short)" : ""}
+                {tool.state === "failed" ? t("chat.tool.errorLabel") : t("chat.tool.outputLabel")}
+                {tool.truncated ? t("chat.tool.cutShort") : ""}
               </Text>
-              <CodeBlock code={tool.output || "(no output)"} />
+              <CodeBlock code={tool.output || t("chat.tool.noOutput")} />
             </>
           )}
         </>

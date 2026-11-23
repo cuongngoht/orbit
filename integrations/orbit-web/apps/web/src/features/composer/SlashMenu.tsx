@@ -8,6 +8,7 @@ import { Dismiss16Regular } from "@fluentui/react-icons";
 import type { SlashCommand, SlashCommands } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get } from "../../services/api";
 
 const SHOWN = 60;
@@ -108,39 +109,40 @@ export function useSlashCommands(path: string | undefined, version: number, want
 
 export const optionId = (listId: string, index: number): string => `${listId}-option-${index}`;
 
-const GROUPS: { origin: SlashCommand["origin"]; label: string }[] = [
-  { origin: "project", label: "This project" },
-  { origin: "orbit", label: "Orbit" },
+const GROUPS: { origin: SlashCommand["origin"]; labelKey: MessageKey }[] = [
+  { origin: "project", labelKey: "chat.slash.group.project" },
+  { origin: "orbit", labelKey: "chat.slash.group.orbit" },
 ];
 
 export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number; query: string; state: SlashState; onPick: (c: SlashCommand) => void; onHover: (index: number) => void; onClose?: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   useEffect(() => {
     document.getElementById(optionId(p.id, p.active))?.scrollIntoView?.({ block: "nearest" });
   }, [p.id, p.active]);
-  const status = p.state.loading ? "Reading the skills…" : p.state.error !== null ? `The skills could not be listed: ${p.state.error}` : p.items.length === 0 ? `No skill or command matches “/${p.query}”.` : null;
+  const status = p.state.loading ? t("chat.slash.reading") : p.state.error !== null ? t("chat.slash.error", { error: p.state.error }) : p.items.length === 0 ? t("chat.slash.noMatch", { query: p.query }) : null;
   const note = p.state.data?.note ?? null;
-  const said = [status, note].filter((t): t is string => t !== null);
+  const said = [status, note].filter((msg): msg is string => msg !== null);
   return (
     <div className={s.popup}>
       {isMobile && p.onClose && (
         <div className={s.bar}>
           <Text size={200} weight="semibold">
-            Skills &amp; commands
+            {t("chat.slash.header")}
           </Text>
-          <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label="Close commands" onClick={p.onClose} />
+          <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={t("chat.slash.closeAria")} onClick={p.onClose} />
         </div>
       )}
       {p.items.length > 0 && (
-        <div className={s.list} role="listbox" id={p.id} aria-label="Skills and commands">
+        <div className={s.list} role="listbox" id={p.id} aria-label={t("chat.slash.listAria")}>
           {GROUPS.map((g) => {
             const members = p.items.flatMap((c, index) => (c.origin === g.origin ? [{ c, index }] : []));
             if (members.length === 0) return null;
             return (
               <div key={g.origin} className={s.group} role="group" aria-labelledby={`${p.id}-${g.origin}`}>
                 <div id={`${p.id}-${g.origin}`} className={s.label} role="presentation">
-                  {g.label}
+                  {t(g.labelKey)}
                 </div>
                 {members.map(({ c, index }) => (
                   <div
@@ -167,9 +169,9 @@ export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number
           })}
         </div>
       )}
-      {said.map((t) => (
-        <Text key={t} size={200} className={mergeClasses(s.status, p.items.length === 0 && t === said[0] && s.alone)}>
-          {t}
+      {said.map((msg) => (
+        <Text key={msg} size={200} className={mergeClasses(s.status, p.items.length === 0 && msg === said[0] && s.alone)}>
+          {msg}
         </Text>
       ))}
     </div>

@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { t as tr, useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -72,13 +73,14 @@ const MAX_SHOWN = 200;
 
 // What a branch is, beside its name: the default one (never worked on), one only this workspace has, one to fetch.
 function noteOf(b: WorkBranch): string | null {
-  if (b.isDefault) return "default · not worked on: make a new branch from the work instead";
-  if (b.local && !b.remote) return "only in this workspace";
-  if (!b.local) return "from the repository: fetched when chosen";
+  if (b.isDefault) return tr("chat.workBranch.note.default");
+  if (b.local && !b.remote) return tr("chat.workBranch.note.localOnly");
+  if (!b.local) return tr("chat.workBranch.note.remoteOnly");
   return null;
 }
 
 export function WorkBranchPicker(p: { sessionId: string; base: string | null; work: string; disabled: boolean; onMoved: (s: SessionSummary) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
@@ -111,10 +113,10 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
   const body = (
     <>
       <Text size={200} className={s.muted}>
-        Claude Code works and commits on this branch{p.base ? `; its changes are read against ${p.base}` : ""}.
+        {t("chat.workBranch.commitsNote", { against: p.base ? t("chat.workBranch.againstBase", { base: p.base }) : "" })}
       </Text>
-      <SearchBox size={isMobile ? "medium" : "small"} placeholder="Search branches" aria-label="Search branches" value={query} onChange={(_, d) => setQuery(d.value)} />
-      {list.loading && list.data === null && <Spinner size="tiny" label="Reading the branches…" />}
+      <SearchBox size={isMobile ? "medium" : "small"} placeholder={t("chat.workBranch.searchPlaceholder")} aria-label={t("chat.workBranch.searchAria")} value={query} onChange={(_, d) => setQuery(d.value)} />
+      {list.loading && list.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
       {list.error && (
         <MessageBar intent="error">
           <MessageBarBody>{list.error}</MessageBarBody>
@@ -122,10 +124,10 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
       )}
       {list.data?.remoteError && (
         <Text size={200} className={s.muted}>
-          The repository's branches could not be read ({list.data.remoteError}); this workspace's are listed.
+          {t("chat.workBranch.remoteError", { error: list.data.remoteError })}
         </Text>
       )}
-      <ul className={s.list} role="listbox" aria-label="Branches">
+      <ul className={s.list} role="listbox" aria-label={t("chat.workBranch.branchesAria")}>
         {shown.map((b) => {
           const isCurrent = b.name === current;
           const note = noteOf(b);
@@ -149,7 +151,7 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
         {list.data !== null && shown.length === 0 && (
           <li>
             <Text size={200} className={s.muted}>
-              No branch matches.
+              {t("chat.workBranch.noMatch")}
             </Text>
           </li>
         )}
@@ -161,9 +163,9 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
           if (isBranchName(name.trim())) void move(name.trim(), true);
         }}
       >
-        <Input size={isMobile ? "medium" : "small"} style={{ flexGrow: 1 }} placeholder="New branch from the work as it is" aria-label="New branch name" value={name} onChange={(_, d) => setName(d.value)} />
+        <Input size={isMobile ? "medium" : "small"} style={{ flexGrow: 1 }} placeholder={t("chat.workBranch.newBranchPlaceholder")} aria-label={t("chat.workBranch.newBranchAria")} value={name} onChange={(_, d) => setName(d.value)} />
         <Button className={isMobile ? s.createBtnMobile : undefined} size={isMobile ? "medium" : "small"} appearance="primary" type="submit" disabled={!isBranchName(name.trim()) || busy !== null}>
-          Create
+          {t("chat.workBranch.create")}
         </Button>
       </form>
       {error && (
@@ -181,8 +183,8 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
       size="small"
       icon={<BranchFork16Regular />}
       disabled={p.disabled}
-      aria-label={`Working branch ${p.work}`}
-      title={p.disabled ? "The working branch can change once Claude has finished." : "Choose the working branch"}
+      aria-label={t("chat.workBranch.triggerAria", { branch: p.work })}
+      title={p.disabled ? t("chat.workBranch.disabledTitle") : t("chat.workBranch.enabledTitle")}
       onClick={
         isMobile
           ? () => {
@@ -207,8 +209,8 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
             setOpen(next);
             setError(null);
           }}
-          title="Working branch"
-          ariaLabel="Choose the working branch"
+          title={t("chat.workBranch.sheetTitle")}
+          ariaLabel={t("chat.workBranch.enabledTitle")}
         >
           <div className={s.sheetInner}>{body}</div>
         </ResponsiveSheet>
@@ -227,7 +229,7 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
       trapFocus
     >
       <PopoverTrigger disableButtonEnhancement>{trigger}</PopoverTrigger>
-      <PopoverSurface className={s.surface} aria-label="Choose the working branch">
+      <PopoverSurface className={s.surface} aria-label={t("chat.workBranch.enabledTitle")}>
         {body}
       </PopoverSurface>
     </Popover>

@@ -142,6 +142,7 @@ const useStyles = makeStyles({
 type Panel = "changes" | "orbit";
 
 export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: string; onUpdated: (s: SessionSummary) => void; onOpenNav?: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCompact, isNarrowDesktop } = useViewport();
   const { state, connected } = useSessionStream(sessionId);
@@ -203,12 +204,12 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
         <MessageBarBody>{detail.error}</MessageBarBody>
       </MessageBar>
     );
-  if (detail.data === null) return <Spinner style={{ marginTop: 48 }} label="Opening the chat…" />;
+  if (detail.data === null) return <Spinner style={{ marginTop: 48 }} label={t("chat.screen.openingChat")} />;
   const session = detail.data;
   const canSend = ACCEPTS_MESSAGES.includes(status);
 
   const inspectorNode = (
-    <aside className={mergeClasses(s.right, drawerInspector && s.rightInDrawer)} aria-label="Changes and Orbit">
+    <aside className={mergeClasses(s.right, drawerInspector && s.rightInDrawer)} aria-label={t("chat.screen.inspectorAria")}>
       {isMobile && (
         <div className={s.grabberWrap} aria-hidden>
           <span className={s.grabber} />
@@ -216,10 +217,10 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
       )}
       <div className={s.rightTop}>
         <TabList size="small" selectedValue={panel ?? "changes"} onTabSelect={(_, d) => setPanel(d.value as Panel)} style={{ flexGrow: 1 }}>
-          <Tab value="changes">Changes</Tab>
-          <Tab value="orbit">Orbit</Tab>
+          <Tab value="changes">{t("chat.screen.tabChanges")}</Tab>
+          <Tab value="orbit">{t("chat.screen.tabOrbit")}</Tab>
         </TabList>
-        <Button className={isMobile || isCompact ? s.touchBtn : undefined} appearance="subtle" size="small" icon={<Dismiss20Regular />} aria-label="Close the panel" onClick={() => setPanel(null)} />
+        <Button className={isMobile || isCompact ? s.touchBtn : undefined} appearance="subtle" size="small" icon={<Dismiss20Regular />} aria-label={t("chat.screen.closePanelAria")} onClick={() => setPanel(null)} />
       </div>
       <div className={s.rightBody}>{panel === "changes" ? <ChangesPanel sessionId={sessionId} version={version} /> : <OrbitPanel sessionId={sessionId} live={state.orbit} />}</div>
     </aside>
@@ -227,9 +228,9 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
 
   return (
     <div className={s.root}>
-      <section className={s.main} aria-label="Chat">
+      <section className={s.main} aria-label={t("chat.screen.chatAria")}>
         <header className={mergeClasses(s.top, isMobile && s.topMobile)}>
-          {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+          {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("chat.screen.openNavAria")} onClick={onOpenNav} />}
           {isMobile ? (
             <div className={s.titleStack}>
               <Text weight="semibold" className={mergeClasses(s.title, s.titleMobile)}>
@@ -239,7 +240,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
                 <SessionStatusBadge status={status} />
                 {!connected && (
                   <Badge appearance="outline" color="warning" size="small">
-                    Reconnecting…
+                    {t("chat.screen.reconnecting")}
                   </Badge>
                 )}
               </div>
@@ -252,7 +253,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               <SessionStatusBadge status={status} />
               {!connected && (
                 <Badge appearance="outline" color="warning">
-                  Reconnecting…
+                  {t("chat.screen.reconnecting")}
                 </Badge>
               )}
             </>
@@ -260,30 +261,30 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
           <div className={s.actions}>
             <PushButton session={session} compact={isMobile} />
             <ShareButton sessionId={sessionId} compact={isMobile} access={session.access} />
-            <Tooltip content="What changed in the workspace" relationship="description">
+            <Tooltip content={t("chat.screen.changesTooltip")} relationship="description">
               <ToggleButton
                 className={isMobile ? s.touchBtn : undefined}
                 size="small"
                 appearance="subtle"
                 icon={<DocumentBulletList20Regular />}
-                aria-label="Changes"
+                aria-label={t("chat.screen.tabChanges")}
                 checked={panel === "changes"}
                 onClick={() => setPanel(panel === "changes" ? null : "changes")}
               >
-                {!isMobile && "Changes"}
+                {!isMobile && t("chat.screen.tabChanges")}
               </ToggleButton>
             </Tooltip>
-            <Tooltip content="What Orbit says about the work" relationship="description">
+            <Tooltip content={t("chat.screen.orbitTooltip")} relationship="description">
               <ToggleButton
                 className={isMobile ? s.touchBtn : undefined}
                 size="small"
                 appearance="subtle"
                 icon={<Info20Regular />}
-                aria-label="Orbit"
+                aria-label={t("chat.screen.tabOrbit")}
                 checked={panel === "orbit"}
                 onClick={() => setPanel(panel === "orbit" ? null : "orbit")}
               >
-                {!isMobile && "Orbit"}
+                {!isMobile && t("chat.screen.tabOrbit")}
               </ToggleButton>
             </Tooltip>
           </div>
@@ -307,7 +308,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
                   onRunPlan: () =>
                     void attempt(async () => {
                       await update({ mode: "autonomous" });
-                      await say("Carry out the plan above.");
+                      await say(t("chat.screen.carryOutPlan"));
                     }),
                 }}
               />
@@ -320,21 +321,21 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               appearance="secondary"
               size="small"
               icon={<ArrowDown16Regular />}
-              aria-label="Jump to latest"
+              aria-label={t("chat.screen.jumpLatestAria")}
               onClick={() => {
                 const el = scroller.current;
                 if (el) el.scrollTop = el.scrollHeight;
                 setAwayFromBottom(false);
               }}
             >
-              Latest
+              {t("chat.screen.latest")}
             </Button>
           )}
           <div className={s.scrollFade} aria-hidden />
         </div>
         <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
           <Composer
-            placeholder={status === "preparing" ? "The workspace is being prepared…" : "Reply to Orbit…"}
+            placeholder={status === "preparing" ? t("chat.screen.preparingPlaceholder") : t("chat.screen.replyPlaceholder")}
             canSend={canSend}
             running={running}
             busy={sending}
@@ -346,9 +347,9 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             above={error !== null && <ApiErrorBar error={error} />}
             left={
               <>
-                <span className={mergeClasses(s.chip, isMobile && s.chipMobile)} title={session.repository ?? "No repository"}>
+                <span className={mergeClasses(s.chip, isMobile && s.chipMobile)} title={session.repository ?? t("chat.screen.noRepository")}>
                   <SourceMark source={session.source} />
-                  <span className={s.chipText}>{session.repository ?? "No repository"}</span>
+                  <span className={s.chipText}>{session.repository ?? t("chat.screen.noRepository")}</span>
                 </span>
                 {session.workBranch && (
                   <WorkBranchPicker

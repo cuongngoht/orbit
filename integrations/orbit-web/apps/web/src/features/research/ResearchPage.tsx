@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SessionStatusBadge } from "../../components/StatusBadge";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { ModelEffortPicker } from "../composer/RunPickers";
 import { PeopleAccess } from "../share/PeopleAccess";
@@ -141,6 +142,7 @@ export interface ResearchPageProps {
 }
 
 export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPageProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCompact, isWide, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -252,7 +254,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       setError(err);
     }
   };
-  const firstLine = (text: string) => (text.split("\n").find((l) => l.trim() !== "")?.replace(/^#+\s*/, "").slice(0, 80) ?? "Research note").trim();
+  const firstLine = (text: string) => (text.split("\n").find((l) => l.trim() !== "")?.replace(/^#+\s*/, "").slice(0, 80) ?? t("research.page.defaultNoteTitle")).trim();
   const saveNote = (m: LiveMessage) => {
     const cited = citationsOf(m.id)[0];
     setNoteDraft({ title: firstLine(m.text), body: m.text, ...(cited ? { citationId: cited.id } : {}) });
@@ -275,7 +277,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         <MessageBarBody>{detail.error}</MessageBarBody>
       </MessageBar>
     );
-  if (detail.data === null || workspaceId === null) return <Spinner className={s.center} label="Opening the research session…" />;
+  if (detail.data === null || workspaceId === null) return <Spinner className={s.center} label={t("research.page.opening")} />;
   const session = detail.data;
   const status = state.status ?? session.status;
 
@@ -352,7 +354,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   return (
     <div className={s.root}>
       <header className={mergeClasses(s.top, isMobile && s.topMobile)}>
-        {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label="Open navigation" onClick={onOpenNav} />}
+        {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("research.page.openNavAria")} onClick={onOpenNav} />}
         {!isMobile && (
           <span className={s.brandEmblem} aria-hidden>
             <BookOpen20Regular />
@@ -365,10 +367,10 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
           <span className={s.sub}>
             <span className={s.ellipsis}>{session.workspaceName}</span>
             {!isMobile && <span>·</span>}
-            {!isMobile && <span>{usable} of {list.length} sources in use</span>}
+            {!isMobile && <span>{t("research.page.sourcesInUse", { usable, total: list.length })}</span>}
             {session.access === "shared" && (
               <Badge className={s.sharedBadge} appearance="tint" size="small">
-                shared by {session.owner}
+                {t("research.page.sharedBadge", { owner: session.owner ?? "" })}
               </Badge>
             )}
           </span>
@@ -377,7 +379,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
           <SessionStatusBadge status={status} />
           {!connected && (
             <Badge className={s.sharedBadge} appearance="outline" color="warning">
-              Reconnecting…
+              {t("research.page.reconnecting")}
             </Badge>
           )}
         </div>
@@ -385,7 +387,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         <div className={s.actions}>
           <WorkspaceShare workspaceId={workspaceId} name={workspace.data?.name ?? session.workspaceName} compact={isMobile} touch={touch} />
           {!isMobile && (
-            <Tooltip content={showSources ? "Hide the sources" : "Show the sources"} relationship="label">
+            <Tooltip content={t(showSources ? "research.page.hideSources" : "research.page.showSources")} relationship="label">
               <ToggleButton
                 className={s.headerBtn}
                 appearance="subtle"
@@ -393,14 +395,14 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
                 checked={showSources}
                 icon={showSources ? <PanelLeftContract20Regular /> : <PanelLeftExpand20Regular />}
                 onClick={() => setShowSources((v) => !v)}
-                aria-label="Sources panel"
+                aria-label={t("research.page.sourcesPanelAria")}
               >
-                {!isCompact && "Sources"}
+                {!isCompact && t("research.page.sourcesLabel")}
               </ToggleButton>
             </Tooltip>
           )}
           {!isMobile && (
-            <Tooltip content="Citations, notes and findings" relationship="label">
+            <Tooltip content={t("research.page.evidenceTooltip")} relationship="label">
               <ToggleButton
                 className={s.headerBtn}
                 appearance="subtle"
@@ -408,9 +410,9 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
                 checked={isWide ? showEvidence : drawer}
                 icon={(isWide ? showEvidence : drawer) ? <PanelRightContract20Regular /> : <PanelRightExpand20Regular />}
                 onClick={() => (isWide ? setShowEvidence((v) => !v) : setDrawer((v) => !v))}
-                aria-label="Evidence panel"
+                aria-label={t("research.page.evidencePanelAria")}
               >
-                {!isCompact && "Evidence"}
+                {!isCompact && t("research.page.evidenceLabel")}
               </ToggleButton>
             </Tooltip>
           )}
@@ -419,10 +421,10 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       {isMobile ? (
         <>
           <div className={s.mobileTabsWrap}>
-            <TabList className={s.mobileTabList} size="small" selectedValue={mobilePanel} onTabSelect={(_, d) => setMobilePanel(d.value as MobilePanel)} aria-label="Research panels">
-              <Tab value="sources">Sources</Tab>
-              <Tab value="chat">Chat</Tab>
-              <Tab value="evidence">Evidence</Tab>
+            <TabList className={s.mobileTabList} size="small" selectedValue={mobilePanel} onTabSelect={(_, d) => setMobilePanel(d.value as MobilePanel)} aria-label={t("research.page.mobileTabsAria")}>
+              <Tab value="sources">{t("research.page.sourcesLabel")}</Tab>
+              <Tab value="chat">{t("research.page.tabChat")}</Tab>
+              <Tab value="evidence">{t("research.page.evidenceLabel")}</Tab>
             </TabList>
           </div>
           <div className={s.single}>{mobilePanel === "sources" ? sourcesPanel : mobilePanel === "evidence" ? evidencePanel : chat}</div>
@@ -435,7 +437,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         </div>
       )}
       {!isMobile && !isWide && (
-        <OverlayDrawer open={drawer} onOpenChange={(_, d) => setDrawer(d.open)} position="end" className={s.drawer} aria-label="Evidence">
+        <OverlayDrawer open={drawer} onOpenChange={(_, d) => setDrawer(d.open)} position="end" className={s.drawer} aria-label={t("research.evidence.aria")}>
           {drawer && evidencePanel}
         </OverlayDrawer>
       )}
@@ -456,13 +458,14 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
 }
 
 function WorkspaceShare({ workspaceId, name, compact, touch }: { workspaceId: string; name: string; compact: boolean; touch: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
       <DialogTrigger disableButtonEnhancement>
-        <Button className={touch ? s.touch : s.headerBtn} appearance="subtle" size="small" icon={<People20Regular />} aria-label="Share the workspace">
-          {!compact && "Share"}
+        <Button className={touch ? s.touch : s.headerBtn} appearance="subtle" size="small" icon={<People20Regular />} aria-label={t("research.page.shareBtnAria")}>
+          {!compact && t("research.page.shareBtn")}
         </Button>
       </DialogTrigger>
       <DialogSurface className={s.shareSurface}>
@@ -470,16 +473,16 @@ function WorkspaceShare({ workspaceId, name, compact, touch }: { workspaceId: st
           <DialogTitle
             action={
               <DialogTrigger action="close" disableButtonEnhancement>
-                <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} />
+                <Button appearance="subtle" size="small" aria-label={t("research.addSources.closeAria")} icon={<Dismiss20Regular />} />
               </DialogTrigger>
             }
           >
-            Share “{name}”
+            {t("research.page.shareTitle", { name })}
           </DialogTitle>
-          <DialogContent>{open && <PeopleAccess path={research.workspaceAccessPath(workspaceId)} what="research workspace" />}</DialogContent>
+          <DialogContent>{open && <PeopleAccess path={research.workspaceAccessPath(workspaceId)} what={t("research.page.whatWorkspace")} />}</DialogContent>
           <DialogActions>
             <DialogTrigger action="close" disableButtonEnhancement>
-              <Button appearance="secondary">Done</Button>
+              <Button appearance="secondary">{t("research.addSources.done")}</Button>
             </DialogTrigger>
           </DialogActions>
         </DialogBody>

@@ -61,6 +61,7 @@ const KIND: Record<ChangeKind, { label: string; color: "success" | "danger" | "i
 };
 
 export function ChangesPanel({ sessionId, version }: { sessionId: string; version: number }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const report = useResource<ChangesReport>(() => get(`/api/sessions/${sessionId}/changes`), [sessionId]);
@@ -91,7 +92,7 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
 
   if (report.error) return <MessageBar intent={/not ready/.test(report.error) ? "info" : "error"}><MessageBarBody>{report.error}</MessageBarBody></MessageBar>;
   const r = report.data;
-  if (r === null) return <Spinner size="tiny" label="Reading the workspace…" />;
+  if (r === null) return <Spinner size="tiny" label={t("chat.changes.reading")} />;
 
   const diffContent = path !== null && (
     <>
@@ -101,8 +102,8 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
         </MessageBar>
       )}
       {diff === null && !diffError && <Spinner size="tiny" />}
-      {diff && diff.binary && <Text size={200}>{diff.path} is a binary file; its content is not shown.</Text>}
-      {diff && diff.tooLarge && <Text size={200}>The diff of {diff.path} is too large to show here.</Text>}
+      {diff && diff.binary && <Text size={200}>{t("chat.changes.binaryNotShown", { path: diff.path })}</Text>}
+      {diff && diff.tooLarge && <Text size={200}>{t("chat.changes.tooLarge", { path: diff.path })}</Text>}
       {diff && diff.diff !== null && (
         <>
           <div className={s.diffBar}>
@@ -112,7 +113,7 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
               </Text>
             )}
             <ToggleButton className={s.wrapBtn} size="small" appearance="subtle" icon={<TextWrap16Regular />} checked={wrap} onClick={() => setWrap((w) => !w)}>
-              Wrap lines
+              {t("chat.changes.wrapLines")}
             </ToggleButton>
           </div>
           <DiffView diff={diff.diff} language={diff.language} wrap={wrap} compact={isMobile} />
@@ -127,10 +128,10 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
       <div className={s.root}>
         <div className={s.diffBar}>
           <Button className={s.backBtn} appearance="subtle" icon={<ArrowLeft16Regular />} onClick={() => setPath(null)}>
-            Files
+            {t("chat.changes.filesBack")}
           </Button>
           <ToggleButton className={s.wrapBtn} size="small" appearance="subtle" icon={<TextWrap16Regular />} checked={wrap} onClick={() => setWrap((w) => !w)}>
-            Wrap lines
+            {t("chat.changes.wrapLines")}
           </ToggleButton>
         </div>
         <div className={s.filePill}>
@@ -149,8 +150,8 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
           </MessageBar>
         )}
         {diff === null && !diffError && <Spinner size="tiny" />}
-        {diff && diff.binary && <Text size={200}>{diff.path} is a binary file; its content is not shown.</Text>}
-        {diff && diff.tooLarge && <Text size={200}>The diff of {diff.path} is too large to show here.</Text>}
+        {diff && diff.binary && <Text size={200}>{t("chat.changes.binaryNotShown", { path: diff.path })}</Text>}
+        {diff && diff.tooLarge && <Text size={200}>{t("chat.changes.tooLarge", { path: diff.path })}</Text>}
         {diff && diff.diff !== null && <DiffView diff={diff.diff} language={diff.language} wrap={wrap} compact />}
       </div>
     );
@@ -160,20 +161,24 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
     <div className={s.root}>
       <div className={s.row}>
         <Text weight="semibold">
-          {r.totals.files} file{r.totals.files === 1 ? "" : "s"} changed <span className={s.add}>+{r.totals.additions}</span> <span className={s.del}>−{r.totals.deletions}</span>
+          {t("chat.changes.summary", {
+            count: r.totals.files,
+            word: t(r.totals.files === 1 ? "chat.changes.fileWordOne" : "chat.changes.fileWordMany"),
+          })}
+          <span className={s.add}>+{r.totals.additions}</span> <span className={s.del}>−{r.totals.deletions}</span>
         </Text>
-        <Button className={isMobile ? s.touchBtn : undefined} appearance="subtle" size="small" icon={<ArrowClockwise16Regular />} onClick={() => void report.reload()} aria-label="Refresh changes" />
+        <Button className={isMobile ? s.touchBtn : undefined} appearance="subtle" size="small" icon={<ArrowClockwise16Regular />} onClick={() => void report.reload()} aria-label={t("chat.changes.refreshAria")} />
       </div>
       <div className={s.meta}>
-        <Text size={200}>Branch</Text>
-        <Text size={200} className={s.mono}>{r.currentBranch ?? "(detached)"} from {r.baseBranch}</Text>
-        <Text size={200}>Started at</Text>
+        <Text size={200}>{t("chat.changes.branch")}</Text>
+        <Text size={200} className={s.mono}>{t("chat.changes.branchValue", { current: r.currentBranch ?? t("chat.changes.detached"), base: r.baseBranch ?? "" })}</Text>
+        <Text size={200}>{t("chat.changes.startedAt")}</Text>
         <Text size={200} className={s.mono}>{r.baseCommit?.slice(0, 12) ?? "?"}</Text>
-        <Text size={200}>Current commit</Text>
+        <Text size={200}>{t("chat.changes.currentCommit")}</Text>
         <Text size={200} className={s.mono}>{r.headCommit?.slice(0, 12) ?? "?"}</Text>
       </div>
-      {r.files.length === 0 && <Text size={200}>No changes in the workspace.</Text>}
-      <ul className={s.list} aria-label="Changed files">
+      {r.files.length === 0 && <Text size={200}>{t("chat.changes.none")}</Text>}
+      <ul className={s.list} aria-label={t("chat.changes.changedFilesAria")}>
         {r.files.map((f) => (
           <li key={f.path} className={mergeClasses(s.file, isMobile && s.fileMobile, path === f.path && s.chosen)} onClick={() => setPath(f.path)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === "Enter" ? setPath(f.path) : undefined)}>
             <Badge size="small" appearance="tint" color={KIND[f.kind].color} aria-label={f.kind}>
@@ -185,7 +190,7 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
             </span>
             {f.binary ? (
               <Badge size="small" appearance="outline">
-                binary
+                {t("chat.changes.binaryBadge")}
               </Badge>
             ) : (
               <Text size={200}>

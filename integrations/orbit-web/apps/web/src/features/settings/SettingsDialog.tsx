@@ -9,6 +9,7 @@ import { useCallback, useState, type ReactElement } from "react";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 import { get } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
 import type { SignOut } from "../auth/useSignOut";
@@ -159,29 +160,29 @@ const useStyles = makeStyles({
 
 interface Section {
   id: SettingsSection;
-  label: string;
+  labelKey: MessageKey;
   icon: ReactElement;
   // What the section is for, under its title.
-  about: string;
+  aboutKey: MessageKey;
   // Words a search finds it by, beyond its label.
-  words: string;
+  wordsKey: MessageKey;
 }
 
 const SECTIONS: Section[] = [
-  { id: "account", label: "Account", icon: <Person20Regular />, about: "You and your Orbit account: your profile, the company, the password, your sessions and the access link.", words: "profile name email company time zone locale password sign out sessions access link token" },
-  { id: "appearance", label: "Appearance", icon: <PaintBrush20Regular />, about: "How Orbit Web looks.", words: "theme dark light system" },
-  { id: "code", label: "Code", icon: <Code20Regular />, about: "How a new chat runs, and what a repository brings to it.", words: "model effort mode autonomous plan skills plugins web tools budget" },
-  { id: "ai-connections", label: "AI Connections", icon: <BrainCircuit20Regular />, about: "Claude Code, OpenAI Codex and Google Antigravity: whether each is installed, how it signs in, and your connections to it.", words: "claude codex antigravity agy cli api key subscription model effort plugin connect disconnect" },
-  { id: "compute", label: "Compute & storage", icon: <DataUsage20Regular />, about: "What your employees may use: the host's capacity, your budget, what is reserved and what is stored.", words: "cpu memory storage budget capacity quota resources reserved" },
-  { id: "connectors", label: "Connectors", icon: <PlugConnected20Regular />, about: "Connect Orbit Web to your repositories on GitHub and Azure DevOps.", words: "github azure devops sign in cli repository" },
-  { id: "mcp-servers", label: "MCP servers", icon: <BookDatabase20Regular />, about: "Knowledge bases and other remote MCP servers your employees may ask, each turned on per employee.", words: "mcp server knowledge base wiki docs token employees tools" },
-  { id: "claude-connectors", label: "Claude connectors", icon: <Apps20Regular />, about: "What Claude may use as your Claude account -- its claude.ai connectors and the plugins' servers -- in chats and in research.", words: "connectors claude.ai mcp docs gmail drive slack research chat artifact" },
-  { id: "skills", label: "Skills", icon: <Lightbulb20Regular />, about: "The skills, commands and agents Claude Code is given: Orbit's own, and each project's.", words: "commands agents project orbit" },
-  { id: "plugins", label: "Plugins", icon: <PuzzlePiece20Regular />, about: "The plugins Claude Code runs with, and what became of each project's.", words: "plugin marketplace hooks mcp" },
-  { id: "system", label: "System", icon: <Server20Regular />, about: "The programs, the plugin and the storage this container holds.", words: "status version health storage git node" },
+  { id: "account", labelKey: "settings.dialog.section.account.label", icon: <Person20Regular />, aboutKey: "settings.dialog.section.account.about", wordsKey: "settings.dialog.section.account.words" },
+  { id: "appearance", labelKey: "settings.dialog.section.appearance.label", icon: <PaintBrush20Regular />, aboutKey: "settings.dialog.section.appearance.about", wordsKey: "settings.dialog.section.appearance.words" },
+  { id: "code", labelKey: "settings.dialog.section.code.label", icon: <Code20Regular />, aboutKey: "settings.dialog.section.code.about", wordsKey: "settings.dialog.section.code.words" },
+  { id: "ai-connections", labelKey: "settings.dialog.section.aiConnections.label", icon: <BrainCircuit20Regular />, aboutKey: "settings.dialog.section.aiConnections.about", wordsKey: "settings.dialog.section.aiConnections.words" },
+  { id: "compute", labelKey: "settings.dialog.section.compute.label", icon: <DataUsage20Regular />, aboutKey: "settings.dialog.section.compute.about", wordsKey: "settings.dialog.section.compute.words" },
+  { id: "connectors", labelKey: "settings.dialog.section.connectors.label", icon: <PlugConnected20Regular />, aboutKey: "settings.dialog.section.connectors.about", wordsKey: "settings.dialog.section.connectors.words" },
+  { id: "mcp-servers", labelKey: "settings.dialog.section.mcpServers.label", icon: <BookDatabase20Regular />, aboutKey: "settings.dialog.section.mcpServers.about", wordsKey: "settings.dialog.section.mcpServers.words" },
+  { id: "claude-connectors", labelKey: "settings.dialog.section.claudeConnectors.label", icon: <Apps20Regular />, aboutKey: "settings.dialog.section.claudeConnectors.about", wordsKey: "settings.dialog.section.claudeConnectors.words" },
+  { id: "skills", labelKey: "settings.dialog.section.skills.label", icon: <Lightbulb20Regular />, aboutKey: "settings.dialog.section.skills.about", wordsKey: "settings.dialog.section.skills.words" },
+  { id: "plugins", labelKey: "settings.dialog.section.plugins.label", icon: <PuzzlePiece20Regular />, aboutKey: "settings.dialog.section.plugins.about", wordsKey: "settings.dialog.section.plugins.words" },
+  { id: "system", labelKey: "settings.dialog.section.system.label", icon: <Server20Regular />, aboutKey: "settings.dialog.section.system.about", wordsKey: "settings.dialog.section.system.words" },
 ];
 
-const found = (q: string): Section[] => (q === "" ? SECTIONS : SECTIONS.filter((x) => `${x.label} ${x.words}`.toLowerCase().includes(q)));
+const found = (q: string, t: (k: MessageKey) => string): Section[] => (q === "" ? SECTIONS : SECTIONS.filter((x) => `${t(x.labelKey)} ${t(x.wordsKey)}`.toLowerCase().includes(q)));
 
 export interface SettingsDialogProps {
   section: SettingsSection;
@@ -209,6 +210,7 @@ function useSetupStatus(): { data: SetupStatus | null; reload: () => void } {
 }
 
 function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: SetupStatus | null; reloadStatus: () => void }) {
+  const { t } = useI18n();
   if (p.section === "account")
     return (
       <>
@@ -224,34 +226,35 @@ function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: Set
   if (p.section === "skills") return <SkillsSection />;
   if (p.section === "plugins") return <PluginsSection onOpenCode={() => p.onSection("code")} />;
   if (p.section === "system") return <SystemCard status={status} />;
-  if (p.settings === null) return <Text>Reading the settings…</Text>;
+  if (p.settings === null) return <Text>{t("settings.dialog.loading")}</Text>;
   if (p.section === "appearance") return <AppearanceSection settings={p.settings} onSettings={p.onSettings} />;
   return <CodeSection settings={p.settings} onSettings={p.onSettings} />;
 }
 
 export function SettingsDialog(p: SettingsDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [query, setQuery] = useState("");
   const [mobileStep, setMobileStep] = useState<"index" | "detail">(() => (p.connector !== null || p.section !== "account" ? "detail" : "index"));
   const status = useSetupStatus();
-  const shown = found(query.trim().toLowerCase());
+  const shown = found(query.trim().toLowerCase(), t);
   const current = SECTIONS.find((x) => x.id === p.section) ?? SECTIONS[0];
 
   if (isMobile) {
     return (
       <Dialog open onOpenChange={(_, d) => (!d.open ? p.onClose() : undefined)}>
-        <DialogSurface className={mergeClasses(s.surfaceMobile, mobileStep === "index" && s.surfaceMobileIndex)} aria-label="Settings">
+        <DialogSurface className={mergeClasses(s.surfaceMobile, mobileStep === "index" && s.surfaceMobileIndex)} aria-label={t("settings.dialog.title")}>
           {mobileStep === "index" ? (
             <>
               <header className={s.mobileBar}>
-                <DialogTitle className={s.mobileTitle}>Settings</DialogTitle>
-                <Button className={s.touchBtn} appearance="subtle" icon={<Dismiss20Regular />} aria-label="Close settings" onClick={p.onClose} />
+                <DialogTitle className={s.mobileTitle}>{t("settings.dialog.title")}</DialogTitle>
+                <Button className={s.touchBtn} appearance="subtle" icon={<Dismiss20Regular />} aria-label={t("settings.dialog.closeAria")} onClick={p.onClose} />
               </header>
               <div className={s.mobileSearchWrap}>
-                <SearchBox size="medium" style={{ width: "100%" }} placeholder="Search settings" aria-label="Search settings" value={query} onChange={(_, d) => setQuery(d.value)} />
+                <SearchBox size="medium" style={{ width: "100%" }} placeholder={t("settings.dialog.searchPlaceholder")} aria-label={t("settings.dialog.searchPlaceholder")} value={query} onChange={(_, d) => setQuery(d.value)} />
               </div>
-              <nav className={s.mobileIndexList} aria-label="Settings sections">
+              <nav className={s.mobileIndexList} aria-label={t("settings.dialog.sectionsAria")}>
                 {shown.map((x) => (
                   <button
                     key={x.id}
@@ -265,31 +268,31 @@ export function SettingsDialog(p: SettingsDialogProps) {
                   >
                     {x.icon}
                     <span className={s.mobileRowText}>
-                      <Text weight="semibold">{x.label}</Text>
+                      <Text weight="semibold">{t(x.labelKey)}</Text>
                       <Text size={200} className={s.mobileRowAbout}>
-                        {x.about}
+                        {t(x.aboutKey)}
                       </Text>
                     </span>
                     <ChevronRight16Regular />
                   </button>
                 ))}
-                {shown.length === 0 && <Text className={s.none}>Nothing matches.</Text>}
+                {shown.length === 0 && <Text className={s.none}>{t("settings.dialog.nothingMatches")}</Text>}
               </nav>
             </>
           ) : (
             <>
               <header className={mergeClasses(s.mobileBar, s.mobileDetailBar)}>
                 <Button className={s.backBtn} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => setMobileStep("index")}>
-                  Settings
+                  {t("settings.dialog.title")}
                 </Button>
                 <Text as="h2" size={400} weight="semibold">
-                  {current.label}
+                  {t(current.labelKey)}
                 </Text>
-                <Button className={s.touchBtn} appearance="subtle" icon={<Dismiss20Regular />} aria-label="Close settings" onClick={p.onClose} />
+                <Button className={s.touchBtn} appearance="subtle" icon={<Dismiss20Regular />} aria-label={t("settings.dialog.closeAria")} onClick={p.onClose} />
               </header>
-              <section className={s.mobileBody} aria-label={current.label}>
+              <section className={s.mobileBody} aria-label={t(current.labelKey)}>
                 <Text size={200} className={s.muted}>
-                  {current.about}
+                  {t(current.aboutKey)}
                 </Text>
                 <Body p={p} status={status.data} reloadStatus={status.reload} />
               </section>
@@ -303,27 +306,27 @@ export function SettingsDialog(p: SettingsDialogProps) {
   return (
     <Dialog open onOpenChange={(_, d) => (!d.open ? p.onClose() : undefined)}>
       <DialogSurface className={s.surface}>
-        <nav className={s.nav} aria-label="Settings sections">
-          <DialogTitle className={s.title}>Settings</DialogTitle>
-          <SearchBox className={s.search} size="small" placeholder="Search settings" aria-label="Search settings" value={query} onChange={(_, d) => setQuery(d.value)} />
+        <nav className={s.nav} aria-label={t("settings.dialog.sectionsAria")}>
+          <DialogTitle className={s.title}>{t("settings.dialog.title")}</DialogTitle>
+          <SearchBox className={s.search} size="small" placeholder={t("settings.dialog.searchPlaceholder")} aria-label={t("settings.dialog.searchPlaceholder")} value={query} onChange={(_, d) => setQuery(d.value)} />
           {shown.map((x) => (
             <Button key={x.id} className={mergeClasses(s.item, x.id === p.section && s.itemSelected)} appearance="subtle" icon={x.icon} aria-current={x.id === p.section ? "page" : undefined} onClick={() => p.onSection(x.id)}>
-              {x.label}
+              {t(x.labelKey)}
             </Button>
           ))}
-          {shown.length === 0 && <Text className={s.none}>Nothing matches.</Text>}
+          {shown.length === 0 && <Text className={s.none}>{t("settings.dialog.nothingMatches")}</Text>}
         </nav>
-        <section className={s.main} aria-label={current.label}>
+        <section className={s.main} aria-label={t(current.labelKey)}>
           <div className={s.head}>
             <div className={s.heading}>
               <Text as="h2" size={500} weight="semibold">
-                {current.label}
+                {t(current.labelKey)}
               </Text>
               <Text size={200} className={s.muted}>
-                {current.about}
+                {t(current.aboutKey)}
               </Text>
             </div>
-            <Button appearance="subtle" icon={<Dismiss20Regular />} aria-label="Close settings" onClick={p.onClose} />
+            <Button appearance="subtle" icon={<Dismiss20Regular />} aria-label={t("settings.dialog.closeAria")} onClick={p.onClose} />
           </div>
           <div className={s.body}>
             <Body p={p} status={status.data} reloadStatus={status.reload} />

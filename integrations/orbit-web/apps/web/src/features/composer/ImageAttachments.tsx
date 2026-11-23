@@ -7,6 +7,7 @@ import { Button, Spinner, Tooltip, makeStyles, mergeClasses, shorthands, tokens 
 import { Dismiss12Regular, ErrorCircle20Regular } from "@fluentui/react-icons";
 import { IMAGE_LIMITS, isImageMediaType } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import type { UploadImage } from "../../services/images";
 
@@ -20,9 +21,6 @@ export interface Attachment {
 }
 
 const MB = Math.round(IMAGE_LIMITS.bytes / 1_048_576);
-
-// A file that came from the clipboard has no name worth saying; one that was dropped or picked does.
-const nameOf = (file: File): string => (file.name && file.name !== "image.png" ? `“${file.name}”` : "That image");
 
 const previewOf = (file: File): string => (typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "");
 
@@ -43,8 +41,11 @@ export function filesOf(data: DataTransfer | null): File[] {
 let counter = 0;
 
 export function useImageAttachments(upload: UploadImage | undefined) {
+  const { t } = useI18n();
   const [items, setItems] = useState<Attachment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  // A file that came from the clipboard has no name worth saying; one that was dropped or picked does.
+  const nameOf = (file: File): string => (file.name && file.name !== "image.png" ? t("chat.images.namedImage", { name: file.name }) : t("chat.images.thatImage"));
   // Kept outside render, for the handlers and the clean-up: what is shown, how many are held, the uploads going on.
   const shown = useRef<Attachment[]>([]);
   const held = useRef(0);
@@ -87,9 +88,9 @@ export function useImageAttachments(upload: UploadImage | undefined) {
     const refused: string[] = [];
     const taken: File[] = [];
     for (const file of images) {
-      if (!isImageMediaType(file.type)) refused.push(`${nameOf(file)} is not an image Claude reads (PNG, JPEG, GIF or WebP)`);
-      else if (file.size > IMAGE_LIMITS.bytes) refused.push(`${nameOf(file)} is larger than ${MB} MB`);
-      else if (taken.length >= room) refused.push(`a message carries at most ${IMAGE_LIMITS.perMessage} images`);
+      if (!isImageMediaType(file.type)) refused.push(t("chat.images.badType", { name: nameOf(file) }));
+      else if (file.size > IMAGE_LIMITS.bytes) refused.push(t("chat.images.tooLarge", { name: nameOf(file), mb: MB }));
+      else if (taken.length >= room) refused.push(t("chat.images.tooMany", { max: IMAGE_LIMITS.perMessage }));
       else taken.push(file);
     }
     setNotice(refused.length > 0 ? `${[...new Set(refused)].join("; ")}.` : null);
@@ -147,31 +148,32 @@ const useStyles = makeStyles({
 });
 
 export function AttachmentStrip({ items, notice, onRemove }: { items: Attachment[]; notice: string | null; onRemove: (key: string) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   if (items.length === 0 && notice === null) return null;
   return (
     <>
       {items.length > 0 && (
-        <ul className={s.strip} aria-label="Images to send">
+        <ul className={s.strip} aria-label={t("chat.images.stripAria")}>
           {items.map((a, n) => (
             <li key={a.key} className={mergeClasses(s.thumb, a.state === "failed" && s.thumbFailed)}>
-              {a.preview !== "" && <img src={a.preview} alt={`Image ${n + 1}`} className={s.img} />}
+              {a.preview !== "" && <img src={a.preview} alt={t("chat.images.imageAlt", { index: n + 1 })} className={s.img} />}
               {a.state === "uploading" && (
                 <>
                   <span className={s.overlay}>
-                    <Spinner size="extra-tiny" aria-label={`Uploading image ${n + 1}`} />
+                    <Spinner size="extra-tiny" aria-label={t("chat.images.uploadingAria", { index: n + 1 })} />
                   </span>
                   <span className={s.progress} style={{ width: `${Math.round(a.progress * 100)}%` }} />
                 </>
               )}
               {a.state === "failed" && (
-                <Tooltip content={a.error ?? "The upload failed."} relationship="description">
-                  <span className={s.overlay} role="img" aria-label={`Image ${n + 1} was not uploaded: ${a.error ?? "it failed"}`}>
+                <Tooltip content={a.error ?? t("chat.images.uploadFailed")} relationship="description">
+                  <span className={s.overlay} role="img" aria-label={t("chat.images.failedAria", { index: n + 1, error: a.error ?? t("chat.images.uploadFailedWord") })}>
                     <ErrorCircle20Regular className={s.failedIcon} />
                   </span>
                 </Tooltip>
               )}
-              <Button className={s.remove} size="small" shape="circular" appearance="secondary" icon={<Dismiss12Regular />} aria-label={`Remove image ${n + 1}`} onClick={() => onRemove(a.key)} />
+              <Button className={s.remove} size="small" shape="circular" appearance="secondary" icon={<Dismiss12Regular />} aria-label={t("chat.images.removeAria", { index: n + 1 })} onClick={() => onRemove(a.key)} />
             </li>
           ))}
         </ul>

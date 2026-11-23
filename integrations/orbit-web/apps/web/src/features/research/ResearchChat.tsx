@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { Markdown } from "../../components/Markdown";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { Composer } from "../composer/Composer";
 import type { LiveMessage, ResearchState } from "./researchReducer";
 
@@ -281,6 +282,7 @@ export interface ResearchChatProps {
 const toLive = (m: ResearchMessage): LiveMessage => ({ id: m.id, role: m.role, text: m.text, streaming: false, partial: m.partial, runId: m.runId });
 
 export function ResearchChat(p: ResearchChatProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -300,22 +302,26 @@ export function ResearchChat(p: ResearchChatProps) {
 
   const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
   const sourceTrigger = p.onOpenSources ?? p.onAddSources;
-  const sourceStatusLabel = p.selected > p.usable ? `Using ${p.usable} source${p.usable === 1 ? "" : "s"}, ${p.selected - p.usable} not ready` : `Using ${p.usable} source${p.usable === 1 ? "" : "s"}`;
+  const sourceWord = t(p.usable === 1 ? "research.newSession.sourceOne" : "research.newSession.sourceMany");
+  const sourceStatusLabel =
+    p.selected > p.usable
+      ? t("research.chat.usingStatusBoth", { usable: p.usable, word: sourceWord, notReady: p.selected - p.usable })
+      : t("research.chat.usingStatusOnly", { usable: p.usable, word: sourceWord });
   const sourceStatusContent = (
     <>
       <span className={mergeClasses(s.dot, p.usable > 0 && s.dotActive)} aria-hidden />
       {!isMobile && <TextBulletListSquare16Regular />}
-      {isMobile ? `${p.usable} source${p.usable === 1 ? "" : "s"}` : `Using ${p.usable} source${p.usable === 1 ? "" : "s"}`}
+      {isMobile ? `${p.usable} ${sourceWord}` : t("research.chat.usingStatusOnly", { usable: p.usable, word: sourceWord })}
       {p.selected > p.usable && (
         <Badge className={s.usingBadge} appearance="tint" size="small">
-          {p.selected - p.usable} {isMobile ? "wait" : "not ready"}
+          {p.selected - p.usable} {t(isMobile ? "research.chat.waitWord" : "research.chat.notReadyWord")}
         </Badge>
       )}
     </>
   );
 
   return (
-    <section className={s.root} aria-label="Research chat">
+    <section className={s.root} aria-label={t("research.chat.aria")}>
       <div className={s.scrollWrap}>
         <div
           className={mergeClasses(s.scroll, isMobile && s.scrollMobile)}
@@ -329,36 +335,36 @@ export function ResearchChat(p: ResearchChatProps) {
                   <BookOpen24Regular />
                 </span>
                 <Text as="h2" className={s.emptyTitle}>
-                  Ask anything
+                  {t("research.chat.askAnything")}
                 </Text>
                 <Text className={s.emptyCopy}>
-                  The sources you select are references Claude reads with each question: what it takes from them is cited, and it says what comes from elsewhere. It can use your Claude connectors too -- to make a Claude Doc, for example.
+                  {t("research.chat.emptyCopy")}
                 </Text>
                 {p.usable === 0 ? (
                   <>
                     <div className={s.steps} aria-hidden>
                       <span className={mergeClasses(s.stepPill, stepOneActive && s.stepPillActive)}>
                         <span className={mergeClasses(s.stepNum, stepOneActive && s.stepNumActive)}>1</span>
-                        Add sources
+                        {t("research.chat.stepAdd")}
                       </span>
                       <span className={mergeClasses(s.stepPill, stepTwoActive && s.stepPillActive)}>
                         <span className={mergeClasses(s.stepNum, stepTwoActive && s.stepNumActive)}>2</span>
-                        Select for this session
+                        {t("research.chat.stepSelect")}
                       </span>
                       <span className={s.stepPill}>
                         <span className={s.stepNum}>3</span>
-                        Ask with citations
+                        {t("research.chat.stepAsk")}
                       </span>
                     </div>
                     {stepOneActive && p.onAddSources ? (
                       <Button className={mergeClasses(s.emptyCta, touch && s.emptyCtaTouch)} appearance="primary" icon={<Add16Regular />} onClick={p.onAddSources}>
-                        Upload or add sources
+                        {t("research.chat.uploadOrAdd")}
                       </Button>
                     ) : (
                       stepTwoActive &&
                       p.onOpenSources && (
                         <Button className={mergeClasses(s.emptyCta, touch && s.emptyCtaTouch)} appearance="secondary" onClick={p.onOpenSources}>
-                          Select sources
+                          {t("research.chat.selectSources")}
                         </Button>
                       )
                     )}
@@ -366,7 +372,7 @@ export function ResearchChat(p: ResearchChatProps) {
                 ) : (
                   <span className={s.readyChip}>
                     <span className={mergeClasses(s.dot, s.dotActive)} aria-hidden />
-                    {p.usable} ready source{p.usable === 1 ? "" : "s"} active
+                    {t("research.chat.readySourcesActive", { count: p.usable, word: sourceWord })}
                   </span>
                 )}
               </div>
@@ -383,7 +389,16 @@ export function ResearchChat(p: ResearchChatProps) {
             {running && (
               <div className={s.working} role="status">
                 <Spinner size="tiny" />
-                <Text size={200}>{p.stream.run ? `Answering from ${p.stream.run.passages} passage${p.stream.run.passages === 1 ? "" : "s"} of ${p.stream.run.sources.length} source${p.stream.run.sources.length === 1 ? "" : "s"}…` : "Searching the selected sources…"}</Text>
+                <Text size={200}>
+                  {p.stream.run
+                    ? t("research.chat.answeringFrom", {
+                        passages: p.stream.run.passages,
+                        passagesPlural: p.stream.run.passages === 1 ? "" : "s",
+                        sources: p.stream.run.sources.length,
+                        sourceWord: t(p.stream.run.sources.length === 1 ? "research.newSession.sourceOne" : "research.newSession.sourceMany"),
+                      })
+                    : t("research.chat.searchingSelected")}
+                </Text>
               </div>
             )}
             {!running && p.stream.ended && (
@@ -392,7 +407,7 @@ export function ResearchChat(p: ResearchChatProps) {
                 {lastQuestion !== null && (
                   <MessageBarActions>
                     <Button size="small" icon={<ArrowClockwise16Regular />} onClick={() => p.onAsk(lastQuestion)}>
-                      Ask again
+                      {t("research.chat.askAgain")}
                     </Button>
                   </MessageBarActions>
                 )}
@@ -414,7 +429,7 @@ export function ResearchChat(p: ResearchChatProps) {
             icon={<ArrowDown16Regular />}
             onClick={() => scroller.current && (scroller.current.scrollTop = scroller.current.scrollHeight)}
           >
-            Latest
+            {t("research.chat.latest")}
           </Button>
         )}
         <div className={s.scrollFade} aria-hidden />
@@ -422,7 +437,7 @@ export function ResearchChat(p: ResearchChatProps) {
       <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
         <Composer
           autoFocus={!touch && p.usable > 0}
-          placeholder={p.usable > 0 ? "Ask anything -- your sources are references…" : p.selected > 0 ? "Ask anything -- your sources are still being read…" : "Ask anything -- or add sources as references…"}
+          placeholder={t(p.usable > 0 ? "research.chat.placeholderReady" : p.selected > 0 ? "research.chat.placeholderPreparing" : "research.chat.placeholderEmpty")}
           canSend={!running && !p.busy}
           running={running}
           busy={p.busy}
@@ -436,7 +451,10 @@ export function ResearchChat(p: ResearchChatProps) {
                   <div className={s.draftBody}>
                     <Info16Regular className={s.draftIcon} aria-hidden />
                     <Text size={200} className={s.draftText}>
-                      {p.usable > 0 ? "Your first question is ready to ask" : "Your first question is kept -- ask it now, or add sources first"}: “{p.draftQuestion}”
+                      {t("research.chat.firstQuestionDisplay", {
+                        prefix: t(p.usable > 0 ? "research.chat.firstQuestionReady" : "research.chat.firstQuestionKept"),
+                        question: p.draftQuestion,
+                      })}
                     </Text>
                   </div>
                   <Button
@@ -446,14 +464,14 @@ export function ResearchChat(p: ResearchChatProps) {
                     disabled={running}
                     onClick={() => p.onAsk(p.draftQuestion as string)}
                   >
-                    Ask it now
+                    {t("research.chat.askItNow")}
                   </Button>
                 </div>
               )}
             </>
           }
           left={
-            <Tooltip content="The selected sources are given to Claude as references with each question." relationship="description">
+            <Tooltip content={t("research.chat.sourcesTooltip")} relationship="description">
               {sourceTrigger ? (
                 <button
                   type="button"
@@ -478,6 +496,7 @@ export function ResearchChat(p: ResearchChatProps) {
 }
 
 function Answer({ message, citations, onCite, onShowCitations, onCopy, onNote, onFinding }: { message: LiveMessage; citations: ResearchCitation[]; onCite: (label: string) => void; onShowCitations: () => void; onCopy: () => void; onNote: () => void; onFinding: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -496,23 +515,23 @@ function Answer({ message, citations, onCite, onShowCitations, onCopy, onNote, o
   const labels = useMemo(() => new Set(citations.map((c) => c.label)), [citations]);
   const cite = useMemo(() => ({ labels, onCite }), [labels, onCite]);
   return (
-    <article className={s.answer} aria-label="Answer" data-testid="research-answer">
+    <article className={s.answer} aria-label={t("research.chat.answerAria")} data-testid="research-answer">
       <Markdown text={message.text} cite={cite} />
-      {message.streaming && <span className={s.cursor} aria-label="writing" />}
+      {message.streaming && <span className={s.cursor} aria-label={t("research.chat.writingAria")} />}
       {message.partial && (
         <Text size={200} className={s.muted}>
-          (cut off when the run ended)
+          {t("research.chat.cutOff")}
         </Text>
       )}
       {!message.streaming && (
         <div className={s.actions}>
-          <Tooltip content={copied ? "Copied" : "Copy"} relationship="label">
+          <Tooltip content={t(copied ? "research.chat.copied" : "research.chat.copy")} relationship="label">
             <Button className={mergeClasses(s.actionBtn, s.actionBtnTouch)} appearance="subtle" size="small" icon={copied ? <Checkmark16Regular /> : <Copy16Regular />} onClick={handleCopy} />
           </Tooltip>
-          <Tooltip content="Save as note" relationship="label">
+          <Tooltip content={t("research.chat.saveAsNote")} relationship="label">
             <Button className={mergeClasses(s.actionBtn, s.actionBtnTouch)} appearance="subtle" size="small" icon={<NoteAdd16Regular />} onClick={onNote} />
           </Tooltip>
-          <Tooltip content="Add as finding" relationship="label">
+          <Tooltip content={t("research.chat.addAsFinding")} relationship="label">
             <Button className={mergeClasses(s.actionBtn, s.actionBtnTouch)} appearance="subtle" size="small" icon={<Lightbulb16Regular />} onClick={onFinding} />
           </Tooltip>
           <Button
@@ -522,7 +541,7 @@ function Answer({ message, citations, onCite, onShowCitations, onCopy, onNote, o
             onClick={onShowCitations}
             disabled={citations.length === 0}
           >
-            {citations.length === 0 ? "No citations" : `${citations.length} citation${citations.length === 1 ? "" : "s"}`}
+            {citations.length === 0 ? t("research.chat.noCitations") : t("research.chat.citationsCount", { count: citations.length, plural: citations.length === 1 ? "" : "s" })}
           </Button>
         </div>
       )}

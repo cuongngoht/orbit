@@ -4,6 +4,7 @@
 import { Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { CheckmarkCircle16Regular, Circle16Regular, DismissCircle16Regular } from "@fluentui/react-icons";
 import { IDENTITY_LIMITS, passwordProblems } from "@orbit-web/contracts";
+import { useI18n, type MessageKey, type MessageVars } from "../../i18n";
 
 const useStyles = makeStyles({
   list: { display: "flex", flexDirection: "column", gap: "4px", listStyleType: "none", margin: 0, paddingLeft: 0 },
@@ -14,17 +15,18 @@ const useStyles = makeStyles({
 });
 
 interface Rule {
-  text: string;
+  key: MessageKey;
+  vars?: MessageVars;
   // Which of passwordProblems' sentences this rule is.
   is: (problem: string) => boolean;
 }
 
 const RULES: Rule[] = [
-  { text: `At least ${IDENTITY_LIMITS.passwordMin} characters`, is: (p) => p.includes("at least") || p.includes("at most") || p.includes("must be text") },
-  { text: "Does not contain the username", is: (p) => p.includes("username") },
-  { text: "Not one or two characters repeated", is: (p) => p.includes("repeat") },
-  { text: "Not a keyboard or number sequence (such as 123456)", is: (p) => p.includes("sequence") },
-  { text: "Not one of the commonest passwords", is: (p) => p.includes("commonest") },
+  { key: "settings.auth.ruleMinChars", vars: { min: IDENTITY_LIMITS.passwordMin }, is: (p) => p.includes("at least") || p.includes("at most") || p.includes("must be text") },
+  { key: "settings.auth.ruleNoUsername", is: (p) => p.includes("username") },
+  { key: "settings.auth.ruleNoRepeat", is: (p) => p.includes("repeat") },
+  { key: "settings.auth.ruleNoSequence", is: (p) => p.includes("sequence") },
+  { key: "settings.auth.ruleNoCommon", is: (p) => p.includes("commonest") },
 ];
 
 // The problems of a password, as the contract says them (empty: acceptable). Nothing typed yet is no problem to show.
@@ -33,20 +35,21 @@ export function problemsOf(password: string, username: string | null): string[] 
 }
 
 export function PasswordRules({ password, username }: { password: string; username: string | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const problems = problemsOf(password, username);
   const typed = password.length > 0;
   // A problem no rule names (the contract learned a new one) is still said, as it is.
   const unnamed = problems.filter((p) => !RULES.some((r) => r.is(p)));
   return (
-    <ul className={s.list} aria-label="Password rules">
+    <ul className={s.list} aria-label={t("settings.auth.passwordRules")}>
       {RULES.map((r) => {
         const met = typed && !problems.some(r.is);
-        const state = !typed ? "not checked yet" : met ? "met" : "not met";
+        const state = !typed ? t("settings.auth.ruleNotCheckedYet") : met ? t("settings.auth.ruleMet") : t("settings.auth.ruleNotMet");
         return (
-          <li key={r.text} className={mergeClasses(s.item, typed && (met ? s.met : s.unmet))}>
+          <li key={r.key} className={mergeClasses(s.item, typed && (met ? s.met : s.unmet))}>
             {!typed ? <Circle16Regular aria-hidden /> : met ? <CheckmarkCircle16Regular aria-hidden /> : <DismissCircle16Regular aria-hidden />}
-            <Text size={200}>{r.text}</Text>
+            <Text size={200}>{t(r.key, r.vars)}</Text>
             <span className={s.srOnly}> — {state}</span>
           </li>
         );
@@ -55,7 +58,7 @@ export function PasswordRules({ password, username }: { password: string; userna
         <li key={p} className={mergeClasses(s.item, s.unmet)}>
           <DismissCircle16Regular aria-hidden />
           <Text size={200}>{p}</Text>
-          <span className={s.srOnly}> — not met</span>
+          <span className={s.srOnly}> — {t("settings.auth.ruleNotMet")}</span>
         </li>
       ))}
     </ul>

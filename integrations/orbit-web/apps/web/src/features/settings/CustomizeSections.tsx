@@ -6,6 +6,7 @@ import type { Customizations, ProjectInventory, ProjectItem, ProjectPluginState 
 import { useMemo, useState } from "react";
 import { useCustomizations } from "../../hooks/useLive";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n, type MessageKey } from "../../i18n";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "14px", minWidth: 0, maxWidth: "100%" },
@@ -47,8 +48,9 @@ const lines = (items: ProjectItem[], kind: Kind): Line[] => items.map((i) => ({ 
 const matching = (all: Line[], q: string): Line[] => (q === "" ? all : all.filter((l) => `${l.name} ${l.description ?? ""}`.toLowerCase().includes(q)));
 
 function Lines({ rows, label, mobile }: { rows: Line[]; label: string; mobile: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (rows.length === 0) return <Text size={200} className={s.muted}>Nothing here.</Text>;
+  if (rows.length === 0) return <Text size={200} className={s.muted}>{t("settings.customize.nothingHere")}</Text>;
   if (mobile) {
     return (
       <ul className={s.cardList} aria-label={label}>
@@ -72,9 +74,9 @@ function Lines({ rows, label, mobile }: { rows: Line[]; label: string; mobile: b
     <Table size="small" aria-label={label}>
       <TableHeader>
         <TableRow>
-          <TableHeaderCell style={{ width: "34%" }}>Name</TableHeaderCell>
-          <TableHeaderCell style={{ width: "12%" }}>Kind</TableHeaderCell>
-          <TableHeaderCell>Description</TableHeaderCell>
+          <TableHeaderCell style={{ width: "34%" }}>{t("settings.customize.colName")}</TableHeaderCell>
+          <TableHeaderCell style={{ width: "12%" }}>{t("settings.customize.colKind")}</TableHeaderCell>
+          <TableHeaderCell>{t("settings.customize.colDescription")}</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -104,6 +106,7 @@ function useCustomizationsView(): { data: Customizations | null; error: string |
 }
 
 export function SkillsSection() {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const { data, error, loading } = useCustomizationsView();
@@ -111,7 +114,7 @@ export function SkillsSection() {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const orbit = useMemo(() => (data ? [...lines(data.orbit.skills, "skill"), ...lines(data.orbit.agents, "agent")] : []), [data]);
-  if (loading) return <Spinner label="Reading what Claude Code is given…" />;
+  if (loading) return <Spinner label={t("settings.customize.skills.loading")} />;
   return (
     <div className={s.root}>
       {error && (
@@ -121,54 +124,55 @@ export function SkillsSection() {
       )}
       <div className={s.bar}>
         <TabList size="small" selectedValue={tab} onTabSelect={(_, d) => setTab(d.value as "orbit" | "projects")}>
-          <Tab value="projects">Projects</Tab>
-          <Tab value="orbit">Orbit</Tab>
+          <Tab value="projects">{t("settings.customize.skills.tabProjects")}</Tab>
+          <Tab value="orbit">{t("settings.customize.skills.tabOrbit")}</Tab>
         </TabList>
-        <SearchBox className={isMobile ? s.searchMobile : undefined} size={isMobile ? "medium" : "small"} placeholder="Search" aria-label="Search skills" value={query} onChange={(_, d) => setQuery(d.value)} />
+        <SearchBox className={isMobile ? s.searchMobile : undefined} size={isMobile ? "medium" : "small"} placeholder={t("settings.customize.skills.searchPlaceholder")} aria-label={t("settings.customize.skills.searchAria")} value={query} onChange={(_, d) => setQuery(d.value)} />
       </div>
       {tab === "orbit" && (
         <>
           <Text size={200} className={s.muted}>
-            Orbit {data?.orbit.version ?? ""} — the plugin in this image, loaded in every chat.
+            {t("settings.customize.skills.orbitSummary", { version: data?.orbit.version ?? "" })}
           </Text>
-          <Lines rows={matching(orbit, q)} label="Orbit's skills" mobile={isMobile} />
+          <Lines rows={matching(orbit, q)} label={t("settings.customize.skills.orbitLabel")} mobile={isMobile} />
         </>
       )}
       {tab === "projects" &&
         (data && data.projects.length > 0 ? (
           data.projects.map((p) => (
-            <section key={p.sessionId} className={s.project} aria-label={`Skills of ${p.title}`}>
+            <section key={p.sessionId} className={s.project} aria-label={t("settings.customize.skills.projectAria", { title: p.title })}>
               <Text weight="semibold" className={s.projectTitle}>
-                {p.inventory.repository ?? "No repository"} <span className={s.muted}>· {p.title}</span>
+                {p.inventory.repository ?? t("settings.customize.skills.noRepo")} <span className={s.muted}>· {p.title}</span>
               </Text>
               <Text size={200} className={s.muted}>
-                {p.inventory.loaded ? "Loaded for this chat, as instructions (no hooks, no pre-run commands)." : "Not loaded for this chat."}
-                {p.inventory.claudeMd ? " CLAUDE.md: read by Claude Code from the repository." : ""}
-                {p.inventory.truncated ? " (only the first ones are listed)" : ""}
+                {p.inventory.loaded ? t("settings.customize.skills.loaded") : t("settings.customize.skills.notLoaded")}
+                {p.inventory.claudeMd ? t("settings.customize.skills.claudeMd") : ""}
+                {p.inventory.truncated ? t("settings.customize.skills.truncated") : ""}
               </Text>
-              <Lines rows={matching(projectLines(p.inventory), q)} label={`Skills of ${p.title}`} mobile={isMobile} />
+              <Lines rows={matching(projectLines(p.inventory), q)} label={t("settings.customize.skills.projectAria", { title: p.title })} mobile={isMobile} />
             </section>
           ))
         ) : (
-          <Text className={s.muted}>No chat has read a project yet. A chat's repository is read when its workspace is first prepared.</Text>
+          <Text className={s.muted}>{t("settings.customize.skills.empty")}</Text>
         ))}
     </div>
   );
 }
 
-const STATE: Record<ProjectPluginState, { label: string; color: "success" | "informative" | "warning" | "danger" | "subtle" }> = {
-  loaded: { label: "Loaded", color: "success" },
-  installed: { label: "Installed", color: "success" },
-  installing: { label: "Installing…", color: "informative" },
-  declared: { label: "Not run", color: "subtle" },
-  failed: { label: "Failed", color: "danger" },
+const STATE_KEYS: Record<ProjectPluginState, { labelKey: MessageKey; color: "success" | "informative" | "warning" | "danger" | "subtle" }> = {
+  loaded: { labelKey: "settings.customize.plugins.state.loaded", color: "success" },
+  installed: { labelKey: "settings.customize.plugins.state.installed", color: "success" },
+  installing: { labelKey: "settings.customize.plugins.state.installing", color: "informative" },
+  declared: { labelKey: "settings.customize.plugins.state.declared", color: "subtle" },
+  failed: { labelKey: "settings.customize.plugins.state.failed", color: "danger" },
 };
 
 export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const { data, error, loading } = useCustomizationsView();
-  if (loading) return <Spinner label="Reading the plugins…" />;
+  if (loading) return <Spinner label={t("settings.customize.plugins.loading")} />;
   const rows = (data?.projects ?? []).flatMap((p) => p.inventory.plugins.map((plugin) => ({ project: p, plugin })));
   return (
     <div className={s.root}>
@@ -178,31 +182,31 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
         </MessageBar>
       )}
       <Text size={200} className={s.muted}>
-        A plugin runs code — hooks, MCP servers — in this container. A repository's own plugins and the ones it declares run only once you turn on “Run project plugins”.{" "}
+        {t("settings.customize.plugins.intro")}{" "}
         <Button appearance="transparent" size="small" onClick={onOpenCode}>
-          Settings → Code
+          {t("settings.customize.plugins.settingsCode")}
         </Button>
       </Text>
       {isMobile ? (
-        <ul className={s.cardList} aria-label="Plugins">
+        <ul className={s.cardList} aria-label={t("settings.customize.plugins.listAria")}>
           <li className={s.card}>
             <div className={s.cardTop}>
               <span className={s.name}>orbit</span>
               <Badge appearance="tint" color="success">
-                Loaded
+                {t("settings.customize.plugins.state.loaded")}
               </Badge>
             </div>
             <Text size={200} className={s.muted}>
-              This image · Orbit {data?.orbit.version ?? ""}
+              {t("settings.customize.plugins.thisImage", { version: data?.orbit.version ?? "" })}
             </Text>
           </li>
           {rows.map(({ project, plugin }) => (
             <li key={`${project.sessionId}:${plugin.kind}:${plugin.id}`} className={s.card}>
               <div className={s.cardTop}>
                 <span className={s.name}>{plugin.id}</span>
-                <Tooltip content={plugin.detail ?? STATE[plugin.state].label} relationship="description">
-                  <Badge appearance="tint" color={STATE[plugin.state].color}>
-                    {STATE[plugin.state].label}
+                <Tooltip content={plugin.detail ?? t(STATE_KEYS[plugin.state].labelKey)} relationship="description">
+                  <Badge appearance="tint" color={STATE_KEYS[plugin.state].color}>
+                    {t(STATE_KEYS[plugin.state].labelKey)}
                   </Badge>
                 </Tooltip>
               </div>
@@ -213,12 +217,12 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
           ))}
         </ul>
       ) : (
-        <Table aria-label="Plugins">
+        <Table aria-label={t("settings.customize.plugins.listAria")}>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Plugin</TableHeaderCell>
-              <TableHeaderCell>Source</TableHeaderCell>
-              <TableHeaderCell>Status</TableHeaderCell>
+              <TableHeaderCell>{t("settings.customize.plugins.colPlugin")}</TableHeaderCell>
+              <TableHeaderCell>{t("settings.customize.plugins.colSource")}</TableHeaderCell>
+              <TableHeaderCell>{t("settings.customize.plugins.colStatus")}</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -226,10 +230,10 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
               <TableCell>
                 <span className={s.name}>orbit</span>
               </TableCell>
-              <TableCell>This image · Orbit {data?.orbit.version ?? ""}</TableCell>
+              <TableCell>{t("settings.customize.plugins.thisImage", { version: data?.orbit.version ?? "" })}</TableCell>
               <TableCell>
                 <Badge appearance="tint" color="success">
-                  Loaded
+                  {t("settings.customize.plugins.state.loaded")}
                 </Badge>
               </TableCell>
             </TableRow>
@@ -242,9 +246,9 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
                   {project.inventory.repository ?? project.title} · {plugin.source}
                 </TableCell>
                 <TableCell>
-                  <Tooltip content={plugin.detail ?? STATE[plugin.state].label} relationship="description">
-                    <Badge appearance="tint" color={STATE[plugin.state].color}>
-                      {STATE[plugin.state].label}
+                  <Tooltip content={plugin.detail ?? t(STATE_KEYS[plugin.state].labelKey)} relationship="description">
+                    <Badge appearance="tint" color={STATE_KEYS[plugin.state].color}>
+                      {t(STATE_KEYS[plugin.state].labelKey)}
                     </Badge>
                   </Tooltip>
                 </TableCell>
@@ -253,7 +257,7 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
           </TableBody>
         </Table>
       )}
-      {rows.length === 0 && <Text className={s.muted}>No project has a plugin yet.</Text>}
+      {rows.length === 0 && <Text className={s.muted}>{t("settings.customize.plugins.empty")}</Text>}
     </div>
   );
 }

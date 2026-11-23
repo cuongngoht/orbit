@@ -31,6 +31,7 @@ import { ArrowUpload20Regular, CheckmarkCircle16Regular, Dismiss20Regular, Error
 import { RESEARCH_LIMITS, RESEARCH_UPLOAD_EXTENSIONS, type ResearchSourceSummary } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { research } from "./api";
 import { SourceIcon } from "./labels";
@@ -213,6 +214,7 @@ export interface AddSourcesDialogProps {
 }
 
 export function AddSourcesDialog(p: AddSourcesDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [mode, setMode] = useState<Mode>("upload");
@@ -223,18 +225,18 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
           <DialogTitle
             action={
               <DialogTrigger action="close" disableButtonEnhancement>
-                <Button appearance="subtle" size="small" aria-label="Close" icon={<Dismiss20Regular />} />
+                <Button appearance="subtle" size="small" aria-label={t("research.addSources.closeAria")} icon={<Dismiss20Regular />} />
               </DialogTrigger>
             }
           >
-            Add sources
+            {t("research.addSources.title")}
           </DialogTitle>
           <DialogContent className={s.body}>
             <TabList className={mergeClasses(s.tabList, isMobile && s.tabListMobile)} size="small" selectedValue={mode} onTabSelect={(_, d) => setMode(d.value as Mode)}>
-              <Tab value="upload">Upload</Tab>
-              <Tab value="url">Website</Tab>
-              <Tab value="text">Paste text</Tab>
-              <Tab value="existing">From this workspace</Tab>
+              <Tab value="upload">{t("research.addSources.tabUpload")}</Tab>
+              <Tab value="url">{t("research.addSources.tabUrl")}</Tab>
+              <Tab value="text">{t("research.addSources.tabText")}</Tab>
+              <Tab value="existing">{t("research.addSources.tabExisting")}</Tab>
             </TabList>
             {mode === "upload" && <UploadTab {...p} />}
             {mode === "url" && <UrlTab {...p} />}
@@ -243,7 +245,7 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
           </DialogContent>
           <DialogActions>
             <Button className={s.doneBtn} onClick={() => p.onOpenChange(false)}>
-              Done
+              {t("research.addSources.done")}
             </Button>
           </DialogActions>
         </DialogBody>
@@ -253,6 +255,7 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
 }
 
 function UploadTab(p: AddSourcesDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [items, setItems] = useState<Item[]>([]);
   const [over, setOver] = useState(false);
@@ -266,7 +269,7 @@ function UploadTab(p: AddSourcesDialogProps) {
       ...list,
       ...[...files].map((file, n) => {
         const known = (RESEARCH_UPLOAD_EXTENSIONS as readonly string[]).includes(extensionOf(file.name));
-        return { key: `${Date.now()}-${n}-${file.name}`, file, progress: 0, status: known ? ("waiting" as const) : ("refused" as const), message: known ? null : `Research does not read this kind of file (it reads ${RESEARCH_UPLOAD_EXTENSIONS.join(" ")}).` };
+        return { key: `${Date.now()}-${n}-${file.name}`, file, progress: 0, status: known ? ("waiting" as const) : ("refused" as const), message: known ? null : t("research.addSources.refusedFileType", { extensions: RESEARCH_UPLOAD_EXTENSIONS.join(" ") }) };
       }),
     ]);
 
@@ -280,7 +283,7 @@ function UploadTab(p: AddSourcesDialogProps) {
         .upload(workspaceId, item.file, (f) => update(item.key, { progress: f }))
         .then(
           (source) => {
-            update(item.key, { status: "done", progress: 1, message: "Added: it is read and indexed now." });
+            update(item.key, { status: "done", progress: 1, message: t("research.addSources.addedIndexed") });
             onAdded(source);
           },
           (err: unknown) => update(item.key, { status: "refused", message: errorText(err) }),
@@ -290,7 +293,7 @@ function UploadTab(p: AddSourcesDialogProps) {
           setItems((list) => [...list]);
         });
     }
-  }, [items, workspaceId, onAdded]);
+  }, [items, workspaceId, onAdded, t]);
 
   return (
     <>
@@ -311,9 +314,9 @@ function UploadTab(p: AddSourcesDialogProps) {
         <span className={s.uploadEmblem} aria-hidden>
           <ArrowUpload20Regular />
         </span>
-        <Text weight="medium">Drop files here, or</Text>
+        <Text weight="medium">{t("research.addSources.dropPrompt")}</Text>
         <Button className={s.chooseBtn} appearance="primary" onClick={() => input.current?.click()}>
-          Choose files
+          {t("research.addSources.chooseFiles")}
         </Button>
         <div className={s.extRow} aria-hidden>
           {RESEARCH_UPLOAD_EXTENSIONS.map((ext) => (
@@ -323,14 +326,14 @@ function UploadTab(p: AddSourcesDialogProps) {
           ))}
         </div>
         <Text size={200} className={s.muted}>
-          PDF, Word (.docx), text, Markdown and web pages (.html). A PDF made of scanned images has no text research can read.
+          {t("research.addSources.uploadHint")}
         </Text>
         <input
           ref={input}
           type="file"
           multiple
           hidden
-          aria-label="Choose files to upload"
+          aria-label={t("research.addSources.chooseFilesAria")}
           accept={RESEARCH_UPLOAD_EXTENSIONS.join(",")}
           onChange={(e) => {
             if (e.target.files) add(e.target.files);
@@ -339,7 +342,7 @@ function UploadTab(p: AddSourcesDialogProps) {
         />
       </div>
       {items.length > 0 && (
-        <ul className={s.files} aria-label="Uploads">
+        <ul className={s.files} aria-label={t("research.addSources.uploadsAria")}>
           {items.map((i) => (
             <li key={i.key} className={s.file}>
               <div className={s.fileHead}>
@@ -347,10 +350,10 @@ function UploadTab(p: AddSourcesDialogProps) {
                 {i.status === "refused" && <ErrorCircle16Regular className={s.bad} />}
                 <span className={s.fileName}>{i.file.name}</span>
                 <Text size={200} className={s.muted}>
-                  {i.status === "waiting" ? "Waiting" : i.status === "uploading" ? `${Math.round(i.progress * 100)}%` : i.status === "done" ? "Added" : "Not added"}
+                  {i.status === "waiting" ? t("research.addSources.statusWaiting") : i.status === "uploading" ? `${Math.round(i.progress * 100)}%` : i.status === "done" ? t("research.addSources.statusAdded") : t("research.addSources.statusNotAdded")}
                 </Text>
               </div>
-              {(i.status === "uploading" || i.status === "waiting") && <ProgressBar value={i.progress} aria-label={`Uploading ${i.file.name}`} />}
+              {(i.status === "uploading" || i.status === "waiting") && <ProgressBar value={i.progress} aria-label={t("research.addSources.uploadingAria", { name: i.file.name })} />}
               {i.message && (
                 <Text size={200} className={i.status === "refused" ? s.bad : s.muted}>
                   {i.message}
@@ -365,6 +368,7 @@ function UploadTab(p: AddSourcesDialogProps) {
 }
 
 function UrlTab(p: AddSourcesDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
@@ -378,7 +382,7 @@ function UrlTab(p: AddSourcesDialogProps) {
     try {
       const source = await research.addUrl(p.workspaceId, url.trim(), title.trim() || undefined);
       p.onAdded(source);
-      setDone(`Fetching ${source.title}: Orbit Web keeps a snapshot of it, so the page changing later does not change your research.`);
+      setDone(t("research.addSources.urlAdded", { title: source.title }));
       setUrl("");
       setTitle("");
     } catch (err) {
@@ -395,10 +399,10 @@ function UrlTab(p: AddSourcesDialogProps) {
         void add();
       }}
     >
-      <Field className={s.field} label="Website URL" hint="http or https. The Orbit server fetches it -- only from the public internet -- and keeps what it read.">
+      <Field className={s.field} label={t("research.addSources.urlLabel")} hint={t("research.addSources.urlHint")}>
         <Input className={s.input} type="url" value={url} onChange={(_, d) => setUrl(d.value)} placeholder="https://example.com/article" maxLength={RESEARCH_LIMITS.urlLength} required />
       </Field>
-      <Field className={s.field} label="Title (optional)">
+      <Field className={s.field} label={t("research.addSources.titleOptional")}>
         <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
       </Field>
       {error && (
@@ -413,7 +417,7 @@ function UrlTab(p: AddSourcesDialogProps) {
       )}
       <div>
         <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy || url.trim() === ""}>
-          Add website
+          {t("research.addSources.addWebsite")}
         </Button>
       </div>
     </form>
@@ -421,6 +425,7 @@ function UrlTab(p: AddSourcesDialogProps) {
 }
 
 function TextTab(p: AddSourcesDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -435,7 +440,7 @@ function TextTab(p: AddSourcesDialogProps) {
     try {
       const source = await research.addText(p.workspaceId, title.trim(), text, format);
       p.onAdded(source);
-      setDone(`Added “${source.title}”.`);
+      setDone(t("research.addSources.addedTitle", { title: source.title }));
       setTitle("");
       setText("");
     } catch (err) {
@@ -452,15 +457,15 @@ function TextTab(p: AddSourcesDialogProps) {
         void add();
       }}
     >
-      <Field className={s.field} label="Title" required>
+      <Field className={s.field} label={t("research.addSources.titleRequired")} required>
         <Input className={s.input} value={title} onChange={(_, d) => setTitle(d.value)} maxLength={RESEARCH_LIMITS.titleLength} />
       </Field>
-      <Field className={s.field} label="Text" hint={`Up to ${RESEARCH_LIMITS.pastedTextLength.toLocaleString()} characters.`} required>
+      <Field className={s.field} label={t("research.addSources.textLabel")} hint={t("research.addSources.textHint", { max: RESEARCH_LIMITS.pastedTextLength.toLocaleString() })} required>
         <Textarea className={s.input} value={text} onChange={(_, d) => setText(d.value)} resize="vertical" rows={8} maxLength={RESEARCH_LIMITS.pastedTextLength} />
       </Field>
-      <RadioGroup layout="horizontal" value={format} onChange={(_, d) => setFormat(d.value as "markdown" | "text")} aria-label="Format">
-        <Radio value="markdown" label="Markdown" />
-        <Radio value="text" label="Plain text" />
+      <RadioGroup layout="horizontal" value={format} onChange={(_, d) => setFormat(d.value as "markdown" | "text")} aria-label={t("research.addSources.formatAria")}>
+        <Radio value="markdown" label={t("research.addSources.formatMarkdown")} />
+        <Radio value="text" label={t("research.addSources.formatPlain")} />
       </RadioGroup>
       {error && (
         <MessageBar intent="error">
@@ -474,7 +479,7 @@ function TextTab(p: AddSourcesDialogProps) {
       )}
       <div>
         <Button className={s.actionBtn} appearance="primary" type="submit" disabled={busy || title.trim() === "" || text.trim() === ""}>
-          Add text
+          {t("research.addSources.addText")}
         </Button>
       </div>
     </form>
@@ -482,14 +487,15 @@ function TextTab(p: AddSourcesDialogProps) {
 }
 
 function ExistingTab(p: AddSourcesDialogProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const unused = p.sources.filter((x) => !p.selection.includes(x.id));
   const [picked, setPicked] = useState<string[]>([]);
-  if (unused.length === 0) return <Text className={s.muted}>Every source of this workspace is already used in this session.</Text>;
+  if (unused.length === 0) return <Text className={s.muted}>{t("research.addSources.existingAllUsed")}</Text>;
   return (
     <div className={s.existing}>
       <Text size={200} className={s.muted}>
-        These are already stored in the workspace: nothing is uploaded again.
+        {t("research.addSources.existingNote")}
       </Text>
       {unused.map((x) => (
         <div key={x.id} className={s.existingRow}>
@@ -507,7 +513,7 @@ function ExistingTab(p: AddSourcesDialogProps) {
             setPicked([]);
           }}
         >
-          Use in this session
+          {t("research.addSources.useInSession")}
         </Button>
       </div>
     </div>

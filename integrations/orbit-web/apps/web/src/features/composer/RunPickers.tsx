@@ -8,6 +8,7 @@ import { effortFor, effortLabel, MODE_CHOICES, MODE_LABELS, modelLabel, modelOf,
 import { useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import { useViewport } from "../../hooks/useViewport";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
 
 const useStyles = makeStyles({
@@ -95,30 +96,36 @@ const useStyles = makeStyles({
   effortStar: { fontSize: "10px", opacity: 0.85 },
 });
 
+const MODE_HINT_KEYS: Record<ModeChoice, MessageKey> = {
+  autonomous: "chat.runPickers.modeHint.autonomous",
+  plan: "chat.runPickers.modeHint.plan",
+};
+
 export const MODE_HINTS: Record<ModeChoice, string> = {
-  autonomous: "Works on its own; a classifier reviews each action before it runs.",
-  plan: "Reads and plans; changes nothing until you switch to Autonomous.",
+  autonomous: tr(MODE_HINT_KEYS.autonomous),
+  plan: tr(MODE_HINT_KEYS.plan),
 };
 
 // Whether Autonomous may be chosen with this model (the fallback list says yes to all: the CLI decides).
 export const autoModeWith = (catalog: ModelCatalog, model: ModelChoice): boolean => modelOf(catalog, model)?.autoMode ?? true;
 
 // The models to offer: the account's, and -- when it is not among them -- the one chosen now, said to be unavailable.
-function choicesOf(catalog: ModelCatalog, model: ModelChoice): { id: ModelChoice; label: string; hint: string | null }[] {
-  const listed = catalog.models.map((m) => ({ id: m.id, label: m.label, hint: m.autoMode ? null : "Plan only" }));
-  return listed.some((m) => m.id === model) ? listed : [...listed, { id: model, label: modelLabel(model, catalog), hint: catalog.source === "account" ? "Not available to this account" : null }];
+function choicesOf(catalog: ModelCatalog, model: ModelChoice, trFn: (k: MessageKey) => string): { id: ModelChoice; label: string; hint: string | null }[] {
+  const listed = catalog.models.map((m) => ({ id: m.id, label: m.label, hint: m.autoMode ? null : trFn("chat.runPickers.planOnly") }));
+  return listed.some((m) => m.id === model) ? listed : [...listed, { id: model, label: modelLabel(model, catalog), hint: catalog.source === "account" ? trFn("chat.runPickers.unavailableAccount") : null }];
 }
 
 export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled = false }: { model: ModelChoice; effort: EffortChoice; onModel: (m: ModelChoice) => void; onEffort: (e: EffortChoice) => void; disabled?: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
   const catalog = useModelCatalog();
   const option = modelOf(catalog, model);
   const efforts = option?.efforts ?? ["low", "medium", "high", "xhigh", "max"];
-  const choices = choicesOf(catalog, model);
+  const choices = choicesOf(catalog, model, t);
   const modelText = modelLabel(model, catalog);
-  const effortText = efforts.length === 0 ? "No effort level" : effortLabel(effort);
+  const effortText = efforts.length === 0 ? t("chat.runPickers.noEffortLevel") : effortLabel(effort);
   // A model whose efforts do not hold the one chosen now moves it to one it takes.
   const pick = (m: ModelChoice) => {
     onModel(m);
@@ -136,16 +143,16 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
           disabled={disabled}
           icon={<ChevronDown12Regular />}
           iconPosition="after"
-          aria-label={`Model ${modelText}, effort ${effortText}`}
+          aria-label={t("chat.runPickers.modelEffortAria", { model: modelText, effort: effortText })}
           onClick={() => setOpen(true)}
         >
           {modelText}
           <span className={s.effort}>{effortText}</span>
         </Button>
-        <ResponsiveSheet open={open} onOpenChange={setOpen} title="Model & effort">
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.modelEffortTitle")}>
           <div className={s.section}>
             <Text size={100} weight="semibold" className={s.sectionLabel}>
-              Model · this session
+              {t("chat.runPickers.modelSection")}
             </Text>
             {choices.map((m, i) => {
               const selected = model === m.id;
@@ -170,11 +177,11 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
           </div>
           <div className={s.section}>
             <Text size={100} weight="semibold" className={s.sectionLabel}>
-              Effort
+              {t("chat.runPickers.effortSection")}
             </Text>
             {efforts.length === 0 && (
               <Text size={200} className={s.noteSheet}>
-                {option?.label ?? "This model"} takes no effort level.
+                {t("chat.runPickers.takesNoEffort", { model: option?.label ?? t("chat.runPickers.thisModel") })}
               </Text>
             )}
             <div className={s.effortGrid}>
@@ -186,7 +193,7 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
                     type="button"
                     role="menuitemradio"
                     aria-checked={selected}
-                    aria-label={e === "medium" ? `${effortLabel(e)} (Recommended)` : effortLabel(e)}
+                    aria-label={e === "medium" ? t("chat.runPickers.effortRecommended", { effort: effortLabel(e) }) : effortLabel(e)}
                     className={mergeClasses(s.effortPill, selected && s.effortPillSelected)}
                     onClick={() => onEffort(e)}
                   >
@@ -197,7 +204,7 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
               })}
             </div>
             <Text size={200} className={s.noteSheet}>
-              Higher effort means more thorough responses, but takes longer and uses your limits faster.
+              {t("chat.runPickers.effortNote")}
             </Text>
           </div>
         </ResponsiveSheet>
@@ -208,7 +215,7 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
   return (
     <Menu checkedValues={{ model: [model] }} onCheckedValueChange={(_, d) => d.name === "model" && d.checkedItems[0] && pick(d.checkedItems[0] as ModelChoice)}>
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={<ChevronDown12Regular />} iconPosition="after" aria-label={`Model ${modelText}, effort ${effortText}`}>
+        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={<ChevronDown12Regular />} iconPosition="after" aria-label={t("chat.runPickers.modelEffortAria", { model: modelText, effort: effortText })}>
           {modelText}
           <span className={s.effort}>{effortText}</span>
         </Button>
@@ -216,7 +223,7 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
       <MenuPopover>
         <MenuList>
           <MenuGroup>
-            <MenuGroupHeader>Model · this session</MenuGroupHeader>
+            <MenuGroupHeader>{t("chat.runPickers.modelSection")}</MenuGroupHeader>
             {choices.map((m, i) => (
               <MenuItemRadio key={m.id} name="model" value={m.id} secondaryContent={m.hint ?? String(i + 1)}>
                 {m.label}
@@ -226,22 +233,22 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
           <MenuDivider />
           {efforts.length === 0 ? (
             <MenuItem disabled secondaryContent="—">
-              No effort level
+              {t("chat.runPickers.noEffortLevel")}
             </MenuItem>
           ) : (
             <Menu checkedValues={{ effort: [effort] }} onCheckedValueChange={(_, d) => d.name === "effort" && d.checkedItems[0] && onEffort(d.checkedItems[0] as EffortChoice)}>
               <MenuTrigger disableButtonEnhancement>
-                <MenuItem secondaryContent={effortText}>Effort</MenuItem>
+                <MenuItem secondaryContent={effortText}>{t("chat.runPickers.effortSection")}</MenuItem>
               </MenuTrigger>
               <MenuPopover>
                 <Text size={200} className={s.note}>
-                  Higher effort means more thorough responses, but takes longer and uses your limits faster.
+                  {t("chat.runPickers.effortNote")}
                 </Text>
                 <MenuList>
                   {efforts.map((e) => (
                     <MenuItemRadio key={e} name="effort" value={e}>
                       {effortLabel(e)}
-                      {e === "medium" && <span className={s.recommended}>Recommended</span>}
+                      {e === "medium" && <span className={s.recommended}>{t("chat.runPickers.recommended")}</span>}
                     </MenuItemRadio>
                   ))}
                 </MenuList>
@@ -256,12 +263,13 @@ export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled =
 
 // `autoMode` false: Autonomous is not available with the chosen model (the account's catalog says so).
 export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: { mode: ModeChoice; onMode: (m: ModeChoice) => void; disabled?: boolean; autoMode?: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
   const icon = mode === "plan" ? <ClipboardTaskList16Regular /> : <Flash16Regular />;
   const unavailable = (m: ModeChoice) => m === "autonomous" && !autoMode;
-  const hint = (m: ModeChoice) => (unavailable(m) ? "Not available with this model: it plans only." : MODE_HINTS[m]);
+  const hint = (m: ModeChoice) => (unavailable(m) ? t("chat.runPickers.autonomousUnavailable") : t(MODE_HINT_KEYS[m]));
 
   if (isMobile) {
     return (
@@ -272,12 +280,12 @@ export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: 
           size="small"
           disabled={disabled}
           icon={icon}
-          aria-label={`Mode ${MODE_LABELS[mode]}`}
+          aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}
           onClick={() => setOpen(true)}
         >
           {MODE_LABELS[mode]}
         </Button>
-        <ResponsiveSheet open={open} onOpenChange={setOpen} title="Mode">
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.modeTitle")}>
           {MODE_CHOICES.map((m) => {
             const selected = mode === m;
             return (
@@ -310,7 +318,7 @@ export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: 
   return (
     <Menu checkedValues={{ mode: [mode] }} onCheckedValueChange={(_, d) => d.name === "mode" && d.checkedItems[0] && onMode(d.checkedItems[0] as ModeChoice)}>
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={icon} aria-label={`Mode ${MODE_LABELS[mode]}`}>
+        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={icon} aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}>
           {MODE_LABELS[mode]}
         </Button>
       </MenuTrigger>
@@ -344,6 +352,7 @@ const aiItem = (c: AiChoice): string => `${RUNTIME_LABELS[c.runtime]} — ${c.la
 // THE AI A CHAT RUNS ON, chosen before its model: the models offered next are that AI's own. `readOnly`: a chat's AI
 // once it exists (it is the chat's for its whole life).
 export function AiPicker({ choices, value, onChange, readOnly = false }: { choices: readonly AiChoice[]; value: string; onChange?: (id: string) => void; readOnly?: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
@@ -353,7 +362,7 @@ export function AiPicker({ choices, value, onChange, readOnly = false }: { choic
   // Said, not offered: the chat's AI is fixed once the chat exists.
   if (readOnly || onChange === undefined) {
     return (
-      <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={`AI ${text}`} title="The AI this chat runs on, for its whole life">
+      <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={t("chat.runPickers.aiAria", { ai: text })} title={t("chat.runPickers.aiReadOnlyTitle")}>
         {text}
       </Button>
     );
@@ -361,10 +370,10 @@ export function AiPicker({ choices, value, onChange, readOnly = false }: { choic
   if (isMobile) {
     return (
       <>
-        <Button className={mergeClasses(s.trigger, s.triggerMobile)} appearance="subtle" size="small" aria-label={`AI ${text}`} onClick={() => setOpen(true)}>
+        <Button className={mergeClasses(s.trigger, s.triggerMobile)} appearance="subtle" size="small" aria-label={t("chat.runPickers.aiAria", { ai: text })} onClick={() => setOpen(true)}>
           {text}
         </Button>
-        <ResponsiveSheet open={open} onOpenChange={setOpen} title="AI · this session">
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.aiSessionTitle")}>
           {choices.map((c) => {
             const selected = c.id === current.id;
             return (
@@ -393,14 +402,14 @@ export function AiPicker({ choices, value, onChange, readOnly = false }: { choic
   return (
     <Menu checkedValues={{ ai: [current.id] }} onCheckedValueChange={(_, d) => d.name === "ai" && d.checkedItems[0] && onChange(d.checkedItems[0])}>
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.trigger} appearance="subtle" size="small" icon={<ChevronDown12Regular />} iconPosition="after" aria-label={`AI ${text}`}>
+        <Button className={s.trigger} appearance="subtle" size="small" icon={<ChevronDown12Regular />} iconPosition="after" aria-label={t("chat.runPickers.aiAria", { ai: text })}>
           {text}
         </Button>
       </MenuTrigger>
       <MenuPopover>
         <MenuList>
           <MenuGroup>
-            <MenuGroupHeader>AI · this session</MenuGroupHeader>
+            <MenuGroupHeader>{t("chat.runPickers.aiSessionTitle")}</MenuGroupHeader>
             {choices.map((c) => (
               <MenuItemRadio key={c.id} name="ai" value={c.id}>
                 {aiItem(c)}

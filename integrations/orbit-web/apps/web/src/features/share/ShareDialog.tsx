@@ -27,6 +27,7 @@ import { Share20Regular } from "@fluentui/react-icons";
 import type { AccessLevel, ShareInfo, ShareState } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { PeopleAccess } from "./PeopleAccess";
 
@@ -44,6 +45,7 @@ export const shareLinkOf = (token: string): string => `${window.location.origin}
 const when = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function SharedLink({ share }: { share: ShareInfo }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const link = shareLinkOf(share.token);
@@ -58,19 +60,25 @@ function SharedLink({ share }: { share: ShareInfo }) {
   return (
     <>
       <div className={s.row}>
-        <Field label="Link" style={{ flexGrow: 1 }}>
+        <Field label={t("chat.share.link.label")} style={{ flexGrow: 1 }}>
           <Input readOnly value={link} onFocus={(e) => e.target.select()} />
         </Field>
-        <Button onClick={() => void copy()}>{copied ? "Copied" : "Copy link"}</Button>
+        <Button onClick={() => void copy()}>{copied ? t("chat.share.link.copied") : t("chat.share.link.copyLink")}</Button>
       </div>
       <Text size={200} className={s.muted}>
-        Shared as it was {when(share.updatedAt)} · {share.entries} {share.entries === 1 ? "entry" : "entries"} · {share.includeTools ? "with what the tools did" : "tools by their title only"}.
+        {t("chat.share.link.meta", {
+          at: when(share.updatedAt),
+          count: share.entries,
+          word: t(share.entries === 1 ? "chat.share.link.entryOne" : "chat.share.link.entryMany"),
+          tools: t(share.includeTools ? "chat.share.link.withTools" : "chat.share.link.titlesOnly"),
+        })}
       </Text>
     </>
   );
 }
 
 function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: AccessLevel; onBusy: (busy: boolean) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const state = useResource<ShareState>(() => get(`/api/sessions/${sessionId}/share`), [sessionId]);
   // The person's choice once made; until then, how the chat is shared now.
@@ -101,21 +109,18 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
       return { share: null };
     });
 
-  if (state.data === null) return state.error ? <Text>{state.error}</Text> : <Spinner size="tiny" label="Reading how this chat is shared…" />;
+  if (state.data === null) return state.error ? <Text>{state.error}</Text> : <Spinner size="tiny" label={t("chat.share.reading")} />;
   return (
     <div className={s.body}>
-      <PeopleAccess path={`/api/sessions/${sessionId}/access`} what="chat" />
+      <PeopleAccess path={`/api/sessions/${sessionId}/access`} what={t("chat.share.whatChat")} />
       <Divider />
-      <Text weight="semibold">Public link</Text>
-      <Text>
-        Anyone with the link can read this conversation as it is now — not what comes after, until you update it. They need no access token and no
-        Claude account, and they see nothing else of Orbit Web: not the workspace, its files, nor your other chats. Secrets are masked by their shape.
-      </Text>
+      <Text weight="semibold">{t("chat.share.publicLink")}</Text>
+      <Text>{t("chat.share.publicDesc")}</Text>
       {access === "owner" ? (
-        <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label="Include what the tools did — the commands' and the files' contents (they may hold the repository's code)" />
+        <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label={t("chat.share.includeTools")} />
       ) : (
         <Text size={200} className={s.muted}>
-          Only the chat's owner makes, updates or stops its public link.
+          {t("chat.share.ownerOnlyLink")}
         </Text>
       )}
       {share !== null && <SharedLink share={share} />}
@@ -127,20 +132,20 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
       <DialogActions className={s.actions}>
         {access !== "owner" ? null : share === null ? (
           <Button appearance="primary" disabled={busy} onClick={() => void create()}>
-            Create link
+            {t("chat.share.createLink")}
           </Button>
         ) : (
           <>
             <Button appearance="primary" disabled={busy} onClick={() => void create()}>
-              Update to now
+              {t("chat.share.updateToNow")}
             </Button>
             <Button disabled={busy} onClick={() => void stop()}>
-              Stop sharing
+              {t("chat.share.stopSharing")}
             </Button>
           </>
         )}
         <DialogTrigger disableButtonEnhancement>
-          <Button appearance="subtle">Close</Button>
+          <Button appearance="subtle">{t("chat.push.close")}</Button>
         </DialogTrigger>
       </DialogActions>
     </div>
@@ -148,6 +153,7 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
 }
 
 export function ShareButton({ sessionId, compact = false, access = "owner" }: { sessionId: string; compact?: boolean; access?: AccessLevel }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -155,16 +161,16 @@ export function ShareButton({ sessionId, compact = false, access = "owner" }: { 
     <Dialog open={open} onOpenChange={(_, d) => !busy && setOpen(d.open)}>
       <DialogTrigger disableButtonEnhancement>
         {compact ? (
-          <Button className={s.compactBtn} size="small" appearance="subtle" icon={<Share20Regular />} aria-label="Share" />
+          <Button className={s.compactBtn} size="small" appearance="subtle" icon={<Share20Regular />} aria-label={t("chat.share.shareBtn")} />
         ) : (
           <Button size="small" appearance="subtle" icon={<Share20Regular />}>
-            Share
+            {t("chat.share.shareBtn")}
           </Button>
         )}
       </DialogTrigger>
       <DialogSurface className={s.surface}>
         <DialogBody>
-          <DialogTitle>Share this chat</DialogTitle>
+          <DialogTitle>{t("chat.share.dialogTitle")}</DialogTitle>
           <DialogContent>{open && <ShareBody sessionId={sessionId} access={access} onBusy={setBusy} />}</DialogContent>
         </DialogBody>
       </DialogSurface>

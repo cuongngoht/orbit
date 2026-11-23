@@ -47,12 +47,13 @@ const useStyles = makeStyles({
 const SIGN: Record<DiffLine["kind"], string> = { add: "+", del: "-", ctx: " ", hunk: "", meta: "" };
 
 export function DiffView({ diff, language, wrap = false, compact = false }: { diff: string; language: string | null; wrap?: boolean; compact?: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const lines = useMemo(() => parseDiff(diff), [diff]);
   const codeClass = mergeClasses(s.code, wrap && s.codeWrap);
   return (
     <div className={s.wrap}>
-      <table className={s.table} aria-label="Diff">
+      <table className={s.table} aria-label={t("chat.diff.aria")}>
         <tbody>
           {lines.map((l, i) => (
             <tr key={i} className={l.kind === "add" ? s.add : l.kind === "del" ? s.del : l.kind === "hunk" ? s.hunk : l.kind === "meta" ? s.meta : undefined} data-kind={l.kind}>

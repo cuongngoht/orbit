@@ -54,13 +54,13 @@ const useStyles = makeStyles({
   },
 });
 
-const STEPS: Record<string, string> = {
-  clone: "Cloning the repository…",
-  init: "Creating an empty workspace…",
-  branch: "Creating this session's branch…",
-  identity: "Setting the commit identity…",
-  orbit: "Seating the workspace with Orbit…",
-  project: "Reading the project's skills and plugins…",
+const STEP_KEYS: Record<string, MessageKey> = {
+  clone: "chat.timeline.step.clone",
+  init: "chat.timeline.step.init",
+  branch: "chat.timeline.step.branch",
+  identity: "chat.timeline.step.identity",
+  orbit: "chat.timeline.step.orbit",
+  project: "chat.timeline.step.project",
 };
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
@@ -68,67 +68,83 @@ const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 // What the repository brought: its skills, commands and agents (loaded as instructions), and its plugins with what
 // became of each. Settings → Skills and Plugins show them whole.
 function Project({ item }: { item: ProjectItem }) {
+  const { t } = useI18n();
   const s = useStyles();
   const i = item.inventory;
-  const carried = [count(i.skills.length, "skill"), count(i.commands.length, "command"), count(i.agents.length, "agent")].join(", ");
-  const plugins = i.plugins.length === 0 ? "" : ` · plugins: ${i.plugins.map((p) => `${p.id} (${p.state})`).join(", ")}`;
+  const carried = [
+    count(i.skills.length, t("chat.timeline.noun.skill")),
+    count(i.commands.length, t("chat.timeline.noun.command")),
+    count(i.agents.length, t("chat.timeline.noun.agent")),
+  ].join(", ");
+  const plugins = i.plugins.length === 0 ? "" : t("chat.timeline.pluginsSuffix", { plugins: i.plugins.map((p) => `${p.id} (${p.state})`).join(", ") });
   if (i.skills.length + i.commands.length + i.agents.length + i.plugins.length === 0) return null;
   return (
     <Text size={200} className={s.meta}>
-      {i.loaded ? `Loaded from this repository: ${carried}` : `This repository has ${carried} (not loaded)`}
+      {i.loaded ? t("chat.timeline.projectLoaded", { carried }) : t("chat.timeline.projectNotLoaded", { carried })}
       {plugins}.
     </Text>
   );
 }
 
 function Workspace({ item }: { item: WorkspaceItem }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (item.state === "preparing") return <Spinner size="tiny" label={STEPS[item.step] ?? "Preparing the workspace…"} labelPosition="after" />;
+  if (item.state === "preparing") return <Spinner size="tiny" label={t(STEP_KEYS[item.step] ?? "chat.timeline.step.default")} labelPosition="after" />;
   if (item.state === "failed")
     return (
       <MessageBar intent="error" className={s.msgBar}>
-        <MessageBarBody className={s.msgBody}>Workspace not prepared ({item.step}): {item.message}</MessageBarBody>
+        <MessageBarBody className={s.msgBody}>{t("chat.timeline.workspaceFailed", { step: item.step, message: item.message ?? "" })}</MessageBarBody>
       </MessageBar>
     );
-  return <Text size={200} className={s.meta}>Workspace ready on branch {item.workBranch}.</Text>;
+  return <Text size={200} className={s.meta}>{t("chat.timeline.workspaceReady", { branch: item.workBranch ?? "" })}</Text>;
 }
 
 // The working branch moved: said in the conversation, where the work before and after it sits.
 function Branch({ item }: { item: BranchItem }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
     <div className={s.line}>
       <BranchFork16Regular className={s.meta} />
       <Text size={200} className={s.meta}>
-        Now working on <code className={s.msgCode}>{item.workBranch}</code>
-        {item.created ? `, a new branch from ${item.from ? `the work on ${item.from}` : "the work as it was"}.` : item.from ? ` (switched from ${item.from}).` : "."}
+        {t("chat.timeline.nowWorkingOn")}
+        <code className={s.msgCode}>{item.workBranch}</code>
+        {item.created
+          ? t("chat.timeline.newBranchFromWork", {
+              what: item.from ? t("chat.timeline.workOnBranch", { branch: item.from }) : t("chat.timeline.workAsItWas"),
+            })
+          : item.from
+            ? t("chat.timeline.switchedFrom", { branch: item.from })
+            : "."}
       </Text>
     </div>
   );
 }
 
 function RunStart({ item }: { item: RunStartItem }) {
+  const { t } = useI18n();
   const s = useStyles();
   const d = item.data;
   return (
     <div className={s.line}>
       <Text size={200} className={s.meta}>
-        {d.resumed ? "Continuing" : "Started"} {d.runtime === "codex" ? "OpenAI Codex" : `Claude Code ${d.claudeCodeVersion ?? "?"}`} · {d.model ?? d.requestedModel}
+        {d.resumed ? t("chat.timeline.continuing") : t("chat.timeline.started")}{" "}
+        {d.runtime === "codex" ? RUNTIME_LABELS.codex : t("chat.timeline.claudeCodeVersion", { version: d.claudeCodeVersion ?? "?" })} · {d.model ?? d.requestedModel}
         {/* A run of an earlier Orbit Web named no effort or mode. */}
-        {d.requestedEffort ? ` · ${effortLabel(d.requestedEffort)} effort` : ""}
+        {d.requestedEffort ? t("chat.timeline.effortSuffix", { effort: effortLabel(d.requestedEffort) }) : ""}
         {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}
         {/* Where it ran: a sandbox of its own (a container holding this chat's places alone). */}
-        {d.sandboxed ? " · own sandbox" : ""}
+        {d.sandboxed ? t("chat.timeline.ownSandbox") : ""}
       </Text>
       {d.orbitLoaded ? (
         <Badge appearance="tint" color="brand" size="small">
-          Orbit {d.orbitVersion ?? ""} loaded
+          {t("chat.timeline.orbitLoaded", { version: d.orbitVersion ?? "" })}
         </Badge>
       ) : (
         // The Orbit plugin is Claude Code's: a run of another CLI never loads it, which is nothing to warn about.
         d.runtime !== "codex" && (
           <Badge appearance="tint" color="warning" size="small">
-            Orbit plugin not loaded
+            {t("chat.timeline.orbitNotLoaded")}
           </Badge>
         )
       )}
@@ -136,10 +152,8 @@ function RunStart({ item }: { item: RunStartItem }) {
   );
 }
 
-// A run's failure, naming the AI that ran -- once (the message may already start with its name).
-const failedText = (label: string, message: string): string => `${label} failed: ${message.startsWith(`${label} `) ? message.slice(label.length + 1) : message}`;
-
 function RunEnd({ item, runtime }: { item: RunEndItem; runtime: RuntimeKind }) {
+  const { t } = useI18n();
   const s = useStyles();
   const e = item.end;
   const label = RUNTIME_LABELS[runtime];
@@ -147,48 +161,51 @@ function RunEnd({ item, runtime }: { item: RunEndItem; runtime: RuntimeKind }) {
     const cost = e.data.costUsd !== null ? ` · $${e.data.costUsd.toFixed(4)}` : "";
     return (
       <Text size={200} className={s.meta}>
-        {label} finished ({e.data.turns ?? "?"} turns{cost}). Whether the change is verified is Orbit's to say — see the Orbit panel.
+        {t("chat.timeline.turnsCost", { label, turns: e.data.turns ?? "?", cost })}
       </Text>
     );
   }
   if (e.type === "session.interrupted")
     return (
       <MessageBar intent="warning" className={s.msgBar}>
-        <MessageBarBody className={s.msgBody}>{e.data.reason === "user_stop" ? "Stopped. The run was interrupted; it did not complete." : "Orbit Web restarted while this run was active; it was interrupted and is not resumed on its own."}</MessageBarBody>
+        <MessageBarBody className={s.msgBody}>{t(e.data.reason === "user_stop" ? "chat.timeline.interruptedUser" : "chat.timeline.interruptedRestart")}</MessageBarBody>
       </MessageBar>
     );
+  const message = e.data.message.startsWith(`${label} `) ? e.data.message.slice(label.length + 1) : e.data.message;
   return (
     <MessageBar intent="error" className={s.msgBar}>
-      <MessageBarBody className={s.msgBody}>{failedText(label, e.data.message)}</MessageBarBody>
+      <MessageBarBody className={s.msgBody}>{t("chat.timeline.failedText", { label, message })}</MessageBarBody>
     </MessageBar>
   );
 }
 
 function Message({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
+  const { t } = useI18n();
   const s = useStyles();
   if (item.role === "user") return <UserMessage item={item} imageUrl={imageUrl} />;
   return (
     <div className={s.assistant} data-testid="assistant-message">
       <Markdown text={item.text} />
-      {item.streaming && <span className={s.cursor} aria-label="writing" />}
-      {item.partial && <Text size={200} className={s.meta}>(cut off when the run ended)</Text>}
+      {item.streaming && <span className={s.cursor} aria-label={t("chat.timeline.writingAria")} />}
+      {item.partial && <Text size={200} className={s.meta}>{t("chat.timeline.cutOff")}</Text>}
     </div>
   );
 }
 
 // A person's message: the images it carried (each opens full size), then its words.
 function UserMessage({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
+  const { t } = useI18n();
   const s = useStyles();
   const images = imageUrl === undefined ? [] : (item.images ?? []);
   return (
     <>
       {images.length > 0 && (
-        <div className={s.userImages} role="group" aria-label={images.length === 1 ? "Image sent" : `${images.length} images sent`}>
+        <div className={s.userImages} role="group" aria-label={images.length === 1 ? t("chat.timeline.imageSentOne") : t("chat.timeline.imageSentMany", { count: images.length })}>
           {images.map((image, n) => {
             const url = (imageUrl as (imageId: string) => string)(image.id);
             return (
-              <a key={image.id} className={s.userImageLink} href={url} target="_blank" rel="noopener noreferrer" title="Open full size">
-                <img className={s.userImage} src={url} alt={`Image ${n + 1} of the message`} loading="lazy" {...(image.width && image.height ? { width: image.width, height: image.height } : {})} />
+              <a key={image.id} className={s.userImageLink} href={url} target="_blank" rel="noopener noreferrer" title={t("chat.timeline.openFullSize")}>
+                <img className={s.userImage} src={url} alt={t("chat.timeline.imageAlt", { index: n + 1 })} loading="lazy" {...(image.width && image.height ? { width: image.width, height: image.height } : {})} />
               </a>
             );
           })}
@@ -210,6 +227,7 @@ export interface TimelineActions {
 }
 
 function Item({ item, items, actions }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions }) {
+  const { t } = useI18n();
   const s = useStyles();
   switch (item.kind) {
     case "message":
@@ -244,7 +262,8 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
       return (
         <MessageBar intent="warning" className={s.msgBar}>
           <MessageBarBody className={s.msgBody}>
-            Permission denied: {item.denied.toolName} was not allowed. <code className={s.msgCode}>{item.denied.input.slice(0, 200)}</code>
+            {t("chat.timeline.permissionDenied", { tool: item.denied.toolName })}
+            <code className={s.msgCode}>{item.denied.input.slice(0, 200)}</code>
           </MessageBarBody>
         </MessageBar>
       );

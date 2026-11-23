@@ -7,6 +7,7 @@ import { ArrowClockwise16Regular, Delete16Regular } from "@fluentui/react-icons"
 import { MCP_AUTH_KINDS, MCP_AUTH_LABELS, type McpAuthKind, type McpServerList, type McpServerView } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -25,6 +26,7 @@ const useStyles = makeStyles({
 });
 
 function ServerCard({ server, onChanged, onRemoved }: { server: McpServerView; onChanged: (s: McpServerView) => void; onRemoved: (l: McpServerList) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -40,7 +42,7 @@ function ServerCard({ server, onChanged, onRemoved }: { server: McpServerView; o
       setBusy(false);
     }
   };
-  const allowed = server.tools.filter((t) => t.allowed).map((t) => t.name);
+  const allowed = server.tools.filter((tool) => tool.allowed).map((tool) => tool.name);
   const allow = (name: string, on: boolean) => void act(() => send<McpServerView>("PUT", `/api/mcp-servers/${server.id}`, { allowedTools: on ? [...allowed, name] : allowed.filter((a) => a !== name) }), onChanged);
   const auth = server.auth.kind === "header" ? `${MCP_AUTH_LABELS.header} (${server.auth.header ?? ""})` : MCP_AUTH_LABELS[server.auth.kind];
   return (
@@ -54,20 +56,20 @@ function ServerCard({ server, onChanged, onRemoved }: { server: McpServerView; o
           {auth}
         </Badge>
         <Button size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} disabled={busy} onClick={() => void act(() => send<McpServerView>("POST", `/api/mcp-servers/${server.id}/refresh`), onChanged)}>
-          Read again
+          {t("settings.mcp.readAgain")}
         </Button>
         <Button size="small" icon={<Delete16Regular />} disabled={busy} onClick={() => setConfirming(true)}>
-          Remove
+          {t("settings.mcp.remove")}
         </Button>
       </div>
       {confirming && (
         <div className={s.actions}>
-          <Text size={200}>Employees lose its tools at their next ask.</Text>
+          <Text size={200}>{t("settings.mcp.removeConfirmHint")}</Text>
           <Button size="small" appearance="primary" disabled={busy} onClick={() => void act(() => send<McpServerList>("DELETE", `/api/mcp-servers/${server.id}`), onRemoved)}>
-            Remove {server.name}
+            {t("settings.mcp.removeNamed", { name: server.name })}
           </Button>
           <Button size="small" disabled={busy} onClick={() => setConfirming(false)}>
-            Cancel
+            {t("settings.connections.cancel")}
           </Button>
         </div>
       )}
@@ -82,30 +84,30 @@ function ServerCard({ server, onChanged, onRemoved }: { server: McpServerView; o
         </MessageBar>
       )}
       <Text size={200} className={s.muted}>
-        {server.readAt === null ? "Its tools were not read yet." : `${server.tools.length} tools, read ${new Date(server.readAt).toLocaleString()}. Employees may use the ones checked.`}
+        {server.readAt === null ? t("settings.mcp.toolsNotReadYet") : t("settings.mcp.toolsRead", { count: server.tools.length, when: new Date(server.readAt).toLocaleString() })}
       </Text>
       {server.tools.length > 0 && (
         <div className={s.tools}>
-          {server.tools.map((t) => (
-            <div key={t.name} className={s.tool}>
-              <Checkbox aria-label={`Employees may use ${t.name}`} checked={t.allowed} disabled={busy} onChange={(_, d) => allow(t.name, d.checked === true)} />
+          {server.tools.map((tool) => (
+            <div key={tool.name} className={s.tool}>
+              <Checkbox aria-label={t("settings.mcp.toolCheckboxAria", { name: tool.name })} checked={tool.allowed} disabled={busy} onChange={(_, d) => allow(tool.name, d.checked === true)} />
               <div className={s.toolText}>
                 <span className={s.head}>
-                  <span className={s.code}>{t.name}</span>
-                  {t.readOnly === true && (
+                  <span className={s.code}>{tool.name}</span>
+                  {tool.readOnly === true && (
                     <Badge appearance="tint" color="success" size="small">
-                      Read-only
+                      {t("settings.mcp.readOnly")}
                     </Badge>
                   )}
-                  {t.readOnly === false && (
+                  {tool.readOnly === false && (
                     <Badge appearance="tint" color="warning" size="small">
-                      May change data
+                      {t("settings.mcp.mayChangeData")}
                     </Badge>
                   )}
                 </span>
-                {t.description !== "" && (
+                {tool.description !== "" && (
                   <Text size={200} className={s.muted}>
-                    {t.description.length > 240 ? `${t.description.slice(0, 240)}…` : t.description}
+                    {tool.description.length > 240 ? `${tool.description.slice(0, 240)}…` : tool.description}
                   </Text>
                 )}
               </div>
@@ -118,6 +120,7 @@ function ServerCard({ server, onChanged, onRemoved }: { server: McpServerView; o
 }
 
 function AddServer({ onAdded }: { onAdded: (s: McpServerView) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -145,15 +148,15 @@ function AddServer({ onAdded }: { onAdded: (s: McpServerView) => void }) {
     }
   };
   return (
-    <section className={`${s.card} ${s.form}`} aria-label="Add an MCP server">
-      <Text weight="semibold">Add a server</Text>
-      <Field label="Name">
-        <Input value={name} onChange={(_, d) => setName(d.value)} placeholder="Team knowledge base" />
+    <section className={`${s.card} ${s.form}`} aria-label={t("settings.mcp.add.aria")}>
+      <Text weight="semibold">{t("settings.mcp.add.title")}</Text>
+      <Field label={t("settings.mcp.add.name")}>
+        <Input value={name} onChange={(_, d) => setName(d.value)} placeholder={t("settings.mcp.add.namePlaceholder")} />
       </Field>
-      <Field label="URL" hint="Its Streamable HTTP endpoint, e.g. https://kb.example.com/mcp">
-        <Input value={url} onChange={(_, d) => setUrl(d.value)} placeholder="https://" />
+      <Field label={t("settings.mcp.add.url")} hint={t("settings.mcp.add.urlHint")}>
+        <Input value={url} onChange={(_, d) => setUrl(d.value)} placeholder={t("settings.mcp.add.urlPlaceholder")} />
       </Field>
-      <Field label="Sign-in">
+      <Field label={t("settings.mcp.add.signIn")}>
         <RadioGroup layout="horizontal" value={kind} onChange={(_, d) => setKind(d.value as McpAuthKind)}>
           {MCP_AUTH_KINDS.map((k) => (
             <Radio key={k} value={k} label={MCP_AUTH_LABELS[k]} />
@@ -161,12 +164,12 @@ function AddServer({ onAdded }: { onAdded: (s: McpServerView) => void }) {
         </RadioGroup>
       </Field>
       {kind === "header" && (
-        <Field label="Header">
-          <Input value={header} onChange={(_, d) => setHeader(d.value)} placeholder="X-API-Key" />
+        <Field label={t("settings.mcp.add.header")}>
+          <Input value={header} onChange={(_, d) => setHeader(d.value)} placeholder={t("settings.mcp.add.headerPlaceholder")} />
         </Field>
       )}
       {kind !== "none" && (
-        <Field label="Token" hint="Kept by Orbit Web, never shown again; a server with a token is reached over https only.">
+        <Field label={t("settings.mcp.add.token")} hint={t("settings.mcp.add.tokenHint")}>
           <Input type="password" value={token} onChange={(_, d) => setToken(d.value)} autoComplete="off" />
         </Field>
       )}
@@ -177,31 +180,32 @@ function AddServer({ onAdded }: { onAdded: (s: McpServerView) => void }) {
       )}
       <div className={s.actions}>
         <Button appearance="primary" disabled={busy || !ready} onClick={() => void add()}>
-          Add
+          {t("settings.mcp.add.submit")}
         </Button>
-        {busy && <Spinner size="tiny" label="Reading its tools…" />}
+        {busy && <Spinner size="tiny" label={t("settings.mcp.add.readingTools")} />}
       </div>
     </section>
   );
 }
 
 export function McpServersSection() {
+  const { t } = useI18n();
   const s = useStyles();
   const list = useResource<McpServerList>(() => get<McpServerList>("/api/mcp-servers"), []);
   const servers = list.data?.servers ?? [];
   const replace = (v: McpServerView) => list.set({ servers: servers.map((x) => (x.id === v.id ? v : x)) });
   return (
-    <section className={s.root} aria-label="MCP servers">
+    <section className={s.root} aria-label={t("settings.mcp.aria")}>
       <Text className={s.muted}>
-        Knowledge bases and other remote MCP servers your employees may ask -- each turned on per employee, on its <Link href="#/office">Access page</Link> in the Office. Orbit Web connects with the sign-in given here; it never enters an employee's sandbox, and what a server answers reaches the employee as data, not instructions. Employees are offered only the tools checked.
+        {t("settings.mcp.introBefore")} <Link href="#/office">{t("settings.mcp.introLink")}</Link> {t("settings.mcp.introAfter")}
       </Text>
       {list.error !== null && list.data === null && (
         <MessageBar intent="error">
           <MessageBarBody>{list.error}</MessageBarBody>
         </MessageBar>
       )}
-      {list.data === null && list.error === null && <Spinner size="tiny" label="Reading the servers…" />}
-      {list.data !== null && servers.length === 0 && <Text className={s.muted}>No MCP server yet.</Text>}
+      {list.data === null && list.error === null && <Spinner size="tiny" label={t("settings.mcp.loading")} />}
+      {list.data !== null && servers.length === 0 && <Text className={s.muted}>{t("settings.mcp.empty")}</Text>}
       {servers.map((x) => (
         <ServerCard key={x.id} server={x} onChanged={replace} onRemoved={(l) => list.set(l)} />
       ))}

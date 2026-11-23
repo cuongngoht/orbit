@@ -31,6 +31,7 @@ import { SourceMark } from "../../components/SourceMark";
 import { isConnected } from "../../hooks/useLive";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { get } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -98,6 +99,7 @@ export interface RepositoryChoice {
 const MAX_SHOWN = 200;
 
 function Listing({ source, selected, onPick, mobile }: { source: RepositorySource; selected: RepositoryChoice | null; onPick: (c: RepositoryChoice) => void; mobile: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [query, setQuery] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -109,17 +111,17 @@ function Listing({ source, selected, onPick, mobile }: { source: RepositorySourc
   return (
     <>
       <div className={s.row}>
-        <SearchBox size={mobile ? "medium" : "small"} style={{ flexGrow: 1 }} placeholder={`Search ${SOURCE_LABELS[source]} repositories`} aria-label="Search repositories" value={query} onChange={(_, d) => setQuery(d.value)} />
-        <Button className={s.refreshBtn} size={mobile ? "medium" : "small"} appearance="subtle" icon={<ArrowSync16Regular />} aria-label="Read the repositories again" onClick={() => setRefresh((n) => n + 1)} />
+        <SearchBox size={mobile ? "medium" : "small"} style={{ flexGrow: 1 }} placeholder={t("chat.repoPicker.searchPlaceholder", { source: SOURCE_LABELS[source] })} aria-label={t("chat.repoPicker.searchAria")} value={query} onChange={(_, d) => setQuery(d.value)} />
+        <Button className={s.refreshBtn} size={mobile ? "medium" : "small"} appearance="subtle" icon={<ArrowSync16Regular />} aria-label={t("chat.repoPicker.refreshAria")} onClick={() => setRefresh((n) => n + 1)} />
       </div>
-      {list.loading && list.data === null && <Spinner size="tiny" label="Reading the repositories…" />}
+      {list.loading && list.data === null && <Spinner size="tiny" label={t("chat.repoPicker.reading")} />}
       {list.error && (
         <MessageBar intent="error">
           <MessageBarBody>{list.error}</MessageBarBody>
         </MessageBar>
       )}
-      {list.data?.partial && <Text size={200} className={s.muted}>Some repositories could not be read; the list may be incomplete.</Text>}
-      <ul className={s.list} role="listbox" aria-label="Repositories">
+      {list.data?.partial && <Text size={200} className={s.muted}>{t("chat.repoPicker.partialWarning")}</Text>}
+      <ul className={s.list} role="listbox" aria-label={t("chat.repoPicker.listAria")}>
         {shown.map((r) => {
           const isSelected = selected?.repository.id === r.id && selected.source === source;
           return (
@@ -133,7 +135,7 @@ function Listing({ source, selected, onPick, mobile }: { source: RepositorySourc
                     {r.defaultBranch ? ` · ${r.defaultBranch}` : ""}
                   </Text>
                 </span>
-                {r.private && <LockClosed12Regular aria-label="Private" />}
+                {r.private && <LockClosed12Regular aria-label={t("chat.repoPicker.privateAria")} />}
                 {isSelected && <Checkmark16Regular />}
               </button>
             </li>
@@ -142,7 +144,7 @@ function Listing({ source, selected, onPick, mobile }: { source: RepositorySourc
         {list.data !== null && shown.length === 0 && (
           <li>
             <Text size={200} className={s.muted}>
-              No repository matches.
+              {t("chat.repoPicker.noMatch")}
             </Text>
           </li>
         )}
@@ -168,6 +170,7 @@ function RepoPickerBody({
   onConnect: (src: RepositorySource) => void;
   mobile: boolean;
 }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
     <>
@@ -182,14 +185,14 @@ function RepoPickerBody({
         <Listing source={source} selected={value} onPick={onPick} mobile={mobile} />
       ) : (
         <div className={s.connect}>
-          <Text>Connect {SOURCE_LABELS[source]} to choose one of its repositories.</Text>
+          <Text>{t("chat.repoPicker.connectPrompt", { source: SOURCE_LABELS[source] })}</Text>
           <div>
             <Button
               appearance="primary"
               size={mobile ? "medium" : "small"}
               onClick={() => onConnect(source)}
             >
-              Connect {SOURCE_LABELS[source]}
+              {t("chat.repoPicker.connectBtn", { source: SOURCE_LABELS[source] })}
             </Button>
           </div>
         </div>
@@ -198,9 +201,9 @@ function RepoPickerBody({
         <button type="button" className={mergeClasses(s.option, mobile && s.optionMobile, value === null && s.selected)} onClick={() => onPick(null)}>
           <SourceMark source={null} />
           <span className={s.text}>
-            <span className={s.name}>No repository</span>
+            <span className={s.name}>{t("chat.repoPicker.noRepo")}</span>
             <Text size={200} className={s.muted}>
-              An empty workspace of its own
+              {t("chat.repoPicker.noRepoDesc")}
             </Text>
           </span>
           {value === null && <Checkmark16Regular />}
@@ -211,6 +214,7 @@ function RepoPickerBody({
 }
 
 export function RepositoryPicker({ value, onChange, sources, onConnect }: { value: RepositoryChoice | null; onChange: (c: RepositoryChoice | null) => void; sources: SourcesStatus | null; onConnect: (source: RepositorySource) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
@@ -232,10 +236,10 @@ export function RepositoryPicker({ value, onChange, sources, onConnect }: { valu
       appearance="subtle"
       size="small"
       icon={<SourceMark source={value?.source ?? null} />}
-      aria-label={value ? `Repository ${value.repository.fullName}` : "Repository: none"}
+      aria-label={value ? t("chat.repoPicker.repoAria", { name: value.repository.fullName }) : t("chat.repoPicker.repoNoneAria")}
       onClick={isMobile ? () => setOpen(true) : undefined}
     >
-      <span className={s.label}>{value ? value.repository.name : "No repository"}</span>
+      <span className={s.label}>{value ? value.repository.name : t("chat.repoPicker.noRepo")}</span>
       <ChevronDown12Regular />
     </Button>
   );
@@ -244,7 +248,7 @@ export function RepositoryPicker({ value, onChange, sources, onConnect }: { valu
     return (
       <>
         {trigger}
-        <ResponsiveSheet open={open} onOpenChange={setOpen} title="Choose a repository" ariaLabel="Choose a repository">
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.repoPicker.chooseRepo")} ariaLabel={t("chat.repoPicker.chooseRepo")}>
           <div className={s.sheetInner}>
             <RepoPickerBody source={source} onTab={setTab} connected={connected} value={value} onPick={pick} onConnect={connect} mobile />
           </div>
@@ -256,7 +260,7 @@ export function RepositoryPicker({ value, onChange, sources, onConnect }: { valu
   return (
     <Popover open={open} onOpenChange={(_, d) => setOpen(d.open)} positioning="above-start" trapFocus>
       <PopoverTrigger disableButtonEnhancement>{trigger}</PopoverTrigger>
-      <PopoverSurface className={s.surface} aria-label="Choose a repository">
+      <PopoverSurface className={s.surface} aria-label={t("chat.repoPicker.chooseRepo")}>
         <RepoPickerBody source={source} onTab={setTab} connected={connected} value={value} onPick={pick} onConnect={connect} mobile={false} />
       </PopoverSurface>
     </Popover>
@@ -265,6 +269,7 @@ export function RepositoryPicker({ value, onChange, sources, onConnect }: { valu
 
 // The branch a new chat starts from: the repository's branches, the default first.
 export function BranchPicker({ choice, value, onChange }: { choice: RepositoryChoice; value: string | null; onChange: (branch: string) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
@@ -279,13 +284,13 @@ export function BranchPicker({ choice, value, onChange }: { choice: RepositoryCh
           appearance="subtle"
           size="small"
           icon={<BranchFork16Regular />}
-          aria-label={`Branch ${current ?? "…"}`}
+          aria-label={t("chat.repoPicker.branchAria", { branch: current ?? "…" })}
           onClick={() => setOpen(true)}
         >
           <span className={s.label}>{current ?? "…"}</span>
         </Button>
-        <ResponsiveSheet open={open} onOpenChange={setOpen} title="Starting branch">
-          {branches.loading && branches.data === null && <Spinner size="tiny" label="Reading the branches…" />}
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.repoPicker.startingBranch")}>
+          {branches.loading && branches.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
           {branches.error && <Text size={200}>{branches.error}</Text>}
           {(branches.data?.branches ?? []).map((b) => {
             const selected = current === b.name;
@@ -305,7 +310,7 @@ export function BranchPicker({ choice, value, onChange }: { choice: RepositoryCh
                   <span className={s.name}>{b.name}</span>
                   {b.isDefault && (
                     <Text size={200} className={s.muted}>
-                      default
+                      {t("chat.repoPicker.default")}
                     </Text>
                   )}
                 </span>
@@ -321,16 +326,16 @@ export function BranchPicker({ choice, value, onChange }: { choice: RepositoryCh
   return (
     <Menu checkedValues={{ branch: current ? [current] : [] }} onCheckedValueChange={(_, d) => d.checkedItems[0] && onChange(d.checkedItems[0])}>
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.trigger} appearance="subtle" size="small" icon={<BranchFork16Regular />} aria-label={`Branch ${current ?? "…"}`}>
+        <Button className={s.trigger} appearance="subtle" size="small" icon={<BranchFork16Regular />} aria-label={t("chat.repoPicker.branchAria", { branch: current ?? "…" })}>
           <span className={s.label}>{current ?? "…"}</span>
         </Button>
       </MenuTrigger>
       <MenuPopover>
         <MenuList style={{ maxHeight: "300px", overflowY: "auto" }}>
-          {branches.loading && branches.data === null && <Spinner size="tiny" label="Reading the branches…" />}
+          {branches.loading && branches.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
           {branches.error && <Text size={200}>{branches.error}</Text>}
           {(branches.data?.branches ?? []).map((b) => (
-            <MenuItemRadio key={b.name} name="branch" value={b.name} secondaryContent={b.isDefault ? "default" : undefined}>
+            <MenuItemRadio key={b.name} name="branch" value={b.name} secondaryContent={b.isDefault ? t("chat.repoPicker.default") : undefined}>
               {b.name}
             </MenuItemRadio>
           ))}

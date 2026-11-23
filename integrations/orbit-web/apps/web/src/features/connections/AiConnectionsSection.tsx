@@ -53,6 +53,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { flowActive } from "../../hooks/useLoginFlow";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { useAppEvent, useAppStream } from "../../services/events/AppEvents";
 
@@ -78,38 +79,55 @@ const useStyles = makeStyles({
   models: { display: "flex", flexDirection: "column", gap: "4px", listStyleType: "none", margin: 0, paddingLeft: 0 },
 });
 
-const METHOD_TEXT: Record<AuthMethod, string> = { subscription: "Subscription sign-in", api_key: "API key", cloud: "Cloud provider" };
+const METHOD_KEYS: Record<AuthMethod, MessageKey> = {
+  subscription: "settings.connections.method.subscription",
+  api_key: "settings.connections.method.apiKey",
+  cloud: "settings.connections.method.cloud",
+};
 
-const SUPPORT_TEXT: Record<MethodSupportState, string> = { supported: "Available", not_verified: "Not verified", not_permitted: "Not permitted", blocked: "Blocked" };
+const SUPPORT_KEYS: Record<MethodSupportState, MessageKey> = {
+  supported: "settings.connections.support.supported",
+  not_verified: "settings.connections.support.notVerified",
+  not_permitted: "settings.connections.support.notPermitted",
+  blocked: "settings.connections.support.blocked",
+};
 
 const AUTH_TONE: Record<AuthState, "success" | "subtle" | "warning" | "danger"> = { connected: "success", disconnected: "subtle", auth_required: "warning", error: "danger" };
 
-const CAPABILITY_TEXT: Record<keyof RuntimeCapabilities, string> = {
-  start: "Start a run",
-  stream: "Stream its output",
-  cancel: "Cancel a run",
-  resume: "Resume a run",
-  usage: "Report usage",
-  webSearch: "Web search",
-  toolPlaneSplit: "Run without local tools (employees)",
-  pluginObservation: "Say which plugins loaded",
+const CAPABILITY_KEYS: Record<keyof RuntimeCapabilities, MessageKey> = {
+  start: "settings.connections.cap.start",
+  stream: "settings.connections.cap.stream",
+  cancel: "settings.connections.cap.cancel",
+  resume: "settings.connections.cap.resume",
+  usage: "settings.connections.cap.usage",
+  webSearch: "settings.connections.cap.webSearch",
+  toolPlaneSplit: "settings.connections.cap.toolPlaneSplit",
+  pluginObservation: "settings.connections.cap.pluginObservation",
 };
 
-const CAP_WORD: Record<Capability, string> = { yes: "Yes", no: "No", unknown: "Unknown" };
+const CAP_WORD_KEYS: Record<Capability, MessageKey> = {
+  yes: "settings.connections.capWord.yes",
+  no: "settings.connections.capWord.no",
+  unknown: "settings.connections.capWord.unknown",
+};
 
-const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "never");
+const useWhen = () => {
+  const { t } = useI18n();
+  return (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : t("settings.connections.never"));
+};
 
 // What each of the four things a person may confuse is, in one line each.
 function Helper() {
+  const { t } = useI18n();
   const s = useStyles();
   const items: [string, string][] = [
-    ["Signing in to Orbit", "Your username and password (Settings → Account). It never signs in to an AI provider."],
-    ["Connecting a provider", "A connection below: the provider's CLI signed in by its own sign-in (from its card here, or a terminal of the server), or your API key. Its login stays in the connection's own folder on the server."],
-    ["Enabling a plugin", "Whether Claude Code loads the Orbit plugin, for chats or for employees, for exactly the version you approve."],
-    ["Granting connectors", "Which claude.ai connectors Claude may use in chats and research (Settings → Claude connectors)."],
+    [t("settings.connections.helper.orbitSignInTitle"), t("settings.connections.helper.orbitSignInText")],
+    [t("settings.connections.helper.providerTitle"), t("settings.connections.helper.providerText")],
+    [t("settings.connections.helper.pluginTitle"), t("settings.connections.helper.pluginText")],
+    [t("settings.connections.helper.connectorsTitle"), t("settings.connections.helper.connectorsText")],
   ];
   return (
-    <div className={s.helper} aria-label="What is what">
+    <div className={s.helper} aria-label={t("settings.connections.helper.aria")}>
       {items.map(([title, text]) => (
         <div key={title} className={s.helperItem}>
           <Text weight="semibold" size={200}>
@@ -125,37 +143,42 @@ function Helper() {
 }
 
 function Installation({ install }: { install: RuntimeInstallation | undefined }) {
+  const { t } = useI18n();
+  const when = useWhen();
   const s = useStyles();
-  if (install === undefined) return <Text className={s.muted}>Not checked on this server yet.</Text>;
+  if (install === undefined) return <Text className={s.muted}>{t("settings.connections.install.notCheckedYet")}</Text>;
   if (install.state === "installed")
     return (
       <Text size={200}>
         <Badge appearance="tint" color="success">
-          Installed
+          {t("settings.connections.install.installed")}
         </Badge>{" "}
-        version {install.version ?? "unknown"} · checked {when(install.checkedAt)}
+        {t("settings.connections.install.versionChecked", { version: install.version ?? t("settings.connections.unknown"), when: when(install.checkedAt) })}
       </Text>
     );
   return (
     <Text size={200}>
       <Badge appearance="tint" color={install.state === "not_installed" ? "subtle" : "danger"}>
-        {install.state === "not_installed" ? "Not installed" : "Could not be checked"}
+        {install.state === "not_installed" ? t("settings.connections.install.notInstalled") : t("settings.connections.install.couldNotBeChecked")}
       </Badge>{" "}
-      {install.detail ?? "No reason given."} · checked {when(install.checkedAt)}
+      {t("settings.connections.install.detailChecked", { detail: install.detail ?? t("settings.connections.install.noReasonGiven"), when: when(install.checkedAt) })}
     </Text>
   );
 }
 
 function MethodRow({ m }: { m: MethodSupport }) {
+  const { t } = useI18n();
   const s = useStyles();
+  const methodText = t(METHOD_KEYS[m.method]);
+  const supportText = t(SUPPORT_KEYS[m.state]);
   return (
-    <li className={mergeClasses(s.method, m.state !== "supported" && s.methodOff)} aria-label={`${METHOD_TEXT[m.method]}: ${SUPPORT_TEXT[m.state]}`}>
+    <li className={mergeClasses(s.method, m.state !== "supported" && s.methodOff)} aria-label={t("settings.connections.method.aria", { method: methodText, support: supportText })}>
       <div className={s.row}>
         <Text weight="semibold" size={200}>
-          {METHOD_TEXT[m.method]}
+          {methodText}
         </Text>
         <Badge appearance="outline" color={m.state === "supported" ? "success" : m.state === "not_verified" ? "warning" : "danger"}>
-          {SUPPORT_TEXT[m.state]}
+          {supportText}
         </Badge>
       </div>
       <Text size={200} className={s.muted}>
@@ -164,7 +187,7 @@ function MethodRow({ m }: { m: MethodSupport }) {
           <>
             {" "}
             <Link href={m.source} target="_blank" rel="noopener noreferrer">
-              Source
+              {t("settings.connections.source")}
             </Link>
           </>
         )}
@@ -177,6 +200,7 @@ function MethodRow({ m }: { m: MethodSupport }) {
 // the browser that started it is shown the link it printed -- with Codex's one-time code to enter there -- and, for
 // Claude Code, sends back the code its page shows. Connected only once the CLI's own status names who it is.
 function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeConnection; autoStart: boolean; onStarted: () => void; onChanged: () => void; onClose: (() => void) | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const path = `/api/connections/${encodeURIComponent(c.id)}/sign-in`;
   const [view, setView] = useState<ConnectionSignIn | null>(null);
@@ -246,73 +270,73 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
   const label = RUNTIME_LABELS[c.runtime];
   const ended = flow !== null && !active && flow.state !== "idle";
   return (
-    <section className={s.form} aria-label={`Sign in ${c.label}`}>
+    <section className={s.form} aria-label={t("settings.connections.signIn.aria", { label: c.label })}>
       {view !== null && !view.mine && active ? (
         <>
-          <Text size={200}>{view.startedBy ?? "Somebody"} is signing this connection in right now, from another browser. It turns Connected here when they finish.</Text>
+          <Text size={200}>{t("settings.connections.signIn.otherBrowser", { who: view.startedBy ?? t("settings.connections.signIn.somebody") })}</Text>
           <div className={s.actions}>
             <Button size="small" disabled={busy} onClick={() => void cancel()}>
-              Cancel that sign-in
+              {t("settings.connections.signIn.cancelOther")}
             </Button>
           </div>
         </>
       ) : active && flow !== null ? (
         <>
-          {flow.state === "starting" && <Spinner size="tiny" label={`Starting ${label}'s own sign-in on the server…`} />}
+          {flow.state === "starting" && <Spinner size="tiny" label={t("settings.connections.signIn.starting", { label })} />}
           {flow.state === "awaiting_user" && flow.url && (
             <>
               <Text size={200} weight="semibold">
-                1. Open the sign-in page and sign in with the account this connection is for
+                {t("settings.connections.signIn.step1")}
               </Text>
               <div className={s.command}>
-                <Link href={flow.url} target="_blank" rel="noopener noreferrer" className={s.code} aria-label="Sign-in link">
+                <Link href={flow.url} target="_blank" rel="noopener noreferrer" className={s.code} aria-label={t("settings.connections.signIn.linkAria")}>
                   {flow.url}
                 </Link>
                 <Button size="small" appearance="primary" icon={<Open16Regular />} as="a" href={flow.url} target="_blank" rel="noopener noreferrer">
-                  Open
+                  {t("settings.connections.open")}
                 </Button>
                 <Button size="small" icon={<Copy16Regular />} onClick={() => void copy("url", flow.url as string)}>
-                  {copied === "url" ? "Copied" : "Copy"}
+                  {copied === "url" ? t("settings.connections.copied") : t("settings.connections.copy")}
                 </Button>
               </div>
               {flow.code && (
                 <>
                   <Text size={200} weight="semibold">
-                    2. Enter this one-time code there
+                    {t("settings.connections.signIn.step2Code")}
                   </Text>
                   <div className={s.command}>
-                    <code className={s.code} aria-label="One-time code">
+                    <code className={s.code} aria-label={t("settings.connections.signIn.oneTimeCodeAria")}>
                       {flow.code}
                     </code>
                     <Button size="small" icon={<Copy16Regular />} onClick={() => void copy("code", flow.code as string)}>
-                      {copied === "code" ? "Copied" : "Copy"}
+                      {copied === "code" ? t("settings.connections.copied") : t("settings.connections.copy")}
                     </Button>
                   </div>
                   <Text size={200} className={s.muted}>
-                    This card turns Connected by itself once you finish there.
+                    {t("settings.connections.signIn.autoConnectNote")}
                   </Text>
                 </>
               )}
               {flow.needsCode && (
                 <form
-                  aria-label="Send the sign-in code"
+                  aria-label={t("settings.connections.signIn.sendCodeAria")}
                   className={s.actions}
                   onSubmit={(e) => {
                     e.preventDefault();
                     void submit();
                   }}
                 >
-                  <Field label="2. Paste the code the sign-in page shows" style={{ flexGrow: 1, minWidth: 0 }}>
+                  <Field label={t("settings.connections.signIn.step2Paste")} style={{ flexGrow: 1, minWidth: 0 }}>
                     <Input value={code} autoComplete="off" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
                   </Field>
                   <Button type="submit" appearance="primary" disabled={busy || code.trim().length < 4} style={{ alignSelf: "flex-end" }}>
-                    Send code
+                    {t("settings.connections.signIn.sendCode")}
                   </Button>
                 </form>
               )}
             </>
           )}
-          {flow.state === "verifying" && <Spinner size="tiny" label={flow.message ?? `Checking the sign-in with ${label}…`} />}
+          {flow.state === "verifying" && <Spinner size="tiny" label={flow.message ?? t("settings.connections.signIn.verifyingDefault", { label })} />}
           {flow.message && flow.state === "awaiting_user" && (
             <Text size={200} className={s.muted}>
               {flow.message}
@@ -320,7 +344,7 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
           )}
           <div className={s.actions}>
             <Button size="small" disabled={busy} onClick={() => void cancel()}>
-              Cancel
+              {t("settings.connections.cancel")}
             </Button>
           </div>
         </>
@@ -328,21 +352,23 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
         <>
           {ended && flow !== null && (
             <MessageBar intent={flow.state === "connected" ? "success" : "warning"}>
-              <MessageBarBody>{flow.message ?? (flow.state === "cancelled" ? "Sign-in cancelled." : "The sign-in ended.")}</MessageBarBody>
+              <MessageBarBody>{flow.message ?? (flow.state === "cancelled" ? t("settings.connections.signIn.cancelled") : t("settings.connections.signIn.ended"))}</MessageBarBody>
             </MessageBar>
           )}
           <Text size={200}>
             {c.auth === "connected"
-              ? `Sign in again with the same account (${c.identity ?? "the one it has"}).`
-              : `Sign in with your ${c.runtime === "codex" ? "ChatGPT" : "Claude"} account: you get a link to open${c.runtime === "codex" ? " and a code to enter there" : ", then paste back the code it shows"}.`}
+              ? t("settings.connections.signIn.againPrompt", { identity: c.identity ?? t("settings.connections.signIn.theOneItHas") })
+              : c.runtime === "codex"
+                ? t("settings.connections.signIn.newPromptCodex")
+                : t("settings.connections.signIn.newPromptClaude")}
           </Text>
           <div className={s.actions}>
             <Button className={s.action} appearance="primary" icon={<Key16Regular />} disabled={busy} onClick={() => void start()}>
-              {ended || c.auth === "connected" ? "Sign in again" : "Sign in"}
+              {ended || c.auth === "connected" ? t("settings.connections.signIn.againButton") : t("settings.connections.signIn.button")}
             </Button>
             {onClose && (
               <Button className={s.action} onClick={onClose}>
-                Close
+                {t("settings.connections.close")}
               </Button>
             )}
           </div>
@@ -359,6 +385,7 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
 
 // The one command a person runs in a terminal of the server, to copy.
 function TerminalCommand({ command, secondary }: { command: string; secondary: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -372,16 +399,14 @@ function TerminalCommand({ command, secondary }: { command: string; secondary: b
   return (
     <div className={s.form}>
       <Text size={200}>
-        {secondary
-          ? "Run this in a terminal of the server and follow what it says, then press Re-check."
-          : "A subscription is signed in by the provider's own CLI, in a terminal of the server: run this command there and follow what it says. The sign-in URL and code never pass through Orbit. This card turns Connected once the CLI's own status names who it is signed in as — then press Re-check."}
+        {secondary ? t("settings.connections.terminal.secondary") : t("settings.connections.terminal.primary")}
       </Text>
       <div className={s.command}>
-        <code className={s.code} aria-label="Terminal command">
+        <code className={s.code} aria-label={t("settings.connections.terminal.aria")}>
           {command}
         </code>
         <Button size="small" icon={<Copy16Regular />} onClick={() => void copy()}>
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("settings.connections.copied") : t("settings.connections.copy")}
         </Button>
       </div>
     </div>
@@ -389,17 +414,18 @@ function TerminalCommand({ command, secondary }: { command: string; secondary: b
 }
 
 function Capabilities({ caps }: { caps: RuntimeCapabilities }) {
+  const { t } = useI18n();
   const s = useStyles();
   return (
-    <dl className={s.caps} aria-label="Runtime capabilities">
-      {(Object.keys(CAPABILITY_TEXT) as (keyof RuntimeCapabilities)[]).map((k) => (
+    <dl className={s.caps} aria-label={t("settings.connections.caps.aria")}>
+      {(Object.keys(CAPABILITY_KEYS) as (keyof RuntimeCapabilities)[]).map((k) => (
         <div key={k} className={s.cap}>
           <dt>
-            <Text size={200}>{CAPABILITY_TEXT[k]}</Text>
+            <Text size={200}>{t(CAPABILITY_KEYS[k])}</Text>
           </dt>
           <dd style={{ margin: 0 }}>
             <Text size={200} weight="semibold">
-              {CAP_WORD[caps[k]]}
+              {t(CAP_WORD_KEYS[caps[k]])}
             </Text>
           </dd>
         </div>
@@ -410,20 +436,26 @@ function Capabilities({ caps }: { caps: RuntimeCapabilities }) {
 
 // Why a connection has no model list: a CLI that lists none (Antigravity), one not connected yet, or a connected one whose
 // CLI did not answer the last check.
-function noCatalogText(c: RuntimeConnection): string {
-  if (c.runtime === "agy") return `${RUNTIME_LABELS[c.runtime]} has no command that lists its models: none is read.`;
-  if (c.auth !== "connected") return "Its models are read from its CLI once it is connected.";
-  return "Its CLI did not say which models this connection may use: Re-check.";
+function useNoCatalogText() {
+  const { t } = useI18n();
+  return (c: RuntimeConnection): string => {
+    if (c.runtime === "agy") return t("settings.connections.catalog.agy", { label: RUNTIME_LABELS[c.runtime] });
+    if (c.auth !== "connected") return t("settings.connections.catalog.notConnected");
+    return t("settings.connections.catalog.empty");
+  };
 }
 
 function Catalog({ c }: { c: RuntimeConnection }) {
+  const { t } = useI18n();
+  const when = useWhen();
+  const noCatalogText = useNoCatalogText();
   const s = useStyles();
   const cat = c.catalog;
   const source =
     cat.source === "account"
-      ? `Models from your account, read ${when(cat.checkedAt)}.`
+      ? t("settings.connections.catalog.account", { when: when(cat.checkedAt) })
       : cat.source === "fallback"
-        ? "A fallback list, not read from your account: chats may use it, employees never do."
+        ? t("settings.connections.catalog.fallback")
         : noCatalogText(c);
   return (
     <div>
@@ -431,11 +463,11 @@ function Catalog({ c }: { c: RuntimeConnection }) {
         {source}
       </Text>
       {cat.models.length > 0 && (
-        <ul className={s.models} aria-label={`Models of ${c.label}`}>
+        <ul className={s.models} aria-label={t("settings.connections.catalog.modelsAria", { label: c.label })}>
           {cat.models.map((m) => (
             <li key={m.id}>
               <Text size={200}>
-                <strong>{m.label}</strong> ({m.id}){cat.recommended === m.id ? " · recommended" : ""} — {m.efforts.length === 0 ? "no effort levels" : `effort ${m.efforts.map(effortLabel).join(", ")}`}
+                <strong>{m.label}</strong> ({m.id}){cat.recommended === m.id ? t("settings.connections.catalog.recommended") : ""} — {m.efforts.length === 0 ? t("settings.connections.catalog.noEfforts") : t("settings.connections.catalog.efforts", { efforts: m.efforts.map(effortLabel).join(", ") })}
               </Text>
             </li>
           ))}
@@ -448,6 +480,7 @@ function Catalog({ c }: { c: RuntimeConnection }) {
 // The Orbit plugin on a Claude Code connection: its version and digest, and one switch per use. A grant is for exactly
 // the digest shown; one made for an earlier version needs confirming again.
 function OrbitPlugin({ c, onChanged }: { c: RuntimeConnection; onChanged: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const p = c.plugins;
   const [error, setError] = useState<string | null>(null);
@@ -466,20 +499,20 @@ function OrbitPlugin({ c, onChanged }: { c: RuntimeConnection; onChanged: () => 
       setBusy(false);
     }
   };
-  const label: Record<PluginUseCase, string> = { chat: "Use the Orbit plugin in chats", employee: "Use the Orbit plugin for employees" };
+  const label: Record<PluginUseCase, string> = { chat: t("settings.connections.plugin.useChat"), employee: t("settings.connections.plugin.useEmployee") };
   return (
-    <section className={s.form} aria-label="Plugins → Orbit">
+    <section className={s.form} aria-label={t("settings.connections.plugin.title")}>
       <Text weight="semibold" size={200}>
-        Plugins → Orbit
+        {t("settings.connections.plugin.title")}
       </Text>
       {!p.installed || p.digest === null ? (
         <Text size={200} className={s.muted}>
-          The Orbit plugin is not installed in this installation: nothing to enable.
+          {t("settings.connections.plugin.notInstalled")}
         </Text>
       ) : (
         <>
           <Text size={200} className={s.muted}>
-            Version {p.version ?? "unknown"} · digest <span title={p.digest}>{p.digest.slice(0, 12)}</span>. Off until you switch it on; its hooks never run for an employee.
+            {t("settings.connections.plugin.versionPrefix", { version: p.version ?? t("settings.connections.unknown") })} <span title={p.digest}>{p.digest.slice(0, 12)}</span>{t("settings.connections.plugin.versionSuffix")}
           </Text>
           {(["chat", "employee"] as const).map((u) => {
             const g = p.useCases[u];
@@ -488,7 +521,7 @@ function OrbitPlugin({ c, onChanged }: { c: RuntimeConnection; onChanged: () => 
                 <Switch label={label[u]} checked={g.approved && !g.needsConfirmation} disabled={busy} onChange={(_, d) => void grant(u, d.checked)} />
                 {g.needsConfirmation && (
                   <Badge appearance="tint" color="warning">
-                    Needs your confirmation
+                    {t("settings.connections.plugin.needsConfirmation")}
                   </Badge>
                 )}
               </div>
@@ -506,6 +539,7 @@ function OrbitPlugin({ c, onChanged }: { c: RuntimeConnection; onChanged: () => 
 }
 
 function Confirm({ title, text, action, onConfirm, onClose }: { title: string; text: string; action: string; onConfirm: () => void; onClose: () => void }) {
+  const { t } = useI18n();
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
       <DialogSurface className="orbit-touch">
@@ -513,7 +547,7 @@ function Confirm({ title, text, action, onConfirm, onClose }: { title: string; t
           <DialogTitle>{title}</DialogTitle>
           <DialogContent>{text}</DialogContent>
           <DialogActions>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t("settings.connections.cancel")}</Button>
             <Button appearance="primary" onClick={onConfirm}>
               {action}
             </Button>
@@ -526,14 +560,17 @@ function Confirm({ title, text, action, onConfirm, onClose }: { title: string; t
 
 // An API key, typed once: sent to the server's credential store and never shown back, here or anywhere.
 function ApiKeyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useI18n();
   return (
-    <Field label="API key" required hint="Sent once to this server's credential store. It is never shown back.">
+    <Field label={t("settings.connections.apiKey.label")} required hint={t("settings.connections.apiKey.hint")}>
       <Input type="password" value={value} autoComplete="off" spellCheck={false} onChange={(_, d) => onChange(d.value)} />
     </Field>
   );
 }
 
 function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: RuntimeConnection; autoSignIn: boolean; onAutoSignIn: () => void; onChanged: () => void }) {
+  const { t } = useI18n();
+  const when = useWhen();
   const s = useStyles();
   const [error, setError] = useState<{ text: string; stale: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -550,7 +587,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       await work();
       onChanged();
     } catch (err) {
-      setError({ text: isStale(err) ? "This connection changed since the page read it: nothing was changed." : errorText(err), stale: isStale(err) });
+      setError({ text: isStale(err) ? t("settings.connections.stale") : errorText(err), stale: isStale(err) });
     } finally {
       setBusy(false);
     }
@@ -562,19 +599,20 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       await send("PATCH", path, { apiKey }, ifMatch(c.version));
       setReconnecting(false);
     });
-  const employees = c.employees === 1 ? "1 employee runs" : `${c.employees} employees run`;
+  const employees = c.employees === 1 ? t("settings.connections.employees.one") : t("settings.connections.employees.many", { count: c.employees });
+  const identityText = c.identity ? t("settings.connections.signedInAs", { identity: c.identity }) : t("settings.connections.noIdentity");
   return (
-    <li className={s.conn} aria-label={`Connection ${c.label}`}>
+    <li className={s.conn} aria-label={t("settings.connections.card.aria", { label: c.label })}>
       <div className={s.head}>
         <div className={s.row}>
           <Text weight="semibold">{c.label}</Text>
           {c.isDefault && (
             <Badge appearance="filled" color="brand" icon={<Star16Regular />}>
-              Default
+              {t("settings.connections.default")}
             </Badge>
           )}
           <Text size={200} className={s.muted}>
-            {METHOD_TEXT[c.method]}
+            {t(METHOD_KEYS[c.method])}
           </Text>
         </div>
         <Badge appearance="tint" color={AUTH_TONE[c.auth]}>
@@ -582,7 +620,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
         </Badge>
       </div>
       <Text size={200}>
-        {c.identity ? `Signed in as ${c.identity}` : "No identity named"} · checked {when(c.checkedAt)} · {employees} on it
+        {t("settings.connections.card.meta", { identityText, when: when(c.checkedAt), employees })}
       </Text>
       {c.reason && (
         <Text size={200} className={s.muted}>
@@ -598,7 +636,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       {c.method === "subscription" && c.terminalCommand && (c.auth !== "connected" || reconnecting) && c.signInHere && (
         <>
           <Link as="button" className={s.muted} onClick={() => setTerminal((v) => !v)} aria-expanded={terminal}>
-            {terminal ? "Hide the terminal command" : "Use the server's terminal instead"}
+            {terminal ? t("settings.connections.terminal.hide") : t("settings.connections.terminal.show")}
           </Link>
           {terminal && <TerminalCommand command={c.terminalCommand} secondary />}
         </>
@@ -606,7 +644,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       {c.method === "api_key" && reconnecting && (
         <form
           className={s.form}
-          aria-label={`Replace the API key of ${c.label}`}
+          aria-label={t("settings.connections.replaceKey.aria", { label: c.label })}
           onSubmit={(e) => {
             e.preventDefault();
             void replaceKey();
@@ -615,36 +653,36 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
           <ApiKeyField value={key} onChange={setKey} />
           <div className={s.actions}>
             <Button type="submit" appearance="primary" disabled={busy || key.trim().length === 0}>
-              Save the new key
+              {t("settings.connections.replaceKey.save")}
             </Button>
-            <Button onClick={() => setReconnecting(false)}>Cancel</Button>
+            <Button onClick={() => setReconnecting(false)}>{t("settings.connections.cancel")}</Button>
           </div>
         </form>
       )}
       {c.runtime === "claude" && <OrbitPlugin c={c} onChanged={onChanged} />}
       <div className={s.actions}>
-        <Button className={s.action} size="small" icon={<ArrowSync16Regular />} disabled={busy} onClick={() => void act(() => send("POST", `${path}/check`))} title="Asks the CLI again for its status, its models and its capabilities.">
-          Re-check
+        <Button className={s.action} size="small" icon={<ArrowSync16Regular />} disabled={busy} onClick={() => void act(() => send("POST", `${path}/check`))} title={t("settings.connections.recheck.title")}>
+          {t("settings.connections.recheck")}
         </Button>
         {c.method !== "cloud" && (
-          <Button className={s.action} size="small" icon={<Key16Regular />} disabled={busy} onClick={() => setReconnecting(true)} title={c.method === "subscription" ? (c.signInHere ? "Runs the CLI's own sign-in again, here: a link to open, and the code to send back." : "Shows the terminal command again: the same sign-in, run once more.") : "Replaces the API key."}>
-            Reconnect
+          <Button className={s.action} size="small" icon={<Key16Regular />} disabled={busy} onClick={() => setReconnecting(true)} title={c.method === "subscription" ? (c.signInHere ? t("settings.connections.reconnect.titleSignInHere") : t("settings.connections.reconnect.titleTerminal")) : t("settings.connections.reconnect.titleApiKey")}>
+            {t("settings.connections.reconnect")}
           </Button>
         )}
         {!c.isDefault && (
-          <Button className={s.action} size="small" disabled={busy} onClick={() => void act(() => send("PATCH", path, { isDefault: true }, ifMatch(c.version)))} title={`Makes it the connection employees and chats use for ${RUNTIME_LABELS[c.runtime]} unless they name another.`}>
-            Make default
+          <Button className={s.action} size="small" disabled={busy} onClick={() => void act(() => send("PATCH", path, { isDefault: true }, ifMatch(c.version)))} title={t("settings.connections.makeDefault.title", { label: RUNTIME_LABELS[c.runtime] })}>
+            {t("settings.connections.makeDefault")}
           </Button>
         )}
-        <Button className={s.action} size="small" icon={<PlugDisconnected16Regular />} disabled={busy || c.auth === "disconnected"} onClick={() => setConfirm("disconnect")} title="Signs the CLI out of this connection and removes its login.">
-          Disconnect
+        <Button className={s.action} size="small" icon={<PlugDisconnected16Regular />} disabled={busy || c.auth === "disconnected"} onClick={() => setConfirm("disconnect")} title={t("settings.connections.disconnect.title")}>
+          {t("settings.connections.disconnect")}
         </Button>
-        <Button className={s.action} size="small" appearance="subtle" icon={<Delete16Regular />} disabled={busy} onClick={() => setConfirm("delete")} title="Removes the connection itself.">
-          Delete
+        <Button className={s.action} size="small" appearance="subtle" icon={<Delete16Regular />} disabled={busy} onClick={() => setConfirm("delete")} title={t("settings.connections.delete.title")}>
+          {t("settings.connections.delete")}
         </Button>
       </div>
       <Text size={200} className={s.muted}>
-        Re-check asks the CLI again. Reconnect runs the same sign-in once more. Disconnect signs the CLI out of this connection and removes its login: {c.employees > 0 ? `the ${c.employees} employee(s) on it take no new work, and their running work stops and is reconciled` : "nothing runs on it now"}. Delete removes the connection itself.
+        {t("settings.connections.card.legend", { impact: c.employees > 0 ? t("settings.connections.card.impactActive", { count: c.employees }) : t("settings.connections.card.impactIdle") })}
       </Text>
       {error && (
         <MessageBar intent={error.stale ? "warning" : "error"}>
@@ -652,7 +690,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
           {error.stale && (
             <MessageBarActions>
               <Button size="small" onClick={onChanged}>
-                Load the latest
+                {t("settings.connections.loadLatest")}
               </Button>
             </MessageBarActions>
           )}
@@ -660,9 +698,9 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       )}
       {confirm === "disconnect" && (
         <Confirm
-          title={`Disconnect ${c.label}?`}
-          text={`The CLI's own sign-out runs for this connection, and its login is removed from the server. ${c.employees > 0 ? `${c.employees} employee(s) on it take no new work; their running work stops and is reconciled. ` : ""}Nothing switches to another provider by itself.`}
-          action="Disconnect"
+          title={t("settings.connections.confirm.disconnectTitle", { label: c.label })}
+          text={t("settings.connections.confirm.disconnectText", { impact: c.employees > 0 ? t("settings.connections.confirm.disconnectImpact", { count: c.employees }) : "" })}
+          action={t("settings.connections.disconnect")}
           onClose={() => setConfirm(null)}
           onConfirm={() => {
             setConfirm(null);
@@ -672,9 +710,9 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       )}
       {confirm === "delete" && (
         <Confirm
-          title={`Delete ${c.label}?`}
-          text="The connection itself is removed, with its folder on the server. Employees that run on it must be moved to another connection first."
-          action="Delete"
+          title={t("settings.connections.confirm.deleteTitle", { label: c.label })}
+          text={t("settings.connections.confirm.deleteText")}
+          action={t("settings.connections.delete")}
           onClose={() => setConfirm(null)}
           onConfirm={() => {
             setConfirm(null);
@@ -687,12 +725,13 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
 }
 
 const PROVIDERS = [
-  { value: "bedrock", label: "Amazon Bedrock" },
-  { value: "vertex", label: "Google Vertex AI" },
-  { value: "foundry", label: "Microsoft Foundry" },
+  { value: "bedrock", labelKey: "settings.connections.provider.bedrock" },
+  { value: "vertex", labelKey: "settings.connections.provider.vertex" },
+  { value: "foundry", labelKey: "settings.connections.provider.foundry" },
 ] as const;
 
 function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: RuntimeKind; methods: MethodSupport[]; onDone: (made: RuntimeConnection) => void; onCancel: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const offered = methods.filter((m) => m.state === "supported");
   const [method, setMethod] = useState<AuthMethod | null>(offered[0]?.method ?? null);
@@ -727,44 +766,44 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
   return (
     <form
       className={s.form}
-      aria-label={`Add a ${RUNTIME_LABELS[runtime]} connection`}
+      aria-label={t("settings.connections.add.aria", { label: RUNTIME_LABELS[runtime] })}
       onSubmit={(e) => {
         e.preventDefault();
         void create();
       }}
     >
-      <Field label="How it signs in">
+      <Field label={t("settings.connections.add.how")}>
         <RadioGroup value={method ?? ""} onChange={(_, d) => setMethod(d.value as AuthMethod)}>
           {methods.map((m) => (
-            <Radio key={m.method} value={m.method} disabled={m.state !== "supported"} label={`${METHOD_TEXT[m.method]}${m.state === "supported" ? "" : ` — ${SUPPORT_TEXT[m.state]}`}`} />
+            <Radio key={m.method} value={m.method} disabled={m.state !== "supported"} label={m.state === "supported" ? t(METHOD_KEYS[m.method]) : t("settings.connections.add.methodDisabled", { method: t(METHOD_KEYS[m.method]), support: t(SUPPORT_KEYS[m.state]) })} />
           ))}
         </RadioGroup>
       </Field>
-      {offered.length === 0 && <Text size={200}>No way of signing in is offered for {RUNTIME_LABELS[runtime]} here yet: each row above says why.</Text>}
-      <Field label="Label" hint="Optional: how you tell this connection from another of the same CLI.">
+      {offered.length === 0 && <Text size={200}>{t("settings.connections.add.noneOffered", { label: RUNTIME_LABELS[runtime] })}</Text>}
+      <Field label={t("settings.connections.add.label")} hint={t("settings.connections.add.labelHint")}>
         <Input value={label} maxLength={60} onChange={(_, d) => setLabel(d.value)} />
       </Field>
       {method === "api_key" && <ApiKeyField value={apiKey} onChange={setApiKey} />}
       {method === "cloud" && (
         <>
-          <Field label="Cloud provider">
+          <Field label={t("settings.connections.add.cloudProvider")}>
             <Select value={provider} onChange={(_, d) => setProvider(d.value as typeof provider)}>
               {PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>
-                  {p.label}
+                  {t(p.labelKey)}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field label="Region" hint="Optional.">
+          <Field label={t("settings.connections.add.region")} hint={t("settings.connections.add.optional")}>
             <Input value={region} onChange={(_, d) => setRegion(d.value)} />
           </Field>
-          <Field label="Project" hint="Optional.">
+          <Field label={t("settings.connections.add.project")} hint={t("settings.connections.add.optional")}>
             <Input value={project} onChange={(_, d) => setProject(d.value)} />
           </Field>
         </>
       )}
-      {method === "subscription" && <Text size={200}>Adding it starts its sign-in right away, on its card: a link to open{runtime === "codex" ? " and a one-time code to enter there" : ", then the code its page shows to paste back"}. A terminal command does the same from the server.</Text>}
+      {method === "subscription" && <Text size={200}>{runtime === "codex" ? t("settings.connections.add.subscriptionCodex") : t("settings.connections.add.subscriptionOther")}</Text>}
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
@@ -772,15 +811,16 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
       )}
       <div className={s.actions}>
         <Button type="submit" appearance="primary" disabled={busy || method === null || (method === "api_key" && apiKey.trim().length === 0)}>
-          Add connection
+          {t("settings.connections.add.submit")}
         </Button>
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t("settings.connections.cancel")}</Button>
       </div>
     </form>
   );
 }
 
 function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view: AiConnectionsView; onChanged: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [adding, setAdding] = useState(false);
   // The connection just added: its sign-in starts on its card once, by itself.
@@ -796,12 +836,12 @@ function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view:
           {RUNTIME_LABELS[runtime]}
         </Text>
         <Button size="small" icon={<Add16Regular />} disabled={!installed || adding} onClick={() => setAdding(true)}>
-          Add a connection
+          {t("settings.connections.add.button")}
         </Button>
       </div>
       <Installation install={install} />
       {methods.length > 0 && (
-        <ul className={s.list} aria-label={`Ways to sign in to ${RUNTIME_LABELS[runtime]}`}>
+        <ul className={s.list} aria-label={t("settings.connections.methods.aria", { label: RUNTIME_LABELS[runtime] })}>
           {methods.map((m) => (
             <MethodRow key={m.method} m={m} />
           ))}
@@ -821,10 +861,10 @@ function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view:
       )}
       {connections.length === 0 ? (
         <Text size={200} className={s.muted}>
-          {installed ? "No connection yet." : "No connection: the CLI is not installed on this server."}
+          {installed ? t("settings.connections.empty.installed") : t("settings.connections.empty.notInstalled")}
         </Text>
       ) : (
-        <ul className={s.list} aria-label={`${RUNTIME_LABELS[runtime]} connections`}>
+        <ul className={s.list} aria-label={t("settings.connections.list.aria", { label: RUNTIME_LABELS[runtime] })}>
           {connections.map((c) => (
             <ConnectionCard key={`${c.id}:${c.version}`} c={c} autoSignIn={justAdded === c.id} onAutoSignIn={() => setJustAdded(null)} onChanged={onChanged} />
           ))}
@@ -845,6 +885,8 @@ export function useConnections() {
 }
 
 export function AiConnectionsSection() {
+  const { t } = useI18n();
+  const when = useWhen();
   const s = useStyles();
   const view = useConnections();
   const reload = () => void view.reload();
@@ -857,12 +899,15 @@ export function AiConnectionsSection() {
             <MessageBarBody>{view.error}</MessageBarBody>
           </MessageBar>
         ) : (
-          <Spinner size="tiny" label="Asking the CLIs on this server…" />
+          <Spinner size="tiny" label={t("settings.connections.loading")} />
         )
       ) : (
         <>
           <Text size={200} className={s.muted}>
-            {view.data.canHire ? "At least one connection is connected with its models read from the CLI: you can hire employees." : "To hire employees, connect at least one CLI and let it read its models."} Data as of {when(view.data.asOf)}.
+            {t("settings.connections.summary.asOf", {
+              message: view.data.canHire ? t("settings.connections.summary.canHire") : t("settings.connections.summary.cannotHire"),
+              when: when(view.data.asOf),
+            })}
           </Text>
           {RUNTIME_KINDS.map((r) => (
             <RuntimeCard key={r} runtime={r} view={view.data as AiConnectionsView} onChanged={reload} />

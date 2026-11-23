@@ -7,6 +7,7 @@ import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchS
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
 import { ModelEffortPicker } from "../composer/RunPickers";
@@ -46,6 +47,7 @@ const useStyles = makeStyles({
 });
 
 export function NewResearchSession({ settings, onCreated }: { settings: Settings | null; onCreated: (session: ResearchSessionDetail) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const workspaces = useResource<ResearchWorkspaceSummary[]>(() => research.workspaces(), []);
@@ -82,41 +84,41 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
   return (
     <form
       className={s.form}
-      aria-label="New research session"
+      aria-label={t("research.newSession.aria")}
       onSubmit={(e) => {
         e.preventDefault();
         void start();
       }}
     >
       <div className={s.card}>
-        <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout={isMobile ? "vertical" : "horizontal"} aria-label="Research workspace">
-          <Radio value="new" label="Create a new research workspace" />
-          <Radio value="existing" label="Use an existing one" disabled={list.length === 0} />
+        <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout={isMobile ? "vertical" : "horizontal"} aria-label={t("research.newSession.workspaceAria")}>
+          <Radio value="new" label={t("research.newSession.createNew")} />
+          <Radio value="existing" label={t("research.newSession.useExisting")} disabled={list.length === 0} />
         </RadioGroup>
         {mode === "new" ? (
           <>
-            <Field className={s.field} label="Workspace name" required>
-              <Input className={s.control} value={name} onChange={(_, d) => setName(d.value)} placeholder="AI Governance Research" maxLength={RESEARCH_LIMITS.nameLength} autoFocus={!isMobile && !isCoarse} />
+            <Field className={s.field} label={t("research.newSession.workspaceName")} required>
+              <Input className={s.control} value={name} onChange={(_, d) => setName(d.value)} placeholder={t("research.newSession.workspaceNamePlaceholder")} maxLength={RESEARCH_LIMITS.nameLength} autoFocus={!isMobile && !isCoarse} />
             </Field>
-            <Field className={s.field} label="Description (optional)">
+            <Field className={s.field} label={t("research.newSession.descriptionOptional")}>
               <Input className={s.control} value={description} onChange={(_, d) => setDescription(d.value)} maxLength={RESEARCH_LIMITS.descriptionLength} />
             </Field>
           </>
         ) : workspaces.loading && workspaces.data === null ? (
           <Spinner size="tiny" />
         ) : (
-          <Field className={s.field} label="Workspace">
+          <Field className={s.field} label={t("research.newSession.workspaceLabel")}>
             <Dropdown
               className={s.control}
               value={list.find((w) => w.id === chosen)?.name ?? ""}
               selectedOptions={chosen ? [chosen] : []}
               onOptionSelect={(_, d) => setExisting(d.optionValue ?? null)}
-              aria-label="Research workspace"
+              aria-label={t("research.newSession.workspaceAria")}
             >
               {list.map((w) => (
                 <Option key={w.id} value={w.id} text={w.name}>
-                  {w.name} · {w.sourceCount} source{w.sourceCount === 1 ? "" : "s"}
-                  {w.access === "shared" ? ` · shared by ${w.owner}` : ""}
+                  {w.name} · {w.sourceCount} {t(w.sourceCount === 1 ? "research.newSession.sourceOne" : "research.newSession.sourceMany")}
+                  {w.access === "shared" ? t("research.newSession.sharedBy", { owner: w.owner ?? "" }) : ""}
                 </Option>
               ))}
             </Dropdown>
@@ -124,23 +126,23 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
         )}
         <div className={s.row}>
           <Text size={200} className={s.muted}>
-            Model
+            {t("research.newSession.model")}
           </Text>
           <ModelEffortPicker model={run.model} effort={run.effort} onModel={setModel} onEffort={setEffort} />
         </div>
-        <Field className={s.field} label="First question (optional)" hint="Asked at once when a selected source is ready. In a new workspace it waits for you: add sources, then ask it.">
-          <Textarea className={s.control} value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder="What do these sources say about…" />
+        <Field className={s.field} label={t("research.newSession.firstQuestion")} hint={t("research.newSession.firstQuestionHint")}>
+          <Textarea className={s.control} value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder={t("research.newSession.firstQuestionPlaceholder")} />
         </Field>
         <ApiErrorBar error={error} />
         <div className={s.footer}>
           <div className={s.privacy}>
             <ShieldCheckmark16Regular className={s.privacyIcon} aria-hidden />
             <Text size={200}>
-              Sources are stored on this Orbit server. When you ask, the passages retrieved from the sources you select are sent to Claude (Anthropic) to answer.
+              {t("research.newSession.privacy")}
             </Text>
           </div>
           <Button className={s.start} appearance="primary" type="submit" disabled={!ready || busy}>
-            {busy ? "Starting…" : "Start research"}
+            {busy ? t("research.newSession.starting") : t("research.newSession.start")}
           </Button>
         </div>
       </div>

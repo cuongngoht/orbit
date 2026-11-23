@@ -11,6 +11,7 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "rea
 import type { UploadImage } from "../../services/images";
 import { AttachmentStrip, filesOf, useImageAttachments } from "./ImageAttachments";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { SlashMenu, matching, optionId, slashQuery, useSlashCommands } from "./SlashMenu";
 
 const useStyles = makeStyles({
@@ -140,6 +141,7 @@ export interface ComposerProps {
 const rowsOf = (text: string, mobile: boolean): number => Math.min(mobile ? 8 : 10, Math.max(mobile ? 1 : 2, text.split("\n").length));
 
 export function Composer(p: ComposerProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const [text, setText] = useState("");
@@ -225,7 +227,7 @@ export function Composer(p: ComposerProps) {
             className={mergeClasses(s.input, touchSized && s.inputTouch, isMobile && s.inputMobile)}
             rows={rowsOf(text, isMobile)}
             placeholder={p.placeholder}
-            aria-label="Message"
+            aria-label={t("chat.composer.messageAria")}
             aria-autocomplete={p.commandsPath === undefined ? undefined : "list"}
             aria-controls={offering ? listId : undefined}
             aria-activedescendant={offering ? optionId(listId, current) : undefined}
@@ -254,13 +256,13 @@ export function Composer(p: ComposerProps) {
                 className={s.slashBtn}
                 appearance={open ? "primary" : "subtle"}
                 icon={<SlashForward16Regular />}
-                aria-label="Skills and commands"
+                aria-label={t("chat.composer.skillsCommandsAria")}
                 onClick={toggleSlash}
               />
             )}
             {images.enabled && (
               <>
-                <Tooltip content="Add images -- or paste a screenshot" relationship="label">
+                <Tooltip content={t("chat.composer.addImagesTooltip")} relationship="label">
                   <Button type="button" className={s.slashBtn} appearance="subtle" icon={<ImageAdd20Regular />} onClick={() => picker.current?.click()} />
                 </Tooltip>
                 <input
@@ -281,7 +283,7 @@ export function Composer(p: ComposerProps) {
             )}
             <div className={s.toolbarArea}>
               {(p.left || p.right) && (
-                <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll orbit-hscroll-fade")} role="toolbar" aria-label="How this chat runs">
+                <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll orbit-hscroll-fade")} role="toolbar" aria-label={t("chat.composer.toolbarAria")}>
                   <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.left}</div>
                   {!isMobile && <div className={s.grow} />}
                   <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.right}</div>
@@ -289,11 +291,11 @@ export function Composer(p: ComposerProps) {
               )}
             </div>
             {p.running ? (
-              <Tooltip content="Stop" relationship="label">
+              <Tooltip content={t("chat.composer.stop")} relationship="label">
                 <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
               </Tooltip>
             ) : (
-              <Tooltip content="Send" relationship="label">
+              <Tooltip content={t("chat.composer.send")} relationship="label">
                 <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
               </Tooltip>
             )}

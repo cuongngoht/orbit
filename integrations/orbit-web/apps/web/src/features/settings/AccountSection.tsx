@@ -8,6 +8,7 @@ import { checkUpdateAccountProfile, checkUpdateProfile, type AuthAccount, type A
 import { useState } from "react";
 import { TimeZoneSelect } from "../../components/TimeZoneSelect";
 import { useResource } from "../../hooks/useResource";
+import { useI18n } from "../../i18n";
 import { errorText, get, ifMatch, isStale, send } from "../../services/api";
 import { ChangePasswordForm } from "../auth/ChangePasswordForm";
 import type { SignOut } from "../auth/useSignOut";
@@ -31,6 +32,7 @@ const useStyles = makeStyles({
 const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "—");
 
 function Profile({ user, onSaved }: { user: AuthUser; onSaved: (u: AuthUser) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [fullName, setFullName] = useState(user.fullName);
   const [email, setEmail] = useState(user.email ?? "");
@@ -57,29 +59,29 @@ function Profile({ user, onSaved }: { user: AuthUser; onSaved: (u: AuthUser) => 
   return (
     <form
       className={s.block}
-      aria-label="Your profile"
+      aria-label={t("settings.account.profile.title")}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <Text weight="semibold">Your profile</Text>
+      <Text weight="semibold">{t("settings.account.profile.title")}</Text>
       <div className={s.grid}>
-        <Field label="Full name" required>
+        <Field label={t("settings.account.profile.fullName")} required>
           <Input value={fullName} autoComplete="name" onChange={(_, d) => setFullName(d.value)} />
         </Field>
         <Field
           label={
             <span className={s.labelRow}>
-              Email
+              {t("settings.account.profile.email")}
               {user.email !== null && !user.emailVerified && (
                 <Badge appearance="tint" color="warning" size="small">
-                  unverified
+                  {t("settings.account.profile.unverified")}
                 </Badge>
               )}
             </span>
           }
-          hint="Only a verified email takes part in sharing. Orbit cannot send mail yet, so a new one stays unverified."
+          hint={t("settings.account.profile.emailHint")}
         >
           <Input type="email" value={email} autoComplete="email" onChange={(_, d) => setEmail(d.value)} />
         </Field>
@@ -91,11 +93,11 @@ function Profile({ user, onSaved }: { user: AuthUser; onSaved: (u: AuthUser) => 
       )}
       {saved && !changed && (
         <Text size={200} className={s.hint}>
-          Saved.
+          {t("settings.account.profile.saved")}
         </Text>
       )}
       <Button className={s.button} type="submit" disabled={busy || !changed}>
-        {busy ? "Saving…" : "Save profile"}
+        {busy ? t("settings.account.profile.saving") : t("settings.account.profile.save")}
       </Button>
     </form>
   );
@@ -104,6 +106,7 @@ function Profile({ user, onSaved }: { user: AuthUser; onSaved: (u: AuthUser) => 
 const FIELDS = ["companyName", "displayName", "contactEmail", "timezone", "locale"] as const;
 
 function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: AuthAccount) => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [draft, setDraft] = useState({ companyName: account.companyName, displayName: account.displayName, contactEmail: account.contactEmail ?? "", timezone: account.timezone, locale: account.locale });
   const [busy, setBusy] = useState(false);
@@ -124,7 +127,7 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
       onSaved(await send<AuthAccount>("PATCH", "/api/account", checked.value, ifMatch(account.version)));
     } catch (err) {
       setStale(isStale(err));
-      setError(isStale(err) ? "The account changed since this page read it: nothing was saved." : errorText(err));
+      setError(isStale(err) ? t("settings.account.form.stale") : errorText(err));
     } finally {
       setBusy(false);
     }
@@ -144,30 +147,30 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
   return (
     <form
       className={s.block}
-      aria-label="Orbit account"
+      aria-label={t("settings.account.form.title")}
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <Text weight="semibold">Orbit account</Text>
+      <Text weight="semibold">{t("settings.account.form.title")}</Text>
       <Text size={200} className={s.hint}>
-        Every record of Orbit belongs to this account. Its time zone is the default of its schedules.
+        {t("settings.account.form.hint")}
       </Text>
       <div className={s.grid}>
-        <Field label="Company name">
+        <Field label={t("settings.account.form.companyName")}>
           <Input value={draft.companyName} autoComplete="organization" onChange={set("companyName")} />
         </Field>
-        <Field label="Display name" hint="How the account is named where its company name is not.">
+        <Field label={t("settings.account.form.displayName")} hint={t("settings.account.form.displayNameHint")}>
           <Input value={draft.displayName} onChange={set("displayName")} />
         </Field>
-        <Field label="Contact email" hint="Optional.">
+        <Field label={t("settings.account.form.contactEmail")} hint={t("settings.account.form.contactEmailHint")}>
           <Input type="email" value={draft.contactEmail} onChange={set("contactEmail")} />
         </Field>
-        <Field label="Time zone">
+        <Field label={t("settings.account.form.timezone")}>
           <TimeZoneSelect value={draft.timezone} onChange={(z) => setDraft((x) => ({ ...x, timezone: z }))} />
         </Field>
-        <Field label="Locale" hint="Like en or en-US.">
+        <Field label={t("settings.account.form.locale")} hint={t("settings.account.form.localeHint")}>
           <Input value={draft.locale} onChange={set("locale")} />
         </Field>
       </div>
@@ -177,20 +180,21 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
           {stale && (
             <MessageBarActions>
               <Button size="small" onClick={() => void loadLatest()}>
-                Load the latest
+                {t("settings.connections.loadLatest")}
               </Button>
             </MessageBarActions>
           )}
         </MessageBar>
       )}
       <Button className={s.button} type="submit" disabled={busy || !changed}>
-        {busy ? "Saving…" : "Save account"}
+        {busy ? t("settings.account.profile.saving") : t("settings.account.form.save")}
       </Button>
     </form>
   );
 }
 
 function Sessions({ signOut }: { signOut: SignOut }) {
+  const { t } = useI18n();
   const s = useStyles();
   const list = useResource<SessionView[]>(() => get("/api/auth/sessions"), []);
   const [error, setError] = useState<string | null>(null);
@@ -208,27 +212,27 @@ function Sessions({ signOut }: { signOut: SignOut }) {
     }
   };
   return (
-    <section className={s.block} aria-label="Sessions">
-      <Text weight="semibold">Sessions</Text>
+    <section className={s.block} aria-label={t("settings.account.sessions.title")}>
+      <Text weight="semibold">{t("settings.account.sessions.title")}</Text>
       {list.data === null ? (
         list.error ? (
           <Text className={s.hint}>{list.error}</Text>
         ) : (
-          <Spinner size="tiny" label="Reading your sessions…" />
+          <Spinner size="tiny" label={t("settings.account.sessions.loading")} />
         )
       ) : (
-        <ul className={s.sessions} aria-label="Signed-in sessions">
+        <ul className={s.sessions} aria-label={t("settings.account.sessions.listAria")}>
           {list.data.map((b) => (
             <li key={b.id} className={s.session}>
               <div className={s.sessionText}>
-                <Text className={s.ellipsis}>{b.current ? "This browser" : (b.userAgent ?? "A browser")}</Text>
+                <Text className={s.ellipsis}>{b.current ? t("settings.account.sessions.thisBrowser") : (b.userAgent ?? t("settings.account.sessions.aBrowser"))}</Text>
                 <Text size={200} className={s.hint}>
-                  Signed in {when(b.createdAt)} · last seen {when(b.lastSeenAt)} · ends {when(b.expiresAt)}
+                  {t("settings.account.sessions.meta", { created: when(b.createdAt), lastSeen: when(b.lastSeenAt), expires: when(b.expiresAt) })}
                 </Text>
               </div>
               {!b.current && (
-                <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} disabled={busy !== null} onClick={() => void revoke(b.id)} aria-label={`Sign out ${b.userAgent ?? "that browser"}`}>
-                  Sign out
+                <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} disabled={busy !== null} onClick={() => void revoke(b.id)} aria-label={t("settings.account.sessions.signOutAria", { browser: b.userAgent ?? t("settings.account.sessions.thatBrowser") })}>
+                  {t("settings.account.sessions.signOut")}
                 </Button>
               )}
             </li>
@@ -242,20 +246,21 @@ function Sessions({ signOut }: { signOut: SignOut }) {
       )}
       <div className={s.actions}>
         <Button className={s.button} appearance="secondary" icon={<SignOut20Regular />} disabled={signOut.busy} onClick={() => void signOut.signOut()}>
-          Sign out of this browser
+          {t("settings.account.sessions.signOutThis")}
         </Button>
         <Button className={s.button} appearance="subtle" disabled={signOut.busy} onClick={() => void signOut.signOutEverywhere()}>
-          Sign out everywhere
+          {t("settings.account.sessions.signOutEverywhere")}
         </Button>
       </div>
       <Text size={200} className={s.hint}>
-        Sign out everywhere ends every session of yours, this one included. It signs nothing out of an AI connection: a connected CLI stays connected.
+        {t("settings.account.sessions.hint")}
       </Text>
     </section>
   );
 }
 
 export function AccountSection({ auth, onAuth, signOut }: { auth: AuthStatus & { user: AuthUser }; onAuth: (s: AuthStatus) => void; signOut: SignOut }) {
+  const { t } = useI18n();
   const s = useStyles();
   const user = auth.user;
   const account = auth.account;
@@ -268,16 +273,16 @@ export function AccountSection({ auth, onAuth, signOut }: { auth: AuthStatus & {
             {user.fullName || user.username}
           </Text>
           <Text size={200} className={s.hint}>
-            @{user.username} · {user.role === "owner" ? "Owner" : user.role}
+            @{user.username} · {user.role === "owner" ? t("settings.account.ownerRole") : user.role}
             {account?.companyName ? ` · ${account.companyName}` : ""}
-            {user.lastLoginAt ? ` · last signed in ${when(user.lastLoginAt)}` : ""}
+            {user.lastLoginAt ? t("settings.account.lastSignedIn", { when: when(user.lastLoginAt) }) : ""}
           </Text>
         </div>
       </div>
       <Profile key={`${user.fullName}|${user.email ?? ""}`} user={user} onSaved={(u) => onAuth({ ...auth, user: u })} />
       {account && <AccountForm key={`${account.version}`} account={account} onSaved={(a) => onAuth({ ...auth, account: a })} />}
-      <section className={s.block} aria-label="Password">
-        <Text weight="semibold">Password</Text>
+      <section className={s.block} aria-label={t("settings.account.password")}>
+        <Text weight="semibold">{t("settings.account.password")}</Text>
         <ChangePasswordForm username={user.username} onChanged={onAuth} />
       </section>
       <Sessions signOut={signOut} />

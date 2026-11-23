@@ -8,6 +8,7 @@ import { RESEARCH_MEDIA_LABELS, type ResearchSourceContent } from "@orbit-web/co
 import { useEffect, useRef } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
+import { useI18n } from "../../i18n";
 import { research } from "./api";
 
 const useStyles = makeStyles({
@@ -79,6 +80,7 @@ export interface PreviewTarget {
 }
 
 export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBack: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
@@ -90,39 +92,39 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
   }, [content.data]);
   const c = content.data;
   return (
-    <section className={s.root} aria-label={`Source: ${target.title}`}>
+    <section className={s.root} aria-label={t("research.preview.aria", { title: target.title })}>
       <div className={s.head}>
         <Button className={mergeClasses(s.backBtn, touch && s.backBtnTouch)} appearance="subtle" size="small" icon={<ArrowLeft16Regular />} onClick={onBack}>
-          Back
+          {t("research.preview.back")}
         </Button>
         <Text weight="semibold" className={s.title} title={target.title}>
           {target.title}
         </Text>
         {c && (
           <Badge className={s.badge} appearance="outline" size="small">
-            {RESEARCH_MEDIA_LABELS[c.mediaType]} · rev. {c.revisionNumber}
+            {RESEARCH_MEDIA_LABELS[c.mediaType]} · {t("research.labels.revPrefix", { revision: c.revisionNumber })}
           </Badge>
         )}
       </div>
       {c && !c.current && (
         <MessageBar intent="info">
-          <MessageBarBody>This is revision {c.revisionNumber}, the one the citation was made from. The source has a newer one now.</MessageBarBody>
+          <MessageBarBody>{t("research.preview.olderRevisionBanner", { revision: c.revisionNumber })}</MessageBarBody>
         </MessageBar>
       )}
       {content.error && (
         <>
           <MessageBar intent="warning">
-            <MessageBarBody>{content.errorCode === "not_found" ? "This source was deleted after it was cited. The passage the citation kept:" : content.error}</MessageBarBody>
+            <MessageBarBody>{content.errorCode === "not_found" ? t("research.preview.deletedBanner") : content.error}</MessageBarBody>
           </MessageBar>
           {target.quote && <div className={s.quote}>{target.quote}</div>}
         </>
       )}
-      {!c && !content.error && <Spinner size="tiny" label="Reading the source…" />}
+      {!c && !content.error && <Spinner size="tiny" label={t("research.preview.reading")} />}
       {c && (
         <div className={s.text}>
           {c.chunks.map((chunk) => {
             const isCited = chunk.ordinal === target.chunkOrdinal;
-            const whereLabel = [chunk.page !== null ? `Page ${chunk.page}` : null, chunk.section].filter(Boolean).join(" · ");
+            const whereLabel = [chunk.page !== null ? t("research.preview.pageNumber", { page: chunk.page }) : null, chunk.section].filter(Boolean).join(" · ");
             return (
               <div key={chunk.ordinal} ref={isCited ? cited : undefined} className={mergeClasses(s.chunk, isCited && s.cited)} data-cited={isCited || undefined}>
                 {(whereLabel || isCited) && (
@@ -132,7 +134,7 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
                     </Text>
                     {isCited && (
                       <Badge className={s.badge} appearance="tint" color="warning" size="small">
-                        Cited passage
+                        {t("research.preview.citedPassage")}
                       </Badge>
                     )}
                   </div>
@@ -143,7 +145,11 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
           })}
           {c.chunks.length > 0 && (c.chunks.at(-1)?.ordinal ?? 0) < c.totalChunks - 1 && (
             <Text size={200} className={s.where}>
-              Passages {(c.chunks[0]?.ordinal ?? 0) + 1}–{(c.chunks.at(-1)?.ordinal ?? 0) + 1} of {c.totalChunks}.
+              {t("research.preview.passagesRange", {
+                from: (c.chunks[0]?.ordinal ?? 0) + 1,
+                to: (c.chunks.at(-1)?.ordinal ?? 0) + 1,
+                total: c.totalChunks,
+              })}
             </Text>
           )}
         </div>

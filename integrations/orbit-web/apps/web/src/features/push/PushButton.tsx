@@ -9,6 +9,7 @@ import { ArrowUpload20Regular } from "@fluentui/react-icons";
 import type { AgentPushResult, ApprovalList, ApprovalView, SessionDetail } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { t as tr, useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { ApprovalCard } from "../governance/ApprovalCard";
 import { Word, when } from "../governance/parts";
@@ -20,9 +21,10 @@ const useStyles = makeStyles({
   list: { display: "flex", flexDirection: "column", gap: "4px", paddingLeft: 0, marginTop: 0, marginBottom: 0, listStyleType: "none" },
 });
 
-const sourceName = (source: SessionDetail["source"]): string => (source === "azure" ? "Azure DevOps" : "GitHub");
+const sourceName = (source: SessionDetail["source"]): string => tr(source === "azure" ? "chat.push.azureDevOps" : "chat.push.github");
 
 function PushBody({ session }: { session: SessionDetail }) {
+  const { t } = useI18n();
   const s = useStyles();
   const owner = session.access === "owner";
   const [approval, setApproval] = useState<ApprovalView | null>(null);
@@ -35,7 +37,7 @@ function PushBody({ session }: { session: SessionDetail }) {
   if (!owner) {
     return (
       <MessageBar intent="info">
-        <MessageBarBody>Only the account that owns this chat{session.owner ? ` (${session.owner})` : ""} pushes it: it was shared with you to read and talk in.</MessageBarBody>
+        <MessageBarBody>{t("chat.push.sharedOnly", { owner: session.owner ? ` (${session.owner})` : "" })}</MessageBarBody>
       </MessageBar>
     );
   }
@@ -50,12 +52,16 @@ function PushBody({ session }: { session: SessionDetail }) {
   return (
     <div className={s.body}>
       <Text>
-        Push <b>{session.workBranch}</b> to <b>{session.repository}</b> ({sourceName(session.source)}). Orbit Web reads the branch's commit from this chat's workspace and works out exactly what the push is. Where your policy simply allows it, Orbit Web pushes it at once; otherwise you approve exactly that push here, and Orbit Web pushes it with the source's sign-in.
+        {t("chat.push.introBeforeBranch")}
+        <b>{session.workBranch}</b>
+        {t("chat.push.introMiddle")}
+        <b>{session.repository}</b>
+        {t("chat.push.introAfter", { source: sourceName(session.source) })}
       </Text>
       {approval === null && pushed === null && (
         <div>
           <Button appearance="primary" icon={<ArrowUpload20Regular />} disabled={busy || session.workBranch === null} onClick={prepare}>
-            {busy ? "Working it out…" : "Prepare the push"}
+            {busy ? t("chat.push.workingOut") : t("chat.push.prepare")}
           </Button>
         </div>
       )}
@@ -71,7 +77,7 @@ function PushBody({ session }: { session: SessionDetail }) {
       )}
       {approval && <ApprovalCard approval={approval} inline onChanged={setApproval} />}
       {earlier.data && earlier.data.approvals.length > 0 && (
-        <ul className={s.list} aria-label="Earlier pushes">
+        <ul className={s.list} aria-label={t("chat.push.earlierAria")}>
           {earlier.data.approvals.slice(0, 5).map((a) => (
             <li key={a.id}>
               <Text size={200}>
@@ -86,22 +92,23 @@ function PushBody({ session }: { session: SessionDetail }) {
 }
 
 export function PushButton({ session, compact }: { session: SessionDetail; compact: boolean }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [open, setOpen] = useState(false);
   if (session.source === null) return null;
   return (
     <Dialog open={open} onOpenChange={(_, d) => setOpen(d.open)}>
-      <Tooltip content={`Push this chat's branch to ${sourceName(session.source)}`} relationship="description">
-        <Button className={compact ? s.compact : undefined} size="small" appearance="subtle" icon={<ArrowUpload20Regular />} aria-label="Push branch" onClick={() => setOpen(true)}>
-          {!compact && "Push"}
+      <Tooltip content={t("chat.push.tooltip", { source: sourceName(session.source) })} relationship="description">
+        <Button className={compact ? s.compact : undefined} size="small" appearance="subtle" icon={<ArrowUpload20Regular />} aria-label={t("chat.push.btnAria")} onClick={() => setOpen(true)}>
+          {!compact && t("chat.push.btn")}
         </Button>
       </Tooltip>
       <DialogSurface className={s.surface}>
         <DialogBody>
-          <DialogTitle>Push branch</DialogTitle>
+          <DialogTitle>{t("chat.push.dialogTitle")}</DialogTitle>
           <DialogContent>{open && <PushBody session={session} />}</DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpen(false)}>Close</Button>
+            <Button onClick={() => setOpen(false)}>{t("chat.push.close")}</Button>
           </DialogActions>
         </DialogBody>
       </DialogSurface>

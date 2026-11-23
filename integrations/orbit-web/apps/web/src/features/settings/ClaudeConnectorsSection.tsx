@@ -7,6 +7,7 @@ import { ArrowClockwise16Regular } from "@fluentui/react-icons";
 import { CONNECTOR_USES, type Connector, type ConnectorList, type ConnectorUse } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
@@ -21,18 +22,22 @@ const useStyles = makeStyles({
   name: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
 });
 
-const USE_LABELS: Record<keyof ConnectorUse, string> = { chat: "Chat", research: "Research" };
+const USE_KEYS: Record<keyof ConnectorUse, MessageKey> = {
+  chat: "settings.claudeConnectors.use.chat",
+  research: "settings.claudeConnectors.use.research",
+};
 
 // The CLI's word, as a person reads it.
-const statusOf = (status: string): { label: string; color: "success" | "warning" | "danger" | "informative" } => {
-  if (status === "connected") return { label: "Connected", color: "success" };
-  if (status === "needs-auth") return { label: "Sign in at claude.ai", color: "warning" };
-  if (status === "failed") return { label: "Failed", color: "danger" };
-  if (status === "pending") return { label: "Connecting…", color: "informative" };
+const statusOf = (status: string, t: (k: MessageKey) => string): { label: string; color: "success" | "warning" | "danger" | "informative" } => {
+  if (status === "connected") return { label: t("settings.claudeConnectors.status.connected"), color: "success" };
+  if (status === "needs-auth") return { label: t("settings.claudeConnectors.status.needsAuth"), color: "warning" };
+  if (status === "failed") return { label: t("settings.claudeConnectors.status.failed"), color: "danger" };
+  if (status === "pending") return { label: t("settings.claudeConnectors.status.pending"), color: "informative" };
   return { label: status, color: "informative" };
 };
 
 export function ClaudeConnectorsSection() {
+  const { t } = useI18n();
   const s = useStyles();
   const list = useResource<ConnectorList>(() => get<ConnectorList>("/api/claude/connectors"), []);
   const [busy, setBusy] = useState(false);
@@ -54,16 +59,16 @@ export function ClaudeConnectorsSection() {
 
   const data = list.data;
   return (
-    <section className={s.root} aria-label="Claude connectors">
+    <section className={s.root} aria-label={t("settings.claudeConnectors.aria")}>
       <Text className={s.muted}>
-        A checked connector can be used by Claude as your Claude account -- it reads and writes in that service: in every chat, or in research sessions, where your sources are references Claude reads beside your question (check there only what you want research to act with, such as Claude Docs). Connectors are connected at claude.ai; one waiting for your sign-in there cannot be used until you do.
+        {t("settings.claudeConnectors.intro")}
       </Text>
       <div className={s.head}>
         <Text size={200} className={s.muted}>
-          {data?.readAt ? `Read from your Claude account ${new Date(data.readAt).toLocaleString()}` : data?.source === "unavailable" ? "Not read from your Claude account" : ""}
+          {data?.readAt ? t("settings.claudeConnectors.readAt", { when: new Date(data.readAt).toLocaleString() }) : data?.source === "unavailable" ? t("settings.claudeConnectors.notRead") : ""}
         </Text>
         <Button size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={readAgain} disabled={busy}>
-          Read again
+          {t("settings.claudeConnectors.readAgain")}
         </Button>
       </div>
       {error && (
@@ -81,32 +86,32 @@ export function ClaudeConnectorsSection() {
           <MessageBarBody>{data.detail}</MessageBarBody>
         </MessageBar>
       )}
-      {data === null && list.error === null && <Spinner size="tiny" label="Asking your Claude account…" />}
-      {data !== null && data.connectors.length === 0 && <Text className={s.muted}>Your Claude account has no connector.</Text>}
+      {data === null && list.error === null && <Spinner size="tiny" label={t("settings.claudeConnectors.loading")} />}
+      {data !== null && data.connectors.length === 0 && <Text className={s.muted}>{t("settings.claudeConnectors.empty")}</Text>}
       {data !== null && data.connectors.length > 0 && (
         <table className={s.table}>
           <thead>
             <tr>
               <th className={s.th} scope="col">
-                Connector
+                {t("settings.claudeConnectors.colConnector")}
               </th>
               {CONNECTOR_USES.map((use) => (
                 <th key={use} className={`${s.th} ${s.thUse}`} scope="col">
-                  {USE_LABELS[use]}
+                  {t(USE_KEYS[use])}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {data.connectors.map((c) => {
-              const status = statusOf(c.status);
+              const status = statusOf(c.status, t);
               return (
                 <tr key={c.name}>
                   <td className={s.td}>
                     <span className={s.name}>
                       <Text weight="semibold">{c.label}</Text>
                       <Badge appearance="outline" size="small">
-                        {c.kind === "claude.ai" ? "claude.ai" : c.kind === "plugin" ? "plugin" : "server"}
+                        {c.kind === "claude.ai" ? t("settings.claudeConnectors.kind.claudeAi") : c.kind === "plugin" ? t("settings.claudeConnectors.kind.plugin") : t("settings.claudeConnectors.kind.server")}
                       </Badge>
                       <Badge appearance="tint" size="small" color={status.color}>
                         {status.label}
@@ -115,7 +120,7 @@ export function ClaudeConnectorsSection() {
                   </td>
                   {CONNECTOR_USES.map((use) => (
                     <td key={use} className={`${s.td} ${s.tdUse}`}>
-                      <Checkbox aria-label={`${c.label} in ${USE_LABELS[use].toLowerCase()}`} checked={c[use]} disabled={busy} onChange={(_, d) => choose(c, use, d.checked === true)} />
+                      <Checkbox aria-label={t("settings.claudeConnectors.checkboxAria", { label: c.label, use: t(USE_KEYS[use]).toLowerCase() })} checked={c[use]} disabled={busy} onChange={(_, d) => choose(c, use, d.checked === true)} />
                     </td>
                   ))}
                 </tr>

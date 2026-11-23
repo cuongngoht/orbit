@@ -25,6 +25,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { ConnectionRequired } from "../../components/ApiErrorBar";
 import { settingsHref } from "../../hooks/useHashRoute";
+import { useI18n } from "../../i18n";
 import { errorText, send } from "../../services/api";
 import { catalogOfConnection } from "../../services/models/ModelCatalog";
 import { useConnections } from "../connections/AiConnectionsSection";
@@ -156,15 +157,16 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export function AppearanceSection({ settings, onSettings }: SectionProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { error, save } = useSave(onSettings);
   return (
     <div className={s.root}>
-      <Field label="Theme">
+      <Field label={t("settings.prefs.theme")}>
         <RadioGroup value={settings.theme} onChange={(_, d) => void save({ theme: d.value as ThemePreference })}>
-          <Radio value="system" label="Follow the system" />
-          <Radio value="light" label="Light" />
-          <Radio value="dark" label="Dark" />
+          <Radio value="system" label={t("settings.prefs.theme.system")} />
+          <Radio value="light" label={t("settings.prefs.theme.light")} />
+          <Radio value="dark" label={t("settings.prefs.theme.dark")} />
         </RadioGroup>
       </Field>
       <SaveError error={error} />
@@ -176,15 +178,17 @@ export function AppearanceSection({ settings, onSettings }: SectionProps) {
 // that AI's own, its effort, and the mode. With no AI signed in there is nothing of anybody's to offer: the way to sign
 // one in instead (Settings → AI Connections).
 function NewChatDefaults({ settings, view, failed, save }: { settings: Settings; view: AiConnectionsView | null; failed: string | null; save: (change: UpdateSettingsRequest) => Promise<void> }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (view === null) return <Text size={200} className={s.muted}>{failed === null ? "Reading your AI connections…" : `Your AI connections could not be read: ${failed}`}</Text>;
+  if (view === null) return <Text size={200} className={s.muted}>{failed === null ? t("settings.prefs.connectionsLoading") : t("settings.prefs.connectionsFailed", { error: failed })}</Text>;
   const chat = chatConnectionsOf(view);
   const ai = newChatConnection(chat, settings.defaultRuntime);
-  if (ai === null) return <ConnectionRequired what="Claude Code or OpenAI Codex (sign in with your subscription)" />;
+  if (ai === null) return <ConnectionRequired what={t("settings.prefs.connectionsRequired")} />;
   return <AiDefaults settings={settings} chat={chat} ai={ai} save={save} />;
 }
 
 function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: ChatConnection[]; ai: ChatConnection; save: (change: UpdateSettingsRequest) => Promise<void> }) {
+  const { t } = useI18n();
   const s = useStyles();
   const catalog = catalogOfConnection(ai);
   // The model kept is this AI's only when Settings names this AI; else the one this AI recommends.
@@ -192,12 +196,12 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
   const models = catalog.models.some((m) => m.id === model) ? catalog.models : [...catalog.models, { id: model, label: modelLabel(model, catalog) }];
   const efforts = modelOf(catalog, model)?.efforts ?? [...EFFORT_CHOICES];
   const effort = effortFor(modelOf(catalog, model), settings.defaultEffort) ?? settings.defaultEffort;
-  const effortText = (e: EffortChoice) => (e === "medium" ? `${effortLabel(e)} (recommended)` : effortLabel(e));
+  const effortText = (e: EffortChoice) => (e === "medium" ? t("settings.prefs.effortRecommended", { label: effortLabel(e) }) : effortLabel(e));
   // A model, an effort or a mode is the AI's it was chosen on: it is saved with that AI.
   const run = (change: UpdateSettingsRequest) => void save({ defaultRuntime: ai.runtime, ...change });
   return (
     <>
-      <Field label="Default AI">
+      <Field label={t("settings.prefs.defaultAi")}>
         {(fieldProps) => (
           <SingleCaretSelect fieldProps={fieldProps} value={ai.runtime} displayText={RUNTIME_LABELS[ai.runtime]} onChange={(value) => void save({ defaultRuntime: value as ChatRuntime })}>
             {signedInRuntimes(chat).map((r) => (
@@ -210,10 +214,10 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
       </Field>
       {unsignedRuntimes(chat).map((r) => (
         <Text key={r} size={200} className={s.muted}>
-          {RUNTIME_LABELS[r]} is not signed in: <Link href={settingsHref("ai-connections")}>sign in to its subscription</Link> to start new chats on it.
+          {t("settings.prefs.unsignedBefore", { label: RUNTIME_LABELS[r] })} <Link href={settingsHref("ai-connections")}>{t("settings.prefs.unsignedLink")}</Link> {t("settings.prefs.unsignedAfter")}
         </Text>
       ))}
-      <Field label="Default model">
+      <Field label={t("settings.prefs.defaultModel")}>
         {(fieldProps) => (
           <SingleCaretSelect fieldProps={fieldProps} value={model} displayText={modelLabel(model, catalog)} onChange={(value) => run({ defaultModel: value as ModelChoice })}>
             {models.map((m) => (
@@ -224,9 +228,9 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
           </SingleCaretSelect>
         )}
       </Field>
-      <Field label="Default effort" hint="Higher effort means more thorough responses, but takes longer and uses your limits faster.">
+      <Field label={t("settings.prefs.defaultEffort")} hint={t("settings.prefs.defaultEffortHint")}>
         {(fieldProps) => (
-          <SingleCaretSelect fieldProps={fieldProps} value={effort} displayText={efforts.length === 0 ? "This model takes no effort level" : effortText(effort)} onChange={(value) => run({ defaultEffort: value as EffortChoice })}>
+          <SingleCaretSelect fieldProps={fieldProps} value={effort} displayText={efforts.length === 0 ? t("settings.prefs.noEffortLevel") : effortText(effort)} onChange={(value) => run({ defaultEffort: value as EffortChoice })}>
             {efforts.map((e) => (
               <option key={e} value={e}>
                 {effortText(e)}
@@ -235,10 +239,10 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
           </SingleCaretSelect>
         )}
       </Field>
-      <Field label="Default mode">
+      <Field label={t("settings.prefs.defaultMode")}>
         <RadioGroup value={settings.defaultMode} onChange={(_, d) => run({ defaultMode: d.value as ModeChoice })}>
           {MODE_CHOICES.map((m) => (
-            <Radio key={m} value={m} label={`${MODE_LABELS[m]} — ${MODE_HINTS[m]}`} />
+            <Radio key={m} value={m} label={t("settings.prefs.modeRow", { mode: MODE_LABELS[m], hint: MODE_HINTS[m] })} />
           ))}
         </RadioGroup>
       </Field>
@@ -247,31 +251,32 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
 }
 
 export function CodeSection({ settings, onSettings }: SectionProps) {
+  const { t } = useI18n();
   const s = useStyles();
   const { error, save } = useSave(onSettings);
   const connections = useConnections();
   return (
     <div className={s.root}>
-      <Group title="A new chat">
+      <Group title={t("settings.prefs.group.newChat")}>
         <Text size={200} className={s.muted}>
-          What a new chat starts with: the AI it runs on, then that AI's model, effort and mode. A chat's own pickers change the model, effort and mode for that chat, from its next message.
+          {t("settings.prefs.group.newChatHint")}
         </Text>
         <NewChatDefaults settings={settings} view={connections.data} failed={connections.error} save={save} />
       </Group>
-      <Group title="What a repository brings">
-        <Switch checked={settings.projectSkills} onChange={(_, d) => void save({ projectSkills: d.checked })} label="Load project skills" />
+      <Group title={t("settings.prefs.group.repo")}>
+        <Switch checked={settings.projectSkills} onChange={(_, d) => void save({ projectSkills: d.checked })} label={t("settings.prefs.projectSkills")} />
         <Text size={200} className={s.muted}>
-          On a repository's first fetch, its skills, commands and agents are loaded for that chat as instructions only: their hooks, allowed tools and pre-run commands are removed.
+          {t("settings.prefs.projectSkillsHint")}
         </Text>
-        <Switch checked={settings.projectPlugins} onChange={(_, d) => void save({ projectPlugins: d.checked })} label="Run project plugins" />
+        <Switch checked={settings.projectPlugins} onChange={(_, d) => void save({ projectPlugins: d.checked })} label={t("settings.prefs.projectPlugins")} />
         <Text size={200} className={s.warn}>
-          A plugin a repository is, or declares, runs code — hooks at session start, MCP servers — in this container, where your sign-ins are. Turn this on only for repositories you trust.
+          {t("settings.prefs.projectPluginsWarn")}
         </Text>
       </Group>
-      <Group title="Tools">
-        <Switch checked={settings.webTools} onChange={(_, d) => void save({ webTools: d.checked })} label="Let Claude use the web tools (WebFetch, WebSearch)" />
+      <Group title={t("settings.prefs.group.tools")}>
+        <Switch checked={settings.webTools} onChange={(_, d) => void save({ webTools: d.checked })} label={t("settings.prefs.webTools")} />
         <Text size={200} className={s.muted}>
-          {settings.maxBudgetUsd !== null ? `Each run is capped at $${settings.maxBudgetUsd} (ORBIT_WEB_MAX_BUDGET_USD).` : "No per-run budget cap is set (ORBIT_WEB_MAX_BUDGET_USD)."}
+          {settings.maxBudgetUsd !== null ? t("settings.prefs.budgetCapped", { amount: settings.maxBudgetUsd }) : t("settings.prefs.budgetUncapped")}
         </Text>
       </Group>
       <SaveError error={error} />

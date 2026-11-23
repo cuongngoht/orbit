@@ -87,7 +87,14 @@ trial mode unless only this machine can reach it -- loopback host names, no acce
 public origin, no Secure cookie setting -- and names the condition that failed. Never use it for anything another
 person can reach.
 
-Or with `docker run` (the published image, once a release exists), against a PostgreSQL of your own where pgvector is
+**The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0-rc01` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
+makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
+`docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
+(`ORBIT_WEB_PORT`, `ORBIT_WEB_NAME` for a second installation on one machine, the passwords, `ORBIT_WEB_SETUP_CODE`).
+
+Or with `docker run` (the published image), against a PostgreSQL of your own where pgvector is
 enabled (`CREATE EXTENSION vector;` once, as a superuser) -- without an allocator, AI employees then run on the
 development-only `process` provider, which has no container, no limit, no isolation and no shell, and says so on every
 attempt:
@@ -97,7 +104,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.0
+  ghcr.io/cuongngoht/orbit-web:0.8.0-rc01
 ```
 
 | what | command |

@@ -5,9 +5,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// A scratch home, removed afterwards: asking a CLI its version must leave nothing in the image.
+// A scratch home, removed afterwards: asking a CLI its version must leave nothing in the image. The Azure CLI's telemetry
+// is off: its uploader is a detached process that went on writing into the scratch home after `az version` returned, so
+// removing the home raced it (ENOTEMPTY) and failed the build.
 const scratch = mkdtempSync(join(tmpdir(), "build-info-"));
-const env = { PATH: process.env.PATH, HOME: scratch, CLAUDE_CONFIG_DIR: scratch, GH_CONFIG_DIR: scratch, CODEX_HOME: scratch, DISABLE_AUTOUPDATER: "1" };
+const env = { PATH: process.env.PATH, HOME: scratch, CLAUDE_CONFIG_DIR: scratch, GH_CONFIG_DIR: scratch, CODEX_HOME: scratch, DISABLE_AUTOUPDATER: "1", AZURE_CORE_COLLECT_TELEMETRY: "false" };
 
 const version = (file, args = ["--version"]) => {
     try {
@@ -31,5 +33,5 @@ const info = {
   python: version("python3"),
   node: process.versions.node,
 };
-rmSync(scratch, { recursive: true, force: true });
+rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 process.stdout.write(`${JSON.stringify(info, null, 2)}\n`);

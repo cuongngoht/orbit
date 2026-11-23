@@ -133,7 +133,7 @@ export interface AppConfig {
   // Settings → System asks each publisher for its newest release a minute after start and daily (ORBIT_WEB_UPDATE_CHECK
   // not "off"); a person's check works either way.
   updateCheck: boolean;
-  // Whether a subscription connection may be signed in from its card (ADR 0068): Orbit Web runs the CLI's own sign-in and
+  // Whether a subscription connection may be signed in from its card (ADR 0061): Orbit Web runs the CLI's own sign-in and
   // relays its URL, Codex's one-time code and the code a person pastes for Claude Code. ORBIT_WEB_SIGN_IN_ON_PAGE=0: only
   // the terminal's connect.js signs one in.
   signInOnPage: boolean;
@@ -357,7 +357,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): A
   const extraHosts = hostList(env.ORBIT_WEB_ALLOWED_HOSTS);
   const accessToken = env.ORBIT_WEB_ACCESS_TOKEN && env.ORBIT_WEB_ACCESS_TOKEN.length > 0 ? env.ORBIT_WEB_ACCESS_TOKEN : null;
   const widened = extraHosts.filter((h) => !LOOPBACK_HOSTS.includes(h));
-  // Another host name may be answered with or without an access token (ADR 0069): Orbit Web's own accounts are the gate
+  // Another host name may be answered with or without an access token (ADR 0061): Orbit Web's own accounts are the gate
   // -- nothing but the sign-in, the setup with a one-time code from the server's terminal, the health check and a shared
   // chat's link answers without a browser session -- and a token, when set, is a perimeter in front of them. The
   // localhost-only trial, whose login is public, still answers loopback names alone (trialRefusal).

@@ -2,7 +2,7 @@
 // Antigravity -- each as a card: whether the CLI is on this server, the ways of signing in it offers (with what each rests
 // on), and the account's connections to it. Every status is the CLI's own word, read at the time shown: Connected only
 // when its own status command names an identity. A subscription is signed in by the provider's own CLI: from its card
-// (ADR 0068: the CLI's sign-in runs on the server, this browser opens the link it printed -- and, for Claude Code, pastes
+// (ADR 0061: the CLI's sign-in runs on the server, this browser opens the link it printed -- and, for Claude Code, pastes
 // back the code its page shows) or in a terminal of the server; an API key is typed here once and never shown back.
 import {
   Badge,
@@ -173,7 +173,7 @@ function MethodRow({ m }: { m: MethodSupport }) {
   );
 }
 
-// SIGNING A SUBSCRIPTION IN FROM ITS CARD (ADR 0068): the connection's CLI runs its own sign-in on the server, and only
+// SIGNING A SUBSCRIPTION IN FROM ITS CARD (ADR 0061): the connection's CLI runs its own sign-in on the server, and only
 // the browser that started it is shown the link it printed -- with Codex's one-time code to enter there -- and, for
 // Claude Code, sends back the code its page shows. Connected only once the CLI's own status names who it is.
 function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeConnection; autoStart: boolean; onStarted: () => void; onChanged: () => void; onClose: (() => void) | null }) {

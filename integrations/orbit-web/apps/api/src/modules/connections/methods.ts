@@ -6,7 +6,7 @@
 // Never offered by any method: a subscription token pasted by hand, a copied `.credentials.json` or `auth.json`, a
 // "setup token" for anybody else's use -- Anthropic: developers "may not collect, store, or intermediate Claude.ai
 // credentials or session tokens". A subscription is signed in by the provider's own CLI, by its owner: from its card
-// (ADR 0068: the CLI's sign-in runs on the server and only the code its owner pastes is relayed to its stdin, kept
+// (ADR 0061: the CLI's sign-in runs on the server and only the code its owner pastes is relayed to its stdin, kept
 // nowhere) or in a terminal of the server.
 import type { AuthMethod, MethodSupport, RuntimeKind } from "@orbit-web/contracts";
 

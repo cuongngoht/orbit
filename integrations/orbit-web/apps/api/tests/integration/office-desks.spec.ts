@@ -1,4 +1,4 @@
-// GOVERNANCE → EMPLOYEE DESKS (ADR 0069), through the real API and a scripted sandbox provider: every employee's desk is
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0061), through the real API and a scripted sandbox provider: every employee's desk is
 // listed -- of one in the office, and of one who left, which keeps it, with what it holds of the account's storage, read
 // only, until its owner deletes the desk (office-desk-browse.spec.ts looks into one and cleans it up); then the sandbox
 // goes DELETING, the provider removes it, and only once it is read back gone is it DELETED and the storage released. A

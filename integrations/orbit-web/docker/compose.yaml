@@ -9,7 +9,7 @@
 #   orbit-web        the API and the web app. It migrates the database at start (and refuses to start without it). It
 #                    also serves, on the employees' internal networks, the egress proxy (a tool plane's only way out)
 #                    and the tool endpoint (the model plane's bridge).
-#   orbit-allocator  the ONLY holder of the Docker socket (ADR 0067): for each attempt of an AI employee it makes two
+#   orbit-allocator  the ONLY holder of the Docker socket (ADR 0061): for each attempt of an AI employee it makes two
 #                    containers -- the model plane (the AI CLI with its connection's login) and the tool plane (the
 #                    employee's own shell, holding no credential) -- from fixed images, a fixed mount list and the
 #                    employee's limits, and it keeps the employees' storage areas with their quotas. It answers
@@ -17,7 +17,7 @@
 #                    publishes no port and takes no path, image, mount or privilege from a request.
 #
 # A subscription connection (Settings → AI Connections) is signed in with the unmodified official CLI and that
-# connection's home alone -- from its card (ADR 0068: the link, and for Claude Code the code you paste back), or from
+# connection's home alone -- from its card (ADR 0061: the link, and for Claude Code the code you paste back), or from
 # YOUR terminal, where nothing of it passes through Orbit Web's pages (ORBIT_WEB_SIGN_IN_ON_PAGE=0 leaves only this):
 #
 #   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/connect.js <connectionId>

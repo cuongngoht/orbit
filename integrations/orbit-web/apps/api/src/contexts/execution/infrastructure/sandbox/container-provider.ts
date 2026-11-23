@@ -1,4 +1,4 @@
-// THE CONTAINER PROVIDER (ADR 0067): the standard runtime of an employee's attempt. Everything is asked of the
+// THE CONTAINER PROVIDER (ADR 0061): the standard runtime of an employee's attempt. Everything is asked of the
 // allocator -- the only holder of the container runtime's socket -- through its typed operations (an AllocatorClient
 // in Orbit Web; the allocator itself, in process, in a test). The model plane's CLI is started through that plane's
 // runner on the model network, with the attempt's own runner token (derived from the shared secret and the dispatch

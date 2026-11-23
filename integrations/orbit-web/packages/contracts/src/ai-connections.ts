@@ -1,9 +1,9 @@
-// AI CONNECTIONS (Orbit Web 0.8.0, ADR 0067): what an Orbit account has connected of the three AI CLIs -- Claude Code,
+// AI CONNECTIONS (Orbit Web 0.8.0, ADR 0061): what an Orbit account has connected of the three AI CLIs -- Claude Code,
 // OpenAI Codex, Google Antigravity (`agy`). A connection is the ACCOUNT's: it has a config home of its own on the server
 // (the CLI's login lives there and nowhere else), and it is never mounted into an employee's sandbox.
 //
 // How a connection signs in is the PROVIDER's own mechanism, never something Orbit makes up:
-//   subscription  the official CLI's own sign-in, run against the connection's home: from its card (ADR 0068: Orbit Web
+//   subscription  the official CLI's own sign-in, run against the connection's home: from its card (ADR 0061: Orbit Web
 //                 runs the CLI's sign-in, shows the URL -- and Codex's one-time code -- it printed, and hands the code a
 //                 person pastes for Claude Code to that process's stdin, keeping none of it), or by a person in a
 //                 terminal of the server (`terminalCommand`), where nothing of it passes through Orbit's pages at all.
@@ -211,7 +211,7 @@ export const CONNECTION_ERRORS = {
   noSignIn: "no_sign_in",
 } as const;
 
-// A SIGN-IN FROM THE CARD (ADR 0068): the connection's CLI running its own sign-in on the server, as the page follows it.
+// A SIGN-IN FROM THE CARD (ADR 0061): the connection's CLI running its own sign-in on the server, as the page follows it.
 // It belongs to the browser session that started it: only that browser sees its URL and code (`mine`), sends the code
 // Claude Code asks for, or cancels it; another browser of the account sees that one is under way, and by whom.
 //   GET  /api/connections/:id/sign-in          this connection's sign-in, as this browser may see it

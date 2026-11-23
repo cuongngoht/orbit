@@ -1,4 +1,4 @@
-// THE ALLOCATOR (ADR 0067): the one process that holds the container runtime's socket, and what it does with it -- only
+// THE ALLOCATOR (ADR 0061): the one process that holds the container runtime's socket, and what it does with it -- only
 // the typed operations of the protocol (contexts/execution/infrastructure/sandbox/allocator-protocol.ts), each checked
 // whole first, each worked out from ids: which containers, from which fixed image, with which fixed mounts, on which
 // network, with which limits. It never takes a host path, an image, a mount, a privilege or a capability from a caller.

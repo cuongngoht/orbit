@@ -1,4 +1,4 @@
-// AN EMPLOYEE'S DESK, AS A PERSON LOOKS INTO IT AND CLEANS IT UP (Governance → Employee desks, ADR 0069). The desk is the
+// AN EMPLOYEE'S DESK, AS A PERSON LOOKS INTO IT AND CLEANS IT UP (Governance → Employee desks, ADR 0061). The desk is the
 // directory the account owns for an employee's work: what its accepted work left there, and the toolbox it wrote for
 // itself. The account's owner may look into it -- one folder at a time, or one file's text, read only, each look decided
 // by the account's policy (`employee.desk.read`) and recorded with what was looked at, never what it holds -- and clean

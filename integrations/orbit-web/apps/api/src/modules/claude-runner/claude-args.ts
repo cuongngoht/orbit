@@ -156,7 +156,7 @@ export function claudeArgs(o: ClaudeRunOptions): string[] {
     "user",
     // A chat reaches the signed-in account's claude.ai connectors -- Claude Docs, where Claude makes its documents, and
     // whatever else the account connected -- and the MCP servers of the user's settings and of the plugins loaded (the
-    // owner's decision, ADR 0064) that the account's policy allowed this run -- every other one is denied by name. A
+    // owner's decision, ADR 0061) that the account's policy allowed this run -- every other one is denied by name. A
     // repository's own .mcp.json is still never started: Claude Code starts one only once settings approve it, and only
     // the user's are read. An isolated run reaches none: no way out leads to one.
     ...(o.isolated ? ["--strict-mcp-config"] : []),

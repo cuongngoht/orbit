@@ -1,4 +1,4 @@
-// AN EMPLOYEE'S ATTEMPT IN REAL CONTAINERS (ADR 0067): the allocator against this host's container runtime, the
+// AN EMPLOYEE'S ATTEMPT IN REAL CONTAINERS (ADR 0061): the allocator against this host's container runtime, the
 // container provider over it. Every claim here is read from the runtime and the kernel, never from a stored value:
 // limits applied (docker inspect) and observed (the container's cgroup files) and behaving (an OOM kill, a fork loop
 // stopped); storage refusing a write past its quota (or said to be SOFT/UNSUPPORTED, with why); the connection's login

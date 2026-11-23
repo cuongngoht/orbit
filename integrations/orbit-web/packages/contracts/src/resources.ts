@@ -1,4 +1,4 @@
-// RESOURCES (Orbit Web 0.8.0, ADR 0067): what an employee may use when it works, and what the account and the machine
+// RESOURCES (Orbit Web 0.8.0, ADR 0061): what an employee may use when it works, and what the account and the machine
 // can give. A hierarchy, each level never above the one before it:
 //
 //   infrastructure capacity  what this host can give employee containers (detected or configured), minus what Orbit

@@ -1,4 +1,4 @@
-// IDENTITY (Orbit Web 0.8.0, ADR 0067): Orbit's OWN sign-in, independent of every AI CLI. An ACCOUNT (its id is the
+// IDENTITY (Orbit Web 0.8.0, ADR 0061): Orbit's OWN sign-in, independent of every AI CLI. An ACCOUNT (its id is the
 // OrbitId) is the tenant: every record of Orbit Web carries it. A USER signs in to one account with a username and a
 // password Orbit keeps as a slow hash. The first administrator is made from a one-time setup code a person prints in a
 // terminal of the server; a trial installation (localhost only) is pre-seeded with `admin` / `123456`.

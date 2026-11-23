@@ -1,4 +1,4 @@
-// SIGNING A SUBSCRIPTION CONNECTION IN FROM ITS CARD (ADR 0068). The provider's own, unmodified sign-in (runtimes.ts:
+// SIGNING A SUBSCRIPTION CONNECTION IN FROM ITS CARD (ADR 0061). The provider's own, unmodified sign-in (runtimes.ts:
 // `claude auth login --claudeai`, `codex login --device-auth`) is run by Orbit Web with that one connection's home --
 // exactly what the terminal's cli/connect.js runs -- and the page follows it: the URL the CLI printed (and Codex's
 // one-time code) is shown to the browser that started it, and the code a person pastes for Claude Code is written to

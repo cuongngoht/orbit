@@ -1,4 +1,4 @@
-// THE MODEL PLANE'S WAY OUT (ADR 0067): where employees run in containers, an AI CLI's model plane reaches the AI
+// THE MODEL PLANE'S WAY OUT (ADR 0061): where employees run in containers, an AI CLI's model plane reaches the AI
 // providers' own hosts and nothing else -- port 443, a deployment-fixed list (employee-network.ts), private and internal
 // addresses never -- through this proxy on the model network. It carries the CLI's login, so nothing else leaves by it:
 // no page, no package, no other API (the tool plane has its own way out, decided as the run).

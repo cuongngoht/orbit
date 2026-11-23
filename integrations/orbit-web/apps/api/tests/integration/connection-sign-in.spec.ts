@@ -1,4 +1,4 @@
-// A SUBSCRIPTION SIGNED IN FROM ITS CARD (ADR 0068), through the real API, with each CLI's own sign-in scripted as it
+// A SUBSCRIPTION SIGNED IN FROM ITS CARD (ADR 0061), through the real API, with each CLI's own sign-in scripted as it
 // prints it: the CLI runs with that connection's home and nothing else; only the browser that started it sees the link
 // and the codes and may send Claude Code's code; that code reaches the CLI's stdin and nowhere else (not the database,
 // not the audit record); it ends connected only once the CLI's own status names the identity; Codex's device flow needs
@@ -59,7 +59,7 @@ function claudeLogin(fake: FakeProcessPort): void {
 
 const signInOf = async (b: Browser, id: string): Promise<ConnectionSignIn> => ok<ConnectionSignIn>(await b.get(`/api/connections/${id}/sign-in`));
 
-describe("a subscription signed in from its card (ADR 0068)", () => {
+describe("a subscription signed in from its card (ADR 0061)", () => {
   let h: Harness;
   let fake: FakeProcessPort;
   before(async () => {

@@ -1,4 +1,4 @@
-// THE SANDBOX'S CONFIGURATION (ADR 0067): how an employee's attempt is run, read once from the environment at start by
+// THE SANDBOX'S CONFIGURATION (ADR 0061): how an employee's attempt is run, read once from the environment at start by
 // BOTH processes that take part -- Orbit Web (which provider, how to reach the allocator, what may be admitted) and the
 // allocator (the only holder of the container runtime's socket: which images, networks and volumes it uses). Nothing
 // here comes from a request: an image, a network, a volume or a mount is the operator's choice, never a caller's.

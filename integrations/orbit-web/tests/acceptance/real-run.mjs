@@ -7,7 +7,7 @@
 // Orbit Web keeps its records in PostgreSQL: the run starts the pinned pgvector image beside it, on a network of the
 // run's own, and removes both at the end.
 //
-// Signing in is Orbit Web's own (ADR 0067): the run sets the first administrator up with the one-time code the
+// Signing in is Orbit Web's own (ADR 0061): the run sets the first administrator up with the one-time code the
 // container's terminal prints, then connects Claude Code for that account, the two ways a person does:
 //   --api-key-env=<NAME>  the person's own Claude Console API key, read from that variable of THIS shell (never printed,
 //                         never written into the evidence) and given to Orbit Web as an API-key connection;

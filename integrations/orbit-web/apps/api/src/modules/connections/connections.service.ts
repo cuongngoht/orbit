@@ -5,7 +5,7 @@
 //   create       a connection of a method its provider permits (methods.ts; 400 method_not_supported otherwise -- but a
 //                Claude Code cloud connection, saved and shown blocked); an API key goes to the credential store, never
 //                into the database, a route's answer, a log or an event. A subscription is signed in by the CLI's own
-//                sign-in: from its card (connection-sign-in.service.ts, ADR 0068), or by its owner in a terminal of the
+//                sign-in: from its card (connection-sign-in.service.ts, ADR 0061), or by its owner in a terminal of the
 //                server (`terminalCommand`).
 //   check        the CLI asked now (probe.ts); `connected` only when its own status names the identity
 //   disconnect   the CLI's own logout against that home, then the home's login removed (an API key forgotten); work in

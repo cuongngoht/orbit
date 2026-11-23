@@ -1,4 +1,4 @@
-// THE VIRTUAL OFFICE (ADR 0067), as one Nest module over its bounded contexts -- Workforce (office, departments,
+// THE VIRTUAL OFFICE (ADR 0061), as one Nest module over its bounded contexts -- Workforce (office, departments,
 // employees, their Personal Sandboxes), Work (missions, assignments, handoffs, Needs me), Execution (runs, admission,
 // the worker, the tool plane's door, artifacts) and what they share (the outbox, the consumers, idempotency, the office
 // governance of commands). The contexts talk through their ports (RUN_OUTCOMES, the sandbox provider, the connection

@@ -16,7 +16,7 @@
 # the plugin by the commit ORBIT_REF names. No credential is
 # needed or kept: a person signs in after the container starts.
 #
-# Three more targets, for AI employees (ADR 0067), built the same way with --target:
+# Three more targets, for AI employees (ADR 0061), built the same way with --target:
 #
 #   workstation     an attempt's TOOL PLANE: the employee's own shell (Python, Node, git, a compiler, jq), non-root
 #   model-plane     an attempt's MODEL PLANE: the AI CLI, Orbit Web's runner and tool bridge -- no /etc/claude-code
@@ -203,7 +203,7 @@ RUN --mount=type=secret,id=ca,required=false \
     /opt/jq/bin/jq --version; \
     rm -f /tmp/jq
 
-# --- an employee's WORKSTATION: the tool plane of an attempt (ADR 0067) ---------------------------------------------
+# --- an employee's WORKSTATION: the tool plane of an attempt (ADR 0061) ---------------------------------------------
 # The same pinned Debian base as Orbit Web (git, curl, wget, unzip, gcc, g++, make and ca-certificates come with it),
 # the pinned CPython build above with pip and venv, the base's Node and npm, and jq. One non-root user, `employee`
 # (20001), and no sudo: inside its own container the employee runs any command, and has nothing to raise itself with.
@@ -231,7 +231,7 @@ USER employee
 WORKDIR /work
 CMD ["sleep", "infinity"]
 
-# --- an attempt's MODEL PLANE (ADR 0067): the AI CLI, Orbit Web's runner and its tool bridge, nothing else ----------
+# --- an attempt's MODEL PLANE (ADR 0061): the AI CLI, Orbit Web's runner and its tool bridge, nothing else ----------
 # Claude Code as Orbit Web pins it, and Orbit Web's built API (the runner the allocator starts: runner/main.js; the
 # bridge: bridge/main.js). NO /etc/claude-code (Claude Code's managed settings: their hooks would run whatever the CLI
 # is told) -- the build fails if anything put one here. Its user is Orbit Web's (10001): a connection's config home,
@@ -264,7 +264,7 @@ USER orbit
 WORKDIR /workdir
 CMD ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/runner/main.js"]
 
-# --- the allocator's STORAGE HELPER (ADR 0067): loop devices, filesystems and quotas for the workforce areas ---------
+# --- the allocator's STORAGE HELPER (ADR 0061): loop devices, filesystems and quotas for the workforce areas ---------
 # Run by the allocator alone, privileged and with no network; never an employee's. xfsprogs and btrfs-progs from the
 # distribution's archive (Ubuntu's: the base above, pinned by digest). Behind a TLS-inspecting proxy, its CA (the `ca`
 # secret) turns the archive to HTTPS for this step; it is never kept in a layer.

@@ -152,9 +152,9 @@ moves by hand (the Azure CLI's hashed lock, Antigravity's manifest, the base ima
 | `ORBIT_WEB_SESSION_HOURS` | `168` | how long a browser's session lasts after its sign-in, at most (hours) |
 | `ORBIT_WEB_SESSION_IDLE_HOURS` | `24` | a session not used for this long ends (hours, at most the above) |
 | `ORBIT_WEB_MAX_BUDGET_USD` | unset | a per-run spending cap passed to Claude Code (`--max-budget-usd`) |
-| `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); Orbit Web's own sign-in is the gate (ADR 0069), an access token an optional perimeter in front of it |
-| `ORBIT_WEB_ACCESS_TOKEN` | unset | optional token mode (a perimeter before the sign-in, ADR 0069): every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
-| `ORBIT_WEB_SIGN_IN_ON_PAGE` | `1` | `0`: a subscription connection is signed in only in a terminal of the server (`connect.js`); its card shows the command alone and the sign-in routes refuse (ADR 0068) |
+| `ORBIT_WEB_ALLOWED_HOSTS` | loopback only | more host names to answer to (comma-separated); Orbit Web's own sign-in is the gate (ADR 0061), an access token an optional perimeter in front of it |
+| `ORBIT_WEB_ACCESS_TOKEN` | unset | optional token mode (a perimeter before the sign-in, ADR 0061): every API call needs it (min. 16 characters); the page asks for it first (with *Show* and *Paste* beside the field), or takes it from an access link `https://<host>/#access=<token>`, then keeps it 30 days in an HttpOnly cookie (a browser restart or a redeploy asks again for nothing). Once in, **Settings → Account** offers the access link to copy or open in another browser -- never the sign-in page: the link is the token |
+| `ORBIT_WEB_SIGN_IN_ON_PAGE` | `1` | `0`: a subscription connection is signed in only in a terminal of the server (`connect.js`); its card shows the command alone and the sign-in routes refuse (ADR 0061) |
 | `ORBIT_WEB_COOKIE_SECURE` | unset | `1` marks the access cookie and the session's cookies Secure (behind an HTTPS proxy) |
 | `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | unset | **ignored**: no credential of the server's own is given to any program; each account connects its CLIs ([AI connections](#ai-connections)) |
 | `ORBIT_WEB_SETUP_CODE` | unset | a test installation's standing setup code (8-64 characters): the setup page fills it in until the first administrator exists; never stored ([Run it](#run-it)) |
@@ -340,7 +340,7 @@ A connection signs in the provider's own way, and nothing else is accepted as a 
 provider's words it rests on, with their source:
 
 - **A subscription** is signed in by its owner with the unmodified official CLI's own sign-in, against that
-  connection's home -- **from its card** (ADR 0068): *Add a connection* starts it at once, *Sign in* (or *Reconnect*)
+  connection's home -- **from its card** (ADR 0061): *Add a connection* starts it at once, *Sign in* (or *Reconnect*)
   starts it again. Orbit Web runs `claude auth login --claudeai` (or `codex login --device-auth`) on the server and
   shows the browser that started it the link the CLI printed: open it and sign in; for **Claude Code** paste back the
   code its page shows (it goes to the CLI's stdin and nowhere else), for **OpenAI Codex** enter the one-time code the
@@ -742,7 +742,7 @@ the operator authorized is refused), what is reserved now, the storage committed
 waits. The host is read again at every start and at **Re-check** there (after a resize, or a change of
 `ORBIT_WEB_CAPACITY_*`): an authorization that comes from the capacity follows it -- a budget value that stood at it
 moves, one you lowered stays -- while one the operator set with `governance.js budget set` stays the operator's until
-`--from-capacity` (ADR 0069).
+`--from-capacity` (ADR 0061).
 
 **Network.** A tool plane's only way out is Orbit Web's egress proxy, every connection decided as that attempt under the
 account's policy (Governance → *Employee network access*): **Autonomous**, the default, reaches any public host on ports
@@ -793,7 +793,7 @@ account owns and nothing of another account's.
     employee wrote is hidden from you.
   - **Is that right, to read an AI employee's desk?** Yes: the desk is the account's -- the directory it keeps for an
     employee's work, holding what its accepted work left and the toolbox it wrote for itself -- and reviewing it is the
-    owner's (ADR 0069). It stays governed: only a person may (`employee.desk.read` and `employee.desk.clean` are
+    owner's (ADR 0061). It stays governed: only a person may (`employee.desk.read` and `employee.desk.clean` are
     people-only actions of the policy, allowed by default and always recorded, never an agent's), every look is in the
     audit with what was looked at -- the folder or the file, never what it holds (`office.desk.read`) -- the bytes are
     read by the allocator's storage worker as the employee's own user with no network, and nothing in a desk is ever
@@ -810,7 +810,7 @@ account owns and nothing of another account's.
     and its storage stays committed (an archive releases only the cache). **Delete the desk** of the ones you no longer
     need (confirmed; it cannot be undone): the desk, the cache and every workspace are removed through the allocator --
     tried again while a container of one of its attempts is still there -- and only once they are read back gone is the
-    storage released (ADR 0069).
+    storage released (ADR 0061).
 - **What it governs.** **Workspaces** (your chats, and their runs), **Research** (your research workspaces, their
   sessions, sources and runs) and the **Office** (hiring, giving and delegating work, publishing an employee's work,
   deliveries -- each an action of the policy, and every attempt bound to its account and employee). Each resource shows the policy that applies to it -- inherited from the
@@ -1037,7 +1037,7 @@ For one person, on their own machine, by default:
 
 - **Loopback only.** Compose publishes `127.0.0.1:3000`; the API answers only Host names on an allow-list (localhost,
   127.0.0.1, ::1), which also defeats DNS rebinding. Another host name is answered with Orbit Web's own sign-in as the
-  gate (below, ADR 0069); `ORBIT_WEB_ACCESS_TOKEN` adds a perimeter in front of it: then every API call needs the
+  gate (below, ADR 0061); `ORBIT_WEB_ACCESS_TOKEN` adds a perimeter in front of it: then every API call needs the
   token, traded once for an HttpOnly,
   SameSite=Strict cookie. The page asks for it before the sign-in (two steps, said as two), or takes it from an
   **access link**, `https://<host>/#access=<token>`: the fragment never reaches a server or a Referer, and the page
@@ -1080,7 +1080,7 @@ For one person, on their own machine, by default:
   loaded. **Its plugins are code** -- hooks that run at session start, MCP servers -- that would run in this container,
   where the sign-ins are; so they run only once you turn on *Run project plugins*, and then only for the chats of
   repositories that declare them.
-- **Claude connectors** (the owner's decision, ADR 0064; [above](#claude-connectors)): a chat and a research session
+- **Claude connectors** (the owner's decision, ADR 0061; [above](#claude-connectors)): a chat and a research session
   reach the connectors of the account's default Claude Code connection -- Claude Docs, where Claude makes its documents,
   and whatever else that Claude account connected at claude.ai (mail, files, chat …) -- each as far as that account's person checked it for chats and
   for research; an unchecked one is denied by name (`--disallowedTools mcp__<connector>`), in every mode. What the account

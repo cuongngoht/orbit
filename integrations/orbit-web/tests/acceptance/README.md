@@ -24,7 +24,7 @@ node tests/acceptance/real-run.mjs --budget=2
 Orbit Web keeps its records in PostgreSQL: the run starts the pinned `pgvector/pgvector` image beside the container, on
 a network of its own (the role made by the compose files' init script), and removes both at the end.
 
-Signing in is Orbit Web's own (ADR 0067): the run sets the first administrator up with the one-time code the container's
+Signing in is Orbit Web's own (ADR 0061): the run sets the first administrator up with the one-time code the container's
 terminal prints, then connects Claude Code for that account -- with the API key named by `--api-key-env`, or, without
 one, as a subscription signed in by Claude Code's own `auth login` in this terminal (`docker exec -it … connect.js
 <id>`), the URL and the code the CLI's and the person's. Without either it stops BLOCKED at that step. The evidence

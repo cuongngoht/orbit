@@ -1,4 +1,4 @@
-// THE VIRTUAL OFFICE (Orbit Web 0.8.0, ADR 0067): an account's office, its departments and AI employees, the missions
+// THE VIRTUAL OFFICE (Orbit Web 0.8.0, ADR 0061): an account's office, its departments and AI employees, the missions
 // and assignments they hold, what they hand in, what waits for a person, the schedules that make work, and the runtime
 // connections an employee runs on. One definition for the API and the web app.
 //
@@ -238,7 +238,7 @@ export interface EmployeeDetail extends EmployeeCard {
   activeRun: RunView | null;
 }
 
-// GOVERNANCE → EMPLOYEE DESKS (ADR 0069): every employee's desk -- of those in the office, and of those who left (archived,
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0061): every employee's desk -- of those in the office, and of those who left (archived,
 // or rejected at the trial), whose storage stays committed until the owner deletes the desk here (POST
 // /api/employees/:id/employment { command: "delete" }, If-Match the employee's version). A desk being deleted is listed
 // until it is gone. Each one may be looked into (desks.ts); one whose employee is in the office and holds no work may
@@ -903,7 +903,7 @@ export const INTEGRATION_EVENTS = {
   SandboxProvisionRequested: 1,
   SandboxReady: 1,
   SandboxFailed: 1,
-  // An archived employee's desk, deleted by its owner, read back gone (ADR 0069).
+  // An archived employee's desk, deleted by its owner, read back gone (ADR 0061).
   SandboxDeleted: 1,
   // An accepted assignment's workspace was published to its employee's desk (and its toolbox), or could not be.
   DeskPublished: 1,

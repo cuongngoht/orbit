@@ -1,4 +1,4 @@
-// GOVERNANCE → EMPLOYEE DESKS, LOOKED INTO AND CLEANED UP (desks.ts, ADR 0069): the account's owner opens any of its
+// GOVERNANCE → EMPLOYEE DESKS, LOOKED INTO AND CLEANED UP (desks.ts, ADR 0061): the account's owner opens any of its
 // employees' desks -- one folder, or a file's text, read only -- and cleans one up when it fills.
 //
 // Every look is the account policy's to decide (`employee.desk.read`, people only, always recorded) and is recorded

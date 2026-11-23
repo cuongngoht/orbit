@@ -1,4 +1,4 @@
-// THE ALLOCATOR'S PROTOCOL (ADR 0067): the typed operations Orbit Web may ask of the allocator -- the one process that
+// THE ALLOCATOR'S PROTOCOL (ADR 0061): the typed operations Orbit Web may ask of the allocator -- the one process that
 // holds the container runtime's socket -- and nothing else. Every operation names IDS and VALUES (an account, an
 // employee, an assignment, an attempt's dispatch key, a quota, a command's argument list); none takes a host path, an
 // image, a mount, a privilege or a capability: the allocator works those out itself. Each request is checked here,

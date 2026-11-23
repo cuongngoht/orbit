@@ -1,4 +1,4 @@
-// WHAT THE SANDBOX NAMES, worked out from ids alone (ADR 0067). The allocator never takes a path, an image, a mount or
+// WHAT THE SANDBOX NAMES, worked out from ids alone (ADR 0061). The allocator never takes a path, an image, a mount or
 // a name from a caller: every container, label and storage area below is derived here from the ids of an account, an
 // employee, an assignment or an attempt -- each checked to be a plain identifier first, so none can climb out of the
 // place it names ("..", "/", a NUL byte).

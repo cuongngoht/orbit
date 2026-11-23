@@ -11,7 +11,7 @@
 //   POST   /api/connections/:id/disconnect       the CLI's own logout, the home's login removed
 //   DELETE /api/connections/:id                  -> 204 (409 connection_in_use while an employee runs on it)
 //   PUT    /api/connections/:id/plugins/orbit    { useCase, approved, digest } -- Claude Code only
-//   GET    /api/connections/:id/sign-in          a sign-in from the card (ADR 0068), as this browser may see it
+//   GET    /api/connections/:id/sign-in          a sign-in from the card (ADR 0061), as this browser may see it
 //   POST   /api/connections/:id/sign-in          starts the CLI's own sign-in (or returns this browser's under way)
 //   POST   /api/connections/:id/sign-in/code     { code } -- Claude Code's code, to the CLI's stdin and nowhere else
 //   POST   /api/connections/:id/sign-in/cancel

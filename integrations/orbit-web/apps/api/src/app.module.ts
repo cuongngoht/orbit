@@ -55,7 +55,7 @@ export class AppModule {
         BrokerModule,
         ImagesModule,
         ResearchModule,
-        // The virtual office (ADR 0067). Its sandbox provider is bound by the composition (sandbox/compose).
+        // The virtual office (ADR 0061). Its sandbox provider is bound by the composition (sandbox/compose).
         OfficeModule.forRoot(),
       ],
     };

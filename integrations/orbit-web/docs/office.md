@@ -1,6 +1,6 @@
 # The Office: contexts, events and states
 
-How Orbit Web's virtual office (ADR 0067) is put together: the bounded contexts and who depends on whom, the durable
+How Orbit Web's virtual office (ADR 0061) is put together: the bounded contexts and who depends on whom, the durable
 events between them, and the state machines each one owns. The code is the reference -- `apps/api/src/contexts/` and
 `packages/contracts/src/workforce.ts` -- and this page says where each part lives.
 

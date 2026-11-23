@@ -1,4 +1,4 @@
-// THE EXECUTION WORKER (Execution context, ADR 0067): what turns a run's durable intent into an attempt, and an attempt
+// THE EXECUTION WORKER (Execution context, ADR 0061): what turns a run's durable intent into an attempt, and an attempt
 // back into a fact Work decides on. One per Orbit Web process.
 //
 //   ADMIT     a pass of the admission service (one at a time across the deployment) moves pending attempts to `starting`

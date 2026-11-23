@@ -1,4 +1,4 @@
-// SIGNING A SUBSCRIPTION CONNECTION IN, in a terminal of the server -- beside its card's Sign in (ADR 0068: the same
+// SIGNING A SUBSCRIPTION CONNECTION IN, in a terminal of the server -- beside its card's Sign in (ADR 0061: the same
 // sign-in, run by Orbit Web and followed by the page), the way that passes nothing through Orbit's pages: the provider's
 // OWN, unmodified sign-in (`claude auth login --claudeai`, `codex login --device-auth`), run in the operator's own
 // terminal (its URL and its code are the CLI's and the person's), with that one connection's config home and nothing

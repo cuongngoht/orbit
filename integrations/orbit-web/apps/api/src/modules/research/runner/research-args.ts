@@ -7,7 +7,7 @@
 // an argument but the model, the effort, and the connectors the account's owner checked for research and the account's
 // policy allowed (tool.connector, decided for each before the run starts).
 //
-// Two profiles (owner's decision, ADR 0064): with no connector checked for research, restricted (`--restricted`: no
+// Two profiles (owner's decision, ADR 0061): with no connector checked for research, restricted (`--restricted`: no
 // settings file -- no hook, no plugin, no permission rule of anybody's) and no MCP server (`--strict-mcp-config`). With
 // some, the user's settings source -- the only one the account's connectors come with -- the connectors checked allowed
 // by name (`--allowedTools mcp__<connector>`), the rest denied by name, and every other call refused by `dontAsk`.

@@ -1,5 +1,5 @@
 // WHAT AN AI CLI'S OWN SIGN-IN PRINTS, read as it prints it (common/login-flow.ts drives the process) -- pure. Each
-// runtime whose subscription a card can sign in (ADR 0068) has a READER: what the output so far says, and when a person
+// runtime whose subscription a card can sign in (ADR 0061) has a READER: what the output so far says, and when a person
 // has everything they need to act on it.
 //
 //   Claude Code   `claude auth login --claudeai` prints "… visit: https://claude.com/cai/oauth/authorize?…" and then

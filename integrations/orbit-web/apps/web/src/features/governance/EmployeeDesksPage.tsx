@@ -1,4 +1,4 @@
-// GOVERNANCE → EMPLOYEE DESKS (ADR 0069): every employee's desk -- of those in the office, of those who left (archived, or
+// GOVERNANCE → EMPLOYEE DESKS (ADR 0061): every employee's desk -- of those in the office, of those who left (archived, or
 // rejected at the trial), and the ones being deleted -- with what each holds. Any of them is opened (DeskBrowser): read
 // only, each look recorded. One in the office that holds no work is cleaned up there. One who left keeps its desk and
 // cache committed of the account's storage (read only) until the owner deletes the desk here: then the desk, the cache

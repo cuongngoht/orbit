@@ -1236,10 +1236,10 @@ integrations/  what ANOTHER program installs, never part of this plugin's archiv
                specs are *.spec.ts(x) outside any test/ directory so the root `node --test` never collects them;
                docker/ (Dockerfile, compose.yaml), scripts/ (ci.mjs, build-image.mjs, release.mjs), tests/ (Docker
                smoke, the real acceptance run and its results). Imports nothing of the plugin: it runs the plugin's CLIs
-               as programs. apps/api/src/modules/research/ (ADR 0064) is its research domain -- workspaces, sources
+               as programs. apps/api/src/modules/research/ (ADR 0061) is its research domain -- workspaces, sources
                read in a worker and indexed in SQLite FTS5, sessions answered by a tool-less Claude run from passages
                the server retrieved, citations the server verifies; modules/access/ holds each Claude account's chats
-               to it; modules/images/ (ADR 0065) takes a chat message's images, read from their bytes and given to
+               to it; modules/images/ (ADR 0061) takes a chat message's images, read from their bytes and given to
                Claude Code as stream-json. Its README says what it is and how it is secured
 satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit's owners; its own docs are
                satellite/docs/ (README, hosts, invocation, contract-map, adr/0001-0004). src/ imports only Orbit's

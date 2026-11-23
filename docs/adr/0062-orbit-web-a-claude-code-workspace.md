@@ -4,8 +4,8 @@
 
 Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's decision, given with three screenshots of claude.ai/code: a sign-in
 page in that style; the chat always open, laid out like Claude Code; a chat that runs with no repository; every model
-and effort; GitHub and Azure as connectors, presentation only ("thiết kế giao diện thôi nha. Còn hoạt động làm việc như
-cũ"); in the chat, choose Azure or GitHub, then the repository; on a repository's first fetch, load all of the
+and effort; GitHub and Azure as connectors, presentation only ("just the interface design; everything else works as
+before"); in the chat, choose Azure or GitHub, then the repository; on a repository's first fetch, load all of the
 project's skills and plugins; the SSE streams redesigned as an event-driven architecture "so that later changes are
 easier"; and only two modes, Autonomous (Claude Code's auto mode) and Plan (its plan mode). Builds on ADR 0060 and ADR
 0061, for Orbit Web only. No engine contract changes: nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/`

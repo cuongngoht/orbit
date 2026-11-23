@@ -3,8 +3,8 @@
 ## Status
 
 Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's decision (the implementation handoff "Orbit Web 0.8.0 Governance
-Core", and, mid-way, "Thiếu chức năng push branch cho github và devops nữa trong orbit-web và cài sẵn môi trường python
-mới nhất"). Builds on ADR 0060, ADR 0061 and ADR 0062, for Orbit Web only, and amends ADR 0062's stated limit ("a misled
+Core", and, mid-way, "orbit-web still lacks pushing a branch to GitHub and Azure DevOps, and the latest Python
+environment preinstalled"). Builds on ADR 0060, ADR 0061 and ADR 0062, for Orbit Web only, and amends ADR 0062's stated limit ("a misled
 agent could turn either switch on itself"; "separating them is left to a later version"). Keeps ADR 0061 whole: the
 Claude account remains Orbit Web's mandatory sign-in. No engine contract changes: nothing under `src/`, `cli/`,
 `skills/`, `hooks/` or `agents/` changes, the plugin stays 0.6.0, and the plugin archive is unchanged (`integrations/`

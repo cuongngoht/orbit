@@ -3,8 +3,9 @@
 ## Status
 
 Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's decision (the implementation task "Orbit Web Research Workspace &
-Research Session", and, while it was planned, "mỗi lần login vào thì lấy model và effort căn cứ account claude login"
-and "mỗi account có session riêng: account A claude log vào không thấy account claude B trừ khi share cho nhau").
+Research Session", and, while it was planned, "on every sign-in, take the models and efforts from the Claude account
+that signed in" and "each account has its own sessions: Claude account A, signed in, does not see Claude account B's
+unless they share them with each other").
 Builds on ADR 0060-0063, for Orbit Web only. No engine contract changes: nothing under `src/`, `cli/`, `skills/`,
 `hooks/` or `agents/` changes, the plugin stays 0.6.0, and the plugin archive is unchanged (`integrations/` is
 export-ignored).
@@ -75,7 +76,7 @@ lists, customizations and app-stream notifications are filtered the same way. On
 makes a public link. A chat from before owners is claimed once by the first account that signs in.
 
 **A chat reaches the account's claude.ai connectors** (the owner's decision while 0.8.0 was verified, 2026-11-20:
-"Bật cho mọi chat", asked why Claude in Orbit Web made no document). Claude makes its documents through the account's
+"turn it on for every chat", asked why Claude in Orbit Web made no document). Claude makes its documents through the account's
 claude.ai connector *Claude Docs*, and a chat ran with `--strict-mcp-config` (ADR 0060), which drops every claude.ai
 connector with every other MCP server; the CLI lets no claude.ai connector be declared on its own (`claudeai-proxy` is
 refused in an MCP config), so Docs cannot be let in alone. A chat now runs without that flag: it reaches every connector
@@ -106,10 +107,11 @@ a choice is held to its shape alone.
 
 ## Amendment, 2026-11-21: research is a conversation with references; connectors are checked per account
 
-The owner's decisions while 0.8.0 was verified: "tôi muốn chỉ cần prompt thôi thì nó viết claude artifact rồi trả link"
-(a research prompt makes a Claude Doc and says its link), "thêm nơi cấu hình của user dùng connector gì dùng checkbox
-sau này có thể phát triển nhiều hơn" (a place where a person checks which connectors are used, able to grow), and "phần
-research như phần chat chỉ là reference dữ liệu thôi" (research like a chat, its sources only references).
+The owner's decisions while 0.8.0 was verified: "I want a prompt alone to make it write a Claude artifact and give
+back the link" (a research prompt makes a Claude Doc and says its link), "add a place where the user sets which
+connectors are used, with checkboxes, that can grow later" (a place where a person checks which connectors are used,
+able to grow), and "research, like chat, only references the data" (research like a chat, its sources only
+references).
 
 - **A research session is a conversation like a chat whose selected sources are references.** The passages retrieved
   for a question (as above: only from the selected sources, frozen first) are given as reference material: a statement

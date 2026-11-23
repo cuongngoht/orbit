@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted (Orbit Web 0.8.0), 2026-11-22, the owner's decision ("bấm add connection thì show link để đăng nhập … như
-cũ"). Replaces ADR 0067's "a subscription is signed in only in a terminal of the server: the URL and the code never
+Accepted (Orbit Web 0.8.0), 2026-11-22, the owner's decision ("clicking Add connection shows the link to sign in …
+as before"). Replaces ADR 0067's "a subscription is signed in only in a terminal of the server: the URL and the code never
 pass through Orbit" -- the terminal stays, beside the card. For Orbit Web only: nothing of the plugin changes.
 
 ## Context

@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's decision ("luôn luôn bắt buộc phải đăng nhập account claude. Nó
-là account đăng nhập luôn": the Claude account is always required, and it is the sign-in). Amends ADR 0060 for Orbit Web
+Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's decision ("signing in with a Claude account is always required; it
+is the sign-in itself": the Claude account is always required, and it is the sign-in). Amends ADR 0060 for Orbit Web
 only. No engine contract changes: nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` changes, the plugin
 stays 0.6.0, and the plugin archive is unchanged (`integrations/` is export-ignored).
 

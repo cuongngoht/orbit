@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's request ("thêm tính năng copy hình vào chat như chụp màn hình thì
-copy vào chat": a screenshot pasted into the chat goes with the message). For Orbit Web only; no engine contract
+Accepted (Orbit Web 0.8.0), 2026-11-20, the owner's request ("add copying images into the chat: take a screenshot,
+then paste it into the chat": a screenshot pasted into the chat goes with the message). For Orbit Web only; no engine contract
 changes, the plugin stays 0.6.0 and its archive is unchanged.
 
 ## Context

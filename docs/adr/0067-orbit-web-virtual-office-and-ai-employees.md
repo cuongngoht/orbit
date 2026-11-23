@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Orbit Web 0.8.0), 2026-11-21, the owner's decisions (the specification "Orbit 0.8.0 — văn phòng ảo", its
+Accepted (Orbit Web 0.8.0), 2026-11-21, the owner's decisions (the specification "Orbit 0.8.0 — the virtual office", its
 review notes, and the answers given while it was planned). Builds on ADR 0060-0066 and replaces parts of two of them,
 said below. For Orbit Web only: nothing under `src/`, `cli/`, `skills/`, `hooks/` or `agents/` of the plugin changes,
 and the plugin archive is unchanged (`integrations/` is export-ignored).

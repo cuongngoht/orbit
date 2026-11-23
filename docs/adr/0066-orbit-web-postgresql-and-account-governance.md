@@ -3,7 +3,8 @@
 ## Status
 
 Accepted (Orbit Web 0.8.0), 2026-11-21, the owner's decision (the implementation task "Orbit Web 0.8.0: PostgreSQL,
-pgvector, governance theo account Claude", and, while it was planned, "chỉ bật pgvector thôi, chưa cần integrate giờ").
+pgvector, governance per Claude account", and, while it was planned, "just enable pgvector; no need to integrate it
+yet").
 Builds on ADR 0060-0065 and replaces parts of three of them, said below. For Orbit Web only: nothing under `src/`,
 `cli/`, `skills/`, `hooks/` or `agents/` changes, the plugin stays 0.6.0, and the plugin archive is unchanged
 (`integrations/` is export-ignored).

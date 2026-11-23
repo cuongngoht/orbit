@@ -3,8 +3,8 @@
 ## Status
 
 Accepted (Orbit Web 0.8.0), 2026-11-22, the owner's decisions while deploying 0.8.0 to the hosted installation
-("chỉ cần nhập account và mật khẩu là xong", "có phần re-check để lấy cấu hình mới", "image có cài sẵn codex và agy
-cli"). Amends ADR 0060's access token rule and ADR 0067's capacity and image. For Orbit Web only.
+("entering just the account and the password should be enough", "a Re-check that reads the new configuration", "the
+image comes with the codex and agy CLIs installed"). Amends ADR 0060's access token rule and ADR 0067's capacity and image. For Orbit Web only.
 
 ## Context
 
@@ -44,8 +44,8 @@ cli"). Amends ADR 0060's access token rule and ADR 0067's capacity and image. Fo
    Code. `build-info.json` and Settings → System name their versions. What each may do is unchanged: ADR 0067's
    methods decide (Antigravity has no sign-in Orbit Web offers).
 
-5. **Employee desks** (Governance → Employee desks: every employee's desk, the owner's decision "phần này vẫn hiển thị
-   ra chứ để có thể xem trong bàn làm việc có gì ... có thể làm mới khi dữ liệu nhiều"). Each desk is listed with what
+5. **Employee desks** (Governance → Employee desks: every employee's desk, the owner's decision "this part should still be
+   shown, so one can see what is on the desk ... it can be refreshed when the data grows"). Each desk is listed with what
    it commits and what was last measured in it, and the owner may LOOK INTO any of them: one folder at a time, a file's
    first 512 KiB as text (shown, never run or rendered; a file that is not text only named and sized), links listed and
    never followed -- read by the allocator's storage worker (the employee's own user, no network), never by its

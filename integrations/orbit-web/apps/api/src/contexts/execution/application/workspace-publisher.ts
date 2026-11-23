@@ -65,7 +65,7 @@ export class WorkspacePublisher implements OnModuleInit {
         version += 1;
       }
       const actor = systemActor(orbitId, "desk-publisher", `desk:${assignmentId}`);
-      await this.outbox.append(actor.command, [{ type: "DeskPublished", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: version, missionId: String(a.mission_id), payload: { employeeId, assignmentId, published: r.published, deskVersion: r.deskVersion, changed: r.changed.length, reason: r.reason } }]);
+      await this.outbox.append(actor.command, [{ type: "DeskPublished", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: version, missionId: String(a.mission_id), payload: { employeeId, assignmentId, published: r.published, deskVersion: r.deskVersion, changed: r.changedTotal, reason: r.reason } }]);
       await this.outbox.touched(orbitId, ["roster", "missions"], String(a.mission_id));
     });
   }

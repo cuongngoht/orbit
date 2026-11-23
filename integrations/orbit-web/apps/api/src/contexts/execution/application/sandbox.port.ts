@@ -190,7 +190,8 @@ export interface SandboxProvider {
   // attempts of one assignment (a revision continues in the same work tree) until the assignment ends.
   prepareWorkspace(ids: SandboxIds, assignmentId: string, scratchMiB: number): Promise<AreaState>;
   // On acceptance: the workspace's changes are published to the desk if the desk is still at `expectedDeskVersion`.
-  publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<{ published: boolean; deskVersion: number; changed: string[]; reason: string | null }>;
+  // Its answer names the first changed paths (a bounded list) and how many there were (`changedTotal`).
+  publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<{ published: boolean; deskVersion: number; changed: string[]; changedTotal: number; reason: string | null }>;
   // When the assignment ends: its workspace is removed (verified).
   removeWorkspace(ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }>;
 

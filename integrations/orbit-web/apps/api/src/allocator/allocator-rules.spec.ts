@@ -20,7 +20,7 @@ import { demuxAll, StdStreamDemuxer } from "./docker/stdstream.js";
 import { deskScript, nodeScript, syncScript } from "./scripts/node-scripts.js";
 import { allocatorServer } from "./server.js";
 import { MiB, modelPlaneBody, sessionPlaneBody, toolPlaneBody, toolPlaneMounts } from "./specs.js";
-import { quotaHeld } from "./storage.js";
+import { quotaHeld, WorkforceStorage } from "./storage.js";
 
 const profile = (DEFAULT_PRESETS[2] as { profile: ResourceProfile }).profile;
 
@@ -165,10 +165,23 @@ describe("the desk's copy (the same program a storage worker runs)", () => {
     writeFileSync(join(work, ".orbit/handoff.json"), "{}");
     const r = run("publish", work, desk);
     assert.equal(r.code, 0, r.err);
-    assert.deepEqual(r.out, { published: true, changed: ["link", "new.md", "toolbox/scripts/run.py"] });
+    assert.deepEqual(r.out, { published: true, changed: ["link", "new.md", "toolbox/scripts/run.py"], changedTotal: 3 });
     assert.equal(readFileSync(join(desk, "toolbox/scripts/run.py"), "utf8"), "print(2)\n");
     assert.deepEqual([existsSync(join(desk, "link")), existsSync(join(desk, ".orbit")), existsSync(join(desk, ".orbit-publish"))], [false, false, false]);
-    assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [] });
+    assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [], changedTotal: 0 });
+  });
+
+  test("a publish of more paths than an answer may name publishes them all, and names the first of them with how many there were", () => {
+    const desk = join(dir, "desk3");
+    const work = join(dir, "work3");
+    mkdirSync(desk);
+    mkdirSync(join(work, "many"), { recursive: true });
+    for (let i = 0; i < 650; i += 1) writeFileSync(join(work, "many", `f${String(i).padStart(4, "0")}.txt`), String(i));
+    const r = run("publish", work, desk, "500");
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual([(r.out.changed as string[]).length, r.out.changedTotal], [500, 651]);
+    assert.deepEqual((r.out.changed as string[]).slice(0, 2), ["many", "many/f0000.txt"]);
+    assert.equal(readdirSync(join(desk, "many")).length, 650, "everything is published; only the answer is bounded");
   });
 
   test("an isolation check's marker in the desk is neither seeded into work, published over, nor taken from a work tree", () => {
@@ -182,10 +195,16 @@ describe("the desk's copy (the same program a storage worker runs)", () => {
     assert.equal(existsSync(join(work, ".orbit-canary-0123456789abcdef")), false);
     // A publish while the marker sits in the desk leaves it there; a marker-named file of the work tree never reaches it.
     writeFileSync(join(work, ".orbit-canary-fedcba9876543210"), "the employee's");
-    assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [] });
+    assert.deepEqual(run("publish", work, desk).out, { published: true, changed: [], changedTotal: 0 });
     assert.equal(readFileSync(join(desk, ".orbit-canary-0123456789abcdef"), "utf8"), "nonce");
     assert.equal(existsSync(join(desk, ".orbit-canary-fedcba9876543210")), false);
   });
+});
+
+test("a record the storage helper read back cut short is refused, never taken as the whole record", async () => {
+  const storage = Object.create(WorkforceStorage.prototype) as WorkforceStorage;
+  storage.helper = async () => ({ code: 0, stdout: Buffer.from('{"version":1,"changed":["a'), stderr: Buffer.alloc(0), timedOut: false, truncated: true });
+  await assert.rejects(storage.get("accounts/o/employees/e/desk/version"), /accounts\/o\/employees\/e\/desk\/version is larger than/);
 });
 
 describe("an employee's desk, looked into and cleaned up (the program a storage worker runs)", () => {

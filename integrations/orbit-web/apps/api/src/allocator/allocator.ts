@@ -16,6 +16,7 @@ import type { AreaState, AttemptEvidence, DeskCleaned, DeskCleanOrder, DeskListi
 import {
   AllocatorError,
   checkAttemptSpec,
+  CHANGED_PATHS,
   checkAttestSpec,
   checkDeskOrder,
   deskRefusal,
@@ -77,10 +78,13 @@ interface SandboxRecord {
 
 interface DeskVersion {
   version: number;
-  // The last publish (so a retry of it after a crash is answered, not refused).
+  // The last publish (so a retry of it after a crash is answered, not refused): the first CHANGED_PATHS paths it
+  // changed and how many there were -- a work tree has no bound, and this record is read back through the storage
+  // helper's bounded answer.
   by: string | null;
   from: number | null;
   changed: string[];
+  changedTotal: number;
 }
 
 interface WorkspaceRecord {
@@ -229,7 +233,7 @@ export class Allocator implements AllocatorApi {
 
   private async deskVersion(ids: EmployeeIds): Promise<DeskVersion> {
     const raw = await this.storage.get(`${deskArea(ids)}/version`);
-    return raw === null ? { version: 0, by: null, from: null, changed: [] } : (JSON.parse(raw.toString("utf8")) as DeskVersion);
+    return raw === null ? { version: 0, by: null, from: null, changed: [], changedTotal: 0 } : (JSON.parse(raw.toString("utf8")) as DeskVersion);
   }
 
   private areaState(st: StorageState, area: StorageArea, quotaMiB: number, usage: { usedBytes: number; limitBytes: number } | null): AreaState {
@@ -260,7 +264,7 @@ export class Allocator implements AllocatorApi {
         if (existing === null) {
           await this.storage.ensureDir(`${desk}/files`, "employee", "0700");
           for (const d of ["toolbox", "toolbox/skills", "toolbox/scripts"]) await this.storage.ensureDir(`${desk}/files/${d}`, "employee", "0755");
-          if ((await this.storage.get(`${desk}/version`)) === null) await this.storage.put(`${desk}/version`, Buffer.from(JSON.stringify({ version: 0, by: null, from: null, changed: [] } satisfies DeskVersion)));
+          if ((await this.storage.get(`${desk}/version`)) === null) await this.storage.put(`${desk}/version`, Buffer.from(JSON.stringify({ version: 0, by: null, from: null, changed: [], changedTotal: 0 } satisfies DeskVersion)));
         }
         if (quotas.cacheMiB > 0) await this.storage.ensureArea(cacheArea(ids), quotas.cacheMiB * MiB, "employee", "0700");
         // A write in each area, as the employee.
@@ -385,22 +389,23 @@ export class Allocator implements AllocatorApi {
       const desk = await this.deskVersion(ids);
       // This very assignment produced the desk's version (a retry after a crash between this publish and its record): the
       // answer it had, never a second publish or a refusal.
-      if (desk.by === assignmentId) return { published: true, deskVersion: desk.version, changed: desk.changed, reason: null };
-      if (desk.version !== expected) return { published: false, deskVersion: desk.version, changed: [], reason: `the desk is at version ${desk.version}, not ${expected}: it changed after this assignment's workspace was prepared` };
-      if ((await this.storage.get(workspaceMeta(ids, assignmentId))) === null) return { published: false, deskVersion: desk.version, changed: [], reason: "this assignment has no workspace" };
+      if (desk.by === assignmentId) return { published: true, deskVersion: desk.version, changed: desk.changed, changedTotal: desk.changedTotal, reason: null };
+      if (desk.version !== expected) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: `the desk is at version ${desk.version}, not ${expected}: it changed after this assignment's workspace was prepared` };
+      if ((await this.storage.get(workspaceMeta(ids, assignmentId))) === null) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: "this assignment has no workspace" };
       const r = await this.storage.worker(
         [
           { volume: st.volume, subpath: `${scratchArea(ids, assignmentId)}/work`, target: "/src", readOnly: true },
           { volume: st.volume, subpath: `${deskArea(ids)}/files`, target: "/dst", readOnly: false },
         ],
-        ["node", "-e", nodeScript(syncScript), "publish", "/src", "/dst"],
+        ["node", "-e", nodeScript(syncScript), "publish", "/src", "/dst", String(CHANGED_PATHS)],
       );
-      if (r.code === 7) return { published: false, deskVersion: desk.version, changed: [], reason: `the desk's quota (${record.deskMiB} MiB) cannot hold the work tree: nothing was published` };
-      if (r.code !== 0) throw new Error(failure("publishing the workspace to the desk", r));
-      const changed = (JSON.parse(text(r.stdout)) as { changed: string[] }).changed;
-      const next: DeskVersion = { version: desk.version + 1, by: assignmentId, from: expected, changed };
+      if (r.code === 7) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: `the desk's quota (${record.deskMiB} MiB) cannot hold the work tree: nothing was published` };
+      if (r.code !== 0 || r.truncated) throw new Error(failure("publishing the workspace to the desk", r));
+      const said = JSON.parse(text(r.stdout)) as { changed: string[]; changedTotal: number };
+      const changed = said.changed.slice(0, CHANGED_PATHS);
+      const next: DeskVersion = { version: desk.version + 1, by: assignmentId, from: expected, changed, changedTotal: said.changedTotal };
       await this.storage.put(`${deskArea(ids)}/version`, Buffer.from(JSON.stringify(next)));
-      return { published: true, deskVersion: next.version, changed, reason: null };
+      return { published: true, deskVersion: next.version, changed, changedTotal: next.changedTotal, reason: null };
     });
   }
 

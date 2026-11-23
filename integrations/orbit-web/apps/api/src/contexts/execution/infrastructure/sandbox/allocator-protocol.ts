@@ -63,10 +63,17 @@ export interface AttestRequest {
   acceptSoftStorage: boolean;
 }
 
+// How many of a publish's changed paths its answer -- and the desk's version record -- names: the first ones, by path,
+// with how many there were. A work tree is the employee's and has no bound (a repository, its dependencies), while
+// every answer and record crosses a bounded channel (the storage helper's 4 MiB, a storage worker's 16 MiB).
+export const CHANGED_PATHS = 500;
+
 export interface PublishResult {
   published: boolean;
   deskVersion: number;
+  // The first CHANGED_PATHS changed paths, by path; `changedTotal` is how many there were.
   changed: string[];
+  changedTotal: number;
   reason: string | null;
 }
 

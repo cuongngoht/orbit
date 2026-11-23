@@ -2,7 +2,7 @@
 // shell, ever; file tools held to the attempt's own places through links; the desk published under its version check,
 // once per assignment; every removal read back.
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -151,5 +151,20 @@ describe("the process provider (development only)", () => {
     assert.equal(r.deskVersion, 1, "a clean does not move the desk's version");
     assert.deepEqual(readdirSync(desk).sort(), [".orbit-canary-0123456789abcdef", "toolbox"]);
     assert.equal(existsSync(join(data, "connections", O)), true, "a link's target is never touched");
+  });
+
+  test("a publish of a big work tree keeps the desk's record small, so the employee's next work tree is still made", async () => {
+    await provider.prepareWorkspace(ids, "asg-4", 64);
+    const work = join(data, "workforce/accounts", O, "employees/emp-1/assignments/asg-4/scratch/work");
+    mkdirSync(join(work, "many"), { recursive: true });
+    for (let i = 0; i < 650; i += 1) writeFileSync(join(work, "many", `f${i}.txt`), "x");
+    const r = await provider.publishWorkspace(ids, "asg-4", 1);
+    assert.deepEqual([r.published, r.deskVersion, r.changed.length, r.changedTotal], [true, 2, 500, 651]);
+    const record = statSync(join(data, "workforce/accounts", O, "employees/emp-1/desk/version")).size;
+    assert.ok(record < 64 * 1024, `the desk's version record is ${record} bytes`);
+    assert.deepEqual(await provider.publishWorkspace(ids, "asg-4", 1), r, "a retry after a crash gets the same answer, its count too");
+    assert.equal((await provider.removeWorkspace(ids, "asg-4")).gone, true);
+    await provider.prepareWorkspace(ids, "asg-5", 64);
+    assert.equal((await provider.removeWorkspace(ids, "asg-5")).gone, true);
   });
 });

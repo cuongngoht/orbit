@@ -280,14 +280,16 @@ export function writeTestScript(): void {
   process.stdout.write(JSON.stringify(results));
 }
 
-// seed <src> <dst> | publish <src> <dst> | inputs <dst> (JSON on stdin) -- in a storage worker that mounts exactly these
+// seed <src> <dst> | publish <src> <dst> [<maxPaths>] | inputs <dst> (JSON on stdin) -- in a storage worker that mounts exactly these
 // places of ONE employee, as that employee: a link in either tree is copied as a link, never followed. The work tree's
 // `.orbit/` (the handoff protocol's own files) is never carried to the desk.
 export function syncScript(): void {
   const fs = process.getBuiltinModule("node:fs");
   const path = process.getBuiltinModule("node:path");
   const crypto = process.getBuiltinModule("node:crypto");
-  const [mode, a, b] = process.argv.slice(1);
+  const [mode, a, b, maxRaw] = process.argv.slice(1);
+  // A publish names at most this many of the paths it changed (and how many there were): a work tree has no bound.
+  const maxPaths = Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 500;
   const STAGE = ".orbit-publish";
   const SKIP = new Set([".orbit", STAGE, "lost+found"]);
   // The marker an isolation check plants in ANOTHER employee's desk for a moment: never seeded into a work tree, never
@@ -396,7 +398,8 @@ export function syncScript(): void {
       }
     }
     fs.rmSync(stage, { recursive: true, force: true });
-    return finish({ published: true, changed: [...changed, ...removed].sort() });
+    const all = [...changed, ...removed].sort();
+    return finish({ published: true, changed: all.slice(0, maxPaths), changedTotal: all.length });
   }
   if (mode === "inputs") {
     const dst = a as string;

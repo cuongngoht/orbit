@@ -14,7 +14,7 @@ import { contained } from "../../../../common/workspace-path.js";
 import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import type { SandboxProvider } from "../../application/sandbox.port.js";
-import { AllocatorError, checkAttemptSpec, checkDeskOrder, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, deskRefusal, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
+import { AllocatorError, CHANGED_PATHS, checkAttemptSpec, checkDeskOrder, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, deskRefusal, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
 import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
 import { deskScript, nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
 
@@ -154,7 +154,7 @@ export class ProcessSandboxProvider implements SandboxProvider {
   }
 
   private sync(mode: "seed" | "publish", src: string, dst: string): { code: number | null; out: Record<string, unknown> } {
-    const r = spawnSync(process.execPath, ["-e", nodeScript(syncScript), mode, src, dst], { encoding: "utf8", maxBuffer: 64 * MiB });
+    const r = spawnSync(process.execPath, ["-e", nodeScript(syncScript), mode, src, dst, String(CHANGED_PATHS)], { encoding: "utf8", maxBuffer: 64 * MiB });
     try {
       return { code: r.status, out: JSON.parse(r.stdout) as Record<string, unknown> };
     } catch {
@@ -183,15 +183,16 @@ export class ProcessSandboxProvider implements SandboxProvider {
     const ids = checkSandboxIds(idsIn);
     const assignmentId = checkId(assignmentIdIn, "assignmentId");
     const expected = intIn(expectedIn, 0, Number.MAX_SAFE_INTEGER, "expectedDeskVersion");
-    const desk = this.readJson<{ version: number; by: string | null; from: number | null; changed: string[] }>(`${deskArea(ids)}/version`) ?? { version: 0, by: null, from: null, changed: [] };
-    if (desk.by === assignmentId) return { published: true, deskVersion: desk.version, changed: desk.changed, reason: null };
-    if (desk.version !== expected) return { published: false, deskVersion: desk.version, changed: [], reason: `the desk is at version ${desk.version}, not ${expected}: it changed after this assignment's workspace was prepared` };
-    if (this.readJson(workspaceMeta(ids, assignmentId)) === null) return { published: false, deskVersion: desk.version, changed: [], reason: "this assignment has no workspace" };
+    const desk = this.readJson<{ version: number; by: string | null; from: number | null; changed: string[]; changedTotal: number }>(`${deskArea(ids)}/version`) ?? { version: 0, by: null, from: null, changed: [], changedTotal: 0 };
+    if (desk.by === assignmentId) return { published: true, deskVersion: desk.version, changed: desk.changed, changedTotal: desk.changedTotal, reason: null };
+    if (desk.version !== expected) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: `the desk is at version ${desk.version}, not ${expected}: it changed after this assignment's workspace was prepared` };
+    if (this.readJson(workspaceMeta(ids, assignmentId)) === null) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: "this assignment has no workspace" };
     const r = this.sync("publish", this.at(`${scratchArea(ids, assignmentId)}/work`), this.at(`${deskArea(ids)}/files`));
-    if (r.code !== 0) return { published: false, deskVersion: desk.version, changed: [], reason: String(r.out.reason ?? r.out.error ?? "the publish failed") };
-    const changed = (r.out.changed as string[] | undefined) ?? [];
-    this.writeJson(`${deskArea(ids)}/version`, { version: desk.version + 1, by: assignmentId, from: expected, changed });
-    return { published: true, deskVersion: desk.version + 1, changed, reason: null };
+    if (r.code !== 0) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: String(r.out.reason ?? r.out.error ?? "the publish failed") };
+    const changed = ((r.out.changed as string[] | undefined) ?? []).slice(0, CHANGED_PATHS);
+    const changedTotal = Number(r.out.changedTotal ?? changed.length);
+    this.writeJson(`${deskArea(ids)}/version`, { version: desk.version + 1, by: assignmentId, from: expected, changed, changedTotal });
+    return { published: true, deskVersion: desk.version + 1, changed, changedTotal, reason: null };
   }
 
   async deleteEmployee(idsIn: SandboxIds): Promise<{ gone: boolean; detail: string }> {

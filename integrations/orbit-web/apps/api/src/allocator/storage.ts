@@ -28,6 +28,8 @@ import { MiB, roleLabels, storageHelperBody, storageWorkerBody, type VolumeMount
 export const MECHANISM_LABEL = "orbit-web.mechanism";
 const POOL_IMAGE = "pool.img";
 const PROBE_QUOTA = 16 * MiB;
+// What one answer of the storage helper may hold: its records and listings are small, and one that is not is refused.
+const HELPER_OUTPUT_BYTES = 4 * MiB;
 // The places a probe's over-quota write goes (inside the probe volume, or the real pool).
 const PROBE_AREA = "probe/area";
 
@@ -82,15 +84,17 @@ export class WorkforceStorage {
     return runOnce(this.engine, this.names.prefix, storageHelperBody({ image: this.config.images.storageHelper, prefix: this.names.prefix, mounts, role: "storage-helper", seconds: 600 }), ["sh", "-c", HELPER_SH, "orbit-helper", ...args], { stdin, timeoutMs, maxOutputBytes: 1024 * 1024 });
   }
 
-  // The long-running helper over the workforce volume (/pool) and the pool's store (/store).
+  // The long-running helper over the workforce volume (/pool) and the pool's store (/store). Its answer is bounded
+  // (HELPER_OUTPUT_BYTES): what reads it refuses one that was cut, never taking part of it as the whole.
   async helper(args: string[], stdin: Buffer | null = null, timeoutMs = 120_000): Promise<ExecOutcome> {
     if (this.helperId === null) throw new Error("the storage helper is not running: the storage was not set up");
-    return execIn(this.engine, this.helperId, ["sh", "-c", HELPER_SH, "orbit-helper", ...args], { stdin, timeoutMs, maxOutputBytes: 4 * 1024 * 1024 });
+    return execIn(this.engine, this.helperId, ["sh", "-c", HELPER_SH, "orbit-helper", ...args], { stdin, timeoutMs, maxOutputBytes: HELPER_OUTPUT_BYTES });
   }
 
   private async mustHelper(args: string[], what: string, stdin: Buffer | null = null): Promise<string> {
     const r = await this.helper(args, stdin);
     if (r.code !== 0) throw new Error(failure(what, r));
+    if (r.truncated) throw new Error(`${what}: the answer is larger than the ${HELPER_OUTPUT_BYTES / MiB} MiB the storage helper may give`);
     return text(r.stdout);
   }
 
@@ -334,6 +338,7 @@ export class WorkforceStorage {
     const r = await this.helper(["get", path]);
     if (r.code === 3) return null;
     if (r.code !== 0) throw new Error(failure(`reading ${path}`, r));
+    if (r.truncated) throw new Error(`${path} is larger than the ${HELPER_OUTPUT_BYTES / MiB} MiB a record read back may be`);
     return r.stdout;
   }
 

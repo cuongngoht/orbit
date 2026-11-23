@@ -111,12 +111,12 @@ export class FakeSandboxProvider implements SandboxProvider {
     return { area: "scratch", quotaMiB: scratchMiB, level: HARD, evidence: "fake", usedMiB: 0 };
   }
 
-  async publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<{ published: boolean; deskVersion: number; changed: string[]; reason: string | null }> {
+  async publishWorkspace(ids: SandboxIds, assignmentId: string, expectedDeskVersion: number): Promise<{ published: boolean; deskVersion: number; changed: string[]; changedTotal: number; reason: string | null }> {
     const desk = this.desks.get(ids.sandboxId);
     const ws = this.workspaces.get(assignmentId);
-    if (desk === undefined || ws === undefined) return { published: false, deskVersion: desk?.version ?? 0, changed: [], reason: "nothing to publish" };
-    if (desk.publishedBy === assignmentId) return { published: true, deskVersion: desk.version, changed: [], reason: null };
-    if (desk.version !== expectedDeskVersion) return { published: false, deskVersion: desk.version, changed: [], reason: "the desk moved" };
+    if (desk === undefined || ws === undefined) return { published: false, deskVersion: desk?.version ?? 0, changed: [], changedTotal: 0, reason: "nothing to publish" };
+    if (desk.publishedBy === assignmentId) return { published: true, deskVersion: desk.version, changed: [], changedTotal: 0, reason: null };
+    if (desk.version !== expectedDeskVersion) return { published: false, deskVersion: desk.version, changed: [], changedTotal: 0, reason: "the desk moved" };
     const changed: string[] = [];
     for (const [p, b] of ws) {
       if (!p.startsWith("/work/") && !p.startsWith("/toolbox/")) continue;
@@ -126,7 +126,7 @@ export class FakeSandboxProvider implements SandboxProvider {
     }
     desk.version += 1;
     desk.publishedBy = assignmentId;
-    return { published: true, deskVersion: desk.version, changed, reason: null };
+    return { published: true, deskVersion: desk.version, changed: changed.sort().slice(0, 500), changedTotal: changed.length, reason: null };
   }
 
   async removeWorkspace(_ids: SandboxIds, assignmentId: string): Promise<{ gone: boolean; detail: string }> {

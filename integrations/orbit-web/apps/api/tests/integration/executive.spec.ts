@@ -85,6 +85,7 @@ describe("CEO Chat: company-aware, the actual CEO answers with no tool, a propos
     const d = await detail((report.body as { conversationId: string }).conversationId);
     assert.deepEqual(d.messages.map((m) => [m.role, m.author.name, m.report?.kind]), [["system", "Orbit", "status"]]);
     assert.ok(d.messages[0]?.report?.facts.some((f) => f.label === "CEO" && f.value === "none appointed"));
+    assert.ok(d.messages[0]?.report?.facts.some((f) => f.label === "Work for the CEO" && /cannot be given now: The company has no CEO/.test(f.value)), "why work cannot be given now is said");
   });
 
   test("the CEO in office answers, as itself, with no tool, given the company's records; streamed and replayed; one key is one message", async () => {
@@ -109,6 +110,7 @@ describe("CEO Chat: company-aware, the actual CEO answers with no tool, a propos
     assert.deepEqual([ceo?.author.employeeId, ceo?.author.appointmentRevision, ceo?.author.current], [ids.An, 1, true]);
     assert.equal(d.turns.at(-1)?.state, "completed");
     assert.ok((d.turns.at(-1)?.records ?? []).some((l) => /Department Research: manager Minh/.test(l)), "the answer stood on the records");
+    assert.ok((d.turns.at(-1)?.records ?? []).includes("Work for the CEO: it can be given now (the CEO gives it to the departments through their managers)."), "the CEO is told whether work can be given to it now");
 
     // What the CLI was given: no tool, the CEO's own model, a fixed system prompt; the records and the question fenced.
     const run = fake.children.filter((c) => executiveRun(c.call.file, c.call.args))[0];

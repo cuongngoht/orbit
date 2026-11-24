@@ -12,7 +12,9 @@ import { office } from "../office/api";
 import { AppointmentDialog } from "../office/AppointmentDialogs";
 import { HireWizard } from "../office/HireWizard";
 import { EmptyState } from "../office/parts";
+import { useAppEvent } from "../../services/events/AppEvents";
 import { executive } from "./api";
+import { NobodyResponsible } from "./cards";
 
 const useStyles = makeStyles({
   quick: { display: "flex", flexWrap: "wrap", gap: "8px" },
@@ -75,6 +77,11 @@ export function AssignWorkCard({ onGive, onCancel }: { onGive: (body: { mission:
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [key] = useState(() => newIdempotencyKey());
+  const [round, setRound] = useState(0);
+  // Read again when the office changes: a manager appointed meanwhile lets the work be given.
+  useAppEvent("office.changed", (e) => {
+    if (e.data.areas.includes("roster")) setRound((n) => n + 1);
+  });
   useEffect(() => {
     let current = true;
     void office
@@ -84,7 +91,7 @@ export function AssignWorkCard({ onGive, onCancel }: { onGive: (body: { mission:
     return () => {
       current = false;
     };
-  }, []);
+  }, [round]);
   const r = preview?.responsible ?? null;
   const give = async () => {
     if (r === null) return;
@@ -128,9 +135,7 @@ export function AssignWorkCard({ onGive, onCancel }: { onGive: (body: { mission:
           {t("executive.proposal.responsible", { who: r.employeeName })}
         </Text>
       ) : (
-        <MessageBar intent="warning" layout="multiline">
-          <MessageBarBody>{preview.reason}</MessageBarBody>
-        </MessageBar>
+        <NobodyResponsible reason={preview.reason} />
       )}
       {problem !== null && (
         <MessageBar intent="error" layout="multiline">

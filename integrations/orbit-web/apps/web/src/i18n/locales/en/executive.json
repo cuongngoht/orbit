@@ -66,6 +66,7 @@
   "proposal.dismissedState": "Set aside",
   "proposal.changed": "Who is responsible changed: it would go to {who} now. Check, then give it again.",
   "proposal.inert": "Nothing happens until you give it.",
+  "proposal.openOffice": "Open the Office",
   "mission.open": "Open the mission",
   "mission.state": "{state}",
   "assign.title": "Assign work to the CEO",

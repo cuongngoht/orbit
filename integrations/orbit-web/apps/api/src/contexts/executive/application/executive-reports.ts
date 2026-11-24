@@ -8,6 +8,7 @@ import { Db } from "../../../infra/db/db.js";
 import { ApprovalService } from "../../../modules/governance/approvals.service.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
 import { MissionQueries } from "../../work/application/mission.queries.js";
+import { MissionsService } from "../../work/application/missions.service.js";
 import { OfficeService } from "../../workforce/application/office.service.js";
 import { recordLines, reportOf, type CompanyRecords, type PersonRecord } from "../domain/records.js";
 
@@ -23,6 +24,7 @@ export class ExecutiveReports {
     @Inject(MissionQueries) private readonly missions: MissionQueries,
     @Inject(ResourcesService) private readonly resources: ResourcesService,
     @Inject(ApprovalService) private readonly approvals: ApprovalService,
+    @Inject(MissionsService) private readonly giving: MissionsService,
   ) {}
 
   // One snapshot of the records, as of now.
@@ -39,6 +41,8 @@ export class ExecutiveReports {
     const reserved = await this.resources.reserved(orbitId);
     const budget = await this.resources.budget(orbitId);
     const waiting = await this.db.one("SELECT count(*)::int AS n FROM workforce.runs WHERE account_id = $1 AND state IN ('requested', 'waiting_for_resources')", [orbitId]);
+    // Who would take work given to the CEO now (the preview the owner's own form reads), or why nobody would.
+    const ceoSlot = await this.giving.preview(orbitId, { kind: "ceo" });
     return {
       at: new Date().toISOString(),
       company: roster.office?.name ?? "The company",
@@ -49,6 +53,7 @@ export class ExecutiveReports {
       needsYou: inbox.items.map((i) => ({ title: i.title, detail: i.reason.slice(0, 300), href: `#/office/mission/${i.missionId}` })),
       approvals: await this.approvals.pendingCount(orbitId),
       resources: { running: reserved.running, maxConcurrent: budget.maxConcurrent, waiting: Number(waiting?.n ?? 0), cpu: `${vcpu(reserved.cpuMillis)} of ${vcpu(budget.cpuMillis)}`, memory: `${reserved.memoryMiB} of ${budget.memoryMiB} MiB` },
+      assign: { ok: ceoSlot.responsible !== null, reason: ceoSlot.responsible !== null ? null : ceoSlot.reason },
     };
   }
 

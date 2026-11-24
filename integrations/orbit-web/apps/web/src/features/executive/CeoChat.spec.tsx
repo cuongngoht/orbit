@@ -4,7 +4,9 @@ import { describe, expect, test, vi } from "vitest";
 import type { Resource } from "../../hooks/useResource";
 import { fakeApi } from "../../testing/fakeApi";
 import { FakeEventSource } from "../../testing/fakeEventSource";
+import { pushApp } from "../../testing/events";
 import { renderLive } from "../../testing/render";
+import { MissionProposalCard } from "./cards";
 import { CeoChatView } from "./CeoChatView";
 import { EMPTY, executiveReducer } from "./executiveReducer";
 
@@ -138,6 +140,24 @@ describe("CEO Chat", () => {
     expect(await screen.findByText("Chat Co today")).toBeTruthy();
     expect(screen.getByText(/From Orbit's records/)).toBeTruthy();
     expect(screen.getByText("Eve · former CEO")).toBeTruthy();
+  });
+});
+
+describe("a proposal the CEO cannot be given yet", () => {
+  test("it says why and where to fix it, and is checked again when the office changes: a manager appointed lets it be given", async () => {
+    const proposal = { title: "FX hiring", goal: "Assess FX hiring needs.", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: [], deadline: null, priority: 5 };
+    const refused = { target: { kind: "ceo" }, responsible: null, code: "ceo_needs_departments", reason: "The CEO gives work only to departments, and none has a manager yet: create a department and appoint its manager, or give the work to an employee." };
+    const given = { target: { kind: "ceo" }, responsible: { employeeId: AN, appointmentId: APPT, appointmentRevision: 1, employeeName: "An", role: "ceo", departmentName: null }, code: null, reason: null };
+    let preview: unknown = refused;
+    fakeApi().on("GET", "/api/missions/target", () => preview);
+    renderLive(<MissionProposalCard conversationId={CONV} message={ceoSaid({ id: "m4", proposal, proposalState: "open" })} canAssign />);
+    expect(await screen.findByText(/none has a manager yet/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open the Office" }).getAttribute("href")).toBe("#/office");
+    expect((screen.getByRole("button", { name: "Give it to the CEO" }) as HTMLButtonElement).disabled).toBe(true);
+    preview = given;
+    pushApp("office.changed", { areas: ["roster"], missionId: null, version: 2 });
+    await screen.findByText(/Goes to An, who gives it to the departments\./);
+    expect((screen.getByRole("button", { name: "Give it to the CEO" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

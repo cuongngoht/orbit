@@ -19,6 +19,7 @@ const records: CompanyRecords = {
   needsYou: [{ title: "Review revision 1", detail: "A result was handed in for your review.", href: "#/office/mission/m1" }],
   approvals: 2,
   resources: { running: 1, maxConcurrent: 2, waiting: 0, cpu: "1 vCPU of 4 vCPU", memory: "512 of 4096 MiB" },
+  assign: { ok: true, reason: null },
 };
 
 describe("CEO Chat, pure", () => {
@@ -50,6 +51,13 @@ describe("CEO Chat, pure", () => {
     assert.ok(lines.includes("Department Research: manager Minh; 1 people: Lan (Working: Market scan)"));
     assert.ok(lines.some((l) => l.startsWith("- Market scan: running; with Lan; due 2026-12-01")));
     assert.ok(lines.every((l) => l.length <= 220));
+  });
+
+  test("whether work can be given to the CEO now is in the records, with why not: the CEO is told, and so is the owner", () => {
+    assert.ok(recordLines(records).includes("Work for the CEO: it can be given now (the CEO gives it to the departments through their managers)."));
+    const refused = { ...records, assign: { ok: false, reason: "The CEO gives work only to departments, and none has a manager yet." } };
+    assert.ok(recordLines(refused).includes("Work for the CEO: it CANNOT be given now -- The CEO gives work only to departments, and none has a manager yet."));
+    assert.ok(reportOf("status", refused).facts.some((f) => f.label === "Work for the CEO" && /cannot be given now/.test(f.value)));
   });
 
   test("a notice is Orbit's sentence about a mission of the conversation: its root's end, a question for the owner -- never a part's own", () => {

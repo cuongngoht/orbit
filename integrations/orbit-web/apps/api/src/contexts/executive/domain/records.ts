@@ -25,7 +25,12 @@ export interface CompanyRecords {
   needsYou: { title: string; detail: string; href: string }[];
   approvals: number;
   resources: { running: number; maxConcurrent: number; waiting: number; cpu: string; memory: string };
+  // Whether work can be given to the CEO now (who is responsible for the CEO's slot), and why not: told to the CEO, so it
+  // does not propose work that cannot start, and to the owner.
+  assign: { ok: boolean; reason: string | null };
 }
+
+const assignLine = (a: CompanyRecords["assign"]): string => (a.ok ? "it can be given now (the CEO gives it to the departments through their managers)." : `it CANNOT be given now -- ${a.reason ?? "nobody can take it."}`);
 
 const LINE = 220;
 const cut = (s: string, n = LINE): string => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
@@ -45,6 +50,7 @@ function status(r: CompanyRecords): ExecutiveReport {
       { label: "Open missions", value: String(r.missions.length) },
       { label: "Waiting for you", value: `${r.needsYou.length} in Needs me, ${r.approvals} approval(s)` },
       { label: "Running now", value: `${r.resources.running} of ${r.resources.maxConcurrent}` },
+      { label: "Work for the CEO", value: r.assign.ok ? "can be given now" : `cannot be given now: ${r.assign.reason ?? ""}`.trim() },
     ],
     items: r.missions.slice(0, 5).map((m) => ({ title: m.title, detail: [m.state, m.responsible, m.next].filter((x) => x !== null).join(" · "), href: m.href, tone: null })),
   };
@@ -120,6 +126,7 @@ export function recordLines(r: CompanyRecords): string[] {
     ...r.missions.slice(0, 15).map((m) => `- ${m.title}: ${[m.state, m.responsible !== null ? `with ${m.responsible}` : null, m.deadline !== null ? `due ${m.deadline.slice(0, 10)}` : null, m.next].filter((x) => x !== null).join("; ")}`),
     `Waiting for the owner: ${r.needsYou.length} decision(s) in Needs me, ${r.approvals} approval(s)`,
     `Resources: ${r.resources.running} of ${r.resources.maxConcurrent} runs at once, ${r.resources.waiting} waiting to start`,
+    `Work for the CEO: ${assignLine(r.assign)}`,
   ];
   return lines.slice(0, 60).map((l) => cut(l));
 }

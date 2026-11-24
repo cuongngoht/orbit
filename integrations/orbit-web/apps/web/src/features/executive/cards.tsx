@@ -7,6 +7,7 @@ import { checkMissionFields, type ExecutiveMessage, type ExecutiveReport, type E
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
 import { ApiError, errorCode, errorText, newIdempotencyKey } from "../../services/api";
+import { useAppEvent } from "../../services/events/AppEvents";
 import { office, useOfficeRead } from "../office/api";
 import { executive } from "./api";
 
@@ -83,6 +84,11 @@ export function MissionProposalCard({ conversationId, message, canAssign, onGive
   const [problem, setProblem] = useState<string | null>(null);
   const sent = useRef<{ body: string; key: string } | null>(null);
   const open = message.proposalState === "open";
+  // Who is responsible is read again when the office changes (a manager appointed, the CEO replaced): a proposal that
+  // could not be given becomes givable without a reload.
+  useAppEvent("office.changed", (e) => {
+    if (e.data.areas.includes("roster")) setRound((n) => n + 1);
+  });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -176,11 +182,7 @@ export function MissionProposalCard({ conversationId, message, canAssign, onGive
           {t("executive.proposal.responsible", { who: responsible.employeeName })} {t("executive.proposal.inert")}
         </Text>
       )}
-      {preview !== null && responsible === null && (
-        <MessageBar intent="warning" layout="multiline">
-          <MessageBarBody>{preview.reason}</MessageBarBody>
-        </MessageBar>
-      )}
+      {preview !== null && responsible === null && <NobodyResponsible reason={preview.reason} />}
       {problem !== null && (
         <MessageBar intent="error" layout="multiline">
           <MessageBarBody>{problem}</MessageBarBody>
@@ -195,6 +197,19 @@ export function MissionProposalCard({ conversationId, message, canAssign, onGive
         </Button>
       </div>
     </section>
+  );
+}
+
+// Why work cannot be given to the CEO now (no CEO, no department with a manager, a suspended appointment), and where a
+// person changes that: the Office.
+export function NobodyResponsible({ reason }: { reason: string | null }) {
+  const { t } = useI18n();
+  return (
+    <MessageBar intent="warning" layout="multiline">
+      <MessageBarBody>
+        {reason} <Link href="#/office">{t("executive.proposal.openOffice")}</Link>
+      </MessageBarBody>
+    </MessageBar>
   );
 }
 

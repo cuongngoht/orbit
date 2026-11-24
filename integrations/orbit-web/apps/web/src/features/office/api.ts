@@ -26,6 +26,7 @@ import type {
   MissionAccepted,
   MissionDetail,
   MissionList,
+  MissionMessages,
   MissionTarget,
   MissionTargetPreview,
   OccurrenceView,
@@ -113,6 +114,8 @@ export const office = {
   missions: (state: "open" | "closed", cursor: string | null = null) => get<MissionList>(`/api/missions${query({ state, cursor })}`),
   mission: (missionId: string) => get<MissionDetail>(`/api/missions/${id(missionId)}`),
   teamRoom: (missionId: string) => get<TeamRoomChange[]>(`/api/missions/${id(missionId)}/team-room`),
+  // The mission's exchanges as one thread: work given, questions and answers, hand-ins with their files, reviews.
+  messages: (missionId: string) => get<MissionMessages>(`/api/missions/${id(missionId)}/messages`),
   command: (assignmentId: string, version: number, command: AssignmentCommand, body?: unknown) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/${command}`, body ?? {}, ifMatch(version)),
   // Open work handed to another employee, and blocked or paused work continued on its employee's profile in effect now --
   // each against the version of the assignment read.

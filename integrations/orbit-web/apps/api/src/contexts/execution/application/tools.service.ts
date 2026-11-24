@@ -18,6 +18,7 @@ import { Db } from "../../../infra/db/db.js";
 import { DepartmentPoliciesService } from "../../../modules/governance/department-policies.service.js";
 import { RevisionsService } from "../../../modules/governance/revisions.service.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
+import { areaWords, FILE_AREAS, readOnlyAreaOf, TOOLBOX } from "../infrastructure/sandbox/allocator-protocol.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import type { GovernanceContext } from "../../../modules/auth/principal.js";
 import { CONNECTOR_TOOLS, type ConnectorTools } from "./connector-tools.port.js";
@@ -41,9 +42,9 @@ const obj = (properties: Record<string, unknown>, required: string[]): Record<st
 const str = (description: string) => ({ type: "string", description });
 
 const TOOLS: ToolSpec[] = [
-  { name: "list_files", description: "List a directory of your workspace (/work, /output, /input, /toolbox, /team).", inputSchema: obj({ path: str("A directory, e.g. /work or /output/reports") }, ["path"]) },
-  { name: "read_file", description: "Read a text file of your workspace (up to 512 KiB).", inputSchema: obj({ path: str("The file, e.g. /work/notes.md") }, ["path"]) },
-  { name: "write_file", description: "Create or replace a file in /work, /output, /toolbox or /team.", inputSchema: obj({ path: str("The file to write"), content: str("Its whole text") }, ["path", "content"]) },
+  { name: "list_files", description: `List a directory of your workspace: ${areaWords()}. /input holds what was handed to you.`, inputSchema: obj({ path: str("A directory, e.g. /work or /output/reports") }, ["path"]) },
+  { name: "read_file", description: `Read a text file of your workspace (up to 512 KiB): ${areaWords()}. /input holds what was handed to you, read-only.`, inputSchema: obj({ path: str("The file, e.g. /work/notes.md") }, ["path"]) },
+  { name: "write_file", description: `Create or replace a file in ${areaWords({ write: true })}.`, inputSchema: obj({ path: str("The file to write"), content: str("Its whole text") }, ["path", "content"]) },
   { name: "edit_file", description: "Replace one exact occurrence of a text in a file.", inputSchema: obj({ path: str("The file"), old_text: str("Text that occurs exactly once"), new_text: str("Its replacement") }, ["path", "old_text", "new_text"]) },
   { name: "shell", description: "Run a shell command in your sandbox (bash), in /work or a directory under it. Install packages, write and run scripts, build, test.", inputSchema: obj({ command: str("The command line"), cwd: str("A directory under /work (default /work)"), timeout_seconds: { type: "integer", minimum: 1, maximum: 3600 } }, ["command"]) },
   { name: "submit_handoff", description: "Hand in your result once the deliverables are in /output: a short summary and the claims it rests on. Cite a source you were given by its label (S1, S2 ...) and quote the exact words of it the claim rests on: Orbit checks the quote against the source.", inputSchema: obj({ summary: str("What you did and how you checked it"), claims: { type: "array", items: obj({ text: str("A claim of your result"), sources: { type: "array", items: { type: "string" }, description: "Labels of the sources it rests on, e.g. S1" }, quote: str("The exact words of the cited source the claim rests on"), url: str("A web page it rests on, if any") }, ["text"]) } }, ["summary"]) },
@@ -118,14 +119,18 @@ const PROPOSE_POLICY: ToolSpec = {
 const MEDIA: Record<string, string> = { ".md": "text/markdown", ".txt": "text/plain", ".csv": "text/csv", ".json": "application/json", ".html": "text/html", ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".py": "text/x-python", ".png": "image/png", ".jpg": "image/jpeg" };
 const mediaOf = (name: string): string => MEDIA[name.slice(name.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
 
-const AREAS = ["/work", "/output", "/input", "/toolbox", "/team"];
-const WRITABLE = ["/work", "/output", "/toolbox", "/team"];
+// The areas the file tools reach: the one declaration the sandbox holds them to (allocator-protocol.ts), with the desk's
+// toolbox under its own name.
+const AREAS = [...FILE_AREAS.map((a) => a.root), TOOLBOX.path];
+const WRITABLE = [...FILE_AREAS.filter((a) => a.writable).map((a) => a.root), TOOLBOX.path];
 
 // A path an employee named, held to its areas (exported for its tests). The provider contains it again on its side.
 export function pathOf(v: unknown, writable: boolean): string {
   if (typeof v !== "string" || v.length === 0 || v.length > 1024 || v.includes("\0")) throw invalid("bad_path", "A path is required.");
   const p = v.replace(/\/+$/, "") || "/";
   if (p.split("/").includes("..")) throw invalid("bad_path", "A path cannot go above its area.");
+  const readOnly = writable ? readOnlyAreaOf(p) : null;
+  if (readOnly !== null) throw invalid("bad_path", `${readOnly} is read-only: it holds what was handed to you. Write under ${areaWords({ write: true })}.`);
   const areas = writable ? WRITABLE : AREAS;
   if (!areas.some((a) => p === a || p.startsWith(`${a}/`))) throw invalid("bad_path", `The path must be under ${areas.join(", ")}.`);
   return p;

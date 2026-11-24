@@ -15,6 +15,7 @@ import type { SandboxConfig } from "../config/sandbox-config.js";
 import type { AreaState, AttemptEvidence, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../contexts/execution/application/sandbox.port.js";
 import {
   AllocatorError,
+  areaWords,
   checkAttemptSpec,
   CHANGED_PATHS,
   checkAttestSpec,
@@ -36,6 +37,7 @@ import {
   type PublishResult,
   type SessionRecord,
   type SessionSpec,
+  toolFileAreas,
 } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
 import { assignmentDir, attemptLabels, attemptNetworks, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, LABELS, planeNames, runnerToken, sandboxMeta, SCRATCH_DIRS, scratchArea, sessionLabels, sessionMounts, sessionNames, subnetBlocks, teamArea, workspaceMeta, type EmployeeIds } from "../contexts/execution/infrastructure/sandbox/ids.js";
 import { MODEL_PLANE, SESSION_PLANE, TOOL_PLANE } from "../contexts/execution/infrastructure/sandbox/layout.js";
@@ -842,12 +844,13 @@ export class Allocator implements AllocatorApi {
 
   private async fileOp(dispatchKey: string, args: string[], stdin: Buffer | null, maxOutputBytes: number): Promise<ExecOutcome> {
     const tool = await this.toolPlane(dispatchKey);
-    return execIn(this.engine, tool.Id, ["node", "-e", nodeScript(toolFileScript), ...args], { user: `${TOOL_PLANE.uid}:${TOOL_PLANE.gid}`, stdin, timeoutMs: 120_000, maxOutputBytes });
+    // The program is handed the areas it may read and write -- the one declaration (toolFileAreas) -- before its operation.
+    return execIn(this.engine, tool.Id, ["node", "-e", nodeScript(toolFileScript), JSON.stringify(toolFileAreas()), ...args], { user: `${TOOL_PLANE.uid}:${TOOL_PLANE.gid}`, stdin, timeoutMs: 120_000, maxOutputBytes });
   }
 
   private fileError(r: ExecOutcome, what: string): AllocatorError {
     const said = text(r.stderr);
-    if (r.code === 4) return new AllocatorError("bad_request", `${what}: ${said || "outside /work, /output, /team and /toolbox"}`);
+    if (r.code === 4) return new AllocatorError("bad_request", `${what}: ${said || `outside ${areaWords()}`}`);
     if (r.code === 5) return new AllocatorError("file_too_large", `${what}: the file is larger than allowed (${said} bytes)`);
     if (r.code === 6) return new AllocatorError("bad_request", `${what}: ${said}`);
     if (r.code === 7) return new AllocatorError("conflict", `${what}: the workspace's quota is full`);
@@ -864,7 +867,7 @@ export class Allocator implements AllocatorApi {
   }
 
   async writeFile(dispatchKey: string, path: string, bytes: Buffer): Promise<void> {
-    const abs = checkToolPath(path);
+    const abs = checkToolPath(path, { write: true });
     if (!Buffer.isBuffer(bytes) || bytes.length > MAX_FILE_BYTES) throw new AllocatorError("file_too_large", "a file of at most 64 MiB");
     const r = await this.fileOp(dispatchKey, ["write", abs], bytes, 64 * 1024);
     if (r.code !== 0) throw this.fileError(r, `writing ${abs}`);

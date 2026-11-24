@@ -290,3 +290,55 @@ describe("a team's mission", () => {
     expect(within(run).getByText("Why it started: the person who gave the work asked for a revision")).toBeInTheDocument();
   });
 });
+
+// The thread's own messages (a message's files are a list of their own inside it).
+const mailsOf = (list: HTMLElement): HTMLElement[] => within(list).getAllByRole("listitem").filter((li) => li.parentElement === list);
+
+describe("how the mission's people talk", () => {
+  const bao = { kind: "employee" as const, name: "Bao", employeeId: EMP_BAO, departmentName: "Accounting" };
+  const ana = { kind: "employee" as const, name: "Ana", employeeId: EMP_ANA, departmentName: "Accounting" };
+  const thread = {
+    missionId: MISSION_ID,
+    messages: [
+      { id: "given:p", at: "2026-11-24T13:18:44.000Z", kind: "given", from: ana, to: bao, assignmentId: PART_ID, subject: "Renewals", body: "Count the renewed contracts.\n\nDeliverables:\n- renewals.csv", attachments: [] },
+      { id: "asked:q", at: "2026-11-24T13:19:00.000Z", kind: "asked", from: bao, to: ana, assignmentId: PART_ID, subject: "Question", body: "Which contracts count as renewed?", attachments: [] },
+      { id: "handed_in:h", at: "2026-11-24T13:30:40.000Z", kind: "handed_in", from: bao, to: ana, assignmentId: PART_ID, subject: "Hand-in, revision 1", body: "Kế hoạch, bản 1.", attachments: [{ artifactId: "f-md", name: "ke-hoach.md", mediaType: "text/markdown", size: 120 }, { artifactId: "f-zip", name: "data.zip", mediaType: "application/zip", size: 4096 }] },
+      { id: "revision:h", at: "2026-11-24T13:31:17.000Z", kind: "revision", from: ana, to: bao, assignmentId: PART_ID, subject: "Revision 1 sent back", body: "Thêm phần ngân sách.", attachments: [] },
+      { id: "notice:9", at: "2026-11-24T13:40:00.000Z", kind: "notice", from: { kind: "orbit" as const, name: "Orbit", employeeId: null, departmentName: null }, to: null, assignmentId: ASSIGNMENT_ID, subject: "Cancelled: no longer needed", body: "", attachments: [] },
+    ],
+  };
+
+  test("the pipeline says who holds what and where it stands; the thread shows each exchange from someone to someone, in its own words", async () => {
+    fakeApi()
+      .on("GET", `/api/missions/${MISSION_ID}`, () => teamMission({ part: { state: "AWAITING_ACCEPTANCE" } }))
+      .on("GET", `/api/missions/${MISSION_ID}/messages`, () => thread);
+    show("communication");
+    const pipeline = await screen.findByRole("group", { name: "Who holds what, and where it stands" });
+    expect(within(pipeline).getByText("Holds the mission")).toBeInTheDocument();
+    expect(within(pipeline).getByText("Handed in")).toBeInTheDocument();
+    const list = await screen.findByRole("list", { name: "What was said in this mission" });
+    const mails = mailsOf(list);
+    expect(mails.map((m) => m.getAttribute("aria-label"))).toEqual(["Work given: Renewals", "Question: Question", "Hand-in: Hand-in, revision 1", "Sent back: Revision 1 sent back", "Notice: Cancelled: no longer needed"]);
+    expect(within(mails[0] as HTMLElement).getByText("Ana (Accounting)")).toBeInTheDocument();
+    expect(within(mails[0] as HTMLElement).getByText("Count the renewed contracts.")).toBeInTheDocument();
+    expect(within(mails[3] as HTMLElement).getByText("Thêm phần ngân sách.")).toBeInTheDocument();
+    // A file the browser shows is opened, not downloaded; another is downloaded.
+    const md = within(mails[2] as HTMLElement).getByRole("link", { name: /ke-hoach\.md/ });
+    expect(md).toHaveAttribute("href", "/api/artifacts/f-md/content");
+    expect(md).not.toHaveAttribute("download");
+    expect(within(mails[2] as HTMLElement).getByRole("link", { name: /data\.zip/ })).toHaveAttribute("download", "data.zip");
+  });
+
+  test("choosing a part in the pipeline narrows the thread to it, and everything comes back", async () => {
+    fakeApi()
+      .on("GET", `/api/missions/${MISSION_ID}`, () => teamMission())
+      .on("GET", `/api/missions/${MISSION_ID}/messages`, () => thread);
+    show("communication");
+    const pipeline = await screen.findByRole("group", { name: "Who holds what, and where it stands" });
+    await userEvent.click(within(pipeline).getAllByRole("button")[1] as HTMLElement);
+    expect(await screen.findByText("Only what concerns Bao.")).toBeInTheDocument();
+    expect(mailsOf(screen.getByRole("list", { name: "What was said in this mission" }))).toHaveLength(4);
+    await userEvent.click(screen.getByRole("button", { name: "Show everything" }));
+    await waitFor(() => expect(mailsOf(screen.getByRole("list", { name: "What was said in this mission" }))).toHaveLength(5));
+  });
+});

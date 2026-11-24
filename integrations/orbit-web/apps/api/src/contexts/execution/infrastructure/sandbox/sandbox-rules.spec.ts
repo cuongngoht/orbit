@@ -9,9 +9,9 @@ import { test } from "node:test";
 import { DEFAULT_PRESETS } from "@orbit-web/contracts";
 import { loadSandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
-import { checkAttemptSpec, checkExecRequest, checkSessionSpec, NonceCache, readSecret, signedHeaders, toolPath, verifySigned } from "./allocator-protocol.js";
+import { checkAttemptSpec, checkExecRequest, checkSessionSpec, checkToolPath, FILE_AREAS, NonceCache, readSecret, signedHeaders, toolFileAreas, toolPath, verifySigned } from "./allocator-protocol.js";
 import { infrastructureCapacity } from "./capacity.js";
-import { attemptLabels, attemptNetworks, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, scratchArea, sessionMounts, sessionNames, subnetBlocks, teamArea } from "./ids.js";
+import { attemptLabels, attemptNetworks, checkDispatchKey, checkId, connectionSubpath, deskArea, isAreaPath, planeNames, runnerToken, SandboxInputError, scratchArea, sessionMounts, sessionNames, subnetBlocks, teamArea } from "./ids.js";
 import { chooseMechanism, hostProtectionOf, storageAdmits, tmpSizeMiB } from "./storage-policy.js";
 
 const O = "0f1e2d3c-0000-4000-8000-000000000001";
@@ -100,12 +100,38 @@ test("storage: a shell is admitted only with every writable area HARD -- or SOFT
   assert.deepEqual([tmpSizeMiB(1024), tmpSizeMiB(4096), tmpSizeMiB(32)], [256, 512, 16]);
 });
 
-test("protocol: the file operations reach /work, /output, /team and /toolbox, and nothing above them", () => {
+test("protocol: the file operations reach /work, /output, /input, /team and /toolbox, and nothing above them", () => {
   assert.equal(toolPath("src/a.ts"), "/work/src/a.ts");
   assert.equal(toolPath("/output/report.md"), "/output/report.md");
   assert.equal(toolPath("/toolbox/skills/x/SKILL.md"), "/work/toolbox/skills/x/SKILL.md");
   assert.equal(toolPath("/team/"), "/team");
-  for (const bad of ["../etc/passwd", "/work/../etc/passwd", "/etc/passwd", "/connection/claude/.credentials.json", "/workers", "", "/work/a\0b", "/cache/x", "/input/x"]) assert.equal(toolPath(bad), null, bad);
+  // What a lead's team handed in, and what an attempt was given: read with the file tools as with a shell (a lead
+  // without one -- the CEO -- reviews its departments' hand-ins this way).
+  assert.equal(toolPath("/input/unit-ke-hoach-nhan-su-mo-ta-cong-viec.md"), "/input/unit-ke-hoach-nhan-su-mo-ta-cong-viec.md");
+  assert.equal(toolPath("/input"), "/input");
+  for (const bad of ["../etc/passwd", "/work/../etc/passwd", "/etc/passwd", "/connection/claude/.credentials.json", "/workers", "", "/work/a\0b", "/cache/x", "/inputs/x", "/input/../etc/passwd"]) assert.equal(toolPath(bad), null, bad);
+  assert.throws(() => checkToolPath("/etc/passwd"), /\/work, \/output, \/input, \/team or \/toolbox/);
+});
+
+test("protocol: /input is read, never written -- refused before anything touches it, saying why", () => {
+  assert.equal(checkToolPath("/input/unit-a-plan.md"), "/input/unit-a-plan.md");
+  for (const p of ["/input/x.md", "/input", "/input/sub/x.md"]) assert.throws(() => checkToolPath(p, { write: true }), (e: unknown) => e instanceof SandboxInputError && /\/input is read-only/.test(e.message), p);
+  assert.equal(checkToolPath("/work/notes.md", { write: true }), "/work/notes.md");
+  assert.equal(checkToolPath("/toolbox/scripts/a.py", { write: true }), "/work/toolbox/scripts/a.py");
+});
+
+test("protocol: the areas are declared once -- what the file program in a tool plane is given is that declaration", () => {
+  assert.deepEqual(
+    FILE_AREAS.map((a) => [a.root, a.writable]),
+    [
+      ["/work", true],
+      ["/output", true],
+      ["/input", false],
+      ["/team", true],
+    ],
+  );
+  assert.deepEqual(toolFileAreas(), { read: ["/work", "/output", "/input", "/team"], write: ["/work", "/output", "/team"] });
+  for (const a of FILE_AREAS) assert.equal(toolPath(`${a.root}/f`), `${a.root}/f`);
 });
 
 test("protocol: a command is an argument list in /work; a request that would climb out, or carry NUL, is refused", () => {

@@ -746,6 +746,48 @@ export interface MissionDetail extends MissionSummary {
   resourceVersion: number;
 }
 
+// ONE MISSION'S EXCHANGES, as one thread (GET /api/missions/:id/messages): who gave which work to whom, who asked and who
+// answered, what was handed in (with its files) and how it was reviewed -- read from the records the mission already keeps,
+// in the words they were written with, each sender and recipient named. Nothing in it is written anew or summarised.
+export const MISSION_MESSAGE_KINDS = ["given", "asked", "answered", "moved", "handed_in", "accepted", "revision", "notice"] as const;
+export type MissionMessageKind = (typeof MISSION_MESSAGE_KINDS)[number];
+
+// Who sent or receives a message: the owner, an employee (with its department), or Orbit itself.
+export interface MissionParty {
+  kind: "owner" | "employee" | "orbit";
+  name: string;
+  employeeId: string | null;
+  departmentName: string | null;
+}
+
+// A file a hand-in carried: served by GET /api/artifacts/:artifactId/content.
+export interface MissionMessageAttachment {
+  artifactId: string;
+  name: string;
+  mediaType: string;
+  size: number;
+}
+
+export interface MissionMessage {
+  // Stable across reads: the kind and the record it comes from.
+  id: string;
+  at: string;
+  kind: MissionMessageKind;
+  from: MissionParty;
+  to: MissionParty | null;
+  // The assignment it is about: the mission's root or one of its parts.
+  assignmentId: string | null;
+  subject: string;
+  body: string;
+  attachments: MissionMessageAttachment[];
+}
+
+export interface MissionMessages {
+  missionId: string;
+  // Oldest first.
+  messages: MissionMessage[];
+}
+
 // One change of a mission's team room, as the room's history keeps it: which file, what it became (its hash and size; null
 // when it was removed), and the attempt of which employee and assignment changed it.
 export interface TeamRoomChange {

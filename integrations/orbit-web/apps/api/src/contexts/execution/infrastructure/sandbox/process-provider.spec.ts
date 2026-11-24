@@ -9,7 +9,7 @@ import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type ResourceProfile } from "@orbit-web/contracts";
 import { NodeProcessPort } from "../../../../infra/process/node-process.js";
 import type { AttemptHandle, AttemptSpec } from "../../application/sandbox.port.js";
-import { AllocatorError } from "./allocator-protocol.js";
+import { AllocatorError, FILE_AREAS } from "./allocator-protocol.js";
 import { ProcessSandboxProvider } from "./process-provider.js";
 
 const O = "0f1e2d3c-0000-4000-8000-0000000000aa";
@@ -166,5 +166,40 @@ describe("the process provider (development only)", () => {
     assert.equal((await provider.removeWorkspace(ids, "asg-4")).gone, true);
     await provider.prepareWorkspace(ids, "asg-5", 64);
     assert.equal((await provider.removeWorkspace(ids, "asg-5")).gone, true);
+  });
+});
+
+describe("what an attempt was handed, in /input", () => {
+  let data: string;
+  let provider: ProcessSandboxProvider;
+  let handle: AttemptHandle;
+  // A part's hand-in written in Vietnamese: what its lead reads back to review it, byte for byte.
+  const HANDIN = Buffer.from("# Kế hoạch tuyển dụng\n\n- Mô tả công việc: trưởng phòng FX.\n", "utf8");
+  before(async () => {
+    data = mkdtempSync(join(tmpdir(), "process-provider-input-"));
+    mkdirSync(join(data, "connections", O, "conn-1", "claude"), { recursive: true });
+    provider = new ProcessSandboxProvider({ dataRoot: data, process: new NodeProcessPort(), readInput: async () => HANDIN });
+    await provider.provisionEmployee(ids, { deskMiB: 256, cacheMiB: 64 });
+    await provider.prepareWorkspace(ids, "asg-1", 256);
+    handle = await provider.startAttempt(spec({ inputs: [{ name: "unit-a-plan.md", storePath: "store/handin" }] }));
+  });
+  after(() => rmSync(data, { recursive: true, force: true }));
+
+  test("read and listed with the file tools, as it was handed in", async () => {
+    assert.deepEqual(await provider.readFile(handle, "/input/unit-a-plan.md", 1_000_000), HANDIN);
+    assert.deepEqual((await provider.list(handle, "/input", 10)).map((f) => [f.path, f.type, f.size]), [["unit-a-plan.md", "file", HANDIN.length]]);
+  });
+
+  test("never written: refused, saying why, and nothing is made there", async () => {
+    await assert.rejects(provider.writeFile(handle, "/input/unit-a-plan.md", Buffer.from("x")), /\/input is read-only/);
+    await assert.rejects(provider.writeFile(handle, "/input/new.md", Buffer.from("x")), /\/input is read-only/);
+    assert.deepEqual(readdirSync(join(data, "workforce/accounts", O, "employees/emp-1/assignments/asg-1/scratch/input")), ["unit-a-plan.md"]);
+  });
+
+  test("every declared area is a place of the attempt (one with no team room has no /team)", async () => {
+    for (const a of FILE_AREAS) {
+      if (a.root === "/team") await assert.rejects(provider.list(handle, a.root, 10), /\/team is not part of this attempt/);
+      else assert.ok(Array.isArray(await provider.list(handle, a.root, 10)), a.root);
+    }
   });
 });

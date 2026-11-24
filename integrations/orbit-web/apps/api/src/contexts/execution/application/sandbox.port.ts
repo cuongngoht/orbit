@@ -214,7 +214,8 @@ export interface SandboxProvider {
   attest(handle: AttemptHandle, spec: AttemptSpec): Promise<AttemptEvidence>;
   // Starts programs in the MODEL plane (the CLI): the runtime adapter streams them like any child process.
   modelPlane(handle: AttemptHandle): ProcessPort;
-  // The TOOL plane (what the employee's tools do): a command, and files under /work, /output, /team, /toolbox.
+  // The TOOL plane (what the employee's tools do): a command, and files in the areas of FILE_AREAS (allocator-protocol.ts)
+  // and /toolbox -- /input read, never written.
   exec(handle: AttemptHandle, req: ExecRequest): Promise<ExecResult>;
   readFile(handle: AttemptHandle, path: string, maxBytes: number): Promise<Buffer | null>;
   writeFile(handle: AttemptHandle, path: string, bytes: Buffer): Promise<void>;

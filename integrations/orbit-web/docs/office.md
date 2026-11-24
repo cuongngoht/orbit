@@ -219,6 +219,37 @@ A run's compute reservation is held from admission until its containers are veri
 wakes the admission pass. Recovery: a run whose worker is gone is stopped and removed through the provider (verified)
 before Work hears it was interrupted, never run a second time.
 
+**What an attempt's file tools reach.** The areas are declared once, `FILE_AREAS` in
+`contexts/execution/infrastructure/sandbox/allocator-protocol.ts`:
+
+| area | access | what it holds |
+|---|---|---|
+| `/work` | read and write | the assignment's working tree, seeded from the desk |
+| `/output` | read and write | what is handed in |
+| `/input` | read only | what was handed to this attempt: its parts' latest hand-ins for a lead's review (`unit-<key>-<file>`), what its lead shared, the mission's sources |
+| `/team` | read and write | the team room |
+
+`/toolbox` is the desk's toolbox inside `/work`.
+
+Every layer reads that declaration:
+- the tool door (`tools.service.ts` `pathOf`);
+- the allocator and the program it runs in the tool plane, which is handed the declaration as data;
+- the development provider;
+- the integration tests' double.
+
+A path is held to the area it names, through links too. A refusal is the tool's answer, in its own words. A version a
+lead sends back is not in its next `/input`; the part keeps its `/work` and works on; the mission keeps every version.
+
+**What the owner reads of the people's exchanges.** A mission's *Communication* tab shows two things:
+- **a pipeline:** who holds which part, and its stage;
+- **one thread** (`GET /api/missions/:id/messages`, `work/domain/mission-thread.ts`), built from the records the mission
+  already keeps, each message from someone to someone:
+  - the work given;
+  - questions, their moves and their answers;
+  - hand-ins, with their files;
+  - reviews, with their notes;
+  - Orbit's notices.
+
 ### An employee (Workforce)
 
 ```mermaid

@@ -5,7 +5,7 @@
 // isolation (the container provider's own tests are).
 import type { DeskEntry, EnforcementLevel, UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../contexts/execution/application/sandbox.port.js";
-import { AllocatorError } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
+import { AllocatorError, checkToolPath } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
 import { FakeProcessPort, type Call, type FakeChild, type SpawnScript } from "./fake-process.js";
 
 interface Attempt {
@@ -235,16 +235,21 @@ export class FakeSandboxProvider implements SandboxProvider {
     return this.exec_(req);
   }
 
+  // The file tools are held to the areas the real providers hold them to (one declaration): what a real tool plane
+  // refuses, the fake refuses too, so a disagreement between the tool door and the sandbox fails a test here.
   async readFile(handle: AttemptHandle, path: string, maxBytes: number): Promise<Buffer | null> {
+    checkToolPath(path);
     const b = this.files(handle, path).get(path);
     return b === undefined ? null : b.subarray(0, maxBytes);
   }
 
   async writeFile(handle: AttemptHandle, path: string, bytes: Buffer): Promise<void> {
+    checkToolPath(path, { write: true });
     this.files(handle, path).set(path, Buffer.from(bytes));
   }
 
   async list(handle: AttemptHandle, dir: string, maxEntries: number): Promise<FileEntry[]> {
+    checkToolPath(dir);
     const prefix = `${dir.replace(/\/+$/, "")}/`;
     const out: FileEntry[] = [];
     for (const [p, b] of this.files(handle, dir)) if (p.startsWith(prefix)) out.push({ path: p.slice(prefix.length), type: "file", size: b.length });

@@ -17,7 +17,7 @@ import { check, hardeningProblems, mountProblems, mountRootProblems, parseMountI
 import { cgroupUsage, limitsMatch, observedLimits } from "./cgroup.js";
 import type { ContainerInspect } from "./docker/engine.js";
 import { demuxAll, StdStreamDemuxer } from "./docker/stdstream.js";
-import { deskScript, nodeScript, syncScript } from "./scripts/node-scripts.js";
+import { deskScript, nodeScript, syncScript, toolFileScript } from "./scripts/node-scripts.js";
 import { allocatorServer } from "./server.js";
 import { MiB, modelPlaneBody, sessionPlaneBody, toolPlaneBody, toolPlaneMounts } from "./specs.js";
 import { quotaHeld, WorkforceStorage } from "./storage.js";
@@ -126,6 +126,56 @@ test("an over-quota write holds only when the kernel refused it, within the quot
   assert.equal(quotaHeld({ written: 15 * MiB, code: "ENOSPC" }, 16 * MiB), true);
   assert.equal(quotaHeld({ written: 48 * MiB, code: null }, 16 * MiB), false);
   assert.equal(quotaHeld({ written: 40 * MiB, code: "EDQUOT" }, 16 * MiB), false);
+});
+
+describe("a tool plane's file program (what read_file, write_file and list_files run), given its areas", () => {
+  let dir: string;
+  let areas: { read: string[]; write: string[] };
+  const at = (p: string) => join(dir, p);
+  const run = (args: string[], stdin?: Buffer) => {
+    const r = spawnSync(process.execPath, ["-e", nodeScript(toolFileScript), JSON.stringify(areas), ...args], { input: stdin });
+    return { code: r.status, out: r.stdout, err: r.stderr.toString("utf8") };
+  };
+  // A hand-in written in Vietnamese: what a lead's review reads back, byte for byte.
+  const HANDIN = Buffer.from("# Kế hoạch tuyển dụng\n\n- Tóm tắt điều hành: Phòng FX cần một trưởng phòng.\n", "utf8");
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "tool-files-"));
+    for (const d of ["work", "output", "input", "team"]) mkdirSync(at(d));
+    writeFileSync(at("input/unit-a-plan.md"), HANDIN);
+    symlinkSync(at("input"), at("work/indir"));
+    areas = { read: ["work", "output", "input", "team"].map(at), write: ["work", "output", "team"].map(at) };
+  });
+  after(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("what was handed in is read and listed from /input, its bytes as they were written", () => {
+    const read = run(["read", at("input/unit-a-plan.md"), "1048576"]);
+    assert.equal(read.code, 0, read.err);
+    assert.deepEqual(read.out, HANDIN);
+    const list = run(["list", at("input"), "100"]);
+    assert.equal(list.code, 0, list.err);
+    assert.deepEqual((JSON.parse(list.out.toString("utf8")) as { entries: unknown[] }).entries, [{ path: "unit-a-plan.md", type: "file", size: HANDIN.length }]);
+  });
+
+  test("/input is never written: refused before anything is made there", () => {
+    for (const p of ["input/x.md", "input/sub/x.md"]) {
+      const r = run(["write", at(p)], Buffer.from("x"));
+      assert.equal(r.code, 4, p);
+      assert.match(r.err, /read-only/);
+    }
+    assert.deepEqual(readdirSync(at("input")), ["unit-a-plan.md"]);
+  });
+
+  test("a path stays inside the area it names: a link from /work into /input is refused", () => {
+    assert.equal(run(["read", at("work/indir/unit-a-plan.md"), "1048576"]).code, 4);
+    assert.equal(run(["list", at("work/indir"), "100"]).code, 4);
+    assert.equal(run(["read", join(tmpdir(), "elsewhere.md"), "100"]).code, 4);
+  });
+
+  test("the writable areas still take a file", () => {
+    const w = run(["write", at("work/notes/a.md")], Buffer.from("ghi chú"));
+    assert.equal(w.code, 0, w.err);
+    assert.equal(readFileSync(at("work/notes/a.md"), "utf8"), "ghi chú");
+  });
 });
 
 describe("the desk's copy (the same program a storage worker runs)", () => {

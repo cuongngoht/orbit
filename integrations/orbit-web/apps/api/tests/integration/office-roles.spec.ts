@@ -9,8 +9,9 @@
 //   - a manager alone in its department does the work itself and hands it in.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { DEFAULT_PRESETS, type Department, type EmployeeDetail, type MissionAccepted, type MissionDetail, type RuntimeConnection } from "@orbit-web/contracts";
+import { DEFAULT_PRESETS, type Department, type EmployeeDetail, type MissionAccepted, type MissionDetail, type MissionMessages, type RuntimeConnection } from "@orbit-web/contracts";
 import { CONNECTOR_TOOLS, type ConnectorTools } from "../../src/contexts/execution/application/connector-tools.port.js";
+import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
@@ -42,6 +43,14 @@ function answered(raw: string | undefined, isError: boolean, says: RegExp | null
   assert.equal(a.isError, isError, raw);
   if (says !== null) assert.match(a.text ?? "", says);
 }
+
+const unitLines = (p: string, keys: string[]): string[] => p.split("\n").filter((l) => new RegExp(`^- (${keys.join("|")}): `).test(l));
+const digestOf = (line: string): string | undefined => /digest ([0-9a-f]{64})/.exec(line)?.[1];
+// What a department hands in, written in Vietnamese: the CEO's review reads it back from /input byte for byte. The
+// CEO asks for a revision (REVISE); the department reworks it from the draft it kept, and hands in v2.
+const KE_HOACH = "# Kế hoạch tuyển dụng\n\n- Tóm tắt điều hành: Phòng FX cần một trưởng phòng có kinh nghiệm.\n";
+const REVISE = "Thêm phần ngân sách tuyển dụng.";
+const KE_HOACH_2 = `${KE_HOACH}- Ngân sách: 40 triệu đồng mỗi tháng.\n`;
 
 async function toolNames(t: ToolCaller): Promise<string[]> {
   const res = await fetch(`${t.bridge.url}/list`, { method: "POST", headers: { "content-type": "application/json", "x-orbit-run-token": t.bridge.token, "x-orbit-web": "1" }, body: "{}" });
@@ -84,6 +93,8 @@ describe("roles: the CEO plans, a manager with a team delegates and decides, a m
 
   before(async () => {
     h = await startHarness({ overrides: [[SANDBOX_PROVIDER, sandbox], [CONNECTOR_TOOLS, crm]], env: FAST });
+    // What an attempt is handed in /input is read from the store by the real reader, as in a sandbox.
+    sandbox.readInput = (p) => h.app.get(AttemptInputs).read(p);
     b = h.owner as Browser;
     connection = ((await b.get("/api/connections")).body as { connections: RuntimeConnection[] }).connections.find((x) => x.runtime === "claude" && x.auth === "connected") as RuntimeConnection;
     assert.equal((await b.send("POST", "/api/office/setup", { name: "Roles Co" })).status, 200);
@@ -111,6 +122,38 @@ describe("roles: the CEO plans, a manager with a team delegates and decides, a m
           note("manager:crm", JSON.stringify(await t.call("crm_lookup", {})));
           await t.call("write_file", { path: "/output/probe.md", content: "Done by myself.\n" });
           note("manager:handin", JSON.stringify(await t.call("submit_handoff", { summary: "Done by myself." })));
+          return;
+        }
+        if (p.includes("[ceo-review]")) {
+          const lines = unitLines(p, ["kh"]);
+          if (lines.length === 0) {
+            note("review:plan", (await t.call("delegate", { parts: [{ key: "kh", department: "Finance", title: "Kế hoạch tuyển dụng", goal: "[alone-plan] Viết kế hoạch tuyển dụng.", deliverables: ["ke-hoach.md"] }] })).text);
+            return;
+          }
+          const awaiting = lines.find((l) => l.includes("awaiting acceptance"));
+          if (awaiting === undefined) return;
+          const round = said["review:revise"] === undefined ? 1 : 2;
+          note(`review:list${round}`, JSON.stringify(await t.call("list_files", { path: "/input" })));
+          note(`review:read${round}`, JSON.stringify(await t.call("read_file", { path: "/input/unit-kh-ke-hoach.md" })));
+          if (round === 1) {
+            note("review:write", JSON.stringify(await t.call("write_file", { path: "/input/unit-kh-ke-hoach.md", content: "đã sửa" })));
+            note("review:revise", (await t.call("review_unit", { part: "kh", decision: "revise", digest: digestOf(awaiting), criteria: REVISE })).text);
+            return;
+          }
+          note("review:accept", (await t.call("review_unit", { part: "kh", decision: "accept", digest: digestOf(awaiting) })).text);
+          return;
+        }
+        if (p.includes("[alone-plan]")) {
+          if (!p.includes(REVISE)) {
+            await t.call("write_file", { path: "/work/ke-hoach.md", content: KE_HOACH });
+            await t.call("write_file", { path: "/output/ke-hoach.md", content: KE_HOACH });
+            note("plan:handin", JSON.stringify(await t.call("submit_handoff", { summary: "Kế hoạch tuyển dụng, bản 1." })));
+            return;
+          }
+          // Asked to revise: the department kept its draft, and works on from it.
+          note("plan:kept", JSON.stringify(await t.call("read_file", { path: "/work/ke-hoach.md" })));
+          await t.call("write_file", { path: "/output/ke-hoach.md", content: KE_HOACH_2 });
+          note("plan:handin2", JSON.stringify(await t.call("submit_handoff", { summary: "Kế hoạch tuyển dụng, bản 2: thêm ngân sách." })));
           return;
         }
         if (p.includes("[alone]")) {
@@ -179,5 +222,57 @@ describe("roles: the CEO plans, a manager with a team delegates and decides, a m
     const tools = (said["alone:tools"]?.[0] ?? "").split(",");
     assert.ok(tools.includes("shell") && !tools.includes("ask_question"), tools.join(","));
     assert.equal(m.handoffs.length, 1);
+  });
+
+  test("the CEO, with no shell, reads what its department handed in from /input -- the Vietnamese text as written -- cannot change it; a version it sends back leaves its tray while the department keeps it and works on", async () => {
+    // What the scenarios before left open is ended first: a mission waiting for the owner still holds its employee.
+    for (const open of ((await b.get("/api/missions?state=open")).body as { missions: { id: string }[] }).missions) await cancel(open.id);
+    const made = await b.send("POST", "/api/missions", { title: "Tuyển dụng", goal: "[ceo-review] Lập kế hoạch tuyển dụng.", target: { kind: "ceo" }, whenBusy: "enqueue", deliverables: [{ name: "plan.md", required: true }], acceptanceCriteria: ["Có kế hoạch"] }, key());
+    assert.ok(made.status === 201 || made.status === 202, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    await eventually(async () => said["review:accept"]?.[0] ?? null, (x) => x !== null, 90_000).catch(async () => {
+      const m = await mission(id);
+      const steps = Object.entries(said).filter(([k]) => k.startsWith("review:") || k.startsWith("plan:")).flatMap(([k, v]) => v.map((x, i) => `${k}[${i}]=${x.slice(-1400)}`));
+      throw new Error(`the review never finished.\nnoted: ${steps.join("\n")}\nassignments: ${JSON.stringify(m.assignments.map((a) => ({ title: a.title, employee: a.employeeName, state: a.state, reason: (a as { reason?: unknown }).reason ?? null })))}`);
+    });
+    const toolText = (raw: string | undefined) => JSON.parse(raw ?? "{}") as { text?: string; isError?: boolean };
+    assert.match(said["review:plan"]?.[0] ?? "", /Gave 1 part/);
+    answered(said["plan:handin"]?.[0], false);
+    // First review: what was handed in, read from /input as written; /input cannot be changed, said in words the CEO
+    // can act on (never "The request body is not valid JSON").
+    answered(said["review:list1"]?.[0], false, /unit-kh-ke-hoach\.md/);
+    assert.deepEqual([toolText(said["review:read1"]?.[0]).isError, toolText(said["review:read1"]?.[0]).text], [false, KE_HOACH], said["review:read1"]?.[0]);
+    answered(said["review:write"]?.[0], true, /\/input is read-only/);
+    assert.doesNotMatch(said["review:write"]?.[0] ?? "", /not valid JSON/);
+    // Sent back: the department still has its draft, and hands in v2 from it.
+    assert.deepEqual([toolText(said["plan:kept"]?.[0]).isError, toolText(said["plan:kept"]?.[0]).text], [false, KE_HOACH], said["plan:kept"]?.[0]);
+    answered(said["plan:handin2"]?.[0], false);
+    // Second review: the CEO's tray holds the new version only.
+    const list2 = toolText(said["review:list2"]?.[0]).text ?? "";
+    assert.equal(list2.split("\n").filter((l) => l.includes("unit-kh")).length, 1, list2);
+    assert.equal(toolText(said["review:read2"]?.[0]).text, KE_HOACH_2);
+    const m = await eventually(() => mission(id), (x) => x.assignments.find((a) => a.parentId !== null)?.state === "COMPLETED", 30_000);
+    const part = m.assignments.find((a) => a.parentId !== null);
+    // Nothing is lost: both versions stay in the mission's record, the first one sent back with what to change.
+    assert.deepEqual(m.handoffs.filter((x) => x.assignmentId === part?.id).map((x) => [x.revision, x.status]).sort(), [[1, "revision_requested"], [2, "accepted"]]);
+    // The owner reads how they talked: the work given down the tree, each hand-in with its file, the review sent back
+    // with what to change -- named people, the words as written.
+    const thread = (await b.get(`/api/missions/${id}/messages`)).body as MissionMessages;
+    const said2 = thread.messages.filter((x) => x.kind !== "notice").map((x) => [x.kind, x.from.name, x.to?.name ?? null]);
+    assert.deepEqual(said2, [
+      ["given", "Owner", "An"],
+      ["given", "An", "Hoa"],
+      ["handed_in", "Hoa", "An"],
+      ["revision", "An", "Hoa"],
+      ["handed_in", "Hoa", "An"],
+      ["accepted", "An", "Hoa"],
+    ]);
+    const handins = thread.messages.filter((x) => x.kind === "handed_in");
+    assert.deepEqual(handins.map((x) => x.attachments.map((f) => f.name)), [["ke-hoach.md"], ["ke-hoach.md"]]);
+    assert.equal(thread.messages.find((x) => x.kind === "revision")?.body, REVISE);
+    assert.equal(thread.messages.find((x) => x.kind === "given" && x.from.name === "An")?.to?.departmentName, "Finance");
+    const file = await fetch(`${h.url}/api/artifacts/${handins[1]?.attachments[0]?.artifactId}/content`, { headers: { cookie: b.cookie } });
+    assert.equal(await file.text(), KE_HOACH_2);
+    await cancel(id);
   });
 });

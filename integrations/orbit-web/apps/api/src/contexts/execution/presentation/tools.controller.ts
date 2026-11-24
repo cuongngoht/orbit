@@ -6,13 +6,16 @@
 //   POST /api/runtime/tools/call    { name, arguments } → { text, isError }
 //
 // A tool's refusal (a bad path, the shell not granted, an attempt replaced) is the tool's ANSWER, with isError set, so
-// the model can read it and correct itself; only a missing or foreign token is an HTTP error.
-import { Body, Controller, HttpCode, HttpStatus, Inject, Post, Req } from "@nestjs/common";
+// the model can read it and correct itself -- in the refusal's OWN words, the sandbox's included (a path outside the
+// areas, a read-only /input, a file too large): only a missing or foreign token is an HTTP error.
+import { Body, Controller, HttpCode, HttpStatus, Inject, Logger, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { ApiError } from "../../../common/errors.js";
 import { AgentGateway } from "../../../modules/auth/decorators.js";
 import { PrincipalResolver } from "../../../modules/auth/principals.js";
 import { DomainError } from "../../shared/domain.js";
+import { AllocatorError } from "../infrastructure/sandbox/allocator-protocol.js";
+import { SandboxInputError } from "../infrastructure/sandbox/ids.js";
 import { ToolsService, type ToolAnswer, type ToolSpec } from "../application/tools.service.js";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -20,6 +23,8 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 @Controller("runtime/tools")
 @AgentGateway()
 export class ToolsController {
+  private readonly logger = new Logger("ToolDoor");
+
   constructor(
     @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
     @Inject(ToolsService) private readonly tools: ToolsService,
@@ -46,7 +51,12 @@ export class ToolsController {
     try {
       return await this.tools.call(runId, body.name, args, this.principals.context(req));
     } catch (err) {
-      if (err instanceof DomainError) return { text: err.message, isError: true };
+      if (err instanceof DomainError || err instanceof SandboxInputError) return { text: err.message, isError: true };
+      if (err instanceof AllocatorError) {
+        // The sandbox could not do it: said to the model as it was said here; what failed inside is also logged.
+        if (err.code === "internal" || err.code === "unavailable") this.logger.warn(`a tool's sandbox operation failed (${err.code}): ${err.message}`);
+        return { text: err.message, isError: true };
+      }
       throw err;
     }
   }

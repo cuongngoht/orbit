@@ -61,6 +61,19 @@ down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.p
   manager with working members gives the work to its team and decides what it asks, a manager alone does the work
   itself; managers and the CEO never ask up nor move a question up. A question its manager leaves unanswered (after its
   wakes, or overdue) is answered for its asker -- decide, and say what you assumed -- and never reaches *Needs me*.
+- **A reviewer reads what its team handed in with the file tools** (ADR 0061 §9). `read_file` and `list_files` reach
+  `/input`, read-only, as a shell does: the CEO, who has no shell, reviews its departments' hand-ins this way (it was
+  refused, and the refusal reached it as "The request body is not valid JSON"). The areas a file tool may touch are
+  declared once (`FILE_AREAS`): the tool door, the allocator, the program in the tool plane and the development provider
+  all read them there, and the test double holds integration tests to them. A write to `/input` says it is read-only. A
+  sandbox's refusal now reaches the employee in its own words, and the API names a body it refused by body-parser's own
+  `type` -- never because an error carries a status. A version its reviewer sends back leaves the reviewer's `/input`
+  at the next review; the part keeps its working tree and works on; the mission keeps both versions.
+- **How a mission's people talk** (`#/office/mission/<id>/communication`, `GET /api/missions/:id/messages`). A pipeline --
+  who holds which part, and where it stands -- and one thread, oldest first, each from someone to someone: the work
+  given (its brief as written), questions and answers, every hand-in with its files (opened in the browser when it can
+  show them), every review with its note, and Orbit's notices (a part failed or cancelled, the team's discussion
+  changed). Read from what the mission already keeps; nothing is written or summarised.
 - **CEO Chat** (ADR 0062). A company's owner talks to the actual appointed CEO: a new *Company* section in the sidebar
   (CEO Chat, Office, Governance, Resources; *Create company* before there is one), `#/ceo`. The CEO answers with no tool,
   on its own model and effort, as a conversation run admitted like any run of the CEO and never at the same time as its

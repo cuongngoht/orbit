@@ -337,22 +337,48 @@ export function checkExecRequest(v: unknown): ExecRequest & { cwd: string } {
 
 // ---- tool-plane paths ------------------------------------------------------------------------------------------------
 
-// The places the file operations reach in a tool plane. /toolbox is the desk's toolbox inside the work tree.
-export const FILE_ROOTS = ["/work", "/output", "/team"] as const;
+// THE AREAS an employee's file tools reach in its tool plane -- declared ONCE: the tool door (tools.service.ts), the
+// allocator, the program that touches the file inside the container (handed them as data: toolFileAreas) and the
+// process provider all read them from here, so no two of them can disagree about a place. /input is what was handed to
+// this attempt -- its team's hand-ins for review, what its lead shared, the mission's sources -- mounted read-only:
+// read with the file tools as with a shell, never written. /toolbox is the desk's toolbox inside the work tree.
+export const FILE_AREAS: readonly { root: string; writable: boolean }[] = [
+  { root: "/work", writable: true },
+  { root: "/output", writable: true },
+  { root: "/input", writable: false },
+  { root: "/team", writable: true },
+];
+export const FILE_ROOTS = FILE_AREAS.map((a) => a.root);
+export const TOOLBOX = { path: "/toolbox", at: "/work/toolbox" } as const;
 
-// An absolute path inside one of the roots, or null. A relative path is relative to /work. Symlinks are resolved -- and
-// held to the same roots -- inside the tool plane itself, by the program that touches the file.
+const under = (abs: string, root: string): boolean => abs === root || abs.startsWith(`${root}/`);
+const listed = (paths: readonly string[]): string => `${paths.slice(0, -1).join(", ")} or ${paths.at(-1) ?? ""}`;
+
+// The areas as a sentence: every one ("/work, /output, /input, /team or /toolbox"), or those a file may be written in.
+export const areaWords = (o: { write?: boolean } = {}): string => listed([...FILE_AREAS.filter((a) => o.write !== true || a.writable).map((a) => a.root), TOOLBOX.path]);
+
+// What the file program in a tool plane is given: the roots it may read, and those it may write.
+export const toolFileAreas = (): { read: string[]; write: string[] } => ({ read: [...FILE_ROOTS], write: FILE_AREAS.filter((a) => a.writable).map((a) => a.root) });
+
+// The read-only area a path is in, or null.
+export const readOnlyAreaOf = (abs: string): string | null => FILE_AREAS.find((a) => !a.writable && under(abs, a.root))?.root ?? null;
+
+// An absolute path inside one of the areas, or null. A relative path is relative to /work. Symlinks are resolved -- and
+// held to the area the path names -- inside the tool plane itself, by the program that touches the file.
 export function toolPath(p: unknown): string | null {
   if (typeof p !== "string" || p.length === 0 || p.length > 4096 || p.includes("\0")) return null;
   let abs = posix.normalize(p.startsWith("/") ? p : `/work/${p}`);
   if (abs.length > 1 && abs.endsWith("/")) abs = abs.slice(0, -1);
-  if (abs === "/toolbox" || abs.startsWith("/toolbox/")) abs = `/work${abs}`;
-  return FILE_ROOTS.some((r) => abs === r || abs.startsWith(`${r}/`)) ? abs : null;
+  if (under(abs, TOOLBOX.path)) abs = `${TOOLBOX.at}${abs.slice(TOOLBOX.path.length)}`;
+  return FILE_ROOTS.some((r) => under(abs, r)) ? abs : null;
 }
 
-export function checkToolPath(p: unknown): string {
+// A path a file tool may use -- to read, or (`write`) to write -- or a refusal that says why.
+export function checkToolPath(p: unknown, o: { write?: boolean } = {}): string {
   const abs = toolPath(p);
-  if (abs === null) return bad("path must be inside /work, /output, /team or /toolbox");
+  if (abs === null) return bad(`path must be inside ${areaWords()}`);
+  const readOnly = o.write === true ? readOnlyAreaOf(abs) : null;
+  if (readOnly !== null) return bad(`${readOnly} is read-only: it holds what was handed to you. Write under ${areaWords({ write: true })}`);
   return abs;
 }
 

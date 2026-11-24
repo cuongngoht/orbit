@@ -6,17 +6,28 @@
 // Node names "Disk quota exceeded" UNKNOWN (libuv has no name for errno 122): each program says EDQUOT for it.
 export const nodeScript = (fn: () => void): string => `(${fn.toString()})();`;
 
-// read <path> <maxBytes> | write <path> (bytes on stdin) | list <path> <maxEntries>   -- in a TOOL PLANE, as the employee.
+// <areas> read <path> <maxBytes> | <areas> write <path> (bytes on stdin) | <areas> list <path> <maxEntries>
+//   -- in a TOOL PLANE, as the employee. <areas> is JSON `{read, write}`: the roots it may read, and those it may write
+//   (allocator-protocol's toolFileAreas -- the one declaration). A path is held to the root it NAMES, through links too:
+//   reaching another area through a link is refused even when that area could be read by its own name.
 export function toolFileScript(): void {
   const fs = process.getBuiltinModule("node:fs");
   const path = process.getBuiltinModule("node:path");
-  const [op, target, limitRaw] = process.argv.slice(1);
+  const [areasRaw, op, target, limitRaw] = process.argv.slice(1);
   const limit = Number(limitRaw ?? "0");
-  const ROOTS = ["/work", "/output", "/team"];
   const die = (code: number, message: string): never => {
     process.stderr.write(message);
     process.exit(code);
   };
+  const areas = ((): { read: string[]; write: string[] } => {
+    try {
+      const a = JSON.parse(areasRaw ?? "") as { read?: unknown; write?: unknown };
+      if (Array.isArray(a.read) && Array.isArray(a.write)) return { read: a.read.map(String), write: a.write.map(String) };
+    } catch {
+      // said below
+    }
+    return die(2, "no areas");
+  })();
   const errCode = (e: unknown): string => ((e as { errno?: number }).errno === -122 ? "EDQUOT" : ((e as { code?: string }).code ?? String(e)));
   const real = (p: string): string | null => {
     try {
@@ -26,19 +37,21 @@ export function toolFileScript(): void {
       return die(1, errCode(e));
     }
   };
-  const rootOf = (abs: string): string | null => {
-    for (const r of ROOTS) {
-      const rr = real(r);
-      if (rr !== null && (abs === rr || abs.startsWith(`${rr}/`))) return rr;
-    }
-    return null;
+  // The root a path names (by its own words, before any link is followed), among `roots`.
+  const named = (p: string, roots: string[]): string | null => roots.find((r) => p === r || p.startsWith(`${r}/`)) ?? null;
+  // A real path inside the real place of `root`.
+  const inside = (abs: string, root: string): boolean => {
+    const rr = real(root);
+    return rr !== null && (abs === rr || abs.startsWith(`${rr}/`));
   };
   if (typeof target !== "string") die(2, "no path");
   const t = target as string;
   if (op === "read") {
+    const root = named(t, areas.read);
+    if (root === null) die(4, `not inside ${areas.read.join(", ")}`);
     const r = real(t);
     if (r === null) die(3, "not found");
-    if (rootOf(r as string) === null) die(4, "the path leads out of the workspace through a link");
+    if (!inside(r as string, root as string)) die(4, "the path leads out of its area through a link");
     const st = fs.statSync(r as string);
     if (!st.isFile()) die(6, "not a file");
     if (st.size > limit) die(5, String(st.size));
@@ -50,8 +63,11 @@ export function toolFileScript(): void {
     return;
   }
   if (op === "write") {
-    const root = ROOTS.find((r) => t.startsWith(`${r}/`));
-    if (root === undefined) die(4, "not a file inside /work, /output or /team");
+    // Refused before anything is made: an area it may only read says so. A file is written strictly inside an area.
+    const root = areas.write.find((r) => t.startsWith(`${r}/`)) ?? null;
+    const readOnly = root === null ? named(t, areas.read.filter((r) => !areas.write.includes(r))) : null;
+    if (readOnly !== null) die(4, `${readOnly} is read-only`);
+    if (root === null) die(4, `not a file inside ${areas.write.join(", ")}`);
     let dir = root as string;
     for (const seg of path.relative(root as string, path.dirname(t)).split("/").filter((s) => s.length > 0)) {
       dir = path.join(dir, seg);
@@ -64,11 +80,11 @@ export function toolFileScript(): void {
       if (st === null) fs.mkdirSync(dir, { mode: 0o755 });
       else if (st.isSymbolicLink()) {
         const rr = real(dir);
-        if (rr === null || rootOf(rr) === null || !fs.statSync(rr).isDirectory()) die(4, "a directory of the path is a link out of the workspace");
+        if (rr === null || !inside(rr, root as string) || !fs.statSync(rr).isDirectory()) die(4, "a directory of the path is a link out of its area");
       } else if (!st.isDirectory()) die(6, "a part of the path is not a directory");
     }
     const realDir = real(path.dirname(t));
-    if (realDir === null || rootOf(realDir) === null) die(4, "the directory leads out of the workspace");
+    if (realDir === null || !inside(realDir, root as string)) die(4, "the directory leads out of its area");
     const final = path.join(realDir as string, path.basename(t));
     try {
       const st = fs.lstatSync(final);
@@ -93,10 +109,12 @@ export function toolFileScript(): void {
     return;
   }
   if (op === "list") {
+    const root = named(t, areas.read);
+    if (root === null) die(4, `not inside ${areas.read.join(", ")}`);
     const r = real(t);
     if (r === null) die(3, "not found");
-    const root = rootOf(r as string);
-    if (root === null) die(4, "the path leads out of the workspace through a link");
+    if (!inside(r as string, root as string)) die(4, "the path leads out of its area through a link");
+    const realRoot = real(root as string) as string;
     if (!fs.statSync(r as string).isDirectory()) die(6, "not a directory");
     const names = fs.readdirSync(r as string).sort();
     const entries: { path: string; type: string; size: number }[] = [];
@@ -109,7 +127,7 @@ export function toolFileScript(): void {
       } catch {
         continue;
       }
-      entries.push({ path: path.relative(root as string, p), type: st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other", size: st.isFile() ? st.size : 0 });
+      entries.push({ path: path.relative(realRoot, p), type: st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "dir" : st.isFile() ? "file" : "other", size: st.isFile() ? st.size : 0 });
     }
     process.stdout.write(JSON.stringify({ entries, more: names.length > entries.length }));
     return;

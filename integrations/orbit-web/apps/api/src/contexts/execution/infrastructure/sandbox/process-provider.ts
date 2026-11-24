@@ -14,7 +14,7 @@ import { contained } from "../../../../common/workspace-path.js";
 import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import type { SandboxProvider } from "../../application/sandbox.port.js";
-import { AllocatorError, CHANGED_PATHS, checkAttemptSpec, checkDeskOrder, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, deskRefusal, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
+import { AllocatorError, CHANGED_PATHS, checkAttemptSpec, checkDeskOrder, checkInputName, checkQuotas, checkSandboxIds, checkToolPath, deskRefusal, FILE_ROOTS, intIn, MAX_FILE_BYTES, type PublishResult } from "./allocator-protocol.js";
 import { attemptHash, cacheArea, checkDispatchKey, checkId, connectionSubpath, deskArea, employeeDir, sandboxMeta, SCRATCH_DIRS, scratchArea, teamArea, workspaceMeta, assignmentDir, type EmployeeIds } from "./ids.js";
 import { deskScript, nodeScript, syncScript } from "../../../../allocator/scripts/node-scripts.js";
 
@@ -337,14 +337,15 @@ export class ProcessSandboxProvider implements SandboxProvider {
     throw new AllocatorError("shell_refused", NOT_ISOLATED);
   }
 
-  // A tool path (/work, /output, /team, /toolbox) as a directory of this attempt, held inside its place through links.
-  private place(handle: AttemptHandle, path: string): { abs: string; root: string } {
+  // A tool path (an area of FILE_AREAS, or /toolbox) as a directory of this attempt, held inside the area it names, through
+  // links too. To `write`, an area it may only read (/input: what was handed to it) is refused before anything is touched.
+  private place(handle: AttemptHandle, path: string, write = false): { abs: string; root: string } {
     const r = this.record(handle.dispatchKey);
     if (r === null) throw new AllocatorError("not_found", "no such attempt");
-    const tool = checkToolPath(path);
+    const tool = checkToolPath(path, { write });
     const scratch = this.at(scratchArea(r.ids, r.assignmentId));
-    const roots: Record<string, string | null> = { "/work": join(scratch, "work"), "/output": join(scratch, "output"), "/team": r.teamRoomId === null ? null : this.at(teamArea(r.ids.orbitId, r.teamRoomId)) };
-    const top = Object.keys(roots).find((k) => tool === k || tool.startsWith(`${k}/`)) as string;
+    const roots: Record<string, string | null> = { "/work": join(scratch, "work"), "/output": join(scratch, "output"), "/input": join(scratch, "input"), "/team": r.teamRoomId === null ? null : this.at(teamArea(r.ids.orbitId, r.teamRoomId)) };
+    const top = FILE_ROOTS.find((k) => tool === k || tool.startsWith(`${k}/`)) as string;
     const root = roots[top];
     if (root === null || root === undefined) throw new AllocatorError("bad_request", `${top} is not part of this attempt`);
     const abs = join(root, relative(top, tool));
@@ -369,7 +370,7 @@ export class ProcessSandboxProvider implements SandboxProvider {
 
   async writeFile(handle: AttemptHandle, path: string, bytes: Buffer): Promise<void> {
     if (bytes.length > MAX_FILE_BYTES) throw new AllocatorError("file_too_large", "a file of at most 64 MiB");
-    const { abs, root } = this.place(handle, path);
+    const { abs, root } = this.place(handle, path, true);
     if (abs === root) throw new AllocatorError("bad_request", "not a file path");
     // The missing directories, one at a time, none made through a link that leads out.
     let dir = root;

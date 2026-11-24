@@ -2,6 +2,8 @@
 import { ArgumentsHost, Catch, type ExceptionFilter, HttpException, HttpStatus, Logger } from "@nestjs/common";
 import type { ApiErrorBody, Checked } from "@orbit-web/contracts";
 import type { Response } from "express";
+import { AllocatorError } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
+import { SandboxInputError } from "../contexts/execution/infrastructure/sandbox/ids.js";
 import { DomainError, type RefusalKind } from "../contexts/shared/domain.js";
 import { redactSecrets } from "../infra/security/redact.js";
 
@@ -46,6 +48,18 @@ const CODES: Record<number, string> = {
   429: "too_many_requests",
 };
 
+// What the JSON body reader (body-parser) refused, told by the `type` IT names -- never guessed from a bare `status`,
+// which any error may carry: a sandbox's refusal once came back to an employee as "not valid JSON" that way, and it
+// could not tell what was wrong.
+const BODY_ERRORS: Record<string, { status: number; message: string }> = {
+  "entity.parse.failed": { status: 400, message: "The request body is not valid JSON." },
+  "entity.too.large": { status: 413, message: "The request body is too large." },
+  "request.aborted": { status: 400, message: "The request was cut off before its body arrived." },
+  "request.size.invalid": { status: 400, message: "The request body is not the size its Content-Length says." },
+  "charset.unsupported": { status: 415, message: "The request body's character set is not supported: send UTF-8." },
+  "encoding.unsupported": { status: 415, message: "The request body's content encoding is not supported." },
+};
+
 function bodyOf(exception: HttpException): ApiErrorBody {
   const response = exception.getResponse();
   if (typeof response === "object" && response !== null && "error" in response && typeof (response as ApiErrorBody).error?.code === "string") return response as ApiErrorBody;
@@ -73,9 +87,20 @@ export class ApiExceptionFilter implements ExceptionFilter {
       res.status(DOMAIN_STATUS[exception.kind]).json({ error: { code: exception.code, message: exception.message, ...(exception.details !== undefined ? { details: exception.details } : {}) } } satisfies ApiErrorBody);
       return;
     }
-    const status = (exception as { status?: number; type?: string }).status;
-    if (status === 413 || status === 400) {
-      res.status(status).json({ error: { code: CODES[status], message: status === 413 ? "The request body is too large." : "The request body is not valid JSON." } });
+    const type = (exception as { type?: unknown }).type;
+    const body = typeof type === "string" ? BODY_ERRORS[type] : undefined;
+    if (body !== undefined) {
+      res.status(body.status).json({ error: { code: CODES[body.status] ?? "invalid_request", message: body.message } });
+      return;
+    }
+    // What the sandbox refused on purpose (a path outside the areas, a file too large, something not there): its own
+    // status and words. What failed inside it is logged and said as Orbit Web's own trouble.
+    if (exception instanceof SandboxInputError) {
+      res.status(400).json({ error: { code: "invalid_request", message: exception.message } });
+      return;
+    }
+    if (exception instanceof AllocatorError && exception.code !== "internal" && exception.code !== "unavailable") {
+      res.status(exception.status).json({ error: { code: exception.code, message: exception.message } });
       return;
     }
     this.logger.error(redactSecrets(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception)));

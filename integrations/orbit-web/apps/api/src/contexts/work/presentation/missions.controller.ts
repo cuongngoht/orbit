@@ -16,7 +16,7 @@
 //   GET  /api/missions/:id/data-shares                         what each lead shared with its parts (§9)
 //   POST /api/data-shares/:id/revoke                           take a share back: attempts holding it are stopped
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, Res, StreamableFile } from "@nestjs/common";
-import { isWorkforceId, type CommandResult, type Inbox, type MissionDetail, type MissionList, type MissionTarget, type MissionTargetPreview } from "@orbit-web/contracts";
+import { isWorkforceId, type CommandResult, type Inbox, type MissionDetail, type MissionList, type MissionMessages, type MissionTarget, type MissionTargetPreview } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
 import { ApiError, notFound } from "../../../common/errors.js";
 import { ArtifactStore } from "../../execution/infrastructure/artifact-store.js";
@@ -71,6 +71,12 @@ export class MissionsController {
   @Get("missions/:id")
   mission(@Param("id") id: string): Promise<MissionDetail> {
     return this.queries.detail(ownerActor().command.orbitId, id);
+  }
+
+  // The mission's exchanges as one thread: the work given, questions and answers, hand-ins with their files, reviews.
+  @Get("missions/:id/messages")
+  messages(@Param("id") id: string): Promise<MissionMessages> {
+    return this.queries.conversation(ownerActor().command.orbitId, id);
   }
 
   // What changed in the mission's team room, and which employee's attempt changed it.

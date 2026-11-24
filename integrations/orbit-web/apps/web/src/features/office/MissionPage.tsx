@@ -65,6 +65,7 @@ import { useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
 import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, wholeRoster, type AssignmentCommand } from "./api";
 import { AsOf, EmployeeAvatar, ProblemBar, RUN_STATE_KEYS, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
+import { MissionCommunication } from "./MissionThread";
 import { RunDetails } from "./RunDetails";
 
 const useStyles = makeStyles({
@@ -121,10 +122,11 @@ const useStyles = makeStyles({
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
-export const MISSION_TABS = ["overview", "timeline", "handoffs", "team", "run"] as const;
+export const MISSION_TABS = ["overview", "communication", "timeline", "handoffs", "team", "run"] as const;
 type MissionTab = (typeof MISSION_TABS)[number];
 const TAB_KEYS: Record<MissionTab, MessageKey> = {
   overview: "office.mission.tab.overview",
+  communication: "office.mission.tab.communication",
   timeline: "office.mission.tab.timeline",
   handoffs: "office.mission.tab.handoffs",
   team: "office.mission.tab.team",
@@ -1160,6 +1162,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           )}
         </section>
       )}
+
+      {current === "communication" && <MissionCommunication m={m} />}
 
       {current === "handoffs" && <HandIns m={m} onDone={reload} onLoadLatest={reload} />}
 

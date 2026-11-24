@@ -165,7 +165,11 @@ describe("an employee's attempt in real containers", { skip: skip ?? false, time
     assert.doesNotMatch(db.stdout, /OPEN/);
   });
 
-  test("files: binary-safe, held to /work, /output, /team and /toolbox through links", async () => {
+  test("files: binary-safe, held to /work, /output, /input, /team and /toolbox through links; /input read, never written", async () => {
+    // What was handed to the attempt, read with the file tools as with a shell (a lead with no shell reviews this way).
+    assert.equal((await provider.readFile(handle, "/input/brief.txt", 1000))?.toString("utf8"), "input:objects/brief");
+    assert.deepEqual((await provider.list(handle, "/input", 10)).map((f) => [f.path, f.type]), [["brief.txt", "file"]]);
+    await assert.rejects(provider.writeFile(handle, "/input/brief.txt", Buffer.from("x")), /\/input is read-only/);
     const bytes = Buffer.from([...Array(256).keys()]);
     await provider.writeFile(handle, "/toolbox/scripts/bytes.bin", bytes);
     assert.deepEqual(await provider.readFile(handle, "toolbox/scripts/bytes.bin", 1000), bytes);

@@ -17,6 +17,8 @@ import {
   type Inbox,
   type MissionDetail,
   type MissionList,
+  type MissionMessages,
+  type MissionParty,
   type MissionSummary,
   type ResponsibleNow,
   type TimelineEntry,
@@ -29,6 +31,7 @@ import { missing } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { DeliveriesService } from "./deliveries.service.js";
+import { missionThread, ORBIT } from "../domain/mission-thread.js";
 
 const PAGE = 50;
 const s = (v: unknown): string => String(v);
@@ -353,6 +356,30 @@ export class MissionQueries {
       deliveries: await this.deliveries.ofMission(orbitId, missionId),
       resourceVersion: await this.outbox.version(orbitId),
     };
+  }
+
+  // ONE MISSION'S THREAD (GET /api/missions/:id/messages): its exchanges from the same snapshot its detail is read from,
+  // each sender and recipient named (domain/mission-thread.ts) -- nothing written, nothing summarised.
+  async conversation(orbitId: string, missionId: string): Promise<MissionMessages> {
+    if (!isWorkforceId(missionId)) throw missing("Mission");
+    return this.db.snapshot(async () => {
+      const detail = await this.read(orbitId, missionId);
+      const room = await this.team.roomHistory(orbitId, missionId);
+      const people = await this.db.query(
+        `SELECT e.id, e.name, d.name AS department FROM workforce.employees e
+         LEFT JOIN workforce.departments d ON d.account_id = e.account_id AND d.id = e.department_id WHERE e.account_id = $1`,
+        [orbitId],
+      );
+      const employees = new Map(people.map((r) => [s(r.id), { name: s(r.name), department: sn(r.department) }]));
+      const partyOf = (label: string): MissionParty => {
+        if (label.startsWith("owner:")) return { kind: "owner", name: "Owner", employeeId: null, departmentName: null };
+        const id = /^agent:employee:(.+)$/.exec(label)?.[1] ?? null;
+        const e = id === null ? undefined : employees.get(id);
+        if (id !== null) return { kind: "employee", name: e?.name ?? "A former employee", employeeId: id, departmentName: e?.department ?? null };
+        return ORBIT;
+      };
+      return { missionId, messages: missionThread({ detail, room, partyOf }) };
+    });
   }
 
   private async handoffsOf(orbitId: string, assignmentIds: string[]): Promise<HandoffView[]> {

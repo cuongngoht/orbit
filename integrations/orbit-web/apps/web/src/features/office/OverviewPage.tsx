@@ -1,11 +1,12 @@
 // THE OFFICE, at a glance: its employees as cards grouped by department -- each with its work label in words, what it
 // holds and how much waits behind it, why it is not ready, a warning about its connection -- filtered by department
 // (or Unassigned), a search and a work label. From here a person assigns work, hires (once an AI CLI is connected) and
-// shapes the departments. An account with no company yet is offered to activate it -- empty -- once an AI connection
-// of its own can be used.
-import { Button, Field, Input, Link, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, Dismiss16Regular, Filter20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
-import { AUTH_STATE_TEXT, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type Roster, type WorkLabel } from "@orbit-web/contracts";
+// shapes the departments: who leads the company (its CEO, each department's manager) and the execution defaults an
+// employee may leave its model and effort to. An account with no company yet is offered to activate it -- empty -- once
+// an AI connection of its own can be used.
+import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import {
@@ -25,8 +26,9 @@ import { errorText } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { office, useOfficeRead, type RosterQuery } from "./api";
+import { AppointmentDialog, AppointmentHolder, AppointmentMenu, type AppointmentEdit } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
-import { DepartmentDialog, type DepartmentEdit } from "./DepartmentDialogs";
+import { DefaultsDialog, DepartmentDialog, type DefaultsTarget, type DepartmentEdit } from "./DepartmentDialogs";
 import { HireWizard } from "./HireWizard";
 import { AsOf, Callout, EmptyState, useOfficeStyles } from "./parts";
 import { OfficeFloorMap } from "./OfficeFloorMap";
@@ -90,6 +92,34 @@ const useStyles = makeStyles({
   toolbarMobile: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" },
   searchMobile: { width: "100%", minWidth: 0, maxWidth: "100%" },
   select: { minWidth: "min(100%, 185px)" },
+  leadHead: { display: "flex", alignItems: "center", gap: "10px", minWidth: 0 },
+  // One slot per cell: several to a row on a wide screen, one on a phone -- a long name wraps, never the page.
+  leadList: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 250px), 1fr))",
+    gap: "8px",
+    listStyleType: "none",
+    marginTop: 0,
+    marginRight: 0,
+    marginBottom: 0,
+    marginLeft: 0,
+    paddingLeft: 0,
+    minWidth: 0,
+  },
+  leadRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    paddingTop: "8px",
+    paddingRight: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    minWidth: 0,
+  },
+  leadWho: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0, overflowWrap: "anywhere" },
 });
 
 // The three uses a connection is read for, in the order a card says them.
@@ -212,14 +242,87 @@ interface Group {
   employees: EmployeeCard[];
 }
 
+// The departments not archived, in the order the office shows them.
+const liveDepartments = (departments: Department[]): Department[] => departments.filter((d) => !d.archived).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+
 function groupsOf(roster: Roster, employees: EmployeeCard[], filter: string): Group[] {
-  const live = [...roster.departments].filter((d) => !d.archived).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+  const live = liveDepartments(roster.departments);
   const groups: Group[] = live.map((d) => ({ department: d, employees: employees.filter((e) => e.departmentId === d.id) }));
   const known = new Set(live.map((d) => d.id));
   groups.push({ department: null, employees: employees.filter((e) => e.departmentId === null || !known.has(e.departmentId)) });
   if (filter === "none") return groups.filter((g) => g.department === null);
   if (filter !== "all") return groups.filter((g) => g.department?.id === filter);
   return groups.filter((g) => g.department !== null || g.employees.length > 0);
+}
+
+// The runtimes a department's defaults say something for.
+const defaultsSetFor = (d: ExecutionDefaults): string[] => RUNTIME_KINDS.filter((r) => Object.keys(d[r] ?? {}).length > 0).map((r) => RUNTIME_LABELS[r]);
+
+// LEADERSHIP, compactly: the company's CEO and each department's manager -- or that there is none, which a company may
+// well be -- each with what a person may do about it. Read from the roster the page already holds.
+function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster; go: Go; onAppointment: (edit: AppointmentEdit) => void; onDefaults: (department: Department) => void }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const o = useOfficeStyles();
+  return (
+    <section className={o.card} aria-label={t("office.leadership.title")}>
+      <div className={s.leadHead}>
+        <IconBadge icon={<Organization16Regular />} tone="brand" size="md" />
+        <div className={o.stack} style={{ gap: "2px" }}>
+          <Text weight="semibold" size={400} as="h3">
+            {t("office.leadership.title")}
+          </Text>
+          <Text size={200} className={o.muted}>
+            {t("office.leadership.sub")}
+          </Text>
+        </div>
+      </div>
+      <ul className={s.leadList} aria-label={t("office.leadership.listAria")}>
+        <li className={s.leadRow} aria-label={t("office.leadership.ceo")}>
+          <div className={s.leadWho}>
+            <Text size={200} weight="semibold">
+              {t("office.leadership.ceo")}
+            </Text>
+            {roster.ceo ? (
+              <AppointmentHolder who={roster.ceo} stateAlways onOpen={(id) => go("employee", id)} />
+            ) : (
+              <Text size={200} className={o.muted}>
+                {t("office.leadership.noCeo")}
+              </Text>
+            )}
+          </div>
+          <AppointmentMenu slot={{ role: "ceo", incumbent: roster.ceo ?? null }} label={t("office.leadership.ceoActions")} onPick={onAppointment} />
+        </li>
+        {liveDepartments(roster.departments).map((d) => {
+          const defaults = defaultsSetFor(d.defaults ?? {});
+          return (
+            <li key={d.id} className={s.leadRow} aria-label={d.name}>
+              <div className={s.leadWho}>
+                <Text size={200} weight="semibold">
+                  {d.name}
+                </Text>
+                {d.manager ? (
+                  <AppointmentHolder who={d.manager} prefix={`${t("office.leadership.managerLabel")} `} onOpen={(id) => go("employee", id)} />
+                ) : (
+                  <Text size={200} className={o.muted}>
+                    {t("office.leadership.noManager")}
+                  </Text>
+                )}
+                {defaults.length > 0 && (
+                  <Text size={100} className={o.muted}>
+                    {t("office.leadership.defaultsSet", { runtimes: defaults.join(", ") })}
+                  </Text>
+                )}
+              </div>
+              <AppointmentMenu slot={{ role: "manager", department: d, incumbent: d.manager ?? null }} label={t("office.leadership.departmentActions", { name: d.name })} onPick={onAppointment}>
+                <MenuItem onClick={() => onDefaults(d)}>{t("office.leadership.defaults")}</MenuItem>
+              </AppointmentMenu>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
 }
 
 // The unified company floor for one read of the roster, and any extra pages brought by "Load more".
@@ -286,6 +389,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [hiring, setHiring] = useState(false);
   const [assigning, setAssigning] = useState<{ employeeId: string | null } | null>(null);
   const [editing, setEditing] = useState<DepartmentEdit | null>(null);
+  const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
+  const [defaultsOf, setDefaultsOf] = useState<DefaultsTarget | null>(null);
   const [filters, setFilters] = useState(false);
   const restore = useRestoreFocusTarget();
   // A search is asked once typing pauses.
@@ -313,8 +418,15 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         <ActivateCompany account={account} onDone={() => void roster.reload()} />
       </div>
     );
+  const company = r.office;
   const live = r.departments.filter((d) => !d.archived);
   const filtered = department !== "all" || status !== "all" || typed !== "";
+  // After a change of who leads or of a default, the roster is read again (its slots and defaults are in it).
+  const changed = () => {
+    setAppointing(null);
+    setDefaultsOf(null);
+    void roster.reload();
+  };
   const clearFilters = () => {
     setDepartment("all");
     setStatus("all");
@@ -379,6 +491,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Button>
             <Button className={o.touch} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
               {t("office.overview.newDepartment")}
+            </Button>
+            <Button className={o.touch} icon={<Options16Regular />} onClick={() => setDefaultsOf({ kind: "company", office: company })} {...restore}>
+              {t("office.overview.companyDefaults")}
             </Button>
           </div>
         </div>
@@ -457,6 +572,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           {connections.data !== null && <Link href={settingsHref("ai-connections")}>{t("office.overview.openAiConnections")}</Link>}
         </Callout>
       )}
+      <Leadership roster={r} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} />
       <div className={mergeClasses(s.filterBar, isMobile && s.toolbarMobile)}>
         {isMobile ? (
           <>
@@ -495,6 +611,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       {hiring && (
         <HireWizard
           departments={r.departments}
+          companyDefaults={company.defaults ?? {}}
           onClose={() => setHiring(false)}
           onHired={(e) => {
             setHiring(false);
@@ -514,6 +631,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           }}
         />
       )}
+      {appointing && <AppointmentDialog edit={appointing} onClose={() => setAppointing(null)} onDone={changed} />}
+      {defaultsOf && <DefaultsDialog target={defaultsOf} onClose={() => setDefaultsOf(null)} onDone={changed} />}
     </div>
   );
 }

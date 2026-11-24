@@ -666,10 +666,17 @@ CREATE TABLE governance.run_bindings (
   policy_revision text NOT NULL,
   started_by text NOT NULL,
   work_branch text,
+  -- An employee's attempt: the work it does and the department it was dispatched in, with that department's policy
+  -- revision then (the department's CURRENT one decides each later operation; this one explains the past).
+  assignment_id uuid,
+  mission_id uuid,
+  department_id uuid,
+  department_revision text,
   created_at timestamptz NOT NULL,
   expires_at timestamptz NOT NULL,
   ended_at timestamptz,
   UNIQUE (account_id, run_id),
+  CONSTRAINT run_binding_assignment CHECK ((kind = 'assignment') = (assignment_id IS NOT NULL)),
   CHECK ((kind = 'chat') = (resource_kind = 'workspace')),
   CHECK ((kind = 'assignment') = (resource_kind = 'employee')),
   CHECK ((kind = 'research') = (research_session_id IS NOT NULL)),
@@ -1476,19 +1483,28 @@ CREATE TABLE workforce.idempotency_keys (
   PRIMARY KEY (account_id, actor, operation, key)
 );
 
--- A mission's team room: the shared workbench of the assignments of one mission (never evidence).
+-- A mission's team rooms: the shared workbench of the assignments of one mission, one per data domain (never evidence).
+-- A team room is per mission AND per data domain (room_key): the members of one department working on a mission share
+-- theirs (department:<id>, the department at dispatch); the employees of no department share the company's (company).
+-- An attempt mounts the room of its own key alone, so nothing of one department's working files reaches another's
+-- attempts: what crosses departments is a hand-in, shared on purpose (data_shares).
 CREATE TABLE workforce.team_rooms (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL,
   mission_id uuid NOT NULL,
+  room_key text NOT NULL,
+  department_id uuid,
   quota_mib integer NOT NULL CHECK (quota_mib > 0),
   state text NOT NULL CHECK (state IN ('open', 'frozen')),
   created_at timestamptz NOT NULL,
   frozen_at timestamptz,
   version integer NOT NULL DEFAULT 1,
   UNIQUE (account_id, id),
-  UNIQUE (account_id, mission_id),
-  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id)
+  CONSTRAINT one_room_per_key UNIQUE (account_id, mission_id, room_key),
+  CONSTRAINT team_room_key CHECK (room_key = 'company' OR room_key ~ '^department:[0-9a-f-]{36}$'),
+  CONSTRAINT team_room_key_department CHECK ((room_key = 'company') = (department_id IS NULL)),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  CONSTRAINT team_room_department FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id)
 );
 
 -- What changed in a team room, and which attempt changed it: read from the room after every attempt that had it (an
@@ -1620,6 +1636,102 @@ END $$;
 CREATE CONSTRAINT TRIGGER appointment_holds AFTER INSERT OR UPDATE ON workforce.appointments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
 CREATE CONSTRAINT TRIGGER employee_appointment_holds AFTER UPDATE OF department_id, employment ON workforce.employees DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
 CREATE CONSTRAINT TRIGGER department_appointment_holds AFTER UPDATE OF archived_at ON workforce.departments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
+
+-- WHAT A LEAD SHARES WITH A PART OF ITS TEAM, on purpose: a source revision of the mission it holds itself, or the
+-- ACCEPTED hand-in of a part this one waits for -- its summary, or in full. Recorded with what, to whom and from where;
+-- revoked by its state. Nothing else of one part reaches another (each attempt's inputs are worked out from this).
+CREATE TABLE workforce.data_shares (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  mission_id uuid NOT NULL,
+  recipient_assignment_id uuid NOT NULL,
+  lead_assignment_id uuid NOT NULL,
+  kind text NOT NULL CONSTRAINT data_share_kind CHECK (kind IN ('source', 'handoff')),
+  source_revision_id text,
+  origin_assignment_id uuid,
+  mode text NOT NULL CONSTRAINT data_share_mode CHECK (mode IN ('summary', 'full')),
+  shared_by text NOT NULL,
+  created_at timestamptz NOT NULL,
+  revoked_by text,
+  revoked_at timestamptz,
+  CONSTRAINT data_share_account_id UNIQUE (account_id, id),
+  CONSTRAINT data_share_mission FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  CONSTRAINT data_share_recipient FOREIGN KEY (account_id, recipient_assignment_id) REFERENCES workforce.assignments (account_id, id),
+  CONSTRAINT data_share_lead FOREIGN KEY (account_id, lead_assignment_id) REFERENCES workforce.assignments (account_id, id),
+  CONSTRAINT data_share_origin FOREIGN KEY (account_id, origin_assignment_id) REFERENCES workforce.assignments (account_id, id),
+  CONSTRAINT data_share_ref CHECK ((kind = 'source') = (source_revision_id IS NOT NULL) AND (kind = 'handoff') = (origin_assignment_id IS NOT NULL))
+);
+CREATE INDEX data_shares_by_recipient ON workforce.data_shares (account_id, recipient_assignment_id) WHERE revoked_at IS NULL;
+
+-- WHAT ONE ATTEMPT WAS GIVEN TO READ, and why each (its mission, a share, supervision of its parts, a repository): written
+-- before the attempt starts; the input reader serves an attempt only what its own manifest names.
+CREATE TABLE workforce.attempt_inputs (
+  account_id uuid NOT NULL,
+  run_id uuid NOT NULL,
+  name text NOT NULL,
+  store_path text NOT NULL,
+  origin text NOT NULL CONSTRAINT attempt_input_origin CHECK (origin IN ('mission', 'share', 'supervision', 'repository')),
+  ref text,
+  staged_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, run_id, name),
+  CONSTRAINT attempt_input_run FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
+);
+CREATE INDEX attempt_inputs_by_path ON workforce.attempt_inputs (account_id, run_id, store_path);
+
+-- A DEPARTMENT'S POLICY: what one department decides for its employees' work, inside what the company delegated to it
+-- (governance-core department.ts). Its revisions mirror the company's -- DRAFT, VALIDATED, PUBLISHED, SUPERSEDED or
+-- DISCARDED; one PUBLISHED per department; a published one never changes (the same trigger) -- numbered per department
+-- from its head row, and each publication names the company revision it was confirmed against. A department with no
+-- published policy inherits the company's.
+CREATE TABLE governance.department_policy_heads (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  department_id uuid NOT NULL,
+  last_revision integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (account_id, department_id),
+  CONSTRAINT department_policy_head_department FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id)
+);
+
+CREATE TABLE governance.department_policy_revisions (
+  id text PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  department_id uuid NOT NULL,
+  revision integer,
+  state text NOT NULL CONSTRAINT department_policy_state CHECK (state IN ('DRAFT', 'VALIDATED', 'PUBLISHED', 'SUPERSEDED', 'DISCARDED')),
+  document text NOT NULL,
+  digest text NOT NULL,
+  name text NOT NULL,
+  risk text,
+  source text NOT NULL,
+  based_on text,
+  authors jsonb NOT NULL,
+  created_at timestamptz NOT NULL,
+  created_by text NOT NULL,
+  updated_at timestamptz NOT NULL,
+  confirmed_digest text,
+  confirmed_base text,
+  confirmed_company_base text,
+  confirmed_risk text,
+  confirmed_by text,
+  confirmed_at timestamptz,
+  published_at timestamptz,
+  published_by text,
+  superseded_at timestamptz,
+  CONSTRAINT department_policy_account_id UNIQUE (account_id, id),
+  CONSTRAINT department_policy_numbers UNIQUE (account_id, department_id, revision),
+  CONSTRAINT department_policy_department FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id)
+);
+CREATE UNIQUE INDEX one_department_policy_in_effect ON governance.department_policy_revisions (account_id, department_id) WHERE state = 'PUBLISHED';
+CREATE TRIGGER department_policy_revisions_account_fixed BEFORE UPDATE ON governance.department_policy_revisions FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+CREATE TRIGGER department_policy_revisions_published BEFORE UPDATE OR DELETE ON governance.department_policy_revisions FOR EACH ROW EXECUTE FUNCTION governance.published_never_changes();
+CREATE FUNCTION governance.department_policy_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.department_id IS DISTINCT FROM OLD.department_id THEN
+    RAISE EXCEPTION 'a department policy revision never moves to another department' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER department_policy_revisions_fixed BEFORE UPDATE ON governance.department_policy_revisions FOR EACH ROW EXECUTE FUNCTION governance.department_policy_fixed();
+ALTER TABLE governance.run_bindings ADD CONSTRAINT run_binding_department_revision FOREIGN KEY (account_id, department_revision) REFERENCES governance.department_policy_revisions (account_id, id);
 `;
 
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier

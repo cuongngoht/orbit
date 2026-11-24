@@ -3,16 +3,18 @@
 // person turns it on, for every repository that sign-in reaches or only the ones chosen (an Azure DevOps project's work
 // items and wiki come with a chosen repository's project). The same for the account's MCP servers (Settings → MCP
 // servers): each off until a person turns it on for the employee -- saved at once -- and then the tools allowed there.
-import { Badge, Button, Checkbox, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Spinner, Switch, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-import { BookDatabase20Regular, CheckmarkCircle16Regular, PlugConnected20Regular, ShieldLock16Regular } from "@fluentui/react-icons";
-import { ACCESS_CONNECTOR_LABELS, type ConnectorAccess, type EmployeeAccess, type EmployeeDetail, type KnowledgeAccess, type RepositoryList, type SourcesStatus } from "@orbit-web/contracts";
+// And whom it may give work to without an appointment: its delegation grants, each made and revoked by a person.
+import { Badge, Button, Checkbox, Field, Input, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Select, Spinner, Switch, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Add16Regular, BookDatabase20Regular, CheckmarkCircle16Regular, PeopleSwap16Regular, PlugConnected20Regular, ShieldLock16Regular } from "@fluentui/react-icons";
+import { ACCESS_CONNECTOR_LABELS, type ConnectorAccess, type DelegationGrantView, type EmployeeAccess, type EmployeeDetail, type KnowledgeAccess, type RepositoryList, type Roster, type SourcesStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { IconBadge } from "../../components/SectionIcons";
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
-import { Callout, useOfficeStyles } from "./parts";
+import { office, wholeRoster } from "./api";
+import { Callout, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 },
@@ -78,6 +80,9 @@ const useStyles = makeStyles({
     gap: "4px",
     color: tokens.colorPaletteGreenForeground1,
   },
+  grantRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px 12px", flexWrap: "wrap", minWidth: 0 },
+  grantWho: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, flexBasis: "220px", minWidth: 0, overflowWrap: "anywhere" },
+  revoked: { opacity: 0.75 },
 });
 
 // The access a card would save: every repository (null), or the ones chosen.
@@ -284,7 +289,165 @@ function KnowledgeCard({ employee, start }: { employee: EmployeeDetail; start: K
   );
 }
 
-export function AccessTab({ e }: { e: EmployeeDetail }) {
+// WHOM IT MAY GIVE WORK TO WITHOUT AN APPOINTMENT: its delegation grants -- each to a named colleague or to a department's
+// members, active or revoked -- one added by a person, one revoked against its version. An appointment (CEO, manager) is
+// the other source of authority; a title or the team-lead switch is none. After each change the employee is read again.
+function DelegationCard({ employee, onChanged }: { employee: EmployeeDetail; onChanged: () => Promise<unknown> }) {
+  const { t } = useI18n();
+  const o = useOfficeStyles();
+  const s = useStyles();
+  const act = useAction();
+  const grants = employee.delegationGrants ?? [];
+  // One who left the office is given no new grant (its old ones stay, as they were).
+  const left = employee.employment === "archived" || employee.employment === "deleted";
+  const [adding, setAdding] = useState(false);
+  const [kind, setKind] = useState<"employee" | "department">("employee");
+  const [target, setTarget] = useState("");
+  const [note, setNote] = useState("");
+  // Whom it could be given to: read only once a person adds a grant.
+  const people = useResource<Roster>(adding ? () => wholeRoster() : null, [adding]);
+  const held = new Set(grants.filter((g) => g.state === "active").map((g) => (g.target.kind === "employee" ? g.target.employeeId : g.target.departmentId)));
+  const choices =
+    kind === "employee"
+      ? (people.data?.employees ?? []).filter((x) => x.id !== employee.id && !held.has(x.id)).map((x) => ({ id: x.id, name: x.name }))
+      : (people.data?.departments ?? []).filter((d) => !d.archived && !held.has(d.id)).map((d) => ({ id: d.id, name: d.name }));
+  const close = () => {
+    setAdding(false);
+    setTarget("");
+    setNote("");
+  };
+  const grant = () =>
+    act.run(async () => {
+      await office.grantDelegation(employee.id, { target: kind === "employee" ? { kind, employeeId: target } : { kind, departmentId: target }, ...(note.trim() !== "" ? { note: note.trim() } : {}) });
+      close();
+      await onChanged();
+    });
+  const revoke = (g: DelegationGrantView) =>
+    act.run(async () => {
+      await office.revokeDelegation(g);
+      await onChanged();
+    });
+  return (
+    <section className={o.card} aria-label={t("office.delegation.title")}>
+      <div className={o.between}>
+        <div className={s.sectionHead}>
+          <IconBadge icon={<PeopleSwap16Regular />} tone={held.size > 0 ? "brand" : "neutral"} size="md" />
+          <div className={s.sectionTitleWrap}>
+            <Text weight="semibold" size={400}>
+              {t("office.delegation.title")}
+            </Text>
+            <Text size={200} className={o.muted}>
+              {t("office.delegation.sub")}
+            </Text>
+          </div>
+        </div>
+        {!adding && !left && (
+          <Button className={o.touch} size="small" icon={<Add16Regular />} disabled={act.busy} onClick={() => setAdding(true)}>
+            {t("office.delegation.add")}
+          </Button>
+        )}
+      </div>
+      <div className={o.divider} />
+      {grants.length === 0 ? (
+        <Text size={200} className={o.muted}>
+          {t("office.delegation.empty")}
+        </Text>
+      ) : (
+        <ul className={o.list} aria-label={t("office.delegation.listAria")}>
+          {grants.map((g) => (
+            <li key={g.id} className={mergeClasses(o.item, g.state === "revoked" && s.revoked)} aria-label={g.target.name}>
+              <div className={s.grantRow}>
+                <div className={s.grantWho}>
+                  <div className={o.row}>
+                    <Text weight="semibold" size={200}>
+                      {g.target.name}
+                    </Text>
+                    <Badge appearance="outline" size="small" style={{ borderRadius: "9999px" }}>
+                      {g.target.kind === "employee" ? t("office.delegation.kind.employee") : t("office.delegation.kind.department")}
+                    </Badge>
+                    <Badge appearance="tint" color={g.state === "active" ? "success" : "subtle"} size="small" style={{ borderRadius: "9999px" }}>
+                      {g.state === "active" ? t("office.delegation.state.active") : t("office.delegation.state.revoked")}
+                    </Badge>
+                  </div>
+                  {g.note !== "" && <Text size={200}>{g.note}</Text>}
+                  <Text size={200} className={o.muted}>
+                    {t("office.delegation.granted", { at: when(g.grantedAt), by: g.grantedBy })}
+                    {g.revokedAt ? t("office.delegation.revokedMeta", { at: when(g.revokedAt), by: g.revokedBy ?? "" }) : ""}
+                  </Text>
+                </div>
+                {g.state === "active" && (
+                  <Button className={o.touch} size="small" disabled={act.busy} aria-label={t("office.delegation.revokeAria", { name: g.target.name })} onClick={() => void revoke(g)}>
+                    {t("office.delegation.revoke")}
+                  </Button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && (
+        <form
+          className={s.configBox}
+          aria-label={t("office.delegation.formAria")}
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            if (target !== "") void grant();
+          }}
+        >
+          <RadioGroup
+            value={kind}
+            aria-label={t("office.delegation.toLabel")}
+            onChange={(_, d) => {
+              setKind(d.value === "department" ? "department" : "employee");
+              setTarget("");
+            }}
+          >
+            <Radio value="employee" label={t("office.delegation.toEmployee")} />
+            <Radio value="department" label={t("office.delegation.toDepartment")} />
+          </RadioGroup>
+          {people.data === null ? (
+            people.error !== null ? (
+              <Text size={200} className={o.danger}>
+                {people.error}
+              </Text>
+            ) : (
+              <Spinner size="tiny" label={t("office.delegation.reading")} />
+            )
+          ) : choices.length === 0 ? (
+            <Text size={200} className={o.muted}>
+              {t("office.delegation.nobody")}
+            </Text>
+          ) : (
+            <Field label={kind === "employee" ? t("office.delegation.colleagueLabel") : t("office.delegation.departmentLabel")} required>
+              <Select value={target} onChange={(_, d) => setTarget(d.value)}>
+                <option value="">{t("office.delegation.choose")}</option>
+                {choices.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          <Field label={t("office.delegation.noteLabel")} hint={t("office.delegation.noteHint")}>
+            <Input value={note} maxLength={500} onChange={(_, d) => setNote(d.value)} />
+          </Field>
+          <div className={o.row}>
+            <Button className={o.touch} type="submit" appearance="primary" size="small" disabled={act.busy || target === ""}>
+              {t("office.delegation.grant")}
+            </Button>
+            <Button className={o.touch} size="small" disabled={act.busy} onClick={close}>
+              {t("office.delegation.cancel")}
+            </Button>
+          </div>
+        </form>
+      )}
+      <ProblemBar problem={act.problem} />
+    </section>
+  );
+}
+
+export function AccessTab({ e, onChanged }: { e: EmployeeDetail; onChanged: () => Promise<unknown> }) {
   const { t } = useI18n();
   const s = useStyles();
   const access = useResource<EmployeeAccess>(() => get(`/api/employees/${e.id}/access`), [e.id]);
@@ -308,6 +471,7 @@ export function AccessTab({ e }: { e: EmployeeDetail }) {
         ))}
       </div>
       <KnowledgeCard employee={e} start={access.data.knowledge} />
+      <DelegationCard employee={e} onChanged={onChanged} />
     </div>
   );
 }

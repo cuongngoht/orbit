@@ -44,16 +44,51 @@ export interface PinnedSource {
   fileName: string | null;
 }
 
+// A source this attempt may read: the mission's own (its root), or one its lead shared with it (the share's id).
+export type GrantedSourceInput = PinnedSource & { origin: "mission" | "share"; ref: string | null };
+
+// A hand-in this attempt may read: one of its direct parts' (supervision: every file), or the accepted hand-in of a part
+// it waits for, shared by its lead -- its summary alone, or in full.
+export interface GrantedHandoffInput {
+  handoffId: string;
+  assignmentId: string;
+  unitKey: string;
+  revision: number;
+  digest: string;
+  summary: string;
+  mode: "summary" | "full";
+  origin: "share" | "supervision";
+  ref: string | null;
+  artifacts: { name: string; sha256: string }[];
+}
+
+// WHAT THIS ATTEMPT MAY READ (ADR 0061 §9), worked out again at every look: what it stages, what each read of an input
+// is held to, what the access watch checks while it runs.
+export interface AttemptData {
+  sources: GrantedSourceInput[];
+  handoffs: GrantedHandoffInput[];
+  // The mission's repositories come with it (its root only, when its employee may read them).
+  repositories: boolean;
+  // A share that gives nothing (yet), and why -- said to the employee.
+  withheld: string[];
+}
+
 // The assignment as an attempt sees it, and the employee it runs as -- re-checked at every dispatch.
 export interface AttemptContext {
   // This attempt's fence is the current one and the assignment still holds its employee (not paused, not cancelling).
   current: boolean;
   missionId: string;
+  // Who gave the work (a person's label, or the lead whose plan made this part): what the run's records name as its
+  // cause -- never the worker that dispatches it.
+  createdBy: string;
   missionTitle: string;
   brief: { goal: string; deliverables: { name: string; required: boolean }[]; acceptanceCriteria: string[]; revisions: { criteria: string }[]; answers: { question: string; answer: string }[] };
   deliverables: { name: string; required: boolean }[];
-  // The research sources the mission was pinned to, in their labelled order (S1, S2 ...).
-  sources: PinnedSource[];
+  // The research sources THIS attempt may read, in the mission's labelled order (S1, S2 ...): the mission's own for its
+  // root, what its lead shared for a part.
+  sources: GrantedSourceInput[];
+  // The hand-ins it may read, and the shares that give nothing yet.
+  data: Pick<AttemptData, "handoffs" | "withheld">;
   // The repositories the mission brings in (the root assignment's attempts only).
   repositories: AttemptRepository[];
   // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
@@ -61,12 +96,15 @@ export interface AttemptContext {
   team: {
     canDelegate: boolean;
     colleagues: { id: string; name: string; title: string }[];
-    units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
-    room: { id: string; quotaMiB: number } | null;
+    units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; digest: string; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
+    // The room of its data domain (its department's, else the company's) when the mission has a team: null otherwise.
+    room: TeamRoom | null;
   };
   employee: {
     id: string;
     name: string;
+    // Its department NOW (the dispatch's): whose policy decides with the company's for this attempt.
+    departmentId: string | null;
     // The profile revision the assignment pinned when it was claimed.
     profile: EmployeeProfile | null;
     // May it run now (employment, its Personal Sandbox, its connection): the dispatch check.
@@ -76,10 +114,25 @@ export interface AttemptContext {
   };
 }
 
+export interface TeamRoom {
+  id: string;
+  quotaMiB: number;
+  // Whose room it is: one department's members on this mission, or the company's (employees of no department).
+  domain: "department" | "company";
+}
+
 export interface RunOutcomes {
   // The assignment as the run sees it: may this attempt still act (its fence is the current one, the assignment holds)?
   current(orbitId: string, assignmentId: string, fence: number): Promise<AttemptContext | null>;
+  // What the attempt may read now (null: the assignment is gone): the input reader and the access watch ask it again.
+  data(orbitId: string, assignmentId: string): Promise<AttemptData | null>;
+  // The team room of an attempt's data domain (its department at dispatch, else the company's), opened when the mission
+  // has a team and that domain has no room yet; null when the mission has no team.
+  roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null>;
   started(actor: Actor, assignmentId: string, fence: number): Promise<void>;
+  // Whether this employee may publish a hand-in of this assignment now (artifact.publish, decided as the employee):
+  // asked BEFORE its files are staged.
+  mayPublish(actor: Actor, assignmentId: string, fence: number): Promise<void>;
   handoff(actor: Actor, assignmentId: string, fence: number, h: SubmittedHandoff): Promise<{ revision: number; digest: string; missing: string[] }>;
   question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void>;
   ended(actor: Actor, assignmentId: string, fence: number, end: RunEnd): Promise<void>;
@@ -100,6 +153,10 @@ export interface DelegatedUnit {
   deliverables: { name: string; required: boolean }[];
   acceptanceCriteria: string[];
   dependsOn: string[];
+  // What the lead shares with this part on purpose: source labels it reads itself ("all": every one), and the accepted
+  // hand-in of a part it waits for -- its summary, or in full.
+  shareSources: string[];
+  receives: { from: string; as: "summary" | "full" }[];
 }
 
 export const RUN_OUTCOMES = Symbol("RUN_OUTCOMES");

@@ -38,6 +38,7 @@ import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
 import { Db } from "../../infra/db/db.js";
 import { AuditStore, RevisionStore, sha256, type RevisionRecord } from "../../infra/governance/stores.js";
 import { auditPrincipalOf, labelOf, systemContext, type GovernanceContext } from "../auth/principal.js";
+import { AccessHooks } from "./access-hooks.js";
 import { AuditService } from "./audit.service.js";
 import { PolicyService } from "./policy.service.js";
 
@@ -100,6 +101,7 @@ export class RevisionsService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(EventBus) private readonly bus: EventBus,
+    @Inject(AccessHooks) private readonly hooks: AccessHooks,
   ) {}
 
   async overview(accountId: string): Promise<PolicyOverview> {
@@ -307,6 +309,8 @@ export class RevisionsService {
       return published;
     });
     this.changed(accountId, id);
+    // What every employee may do may have changed: live attempts are held to it from now on.
+    this.hooks.changed(accountId, { cause: "company policy published" });
     return this.viewOf(accountId, next);
   }
 

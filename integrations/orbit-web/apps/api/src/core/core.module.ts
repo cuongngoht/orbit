@@ -16,7 +16,7 @@ import { NodeProcessPort } from "../infra/process/node-process.js";
 import { AGENT_PROCESS_PORT, type ProcessPort } from "../infra/process/process.port.js";
 import { RunnerProcessPort } from "../infra/process/runner-port.js";
 import { AgentFs } from "../infra/process/agent-fs.js";
-import { ApprovalStore, AuditStore, FindingStore, IsolationStore, OverrideStore, ReportStore, ResourceStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
+import { ApprovalStore, AuditStore, DepartmentRevisionStore, FindingStore, IsolationStore, OverrideStore, ReportStore, ResourceStore, RevisionStore, RunBindingStore } from "../infra/governance/stores.js";
 import { ImageFiles } from "../infra/storage/image-files.js";
 import { EventStore, ImageStore, MessageStore, ProjectStore, RunStore, SessionAccessStore, SessionStore, SettingsStore, ShareStore } from "../infra/storage/stores.js";
 import { EventBus } from "./events/event-bus.js";
@@ -71,6 +71,7 @@ const STORES: (new (db: Db) => unknown)[] = [
   ResourceStore,
   AuditStore,
   RevisionStore,
+  DepartmentRevisionStore,
   OverrideStore,
   RunBindingStore,
   ApprovalStore,

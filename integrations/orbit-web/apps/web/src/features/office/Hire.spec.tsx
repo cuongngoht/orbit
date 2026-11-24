@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus, type FakeApi } from "../../testing/fakeApi";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { CONN_CLAUDE, CONN_CODEX, DEPT_LEGAL, capabilities, connection, connectionsView, employeeDetail, presets, resourceSummary, roster } from "../../testing/officeFixtures";
+import { CONN_CLAUDE, CONN_CODEX, DEPT_LEGAL, capabilities, connection, connectionsView, department, employeeDetail, officeRecord, presets, resourceSummary, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { NETWORK_DISCLOSURE } from "./parts";
 import { OfficeView } from "./OfficeView";
@@ -217,5 +217,59 @@ describe("hiring an employee, in five steps", () => {
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Role title/ }), "Researcher");
     await next(dialog);
     expect(await within(dialog).findByRole("radio", { name: /OpenAI Codex — ChatGPT: its model plane is not held to Orbit's tools \(Run without local tools: unknown\)/ })).toBeDisabled();
+  });
+});
+
+describe("hiring an employee whose model and effort follow the defaults", () => {
+  const withDefaults = (hire: (body: unknown) => unknown = () => withStatus(201, employeeDetail({ id: HIRED, name: "Cam" }))) =>
+    fakeApi()
+      .on("GET", "/api/office/roster", () => roster({ office: officeRecord({ defaults: { claude: { effort: "high" } } }), departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1, defaults: { claude: { model: "opus" } } })] }))
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/resources", () => resourceSummary())
+      .on("GET", "/api/office/resource-presets", () => presets())
+      .on("GET", "/api/office/templates", () => [])
+      .on("POST", "/api/employees", hire);
+
+  async function toRuntime(dialog: HTMLElement, departmentId: string | null) {
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Cam");
+    await next(dialog);
+    if (departmentId !== null) await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: "Department" }), departmentId);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Role title/ }), "Researcher");
+    await next(dialog);
+    await within(dialog).findByRole("radio", { name: "Claude Code — Claude subscription" });
+  }
+
+  test("the department's default, else the company's, is said field by field; the review repeats it; the hire asks for them inherited, naming none", async () => {
+    const a = withDefaults();
+    const { dialog } = await open();
+    await toRuntime(dialog, DEPT_LEGAL);
+    const inherit = within(dialog).getByRole("checkbox", { name: "Use the department's (else the company's) default model and effort" });
+    expect(inherit).not.toBeChecked();
+    await userEvent.click(inherit);
+    expect(within(dialog).queryByRole("combobox", { name: /^Model/ })).toBeNull();
+    expect(within(dialog).queryByRole("combobox", { name: /^Effort/ })).toBeNull();
+    expect(within(dialog).getByText("Model: Opus 5.5 — Legal's default")).toBeInTheDocument();
+    expect(within(dialog).getByText("Effort: High — the company's default")).toBeInTheDocument();
+    await next(dialog);
+    await next(dialog);
+    const choices = within(dialog).getByLabelText("Your choices");
+    expect(choices.textContent).toContain("ModelOpus 5.5 — Legal's default");
+    expect(choices.textContent).toContain("EffortHigh — the company's default");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hire" }));
+    await waitFor(() => expect(posted(a)).toBeDefined());
+    expect(posted(a)?.profile.execution).toEqual({ runtime: "claude", connectionId: CONN_CLAUDE, model: "", effort: null, webSearch: false, orbitPlugin: false, inherit: ["model", "effort"] });
+  });
+
+  test("an unassigned employee falls to the company's defaults alone: a model nobody names is said before the API refuses it", async () => {
+    withDefaults(() => withStatus(422, { error: { code: "execution_unresolved", message: "This profile leaves its model to its department or company, and neither names one for claude: set a default, or choose it here." } }));
+    const { dialog } = await open();
+    await toRuntime(dialog, null);
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /default model and effort/ }));
+    expect(within(dialog).getByText(/^Model: none named for Claude Code/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Effort: High — the company's default")).toBeInTheDocument();
+    await next(dialog);
+    await next(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hire" }));
+    expect(await within(dialog).findByText(/neither names one for claude/)).toBeInTheDocument();
   });
 });

@@ -31,7 +31,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { accepted } from "../../../common/errors.js";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
-import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff } from "../../execution/application/run-outcomes.port.js";
+import type { AttemptContext, AttemptData, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
 import { OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
 import { conflictWith, DomainError, invalid, missing, stale, type RaisedEvent } from "../../shared/domain.js";
 import { EventDispatcher } from "../../shared/infrastructure/consumers.js";
@@ -44,6 +44,7 @@ import { Mission } from "../domain/mission.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "../infrastructure/repositories.js";
 import { SourcesCheck } from "../infrastructure/sources.check.js";
+import { AttemptDataService } from "./attempt-data.service.js";
 import { TeamService } from "./team.service.js";
 
 const AGING_MINUTES = 30;
@@ -75,6 +76,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
     @Inject(TeamService) private readonly team: TeamService,
+    @Inject(AttemptDataService) private readonly data: AttemptDataService,
     @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
@@ -122,7 +124,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId: req.targetEmployeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at });
         await this.missions.insert(mission);
         if (repositories.length > 0) await this.repositories?.keep(orbitId, mission.id, repositories, actor.command.actor);
-        if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id);
+        if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id, el.employeeId);
         const claimNow = held === null && el.eligible;
         if (claimNow) a.claim(this.pinOf(el, execution, req.execution ?? null), at);
         await this.assignments.save(a);
@@ -352,23 +354,36 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     const pinned = a.data.pinned?.profileRevision ?? null;
     const profile = el === null ? null : pinned === null || pinned === el.profileRevision ? el.profile : await this.hiring.profileAt(orbitId, a.data.employeeId, pinned);
     const b = a.data.brief;
+    // What THIS attempt may read: the mission's sources for its root, what its lead shared for a part (§9).
+    const data = await this.data.of(orbitId, a.id);
     return {
       current: a.data.fence === fence && a.holding && a.state !== "CANCELLING" && a.state !== "PAUSED",
       missionId: a.data.missionId,
+      createdBy: a.data.createdBy,
       missionTitle: m?.data.title ?? "",
       brief: { goal: b.goal, deliverables: b.deliverables, acceptanceCriteria: b.acceptanceCriteria, revisions: b.revisions, answers: b.answers },
       deliverables: b.deliverables,
-      sources: m === null ? [] : await this.sources.pinned(orbitId, m.data.researchWorkspaceId, m.data.sourceRevisionIds),
+      sources: data?.sources ?? [],
+      data: { handoffs: data?.handoffs ?? [], withheld: data?.withheld ?? [] },
       // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
-      repositories: a.data.parentId === null && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
+      repositories: data?.repositories === true && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
         canDelegate: profile?.canDelegate === true,
         colleagues: profile?.canDelegate === true ? await this.team.colleagues(orbitId, a.data.employeeId) : [],
         units: await this.team.units(orbitId, a.id),
-        room: await this.team.room(orbitId, a.data.missionId),
+        room: await this.team.room(orbitId, a.data.missionId, el?.departmentId ?? null),
       },
-      employee: { id: a.data.employeeId, name: el?.name ?? "", profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
+      employee: { id: a.data.employeeId, name: el?.name ?? "", departmentId: el?.departmentId ?? null, profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
     };
+  }
+
+  data(orbitId: string, assignmentId: string): Promise<AttemptData | null> {
+    return this.data.of(orbitId, assignmentId);
+  }
+
+  async roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null> {
+    const a = await this.assignments.get(orbitId, assignmentId);
+    return a === null ? null : this.team.roomFor(orbitId, a.data.missionId, departmentId);
   }
 
   // The repositories a new mission asks for, each held to what its employee may use (none bound: none may be asked).
@@ -423,6 +438,15 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       out = { revision, digest, missing: missingNames };
     });
     return out;
+  }
+
+  // A hand-in is a publication of the employee's work (artifact.publish), decided AS the employee, on its assignment,
+  // before anything of it is staged: a policy -- the company's or its department's -- that refuses it stores nothing.
+  async mayPublish(actor: Actor, assignmentId: string, fence: number): Promise<void> {
+    const a = await this.assignments.get(actor.command.orbitId, assignmentId);
+    if (a === null) throw missing("Assignment");
+    if (a.data.fence !== fence) throw conflictWith("stale_fence", "This attempt was replaced: its hand-in is not taken.");
+    await this.governance.authorize(actor, "artifact.publish", assignmentId, { assignment: assignmentId, mission: a.data.missionId });
   }
 
   async question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void> {

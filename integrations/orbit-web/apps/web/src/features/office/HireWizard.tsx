@@ -1,7 +1,8 @@
 // HIRE AN EMPLOYEE, in five steps: who it is; its department and role; the AI runtime it runs on, with a model and an
-// effort level from that connection's own catalog; its Personal Sandbox and resources; then everything once more, with
-// when it can take work, before it is hired. Only a connection that is connected and read its models from the account
-// is offered -- an employee never runs on a fallback list -- and nothing switches to another provider by itself.
+// effort level from that connection's own catalog -- or left to its department's default, else the company's; its
+// Personal Sandbox and resources; then everything once more, with when it can take work, before it is hired. Only a
+// connection that is connected and read its models from the account is offered -- an employee never runs on a fallback
+// list -- and nothing switches to another provider by itself.
 import {
   Button,
   Checkbox,
@@ -36,7 +37,10 @@ import {
   type Department,
   type EmployeeDetail,
   type EmployeeTemplate,
+  type ExecutionDefaults,
+  type ExecutionProfile,
   type HireEmployeeRequest,
+  type InheritableField,
   type ResourcePreset,
   type ResourceProfile,
   type ResourceSummary,
@@ -47,7 +51,7 @@ import { ConnectionRequired, isConnectionRequired } from "../../components/ApiEr
 import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
-import { t as tr, useI18n } from "../../i18n";
+import { t as tr, useI18n, type I18nContextValue } from "../../i18n";
 import { ApiError, errorText } from "../../services/api";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { cpuText, sizeText } from "../resources/format";
@@ -129,6 +133,8 @@ interface Draft {
   connectionId: string | null;
   model: string | null;
   effort: string | null;
+  // The model and effort left to the department's default, else the company's.
+  inherit: boolean;
   webSearch: boolean;
   orbitPlugin: boolean;
   resources: ResourceProfile | null;
@@ -137,7 +143,7 @@ interface Draft {
   canDelegate: boolean;
 }
 
-const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false };
+const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, inherit: false, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false };
 
 const list = (text: string): string[] =>
   text
@@ -172,6 +178,61 @@ export function availability(p: ResourceProfile, summary: ResourceSummary | null
   return tr("office.hire.availabilityWait", { sandbox, needs, freeCpu: cpuText(summary.available.cpuMillis), freeMemory: sizeText(summary.available.memoryMiB) });
 }
 
+// What a profile that leaves its model and effort to the defaults asks: these two fields, and nothing chosen for them.
+export const INHERITED: InheritableField[] = ["model", "effort"];
+
+export const inheritsModel = (x: ExecutionProfile): boolean => x.inherit?.includes("model") === true;
+
+// The default a field left to them comes from (execution precedence, the API's rule said again only to show it): the
+// department's default for the employee's runtime, else the company's -- null when neither names one. `owner`: the
+// department's name, or null for the company.
+export function defaultFor(field: "model" | "effort", runtime: RuntimeConnection["runtime"], department: Department | null, company: ExecutionDefaults | null): { value: string | null; owner: string | null } | null {
+  const mine = department?.defaults?.[runtime];
+  if (mine !== undefined && Object.hasOwn(mine, field)) return { value: mine[field] ?? null, owner: department?.name ?? null };
+  const theirs = company?.[runtime];
+  if (theirs !== undefined && Object.hasOwn(theirs, field)) return { value: theirs[field] ?? null, owner: null };
+  return null;
+}
+
+// Which model and effort an employee leaving them to the defaults would run on, on this connection, in words -- and what
+// the API would refuse about it (a model nobody names, one this connection does not offer, an effort the model needs).
+export function defaultsInWords(t: I18nContextValue["t"], connection: RuntimeConnection, department: Department | null, company: ExecutionDefaults | null): { model: string; effort: string; warnings: string[] } {
+  const owner = (who: string | null) => who ?? t("office.hire.companyOwner");
+  const model = defaultFor("model", connection.runtime, department, company);
+  const effort = defaultFor("effort", connection.runtime, department, company);
+  const option = model?.value ? (connection.catalog.models.find((m) => m.id === model.value) ?? null) : null;
+  const warnings = [
+    ...(model?.value && option === null ? [t("office.hire.modelNotOffered", { value: model.value })] : []),
+    ...(option !== null && option.efforts.length > 0 && (effort === null || effort.value === null) ? [t("office.hire.effortRequired", { model: option.label })] : []),
+  ];
+  return {
+    model: model?.value ? t("office.hire.defaultOf", { value: option?.label ?? model.value, owner: owner(model.owner) }) : t("office.hire.noModelDefault", { runtime: RUNTIME_LABELS[connection.runtime] }),
+    effort: effort?.value ? t("office.hire.defaultOf", { value: effortLabel(effort.value), owner: owner(effort.owner) }) : t("office.hire.noEffortDefault"),
+    warnings,
+  };
+}
+
+// The model and effort the defaults would give, said where a person chooses to leave them to the defaults.
+export function DefaultsThatApply({ connection, department, company }: { connection: RuntimeConnection; department: Department | null; company: ExecutionDefaults | null }) {
+  const { t } = useI18n();
+  const o = useOfficeStyles();
+  const words = defaultsInWords(t, connection, department, company);
+  return (
+    <div className={o.inset}>
+      <Text size={200}>{t("office.hire.inheritModel", { value: words.model })}</Text>
+      <Text size={200}>{t("office.hire.inheritEffort", { value: words.effort })}</Text>
+      {words.warnings.map((w) => (
+        <Text key={w} size={200} className={o.warn}>
+          {w}
+        </Text>
+      ))}
+      <Text size={200} className={o.muted}>
+        {t("office.hire.inheritNote")}
+      </Text>
+    </div>
+  );
+}
+
 // A refusal's reasons, when the API listed them beside its message.
 function reasonsOf(err: unknown): string[] {
   if (!(err instanceof ApiError)) return [];
@@ -201,7 +262,7 @@ function Steps({ at }: { at: number }) {
   );
 }
 
-export function HireWizard({ departments, onClose, onHired }: { departments: Department[]; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
+export function HireWizard({ departments, companyDefaults = null, onClose, onHired }: { departments: Department[]; companyDefaults?: ExecutionDefaults | null; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -228,9 +289,20 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
   const resources = draft.resources ?? presets[0]?.profile ?? DEFAULT_PRESETS[0]?.profile ?? null;
   const live = departments.filter((d) => !d.archived);
   const department = live.find((d) => d.id === draft.departmentId) ?? null;
+  const inherits = draft.inherit;
+  // Left to the defaults: no model and no effort of its own -- the department's, else the company's, apply when it runs.
+  const execution: ExecutionProfile | null =
+    connection === null
+      ? null
+      : inherits
+        ? { runtime: connection.runtime, connectionId: connection.id, model: "", effort: null, webSearch, orbitPlugin, inherit: [...INHERITED] }
+        : model !== null
+          ? { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch, orbitPlugin }
+          : null;
+  const inherited = connection !== null && inherits ? defaultsInWords(t, connection, department, companyDefaults) : null;
 
   const body: HireEmployeeRequest | null =
-    connection && model && resources
+    execution && resources
       ? {
           name: draft.name.trim(),
           departmentId: department?.id ?? null,
@@ -243,7 +315,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
             skills: list(draft.skills),
             languages: list(draft.languages),
             knowledge: [],
-            execution: { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch, orbitPlugin },
+            execution,
             handoffStandard: draft.handoffStandard.trim(),
             reportingRule: draft.reportingRule.trim(),
             canDelegate: draft.canDelegate,
@@ -259,7 +331,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
   const missing: string[][] = [
     draft.name.trim() === "" ? [t("office.hire.missingName")] : [],
     draft.title.trim() === "" ? [t("office.hire.missingTitle")] : [],
-    connection === null ? [t("office.hire.missingConnection")] : model === null ? [t("office.hire.missingModel")] : [],
+    connection === null ? [t("office.hire.missingConnection")] : model === null && !inherits ? [t("office.hire.missingModel")] : [],
     resources === null ? [t("office.hire.missingResources")] : [...resourceProblems(resources, summary.data?.budget.perEmployee ?? null), ...(storageProblem(resources, summary.data) ? [storageProblem(resources, summary.data) as string] : [])],
     body === null ? [t("office.hire.missingSomething")] : draft.skipProbation && draft.skipReason.trim() === "" ? [t("office.hire.missingSkipReason")] : [],
   ];
@@ -380,7 +452,9 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                         <Link href={settingsHref("ai-connections")}>{t("office.hire.connectInSettings")}</Link>.
                       </Text>
                     )}
-                    {connection && (
+                    {connection && <Checkbox checked={inherits} onChange={(_, d) => set({ inherit: d.checked === true })} label={t("office.hire.inheritLabel")} />}
+                    {connection && inherits && <DefaultsThatApply connection={connection} department={department} company={companyDefaults} />}
+                    {connection && !inherits && (
                       <div className={o.formGrid}>
                         <Field label={t("office.hire.modelLabel")} hint={t("office.hire.modelHint")}>
                           <Select value={model?.id ?? ""} onChange={(_, d) => set({ model: d.value, effort: null })}>
@@ -428,7 +502,7 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
 
             {at === 3 && resources && <ResourceFields value={resources} onChange={(p) => set({ resources: p })} presets={presets} summary={summary.data} runtime={connection?.runtime ?? null} />}
 
-            {at === 4 && body && connection && model && resources && (
+            {at === 4 && body && connection && resources && (
               <div className={o.form}>
                 <dl className={o.dl} aria-label={t("office.hire.choicesAria")}>
                   <dt className={o.dt}>{t("office.hire.choiceName")}</dt>
@@ -444,9 +518,9 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     {RUNTIME_LABELS[connection.runtime]} — {connection.label}
                   </dd>
                   <dt className={o.dt}>{t("office.hire.choiceModel")}</dt>
-                  <dd className={o.dd}>{model.label}</dd>
+                  <dd className={o.dd}>{inherited !== null ? inherited.model : (model?.label ?? "")}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceEffort")}</dt>
-                  <dd className={o.dd}>{effort ? effortLabel(effort) : t("office.hire.effortNone")}</dd>
+                  <dd className={o.dd}>{inherited !== null ? inherited.effort : effort ? effortLabel(effort) : t("office.hire.effortNone")}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceWebSearch")}</dt>
                   <dd className={o.dd}>{webSearch ? t("office.hire.on") : t("office.hire.off")}</dd>
                   <dt className={o.dt}>{t("office.hire.choicePlugin")}</dt>
@@ -460,6 +534,11 @@ export function HireWizard({ departments, onClose, onHired }: { departments: Dep
                     {t("office.hire.limitsSummary", { scratch: sizeText(resources.scratchStorageMiB), cache: sizeText(resources.cacheStorageMiB), pids: resources.pidsLimit, timeout: resources.timeoutMinutes })}
                   </dd>
                 </dl>
+                {inherited !== null && inherited.warnings.length > 0 && (
+                  <MessageBar intent="warning" layout="multiline">
+                    <MessageBarBody>{inherited.warnings.join(" ")}</MessageBarBody>
+                  </MessageBar>
+                )}
                 <MessageBar intent="info" layout="multiline">
                   <MessageBarBody>
                     <Text weight="semibold" size={200} block>

@@ -326,6 +326,68 @@ export class RevisionStore {
   }
 }
 
+// ---- a department's policy revisions (governance-core department.ts) ----------------------------------------------
+
+// A revision of one department's policy: the company's revision record, plus the department, and the company revision
+// its publication was confirmed against.
+export interface DepartmentRevisionRecord extends RevisionRecord {
+  departmentId: string;
+  confirmedCompanyBase: string | null;
+}
+
+const departmentRevisionOf = (row: Row): DepartmentRevisionRecord => ({ ...revisionOf(row), departmentId: str(row.department_id), confirmedCompanyBase: strOrNull(row.confirmed_company_base) });
+
+// The same lifecycle as the company's, in tables of their own: no query of the company's policy can ever pick up a
+// department's revision.
+export class DepartmentRevisionStore {
+  constructor(private readonly db: Db) {}
+
+  async get(accountId: string, departmentId: string, id: string): Promise<DepartmentRevisionRecord | null> {
+    const row = await this.db.one("SELECT * FROM department_policy_revisions WHERE account_id = $1 AND department_id = $2 AND id = $3", [accountId, departmentId, id]);
+    return row === null ? null : departmentRevisionOf(row);
+  }
+
+  async list(accountId: string, departmentId: string): Promise<DepartmentRevisionRecord[]> {
+    return (await this.db.query("SELECT * FROM department_policy_revisions WHERE account_id = $1 AND department_id = $2 ORDER BY created_at DESC, id", [accountId, departmentId])).map(departmentRevisionOf);
+  }
+
+  async effective(accountId: string, departmentId: string): Promise<DepartmentRevisionRecord | null> {
+    const row = await this.db.one("SELECT * FROM department_policy_revisions WHERE account_id = $1 AND department_id = $2 AND state = 'PUBLISHED'", [accountId, departmentId]);
+    return row === null ? null : departmentRevisionOf(row);
+  }
+
+  // Every department's policy in effect, of the account.
+  async allEffective(accountId: string): Promise<DepartmentRevisionRecord[]> {
+    return (await this.db.query("SELECT * FROM department_policy_revisions WHERE account_id = $1 AND state = 'PUBLISHED'", [accountId])).map(departmentRevisionOf);
+  }
+
+  async lockHead(accountId: string, departmentId: string): Promise<number> {
+    await this.db.query("INSERT INTO department_policy_heads (account_id, department_id, last_revision) VALUES ($1, $2, 0) ON CONFLICT (account_id, department_id) DO NOTHING", [accountId, departmentId]);
+    return Number((await this.db.one("SELECT last_revision FROM department_policy_heads WHERE account_id = $1 AND department_id = $2 FOR UPDATE", [accountId, departmentId]))?.last_revision ?? 0);
+  }
+
+  async nextNumber(accountId: string, departmentId: string): Promise<number> {
+    const row = await this.db.one("UPDATE department_policy_heads SET last_revision = last_revision + 1 WHERE account_id = $1 AND department_id = $2 RETURNING last_revision", [accountId, departmentId]);
+    if (row === null) throw new Error(`no policy head for department ${departmentId}`);
+    return Number(row.last_revision);
+  }
+
+  async insert(r: DepartmentRevisionRecord): Promise<void> {
+    await this.db.query(
+      "INSERT INTO department_policy_revisions (id, account_id, department_id, revision, state, document, digest, name, risk, source, based_on, authors, created_at, created_by, updated_at, confirmed_digest, confirmed_base, confirmed_company_base, confirmed_risk, confirmed_by, confirmed_at, published_at, published_by, superseded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
+      [r.id, r.accountId, r.departmentId, r.revision, r.state, r.document, r.digest, r.name, r.risk, r.source, r.basedOn, jsonParam(r.authors), r.createdAt, r.createdBy, r.updatedAt, r.confirmedDigest, r.confirmedBase, r.confirmedCompanyBase, r.confirmedRisk, r.confirmedBy, r.confirmedAt, r.publishedAt, r.publishedBy, r.supersededAt],
+    );
+  }
+
+  async save(r: DepartmentRevisionRecord, from: { state: RevisionState; digest: string }): Promise<boolean> {
+    const n = await this.db.run(
+      "UPDATE department_policy_revisions SET revision = $4, state = $5, document = $6, digest = $7, name = $8, risk = $9, authors = $10::jsonb, updated_at = $11, confirmed_digest = $12, confirmed_base = $13, confirmed_company_base = $14, confirmed_risk = $15, confirmed_by = $16, confirmed_at = $17, published_at = $18, published_by = $19, superseded_at = $20 WHERE account_id = $1 AND department_id = $2 AND id = $3 AND state = $21 AND digest = $22",
+      [r.accountId, r.departmentId, r.id, r.revision, r.state, r.document, r.digest, r.name, r.risk, jsonParam(r.authors), r.updatedAt, r.confirmedDigest, r.confirmedBase, r.confirmedCompanyBase, r.confirmedRisk, r.confirmedBy, r.confirmedAt, r.publishedAt, r.publishedBy, r.supersededAt, from.state, from.digest],
+    );
+    return n > 0;
+  }
+}
+
 export interface OverrideRecord {
   accountId: string;
   kind: OverridableKind;
@@ -380,6 +442,12 @@ export interface RunBinding {
   // Who started it (an owner's label): what its records name as their cause.
   startedBy: string;
   workBranch: string | null;
+  // An employee's attempt: its assignment and mission, the department it was dispatched in and that department's policy
+  // revision then (null: none published). Null for a chat's or a research session's run.
+  assignmentId?: string | null;
+  missionId?: string | null;
+  departmentId?: string | null;
+  departmentRevision?: string | null;
   createdAt: string;
   expiresAt: string;
   endedAt: string | null;
@@ -396,6 +464,10 @@ const bindingOf = (r: Row): RunBinding => ({
   policyRevision: str(r.policy_revision),
   startedBy: str(r.started_by),
   workBranch: strOrNull(r.work_branch),
+  assignmentId: strOrNull(r.assignment_id),
+  missionId: strOrNull(r.mission_id),
+  departmentId: strOrNull(r.department_id),
+  departmentRevision: strOrNull(r.department_revision),
   createdAt: str(r.created_at),
   expiresAt: str(r.expires_at),
   endedAt: strOrNull(r.ended_at),
@@ -406,8 +478,8 @@ export class RunBindingStore {
 
   async insert(b: RunBinding & { tokenHash: string }): Promise<void> {
     await this.db.query(
-      "INSERT INTO run_bindings (run_id, token_hash, account_id, kind, resource_kind, resource_id, research_session_id, agent_id, policy_revision, started_by, work_branch, created_at, expires_at, ended_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)",
-      [b.runId, b.tokenHash, b.accountId, b.kind, b.resourceKind, b.resourceId, b.researchSessionId, b.agentId, b.policyRevision, b.startedBy, b.workBranch, b.createdAt, b.expiresAt],
+      "INSERT INTO run_bindings (run_id, token_hash, account_id, kind, resource_kind, resource_id, research_session_id, agent_id, policy_revision, started_by, work_branch, created_at, expires_at, ended_at, assignment_id, mission_id, department_id, department_revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, $14, $15, $16, $17)",
+      [b.runId, b.tokenHash, b.accountId, b.kind, b.resourceKind, b.resourceId, b.researchSessionId, b.agentId, b.policyRevision, b.startedBy, b.workBranch, b.createdAt, b.expiresAt, b.assignmentId ?? null, b.missionId ?? null, b.departmentId ?? null, b.departmentRevision ?? null],
     );
   }
 

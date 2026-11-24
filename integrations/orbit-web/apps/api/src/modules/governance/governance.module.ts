@@ -18,14 +18,17 @@ import { OverridesService } from "./overrides.service.js";
 import { PolicyService } from "./policy.service.js";
 import { ResourcesController } from "./resources.controller.js";
 import { GovernedResources } from "./resources.service.js";
+import { AccessHooks } from "./access-hooks.js";
+import { DepartmentPoliciesController } from "./department-policies.controller.js";
+import { DepartmentPoliciesService } from "./department-policies.service.js";
 import { RevisionsService } from "./revisions.service.js";
 import { RunGovernanceService } from "./run-governance.service.js";
 import { PrivilegedSettingsGate } from "./settings-gate.js";
 
 @Module({
   imports: [HealthModule],
-  providers: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, EgressService, RunGovernanceService, GovernanceHooks],
-  controllers: [GovernanceController, ResourcesController, AuditController, AuditorController],
-  exports: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, RunGovernanceService],
+  providers: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, DepartmentPoliciesService, AccessHooks, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, EgressService, RunGovernanceService, GovernanceHooks],
+  controllers: [GovernanceController, DepartmentPoliciesController, ResourcesController, AuditController, AuditorController],
+  exports: [AuditService, PolicyService, PrivilegedSettingsGate, RevisionsService, DepartmentPoliciesService, AccessHooks, OverridesService, GovernedResources, ApprovalService, FindingsService, IsolationService, RunGovernanceService],
 })
 export class GovernanceModule {}

@@ -41,7 +41,8 @@ import { CODEX_MODEL_FILE, EMPLOYEE_RUNTIMES, type EmployeeRuntime } from "../in
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import { AdmissionService } from "./admission.service.js";
 import { CONNECTION_SECRETS, type ConnectionSecrets } from "./connection-secrets.port.js";
-import { ResearchInputs } from "./research-inputs.js";
+import { AttemptManifest } from "../infrastructure/attempt-manifest.js";
+import { AttemptInputs, attemptInputPath, type StagedInput } from "./attempt-inputs.js";
 import { RUN_OUTCOMES, type AttemptContext, type RunEnd, type RunOutcomes } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type AttemptSpec, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 import { WorkspacePublisher } from "./workspace-publisher.js";
@@ -141,7 +142,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(WorkspacePublisher) private readonly desk: WorkspacePublisher,
     @Inject(AuditService) private readonly audit: AuditService,
-    @Inject(ResearchInputs) private readonly research: ResearchInputs,
+    @Inject(AttemptInputs) private readonly inputs: AttemptInputs,
+    @Inject(AttemptManifest) private readonly manifest: AttemptManifest,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     @Optional() @Inject(REPOSITORY_BUNDLES) private readonly bundles: RepositoryBundles | null = null,
     @Optional() @Inject(CONNECTION_SECRETS) private readonly secrets: ConnectionSecrets | null = null,
@@ -248,7 +250,12 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null || !ctx.current || run.stopRequested !== null) return this.unstarted(run, actor, null, { state: "cancelled", detail: "The assignment no longer waits for this attempt (paused, cancelled or replaced).", stoppedFor: notWanted(run.stopRequested) });
     if (!ctx.employee.eligible || ctx.employee.sandboxId === null || ctx.employee.profile === null) return this.unstarted(run, actor, null, { state: "failed", detail: ctx.employee.reason ?? "The employee cannot run work now.", stoppedFor: "refused" });
-    const prep = await this.governance.prepareAssignment({ accountId: run.orbitId, employeeId: run.employeeId, title: ctx.employee.name, assignmentId: run.assignmentId }, run.id, { startedBy: actor.principal, webSearch: run.requested.webSearch === true, runtime: run.requested.runtime ?? "claude" });
+    // Bound as the EMPLOYEE (its own principal), for this work, in its department now; started by whoever gave the work.
+    const prep = await this.governance.prepareAssignment(
+      { accountId: run.orbitId, employeeId: run.employeeId, title: ctx.employee.name, assignmentId: run.assignmentId, missionId: ctx.missionId, departmentId: ctx.employee.departmentId },
+      run.id,
+      { startedBy: actor.principal, startedByLabel: ctx.createdBy, webSearch: run.requested.webSearch === true, runtime: run.requested.runtime ?? "claude", model: run.requested.model },
+    );
     if (!prep.ok) return this.unstarted(run, actor, null, { state: "failed", detail: prep.message, stoppedFor: "refused" });
     const resolved = await this.resolve(run.orbitId, run.requested, prep.plan);
     if (typeof resolved === "string") return this.unstarted(run, actor, prep.plan, { state: "failed", detail: resolved, stoppedFor: "refused" });
@@ -258,6 +265,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     if (resolved.connection.method === "api_key" && apiKey === null) return this.unstarted(run, actor, prep.plan, { state: "failed", detail: `The API key of the connection "${resolved.connection.label}" is missing: enter it again in Settings → AI Connections.`, stoppedFor: "refused" });
     const ids: SandboxIds = { orbitId: run.orbitId, employeeId: run.employeeId, sandboxId: ctx.employee.sandboxId };
     const { modelPlane, ...profile } = requested;
+    // The room of its data domain (its department now, else the company's), when the mission has a team.
+    const room = await this.outcomes.roomFor(run.orbitId, run.assignmentId, ctx.employee.departmentId);
     const spec: AttemptSpec = {
       ...ids,
       runId: run.id,
@@ -268,8 +277,9 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       modelPlane: { cpuMillis: modelPlane.cpuMillis, memoryMiB: modelPlane.memoryMiB, connectionHome: resolved.connection.home, env: this.modelPlaneWayOut(provider.kind) },
       egress: { proxyHost: this.netOf(provider.kind).host, proxyPort: this.netOf(provider.kind).toolEgressPort, runToken: prep.token },
       bridge: { url: this.toolUrl(), runToken: prep.token },
-      inputs: [...this.research.inputsOf(run.orbitId, ctx.sources), ...this.research.unitInputsOf(run.orbitId, ctx.team.units)],
-      teamRoom: ctx.team.room,
+      // Every file of /input is named by the ATTEMPT (its manifest, below): the reader serves only what it may read.
+      inputs: [],
+      teamRoom: room === null ? null : { id: room.id, quotaMiB: room.quotaMiB },
     };
 
     // The workspace, then both planes (written down at once: a crash after this point is recovered by its dispatch key).
@@ -282,9 +292,13 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     let handle: AttemptHandle;
     // The mission's repositories, as git bundles: read by the provider as it starts the attempt, then released.
     const repositories = await this.repositoryInputs(run, ctx.repositories);
+    // What it may read (ADR 0061 §9): staged from its grant alone, written down with why each, recorded -- before it starts.
+    const staged: StagedInput[] = [...this.inputs.stagedOf(run.orbitId, ctx), ...repositories.inputs.map((i) => ({ ...i, origin: "repository" as const, ref: null, why: "a repository of the mission" }))];
     try {
+      const digest = await this.manifest.write(run.orbitId, run.id, staged);
+      await this.audit.record(actor.governance, { type: "office.run.inputs", outcome: "staged", runId: run.id, data: { runId: run.id, assignmentId: run.assignmentId, inputs: staged.length, digest } });
       await provider.prepareWorkspace(ids, run.assignmentId, profile.scratchStorageMiB);
-      handle = await provider.startAttempt({ ...spec, inputs: [...spec.inputs, ...repositories.inputs] });
+      handle = await provider.startAttempt({ ...spec, inputs: staged.map((i) => ({ name: i.name, storePath: attemptInputPath(run.orbitId, run.id, i.name) })) });
     } catch (err) {
       return this.failedStart(run, actor, prep.plan, `The sandbox could not be started: ${this.messageOf(err)}`);
     } finally {
@@ -329,8 +343,8 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID(), modelFile });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: spec.inputs, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: ctx.team.room !== null } }), resolved.profile.webSearch, profile.timeoutMinutes);
-    if (ctx.team.room !== null) await this.roomAfter(handle, run, ctx.team.room.id);
+    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: staged.filter((i) => i.origin !== "repository"), withheld: ctx.data.withheld, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: room?.domain ?? null } }), resolved.profile.webSearch, profile.timeoutMinutes);
+    if (room !== null) await this.roomAfter(handle, run, room.id);
     await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
   }
 

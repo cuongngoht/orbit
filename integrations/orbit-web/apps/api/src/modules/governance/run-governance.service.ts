@@ -16,7 +16,7 @@
 // what it runs as is a fixed profile (`claude-code` for a chat, `claude-research` for research), not a registration.
 // A research run's token opens the egress proxy alone: the agent gateway refuses it (auth/principals.ts).
 import { Inject, Injectable, type OnApplicationBootstrap } from "@nestjs/common";
-import { RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
+import { composeEmployeeModels, composeEmployeeNetwork, modelAllowed, RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
 import type { IsolationState } from "@orbit-web/contracts";
 import { randomBytes } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
@@ -43,7 +43,8 @@ export const CHAT_AGENT = "claude-code";
 // How the audit record names the CLI an employee's attempt ran.
 const AUDIT_RUNTIME: Record<RuntimeKind, string> = { claude: "claude-code", codex: "openai-codex", agy: "google-antigravity" };
 export const RESEARCH_AGENT = "claude-research";
-export const EMPLOYEE_AGENT = "orbit-employee";
+// An employee's attempt runs as THAT employee (its records name it), never as a profile every employee shares.
+export const employeeAgent = (employeeId: string): string => `employee:${employeeId}`;
 
 // What a run's decisions are about: a chat's, a research workspace's, or an employee's (an assignment's run).
 export const scopeOf = (b: Pick<RunBinding, "kind">): EnforcementScope => RUN_SCOPES[b.kind];
@@ -80,12 +81,6 @@ export interface EmployeeNetwork {
   allow: string[];
 }
 
-const networkOf = (constitution: unknown): EmployeeNetwork => {
-  const n = (constitution as { employeeNetwork?: { mode?: unknown; allow?: unknown } }).employeeNetwork;
-  const allow = Array.isArray(n?.allow) ? n.allow.filter((x): x is string => typeof x === "string") : [];
-  return { mode: n?.mode === "RESTRICTED" ? "RESTRICTED" : "AUTONOMOUS", allow };
-};
-
 interface Bound {
   kind: RunBinding["kind"];
   accountId: string;
@@ -96,6 +91,10 @@ interface Bound {
   policyRevision: string;
   startedBy: string;
   workBranch: string | null;
+  assignmentId?: string | null;
+  missionId?: string | null;
+  departmentId?: string | null;
+  departmentRevision?: string | null;
 }
 
 export const gatewayNote = (isolated: boolean, revision: number | null): string =>
@@ -200,15 +199,29 @@ export class RunGovernanceService implements OnApplicationBootstrap {
   // employee it works for (resource kind `employee`). Its token is the tool bridge's credential and the egress proxy's
   // (each connection decided as this run); it opens neither the agent gateway nor any owner route. Whether the account's
   // policy obliges isolation is returned: the worker holds the attempt to it once the sandbox's attestation is known.
-  async prepareAssignment(subject: { accountId: string; employeeId: string; title: string; assignmentId: string }, runId: string, o: { startedBy: Principal; webSearch: boolean; runtime?: RuntimeKind }): Promise<PreparedAssignment> {
+  async prepareAssignment(
+    subject: { accountId: string; employeeId: string; title: string; assignmentId: string; missionId?: string; departmentId?: string | null },
+    runId: string,
+    o: { startedBy: Principal; startedByLabel?: string; webSearch: boolean; runtime?: RuntimeKind; model?: string },
+  ): Promise<PreparedAssignment> {
     const { accountId, employeeId } = subject;
     const ctx = contextOf({ kind: "system", id: "run-start", accountId });
     const scope: EnforcementScope = RUN_SCOPES.assignment;
     const effective = await this.policy.effective(accountId);
     if (effective === null) return this.refused(ctx, scope, employeeId, runId, "This account has no policy in effect, so nothing may run: publish one under Governance → Policy.", ["NO_PUBLISHED_POLICY"]);
+    const departmentId = subject.departmentId ?? null;
+    const dept = departmentId === null ? null : await this.policy.departmentEffective(accountId, departmentId);
+    // The model, held to the models the company (and the department, within the company's delegation) let employees run
+    // on now: refused, never switched to another.
+    const models = composeEmployeeModels(effective.constitution, dept?.policy ?? null).allow;
+    const runtime = o.runtime ?? "claude";
+    if (o.model !== undefined && o.model !== "" && !modelAllowed(models, runtime, o.model)) return this.refused(ctx, scope, employeeId, runId, `The policy does not let this employee run on ${runtime}:${o.model} (it allows ${models?.join(", ") || "none"}): choose another model, or change the policy.`, ["RULE_MATCHED"]);
     await this.resources.ensure("employee", { accountId, id: employeeId, title: subject.title });
     return this.db.tx(async () => {
-      const { binding, token } = await this.mint({ kind: "assignment", accountId, resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: EMPLOYEE_AGENT, policyRevision: effective.record.id, startedBy: labelOf(o.startedBy), workBranch: null }, runId);
+      const { binding, token } = await this.mint(
+        { kind: "assignment", accountId, resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: employeeAgent(employeeId), policyRevision: effective.record.id, startedBy: o.startedByLabel ?? labelOf(o.startedBy), workBranch: null, assignmentId: subject.assignmentId, missionId: subject.missionId ?? null, departmentId, departmentRevision: dept?.record.id ?? null },
+        runId,
+      );
       const agent: Principal = { kind: "agent", binding };
       const actx: GovernanceContext = { ...ctx, principal: agent, accountId };
       // Decided as the run's agent: its binding names the employee (an employee override applies), never a chat.
@@ -227,9 +240,14 @@ export class RunGovernanceService implements OnApplicationBootstrap {
         isolation: "not_applicable",
         revision: effective.record.revision,
       };
-      const runtime = o.runtime ?? "claude";
-      await this.audit.record(actx, { type: "run.started", outcome: "started", workspaceId: employeeId, data: { scope, runtime: AUDIT_RUNTIME[runtime], runtimeVersion: runtime === "claude" ? this.runtimeVersion : ((await this.toolchain.get()).versions[runtime] ?? null), mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy } });
-      return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: networkOf(effective.constitution) };
+      await this.audit.record(actx, {
+        type: "run.started",
+        outcome: "started",
+        workspaceId: employeeId,
+        data: { scope, runtime: AUDIT_RUNTIME[runtime], runtimeVersion: runtime === "claude" ? this.runtimeVersion : ((await this.toolchain.get()).versions[runtime] ?? null), mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy, employeeId, assignmentId: subject.assignmentId, missionId: subject.missionId ?? null, departmentId },
+      });
+      const network = composeEmployeeNetwork(effective.constitution, dept?.policy ?? null);
+      return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: { mode: network.mode, allow: network.allow } };
     });
   }
 

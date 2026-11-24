@@ -2,7 +2,7 @@
 // asked (never an account a request names), is decided under that account's policy before anything changes, and leaves
 // an audit record -- a refusal too, in a transaction of its own so it outlives the rollback of the refused change.
 import { Inject, Injectable } from "@nestjs/common";
-import type { EnforcementScope } from "@orbit-web/governance-core";
+import { RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
 import { currentCorrelation, viewer } from "../../../common/request-scope.js";
 import { Db } from "../../../infra/db/db.js";
 import { contextOf, labelOf, type GovernanceContext, type Owner, type Principal } from "../../../modules/auth/principal.js";
@@ -31,6 +31,18 @@ export function systemActor(orbitId: string, id: string, correlationId: string, 
   return { owner: null, principal, command: { orbitId, actor: labelOf(principal), correlationId, causationId }, governance: contextOf(principal, correlationId) };
 }
 
+// AN EMPLOYEE'S ATTEMPT as the actor of what it asks through its tools -- a plan, a review of a part, a question, a
+// hand-in: its OWN principal (the run's binding names the employee, its assignment and its department), never a service
+// standing in for it, and decided at the employee's scope. The run is its correlation, so every record says which attempt.
+export function employeeActor(governance: GovernanceContext, runId: string): Actor {
+  const correlationId = `run:${runId}`;
+  const principal = governance.principal;
+  return { owner: null, principal, command: { orbitId: governance.accountId ?? "", actor: labelOf(principal), correlationId }, governance: { ...governance, correlationId } };
+}
+
+// The scope a principal's decisions are at: a run's (an employee's assignment, a chat, research), else the account.
+const scopeOf = (p: Principal): EnforcementScope => (p.kind === "agent" ? RUN_SCOPES[p.binding.kind] : "ACCOUNT");
+
 @Injectable()
 export class OfficeGovernance {
   constructor(
@@ -40,7 +52,7 @@ export class OfficeGovernance {
   ) {}
 
   // The account's policy decides the action (and records the decision); anything but allow refuses the command.
-  async authorize(actor: Actor, action: string, resource: string, params: Record<string, unknown> = {}, scope: EnforcementScope = "ACCOUNT"): Promise<void> {
+  async authorize(actor: Actor, action: string, resource: string, params: Record<string, unknown> = {}, scope: EnforcementScope = scopeOf(actor.principal)): Promise<void> {
     const decision = await this.policy.decide(actor.governance, { action, resource, scope, params });
     if (decision.verdict === "allow") return;
     const why = decision.verdict === "require_approval" ? "needs an approval the office does not ask for yet" : `is not allowed (${decision.reasonCodes.join(", ")})`;
@@ -55,6 +67,12 @@ export class OfficeGovernance {
   // file, its size, the desk's version -- never what it holds.
   async looked(actor: Actor, look: { employeeId: string; path: string; kind: "dir" | "file"; bytes: number; deskVersion: number }): Promise<void> {
     await this.audit.record(actor.governance, { type: "office.desk.read", outcome: "done", data: { ...look } });
+  }
+
+  // A lead shared data with a part of its team on purpose: what (a source revision, a predecessor's hand-in), to whom,
+  // from where -- never the data itself.
+  async shared(actor: Actor, share: { missionId: string; recipient: string; kind: "source" | "handoff"; ref: string; mode: "summary" | "full"; origin: string }): Promise<void> {
+    await this.audit.record(actor.governance, { type: "office.data.shared", outcome: "done", data: { ...share } });
   }
 
   // Runs `work` in one transaction; when it is refused, the refusal is recorded in a transaction of its own.

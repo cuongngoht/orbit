@@ -18,7 +18,7 @@ import { Db } from "../../src/infra/db/db.js";
 import { migrate } from "../../src/infra/db/migrate.js";
 import { RunConnectionLog } from "../../src/infra/egress/connection-log.js";
 import { startEgressProxy } from "../../src/infra/egress/proxy.js";
-import { AuditStore, OverrideStore, RevisionStore, RunBindingStore, sha256, type RevisionRecord } from "../../src/infra/governance/stores.js";
+import { AuditStore, DepartmentRevisionStore, OverrideStore, type RevisionRecord, RevisionStore, RunBindingStore, sha256 } from "../../src/infra/governance/stores.js";
 import type { ProcessPort } from "../../src/infra/process/process.port.js";
 import { EventStore } from "../../src/infra/storage/stores.js";
 import { AuditService } from "../../src/modules/governance/audit.service.js";
@@ -105,7 +105,7 @@ describe("an employee's connections, decided, logged and recorded", () => {
     const token = `tok-${randomUUID()}`;
     const chatToken = `tok-${randomUUID()}`;
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
-    await bindings.insert({ runId, accountId, kind: "assignment", resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: "employee", policyRevision: revision.id, startedBy: "test", workBranch: null, createdAt: at, expiresAt, endedAt: null, tokenHash: sha256(token) });
+    await bindings.insert({ runId, accountId, kind: "assignment", resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: `employee:${employeeId}`, policyRevision: revision.id, startedBy: "test", workBranch: null, assignmentId, missionId, departmentId: null, departmentRevision: null, createdAt: at, expiresAt, endedAt: null, tokenHash: sha256(token) });
     await bindings.insert({ runId: `chat-${randomUUID()}`, accountId, kind: "chat", resourceKind: "workspace", resourceId: `ws-${accountId}`, researchSessionId: null, agentId: "claude-code", policyRevision: revision.id, startedBy: "test", workBranch: null, createdAt: at, expiresAt, endedAt: null, tokenHash: sha256(chatToken) });
     return { accountId, employeeId, runId, token, chatToken };
   }
@@ -116,7 +116,7 @@ describe("an employee's connections, decided, logged and recorded", () => {
     await migrate(db);
     audit = new AuditStore(db);
     const auditService = new AuditService(audit, new EventBus(db, new EventStore(db)));
-    const policy = new PolicyService(new RevisionStore(db), new OverrideStore(db), auditService);
+    const policy = new PolicyService(new RevisionStore(db), new DepartmentRevisionStore(db), new OverrideStore(db), auditService);
     const config = { governance: { deployment: "governed", proxyPort: null, agentNetworks: [], egressPrivateAllow: [] } } as unknown as AppConfig;
     egress = new EgressService(config, {} as ProcessPort, {} as IsolationService, policy, new RunBindingStore(db), auditService, db);
     log = new RunConnectionLog(db);

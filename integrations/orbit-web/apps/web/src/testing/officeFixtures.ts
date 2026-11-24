@@ -3,7 +3,10 @@
 import {
   DEFAULT_PRESETS,
   type AiConnectionsView,
+  type AppointmentSummary,
+  type AppointmentView,
   type AssignmentView,
+  type DelegationGrantView,
   type Department,
   type EmployeeCard,
   type EmployeeDetail,
@@ -15,6 +18,7 @@ import {
   type MissionList,
   type MissionSummary,
   type OccurrenceView,
+  type Office,
   type ResourcePreset,
   type ResourceProfile,
   type ResourceSummary,
@@ -428,3 +432,54 @@ export function scheduleView(over: Partial<ScheduleView> = {}): ScheduleView {
     ...over,
   };
 }
+
+// ---- the organization: appointments and delegation grants -------------------------------------------------------------
+
+export const APPOINTMENT_ID = "ab000000-0000-4000-8000-000000000001";
+export const GRANT_ID = "6a000000-0000-4000-8000-000000000001";
+
+// An incumbent as the roster shows it: Ana, appointed, active.
+export const appointmentSummary = (over: Partial<AppointmentSummary> = {}): AppointmentSummary => ({ appointmentId: APPOINTMENT_ID, employeeId: EMP_ANA, name: "Ana", state: "active", slotRevision: 1, version: 1, ...over });
+
+// Ana, the manager of Accounting since the morning of the 21st.
+export function appointmentView(over: Partial<AppointmentView> = {}): AppointmentView {
+  return {
+    id: APPOINTMENT_ID,
+    role: "manager",
+    departmentId: DEPT_ACCOUNTING,
+    departmentName: "Accounting",
+    employeeId: EMP_ANA,
+    employeeName: "Ana",
+    state: "active",
+    slotRevision: 1,
+    replaces: null,
+    reason: "",
+    appointedBy: "Ann Owner",
+    appointedAt: "2026-11-21T07:30:00.000Z",
+    endedBy: null,
+    endedAt: null,
+    endReason: null,
+    version: 1,
+    ...over,
+  };
+}
+
+// Ana may give work to the Legal department's members without an appointment.
+export function delegationGrant(over: Partial<DelegationGrantView> = {}): DelegationGrantView {
+  return {
+    id: GRANT_ID,
+    employeeId: EMP_ANA,
+    target: { kind: "department", departmentId: DEPT_LEGAL, name: "Legal" },
+    state: "active",
+    note: "",
+    grantedBy: "Ann Owner",
+    grantedAt: "2026-11-21T07:45:00.000Z",
+    revokedBy: null,
+    revokedAt: null,
+    version: 2,
+    ...over,
+  };
+}
+
+// The company itself, as the roster's `office` says it -- here with execution defaults of its own, when a test gives some.
+export const officeRecord = (over: Partial<Office> = {}): Office => ({ id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo office", version: 7, createdAt: "2026-11-20T00:00:00.000Z", defaults: {}, ...over });

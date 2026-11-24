@@ -6,7 +6,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, busyBao, capabilities, connection, connectionsView, department, employeeCard, notSetUp, roster } from "../../testing/officeFixtures";
+import { APPOINTMENT_ID, CONN_CLAUDE, CONN_CODEX, DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, EMP_BAO, appointmentSummary, appointmentView, busyBao, capabilities, connection, connectionsView, department, employeeCard, notSetUp, officeRecord, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { OfficeView } from "./OfficeView";
 
@@ -178,5 +178,153 @@ describe("the office: its overview", () => {
     expect(screen.getByText(/^Data as of /)).toBeInTheDocument();
     act(() => FakeEventSource.last("/api/events").onerror?.());
     expect(await screen.findByText("Connection lost — reconnecting…")).toBeInTheDocument();
+  });
+});
+
+describe("the office: who leads it, and what its employees run on by default", () => {
+  const CAM = "e1000000-0000-4000-8000-000000000003";
+  const DEE = "e1000000-0000-4000-8000-000000000004";
+  const EVE = "e1000000-0000-4000-8000-000000000005";
+  const LEGAL_APPOINTMENT = "ab000000-0000-4000-8000-000000000002";
+  const appointment = (path: string) => (api: ReturnType<typeof fakeApi>) => api.calls.find((c) => c.method === "POST" && c.path === path);
+
+  test("Leadership: no CEO yet -- a company works without one -- and each department's manager, or none, a suspended one said so; a CEO is appointed among the employees on trial or active", async () => {
+    let appointed = false;
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () =>
+        roster({
+          ceo: appointed ? appointmentSummary() : null,
+          employees: [employeeCard(), busyBao({ role: "manager" }), employeeCard({ id: CAM, name: "Cam", title: "Clerk", departmentId: DEPT_LEGAL, employment: "candidate" })],
+          departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1, manager: appointmentSummary({ appointmentId: LEGAL_APPOINTMENT, employeeId: EMP_BAO, name: "Bao", state: "suspended", slotRevision: 2, version: 5 }) })],
+        }),
+      )
+      .on("POST", "/api/office/appointments", () => ((appointed = true), withStatus(201, appointmentView({ role: "ceo", departmentId: null, departmentName: null }))));
+    show();
+    const leadership = await screen.findByRole("region", { name: "Leadership" });
+    const ceo = within(leadership).getByRole("listitem", { name: "CEO" });
+    expect(ceo).toHaveTextContent("No CEO yet — a company works without one");
+    expect(within(leadership).getByRole("listitem", { name: "Accounting" })).toHaveTextContent("No manager");
+    const legal = within(leadership).getByRole("listitem", { name: "Legal" });
+    expect(legal).toHaveTextContent("Manager: Bao");
+    expect(within(legal).getByText("Suspended")).toBeInTheDocument();
+    // A suspended manager is reinstated, never suspended again.
+    await userEvent.click(within(legal).getByRole("button", { name: "Leadership actions for Legal" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Replace", "Reinstate", "Revoke", "Execution defaults"]);
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(within(ceo).getByRole("button", { name: "CEO appointment actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Appoint" }));
+    const dialog = await screen.findByRole("dialog", { name: "Appoint the CEO" });
+    const who = await within(dialog).findByRole("combobox", { name: /^Employee/ });
+    // On trial or active only (Cam is a candidate); one who holds another appointment is shown, and cannot be chosen.
+    expect(within(who).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose an employee", "Ana — Accountant", "Bao — holds an appointment"]);
+    expect(within(who).getByRole("option", { name: "Bao — holds an appointment" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Appoint" })).toBeDisabled();
+    await userEvent.selectOptions(who, EMP_ANA);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Reason/ }), "Founder");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Appoint" }));
+    await waitFor(() => expect(appointment("/api/office/appointments")(api)?.body).toEqual({ role: "ceo", employeeId: EMP_ANA, reason: "Founder" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // The roster is read again: the CEO now, with how the appointment stands.
+    const now = await within(screen.getByRole("region", { name: "Leadership" })).findByRole("listitem", { name: "CEO" });
+    await waitFor(() => expect(within(now).getByRole("button", { name: "Ana" })).toBeInTheDocument());
+    expect(within(now).getByText("Active")).toBeInTheDocument();
+  });
+
+  test("a manager is chosen among its department's own working members; a replace and a revoke name the version read; a refusal is said as the API said it", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () =>
+        roster({
+          ceo: appointmentSummary({ employeeId: EVE, name: "Eve", version: 3 }),
+          employees: [
+            employeeCard(),
+            employeeCard({ id: DEE, name: "Dee", title: "Clerk", employment: "candidate" }),
+            busyBao({ role: "manager" }),
+            employeeCard({ id: CAM, name: "Cam", title: "Paralegal", departmentId: DEPT_LEGAL }),
+            employeeCard({ id: EVE, name: "Eve", title: "Director", departmentId: null, role: "ceo" }),
+          ],
+          departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1, manager: appointmentSummary({ appointmentId: LEGAL_APPOINTMENT, employeeId: EMP_BAO, name: "Bao", version: 5 }) })],
+        }),
+      )
+      .on("POST", "/api/office/appointments", () => withStatus(409, { error: { code: "employee_appointed", message: "Ana holds another appointment (CEO): end it first." } }))
+      .on("POST", `/api/office/appointments/${APPOINTMENT_ID}/replace`, () => appointmentView({ role: "ceo", departmentId: null, departmentName: null, employeeId: CAM, employeeName: "Cam" }))
+      .on("POST", `/api/office/appointments/${LEGAL_APPOINTMENT}/revoke`, () => appointmentView({ id: LEGAL_APPOINTMENT, departmentId: DEPT_LEGAL, departmentName: "Legal", state: "revoked" }));
+    show();
+    const leadership = await screen.findByRole("region", { name: "Leadership" });
+    // Accounting's manager: among its members on trial or active (Dee is a candidate; Bao and Cam are Legal's).
+    await userEvent.click(within(leadership).getByRole("button", { name: "Leadership actions for Accounting" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Appoint" }));
+    let dialog = await screen.findByRole("dialog", { name: "Appoint the manager of Accounting" });
+    const who = await within(dialog).findByRole("combobox", { name: /^Employee/ });
+    expect(within(who).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose an employee", "Ana — Accountant"]);
+    await userEvent.selectOptions(who, EMP_ANA);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Appoint" }));
+    expect(await within(dialog).findByText("Ana holds another appointment (CEO): end it first.")).toBeInTheDocument();
+    expect(appointment("/api/office/appointments")(api)?.body).toEqual({ role: "manager", departmentId: DEPT_ACCOUNTING, employeeId: EMP_ANA });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // The CEO replaced: anybody on trial or active but the incumbent, against the appointment's version.
+    await userEvent.click(within(leadership).getByRole("button", { name: "CEO appointment actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Replace" }));
+    dialog = await screen.findByRole("dialog", { name: "Replace the CEO" });
+    expect(dialog.textContent).toContain("Eve is the CEO now.");
+    expect(dialog.textContent).toContain("Open work Eve holds stays with them until a person hands it over.");
+    await userEvent.selectOptions(await within(dialog).findByRole("combobox", { name: /^Employee/ }), CAM);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(appointment(`/api/office/appointments/${APPOINTMENT_ID}/replace`)(api)).toBeDefined());
+    expect(appointment(`/api/office/appointments/${APPOINTMENT_ID}/replace`)(api)?.body).toEqual({ employeeId: CAM });
+    expect(appointment(`/api/office/appointments/${APPOINTMENT_ID}/replace`)(api)?.headers["if-match"]).toBe('"3"');
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Legal's manager revoked: the slot is left empty.
+    await userEvent.click(within(leadership).getByRole("button", { name: "Leadership actions for Legal" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
+    dialog = await screen.findByRole("dialog", { name: "Revoke the manager of Legal" });
+    expect(dialog.textContent).toContain("The slot is left empty");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/revoke`)(api)).toBeDefined());
+    expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/revoke`)(api)?.body).toEqual({});
+    expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/revoke`)(api)?.headers["if-match"]).toBe('"5"');
+  });
+
+  test("execution defaults, the company's and a department's: per runtime, only what is set is sent, against the version read -- and a field a department leaves unset says what the company has", async () => {
+    const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", isDefault: true, plugins: null, catalog: { ...connection().catalog, models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }], recommended: "gpt-6.1-sol" } });
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }))
+      .on("GET", "/api/office/roster", () => roster({ office: officeRecord({ defaults: { claude: { model: "sonnet" } } }) }))
+      .on("PATCH", "/api/office/defaults", () => officeRecord({ version: 8 }))
+      .on("PATCH", `/api/office/departments/${DEPT_ACCOUNTING}`, () => department({ version: 2 }));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Company defaults" }));
+    let dialog = await screen.findByRole("dialog", { name: "Company execution defaults" });
+    const claude = await within(dialog).findByRole("group", { name: "Claude Code" });
+    // One group a runtime an employee can run on; nothing switches an employee to another runtime.
+    expect(within(dialog).getByRole("group", { name: "OpenAI Codex" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("group", { name: "Google Antigravity" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Save the defaults" })).toBeDisabled();
+    expect(within(claude).getByRole("combobox", { name: /^Model/ })).toHaveValue("sonnet");
+    await userEvent.selectOptions(within(claude).getByRole("combobox", { name: /^AI connection/ }), CONN_CLAUDE);
+    await userEvent.selectOptions(within(claude).getByRole("combobox", { name: /^Model/ }), "opus");
+    const effort = within(claude).getByRole("combobox", { name: /^Effort/ });
+    expect(within(effort).getAllByRole("option").map((o) => o.textContent)).toEqual(["Not set", "Low", "Medium", "High", "Max"]);
+    await userEvent.selectOptions(effort, "max");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save the defaults" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH" && c.path === "/api/office/defaults")).toBe(true));
+    const company = api.calls.find((c) => c.method === "PATCH" && c.path === "/api/office/defaults");
+    expect(company?.body).toEqual({ defaults: { claude: { connectionId: CONN_CLAUDE, model: "opus", effort: "max" } } });
+    expect(company?.headers["if-match"]).toBe('"7"');
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // A department's own: what it leaves unset falls to the company's.
+    await userEvent.click(within(screen.getByRole("region", { name: "Leadership" })).getByRole("button", { name: "Leadership actions for Accounting" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Execution defaults" }));
+    dialog = await screen.findByRole("dialog", { name: "Execution defaults of Accounting" });
+    const model = within(await within(dialog).findByRole("group", { name: "Claude Code" })).getByRole("combobox", { name: /^Model/ });
+    expect(within(model).getAllByRole("option")[0]).toHaveTextContent("Not set (the company's: Sonnet 5.5)");
+    await userEvent.selectOptions(model, "haiku");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save the defaults" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH" && c.path === `/api/office/departments/${DEPT_ACCOUNTING}`)).toBe(true));
+    const accounting = api.calls.find((c) => c.method === "PATCH" && c.path === `/api/office/departments/${DEPT_ACCOUNTING}`);
+    expect(accounting?.body).toEqual({ defaults: { claude: { model: "haiku" } } });
+    expect(accounting?.headers["if-match"]).toBe('"1"');
   });
 });

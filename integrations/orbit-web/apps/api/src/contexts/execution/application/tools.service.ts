@@ -13,7 +13,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 import { isDeliverableName } from "@orbit-web/contracts";
 import { createHash } from "node:crypto";
 import { conflictWith, invalid, refused } from "../../shared/domain.js";
-import { systemActor } from "../../shared/application/commands.js";
+import { employeeActor, systemActor, type Actor } from "../../shared/application/commands.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import type { GovernanceContext } from "../../../modules/auth/principal.js";
@@ -161,21 +161,21 @@ export class ToolsService {
       case "shell":
         return this.shell(run, h, args);
       case "submit_handoff":
-        return this.submit(run, h, args);
+        return this.submit(run, h, args, this.actorOf(run, governance));
       case "delegate":
-        return this.delegate(run, args);
+        return this.delegate(run, args, this.actorOf(run, governance));
       case "review_unit": {
         const part = text(args.part, "part", 40).trim();
         const decision = args.decision === "accept" || args.decision === "revise" ? args.decision : null;
         if (decision === null) throw invalid("bad_argument", "decision must be accept or revise.");
         const criteria = args.criteria === undefined ? "" : text(args.criteria, "criteria", 4000);
-        const said = await this.outcomes.reviewUnit(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, part, decision, criteria);
+        const said = await this.outcomes.reviewUnit(this.actorOf(run, governance), run.assignmentId, run.fence, part, decision, criteria);
         return { text: said, isError: false };
       }
       case "ask_question": {
         const q = text(args.question, "question", 4000).trim();
         if (q.length === 0) throw invalid("bad_argument", "question must say something.");
-        await this.outcomes.question(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, q);
+        await this.outcomes.question(this.actorOf(run, governance), run.assignmentId, run.fence, q);
         return { text: "Your question was sent. The work now waits for the answer: stop here.", isError: false };
       }
       default:
@@ -183,7 +183,13 @@ export class ToolsService {
     }
   }
 
-  private async delegate(run: RunRecord, args: Record<string, unknown>): Promise<ToolAnswer> {
+  // What the attempt asks is asked AS the employee (its run's own context, from its token); only a caller with no such
+  // context (an in-process test) stands in as the run.
+  private actorOf(run: RunRecord, governance: GovernanceContext | null): Actor {
+    return governance !== null ? employeeActor(governance, run.id) : systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`);
+  }
+
+  private async delegate(run: RunRecord, args: Record<string, unknown>, actor: Actor): Promise<ToolAnswer> {
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null || !ctx.team.canDelegate) return { text: "Your profile does not let you give work to others: do it yourself.", isError: true };
     if (!Array.isArray(args.parts)) throw invalid("bad_argument", "parts must be a list.");
@@ -203,7 +209,7 @@ export class ToolsService {
         dependsOn: list(x.waits_for),
       };
     });
-    const r = await this.outcomes.delegate(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, units);
+    const r = await this.outcomes.delegate(actor, run.assignmentId, run.fence, units);
     return { text: `Gave ${r.parts} part(s) to your team. Stop here: you are woken to review what they hand in.`, isError: false };
   }
 
@@ -218,9 +224,11 @@ export class ToolsService {
     return { text: `${status}${r.truncated ? " (output cut)" : ""}\n--- stdout ---\n${r.stdout}\n--- stderr ---\n${r.stderr}`, isError: r.code !== 0 };
   }
 
-  private async submit(run: RunRecord, h: AttemptHandle, args: Record<string, unknown>): Promise<ToolAnswer> {
+  private async submit(run: RunRecord, h: AttemptHandle, args: Record<string, unknown>, actor: Actor): Promise<ToolAnswer> {
     const summary = text(args.summary, "summary", 8000).trim();
     if (summary.length === 0) throw invalid("bad_argument", "summary must say what was done.");
+    // Decided as the employee before anything is staged: a policy that does not let it publish stores nothing.
+    await this.outcomes.mayPublish(actor, run.assignmentId, run.fence);
     const entries = (await this.provider!.list(h, "/output", 200)).filter((e) => e.type === "file");
     const staged: StagedArtifact[] = [];
     let total = 0;
@@ -247,7 +255,7 @@ export class ToolsService {
     const claims = await this.research.verify(run.orbitId, ctx?.sources ?? [], asked);
     const submissionKey = `${run.id}:${createHash("sha256").update(JSON.stringify({ summary, staged, claims: claims.map((c) => c.text) })).digest("hex").slice(0, 32)}`;
     try {
-      const r = await this.outcomes.handoff(systemActor(run.orbitId, `run:${run.id}`, `tool:${run.id}`), run.assignmentId, run.fence, { runId: run.id, summary, artifacts: staged, claims, submissionKey });
+      const r = await this.outcomes.handoff(actor, run.assignmentId, run.fence, { runId: run.id, summary, artifacts: staged, claims, submissionKey });
       const missingNote = r.missing.length > 0 ? ` The required ${r.missing.join(", ")} ${r.missing.length === 1 ? "is" : "are"} missing from /output -- the reviewer will see that.` : "";
       return { text: `Handed in as revision ${r.revision} (${staged.length} file(s)).${missingNote} Stop here: the reviewer decides next.`, isError: false };
     } catch (err) {

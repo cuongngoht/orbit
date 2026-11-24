@@ -8,9 +8,12 @@ import { Inject, Injectable } from "@nestjs/common";
 import {
   ACTIONS,
   checkConstitution,
+  checkDepartmentPolicy,
   checkOverlay,
-  employeeNetworkOf,
+  composeEmployeeModels,
+  composeEmployeeNetwork,
   evaluate,
+  type DepartmentPolicy,
   fingerprintOf,
   isActionKind,
   type Constitution,
@@ -23,7 +26,7 @@ import {
   type PolicyOverlay,
 } from "@orbit-web/governance-core";
 import { randomUUID } from "node:crypto";
-import { OverrideStore, RevisionStore, sha256, type RevisionRecord } from "../../infra/governance/stores.js";
+import { DepartmentRevisionStore, OverrideStore, RevisionStore, sha256, type DepartmentRevisionRecord, type RevisionRecord } from "../../infra/governance/stores.js";
 import { accountOf, type GovernanceContext, type Principal } from "../auth/principal.js";
 import { AuditService } from "./audit.service.js";
 
@@ -37,6 +40,9 @@ export interface PolicyAsk {
   // The action's parameters, for its fingerprint (only those its row declares are bound).
   params?: Record<string, unknown>;
   scope: EnforcementScope;
+  // Whether the principal holds the grant this action needs (a connector granted to this employee): established by the
+  // caller outside the policy; "not_held" is a deny (NO_GRANT). Absent: no grant is part of this decision.
+  grant?: "held" | "not_held";
 }
 
 export interface Decision extends Evaluation {
@@ -45,14 +51,21 @@ export interface Decision extends Evaluation {
   policyRevision: string | null;
   revision: number | null;
   fingerprint: string | null;
-  // The employee network access of the revision that decided (its limits are what an employee's connection is held
-  // to); null when no policy is in effect.
+  // The employee network access of the revision that decided -- an employee's composed with its department's (its
+  // limits are what its connection is held to); null when no policy is in effect.
   employeeNetwork: EmployeeNetwork | null;
+  // The department policy revision that decided with the company's (an employee's request), or null.
+  departmentRevision: string | null;
 }
 
 export interface Effective {
   record: RevisionRecord;
   constitution: Constitution;
+}
+
+export interface DepartmentEffective {
+  record: DepartmentRevisionRecord;
+  policy: DepartmentPolicy;
 }
 
 function requester(p: Principal): Pick<GovernanceRequest, "principalId" | "principalType"> {
@@ -75,6 +88,7 @@ const parsed = (text: string): unknown => {
 export class PolicyService {
   constructor(
     @Inject(RevisionStore) private readonly revisions: RevisionStore,
+    @Inject(DepartmentRevisionStore) private readonly departments: DepartmentRevisionStore,
     @Inject(OverrideStore) private readonly overrides: OverrideStore,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
@@ -86,6 +100,23 @@ export class PolicyService {
     if (record === null) return null;
     const checked = checkConstitution(parsed(record.document));
     return checked.ok ? { record, constitution: checked.value } : null;
+  }
+
+  // A department's policy in effect, as published (null: none -- its employees are held to the company's alone; one that
+  // no longer reads as valid decides nothing either, and is shown as such where it is managed).
+  async departmentEffective(accountId: string, departmentId: string): Promise<DepartmentEffective | null> {
+    const record = await this.departments.effective(accountId, departmentId);
+    if (record === null) return null;
+    const checked = checkDepartmentPolicy(parsed(record.document));
+    return checked.ok && checked.value.metadata.departmentId === departmentId ? { record, policy: checked.value } : null;
+  }
+
+  // Which models an employee of a department may run on now (null: any its connection's catalog offers).
+  async employeeModels(accountId: string, departmentId: string | null): Promise<string[] | null> {
+    const effective = await this.effective(accountId);
+    if (effective === null) return null;
+    const dept = departmentId === null ? null : await this.departmentEffective(accountId, departmentId);
+    return composeEmployeeModels(effective.constitution, dept?.policy ?? null).allow;
   }
 
   // The account's overrides that still read as valid.
@@ -116,9 +147,12 @@ export class PolicyService {
       resource: ask.resource,
       environment: ask.environment ?? "local",
       ...(binding !== null ? { runKind: binding.kind, employeeId: binding.resourceKind === "employee" ? binding.resourceId : null } : {}),
+      // An employee's attempt: its work, and the department whose CURRENT policy decides with the company's.
+      ...(binding?.kind === "assignment" ? { assignmentId: binding.assignmentId ?? null, missionId: binding.missionId ?? null, departmentId: binding.departmentId ?? null } : {}),
     };
     const overlays = accountId === null ? [] : await this.overrideList(accountId);
-    const evaluation = evaluate({ constitution: effective?.constitution ?? null, overlays }, request);
+    const dept = accountId !== null && request.departmentId !== undefined && request.departmentId !== null ? await this.departmentEffective(accountId, request.departmentId) : null;
+    const evaluation = evaluate({ constitution: effective?.constitution ?? null, overlays, departments: dept === null ? [] : [dept.policy] }, request, ask.grant === undefined ? {} : { grant: ask.grant });
     const fingerprint = isActionKind(ask.action) ? fingerprintOf(ask.action, request.environment, ask.params ?? { [ACTIONS[ask.action].fingerprint[0] as string]: ask.resource }, sha256) : null;
     const decisionId = `dec-${randomUUID()}`;
     const policyRevision = effective?.record.id ?? null;
@@ -134,12 +168,22 @@ export class PolicyService {
             workspaceId: request.workspaceId ?? request.researchWorkspaceId,
             agentId: binding?.agentId ?? null,
             accountId,
-            data: { action: ask.action, resource: ask.resource, environment: request.environment, enforcement: evaluation.enforcement, fingerprint, scope: ask.scope, matchedRules: evaluation.matchedRules.join(",") },
+            data: {
+              action: ask.action,
+              resource: ask.resource,
+              environment: request.environment,
+              enforcement: evaluation.enforcement,
+              fingerprint,
+              scope: ask.scope,
+              matchedRules: evaluation.matchedRules.join(","),
+              ...(binding?.kind === "assignment" ? { employeeId: request.employeeId ?? null, assignmentId: request.assignmentId ?? null, missionId: request.missionId ?? null, departmentId: request.departmentId ?? null, departmentRevision: dept?.record.id ?? null } : {}),
+              ...(ask.grant !== undefined ? { grant: ask.grant } : {}),
+            },
           },
         )
       : null;
-    const employeeNetwork = effective === null ? null : employeeNetworkOf(effective.constitution);
-    return { ...evaluation, decisionId, eventId: event?.eventId ?? null, policyRevision, revision: effective?.record.revision ?? null, fingerprint, employeeNetwork };
+    const employeeNetwork = effective === null ? null : composeEmployeeNetwork(effective.constitution, dept?.policy ?? null);
+    return { ...evaluation, decisionId, eventId: event?.eventId ?? null, policyRevision, revision: effective?.record.revision ?? null, fingerprint, employeeNetwork, departmentRevision: dept?.record.id ?? null };
   }
 
   // A policy may let decisions that simply allow an ordinary action go unrecorded (obligations.auditDecisions

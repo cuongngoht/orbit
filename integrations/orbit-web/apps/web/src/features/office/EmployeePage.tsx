@@ -1,10 +1,12 @@
-// ONE EMPLOYEE: its profile (each change a revision, any revision restorable), its work (what it holds, what waits behind
-// it, what it did), its Personal Sandbox and resources (the areas and how each limit is enforced, the attempt running now
-// and what its containers use, the resource revisions, and an edit that applies to future attempts), and its employment
-// -- each move with its reason. Every change names the version read; a stale one offers the latest.
+// ONE EMPLOYEE: its profile (each change a revision, any revision restorable), its role in the company (the appointment
+// it holds, every one it held, whom it reports to), its work (what it holds, what waits behind it, what it did), its
+// Personal Sandbox and resources (the areas and how each limit is enforced, the attempt running now and what its
+// containers use, the resource revisions, and an edit that applies to future attempts), and its employment -- each move
+// with its reason. Every change names the version read; a stale one offers the latest.
 import {
   Badge,
   Button,
+  Checkbox,
   Field,
   Input,
   Link,
@@ -48,19 +50,20 @@ import {
   TaskListLtr20Regular,
   Warning16Regular,
 } from "@fluentui/react-icons";
-import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
+import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AppointmentView, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ExecutionProfile, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
 import { useState, type ReactElement } from "react";
 import { IconBadge } from "../../components/SectionIcons";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
-import { useI18n, type MessageKey } from "../../i18n";
+import { useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
 import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
-import { office, useOfficeRead } from "./api";
+import { office, useOfficeRead, wholeRoster } from "./api";
+import { AppointmentStateBadge } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
 import { AccessTab } from "./EmployeeAccessTab";
 import { useConnections } from "../connections/AiConnectionsSection";
-import { usableForEmployees } from "./HireWizard";
+import { DefaultsThatApply, INHERITED, inheritsModel, usableForEmployees } from "./HireWizard";
 import { AsOf, Callout, EmptyState, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
 import { EmployeeDeskScene, deskMoodText } from "./VirtualDesk";
 import { ResourceFields, resourceProblems, storageProblem } from "./ResourceFields";
@@ -397,6 +400,98 @@ const useStyles = makeStyles({
   },
 });
 
+// What a profile runs on, in words: its runtime, then its own model and effort -- or that it leaves them to its
+// department's default, else the company's.
+const modelShown = (t: I18nContextValue["t"], x: ExecutionProfile): string => (inheritsModel(x) ? t("office.employee.fromDefaults") : x.model);
+const effortShown = (t: I18nContextValue["t"], x: ExecutionProfile): string => (x.inherit?.includes("effort") === true ? t("office.employee.fromDefaults") : x.effort ? effortLabel(x.effort) : t("office.hire.effortNoneShort"));
+const runsOnShown = (t: I18nContextValue["t"], x: ExecutionProfile): string => [RUNTIME_LABELS[x.runtime], modelShown(t, x), ...(!inheritsModel(x) && x.effort ? [effortLabel(x.effort)] : [])].join(" · ");
+
+// An appointment in words: "CEO", "Manager of Accounting".
+const appointmentShown = (t: I18nContextValue["t"], a: AppointmentView): string => (a.role === "ceo" ? t("office.employee.appointmentCeo") : t("office.employee.appointmentManager", { department: a.departmentName ?? "" }));
+
+// ITS ROLE IN THE COMPANY: the appointment it holds -- authority is that, never a title or the team-lead switch -- every
+// appointment it held, and whom it reports to, named when the roster has them.
+function RoleCard({ e, go }: { e: EmployeeDetail; go: Go }) {
+  const { t } = useI18n();
+  const o = useOfficeStyles();
+  const s = useStyles();
+  const managerId = e.managerId;
+  const roster = useOfficeRead<Roster>(managerId !== null ? () => wholeRoster() : null, [managerId], ["roster"]);
+  const reportsTo = managerId === null ? null : (roster.data?.employees.find((x) => x.id === managerId) ?? null);
+  const now = e.appointment ?? null;
+  const history = [...(e.appointments ?? [])].sort((a, b) => b.appointedAt.localeCompare(a.appointedAt));
+  return (
+    <section className={o.card} aria-label={t("office.employee.authorityTitle")}>
+      <div className={s.sectionHead}>
+        <IconBadge icon={<Organization16Regular />} tone={now ? "brand" : "neutral"} size="md" />
+        <div className={s.sectionTitleWrap}>
+          <Text weight="semibold" size={400}>
+            {t("office.employee.authorityTitle")}
+          </Text>
+          <Text size={200} className={o.muted}>
+            {t("office.employee.authoritySub")}
+          </Text>
+        </div>
+      </div>
+      <div className={o.divider} />
+      {now ? (
+        <div className={o.stack}>
+          <div className={o.row}>
+            <Text weight="semibold">{appointmentShown(t, now)}</Text>
+            <AppointmentStateBadge state={now.state} />
+          </div>
+          <Text size={200} className={o.muted}>
+            {t("office.employee.appointmentSince", { at: when(now.appointedAt), revision: now.slotRevision })}
+          </Text>
+          {now.reason && (
+            <Text size={200} className={o.wrap}>
+              {t("office.employee.appointmentReason", { reason: now.reason })}
+            </Text>
+          )}
+        </div>
+      ) : (
+        <Text size={200} className={o.muted}>
+          {t("office.employee.noAppointment")}
+        </Text>
+      )}
+      {reportsTo && (
+        <dl className={o.dl}>
+          <dt className={o.dt}>{t("office.employee.reportsTo")}</dt>
+          <dd className={o.dd}>
+            <Link as="button" inline onClick={() => go("employee", reportsTo.id)}>
+              {reportsTo.name}
+            </Link>
+          </dd>
+        </dl>
+      )}
+      {history.length > 0 && (
+        <>
+          <Text weight="semibold" size={200}>
+            {t("office.employee.appointmentHistory")}
+          </Text>
+          <ul className={o.list} aria-label={t("office.employee.appointmentHistory")}>
+            {history.map((a) => (
+              <li key={a.id} className={o.item}>
+                <div className={o.between}>
+                  <Text weight="semibold" size={200}>
+                    {appointmentShown(t, a)}
+                  </Text>
+                  <AppointmentStateBadge state={a.state} />
+                </div>
+                <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+                  {t("office.employee.appointmentMeta", { revision: a.slotRevision, at: when(a.appointedAt), by: a.appointedBy })}
+                  {a.endedAt ? t("office.employee.appointmentEnded", { at: when(a.endedAt), by: a.endedBy ?? "" }) : ""}
+                  {a.endReason ? t("office.employee.appointmentEndReason", { reason: a.endReason }) : ""}
+                </Text>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[]; go: Go; label: string; empty: string }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
@@ -432,9 +527,10 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
 }
 
 // HOW AN EMPLOYEE RUNS, changed in place: a connection that can run employees now (the server says which: employeeReady), a
-// model of that connection's own catalog and an effort the model takes. Web search stays on only where the new
-// connection offers it; the Orbit plugin only on the Claude Code connection it was granted on. The server holds the
-// change to the same rules as a hire (an OpenAI Codex model observed held to Orbit's tools, above all).
+// model of that connection's own catalog and an effort the model takes -- or both left to its department's default,
+// else the company's. Web search stays on only where the new connection offers it; the Orbit plugin only on the Claude
+// Code connection it was granted on. The server holds the change to the same rules as a hire (an OpenAI Codex model
+// observed held to Orbit's tools, above all).
 function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onCancel: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
@@ -446,15 +542,19 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
   const [connectionId, setConnectionId] = useState<string | null>(x.connectionId);
   const [modelId, setModelId] = useState<string | null>(x.model);
   const [effortId, setEffortId] = useState<string | null>(x.effort);
+  const [inherit, setInherit] = useState(inheritsModel(x));
+  // Its department's and the company's defaults, read only once the model and effort are left to them.
+  const roster = useOfficeRead<Roster>(inherit ? () => office.roster({ department: null, q: "", status: null }) : null, [inherit], ["roster"]);
   const connection = ready.find((c) => c.id === connectionId) ?? ready[0] ?? null;
   const models = connection?.catalog.models ?? [];
   const model = models.find((m) => m.id === modelId) ?? models.find((m) => m.id === connection?.catalog.recommended) ?? models[0] ?? null;
   const effort = model === null || model.efforts.length === 0 ? null : effortId !== null && model.efforts.includes(effortId) ? effortId : effortFor(model, "medium");
   const save = () =>
     act.run(async () => {
-      if (connection === null || model === null) return;
-      const execution = { runtime: connection.runtime, connectionId: connection.id, model: model.id, effort, webSearch: x.webSearch && connection.capabilities.webSearch === "yes", orbitPlugin: x.orbitPlugin && connection.runtime === "claude" && connection.id === x.connectionId };
-      onSaved(await office.updateEmployee(e, { profile: { ...e.profile, execution }, note: t("office.employee.runsOnNote", { runtime: RUNTIME_LABELS[connection.runtime], label: connection.label, model: model.label }) }));
+      if (connection === null || (model === null && !inherit)) return;
+      const own = { runtime: connection.runtime, connectionId: connection.id, webSearch: x.webSearch && connection.capabilities.webSearch === "yes", orbitPlugin: x.orbitPlugin && connection.runtime === "claude" && connection.id === x.connectionId };
+      const execution: ExecutionProfile = inherit || model === null ? { ...own, model: "", effort: null, inherit: [...INHERITED] } : { ...own, model: model.id, effort };
+      onSaved(await office.updateEmployee(e, { profile: { ...e.profile, execution }, note: t("office.employee.runsOnNote", { runtime: RUNTIME_LABELS[connection.runtime], label: connection.label, model: inherit || model === null ? t("office.employee.defaultModelNote") : model.label }) }));
     });
   if (connections.data === null) return <Spinner size="tiny" label={t("office.hire.readingConnections")} />;
   return (
@@ -483,35 +583,41 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
             ))}
           </Select>
         </Field>
-        <Field label={t("office.hire.modelLabel")} hint={t("office.hire.modelHint")}>
-          <Select
-            value={model?.id ?? ""}
-            onChange={(_, d) => {
-              setModelId(d.value);
-              setEffortId(null);
-            }}
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-                {connection?.catalog.recommended === m.id ? t("office.hire.recommendedSuffix") : ""}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t("office.hire.effortLabel")} hint={model && model.efforts.length === 0 ? t("office.hire.effortNoLevelHint") : t("office.hire.effortHint")}>
-          <Select value={effort ?? ""} disabled={model === null || model.efforts.length === 0} onChange={(_, d) => setEffortId(d.value)}>
-            {model?.efforts.length === 0 && <option value="">{t("office.hire.noEffortOption")}</option>}
-            {(model?.efforts ?? []).map((v) => (
-              <option key={v} value={v}>
-                {effortLabel(v)}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {!inherit && (
+          <Field label={t("office.hire.modelLabel")} hint={t("office.hire.modelHint")}>
+            <Select
+              value={model?.id ?? ""}
+              onChange={(_, d) => {
+                setModelId(d.value);
+                setEffortId(null);
+              }}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                  {connection?.catalog.recommended === m.id ? t("office.hire.recommendedSuffix") : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {!inherit && (
+          <Field label={t("office.hire.effortLabel")} hint={model && model.efforts.length === 0 ? t("office.hire.effortNoLevelHint") : t("office.hire.effortHint")}>
+            <Select value={effort ?? ""} disabled={model === null || model.efforts.length === 0} onChange={(_, d) => setEffortId(d.value)}>
+              {model?.efforts.length === 0 && <option value="">{t("office.hire.noEffortOption")}</option>}
+              {(model?.efforts ?? []).map((v) => (
+                <option key={v} value={v}>
+                  {effortLabel(v)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
       </div>
+      <Checkbox checked={inherit} onChange={(_, d) => setInherit(d.checked === true)} label={t("office.hire.inheritLabel")} />
+      {inherit && connection !== null && roster.data !== null && <DefaultsThatApply connection={connection} department={roster.data.departments.find((d) => d.id === e.departmentId) ?? null} company={roster.data.office?.defaults ?? null} />}
       <div className={s.actionRow}>
-        <Button type="submit" appearance="primary" disabled={act.busy || connection === null || model === null}>
+        <Button type="submit" appearance="primary" disabled={act.busy || connection === null || (model === null && !inherit)}>
           {t("office.employee.saveRunsOn")}
         </Button>
         <Button onClick={onCancel}>{t("office.assign.cancel")}</Button>
@@ -521,7 +627,7 @@ function RunsOnForm({ e, onSaved, onCancel }: { e: EmployeeDetail; onSaved: (d: 
   );
 }
 
-function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
+function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: Go; onSaved: (d: EmployeeDetail) => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const s = useStyles();
@@ -623,6 +729,7 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
         </form>
 
         <div className={s.colStack}>
+          <RoleCard e={e} go={go} />
           <section className={o.card} aria-label={t("office.employee.howItRuns")}>
             <div className={o.between}>
               <div className={s.sectionHead}>
@@ -667,14 +774,14 @@ function ProfileTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved: 
                   {t("office.hire.choiceModel")}
                 </dt>
                 <dd className={o.dd} style={{ fontWeight: 600 }}>
-                  {x.model}
+                  {modelShown(t, x)}
                 </dd>
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
                   {t("office.hire.choiceEffort")}
                 </dt>
-                <dd className={o.dd}>{x.effort ? effortLabel(x.effort) : t("office.hire.effortNoneShort")}</dd>
+                <dd className={o.dd}>{effortShown(t, x)}</dd>
               </div>
               <div className={s.kvCell}>
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
@@ -1272,8 +1379,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
                 </Badge>
               </div>
               <Text size={200} className={o.muted}>
-                {e.title} · {RUNTIME_LABELS[e.execution.runtime]} · {e.execution.model}
-                {e.execution.effort ? ` · ${effortLabel(e.execution.effort)}` : ""}
+                {e.title} · {runsOnShown(t, e.execution)}
               </Text>
               <div className={o.row}>
                 <AsOf at={employee.loadedAt} />
@@ -1319,7 +1425,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
               <Code16Regular aria-hidden />
               {t("office.employee.kpiModelProfile")}
             </span>
-            <span className={s.kpiValue}>{e.execution.model}</span>
+            <span className={s.kpiValue}>{modelShown(t, e.execution)}</span>
             <span className={s.kpiSub}>
               {t("office.employee.kpiModelSub", { runtime: RUNTIME_LABELS[e.execution.runtime], revision: e.profileRevision })}
             </span>
@@ -1370,9 +1476,9 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
         </TabList>
       </div>
 
-      {current === "profile" && <ProfileTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
+      {current === "profile" && <ProfileTab key={e.version} e={e} go={go} onSaved={saved} onLoadLatest={reload} />}
       {current === "work" && <WorkTab e={e} go={go} onAssign={() => setAssigning(true)} />}
-      {current === "access" && <AccessTab e={e} />}
+      {current === "access" && <AccessTab e={e} onChanged={() => employee.reload()} />}
       {current === "resources" && <ResourcesTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {current === "employment" && <EmploymentTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {assigning && <AssignDialog employees={[e]} employeeId={e.id} onClose={() => setAssigning(false)} onOpenMission={(m) => go("mission", m)} />}

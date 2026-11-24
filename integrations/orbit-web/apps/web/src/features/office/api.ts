@@ -1,18 +1,25 @@
 // The office's routes, typed: the roster and its departments, employees, missions and the commands on an assignment,
-// what needs the owner, the schedules and deliveries. A change names the version it was made against (`If-Match`); a
+// what needs the owner, the schedules and deliveries, and the company's organization -- its appointments, execution
+// defaults and delegation grants. A change names the version it was made against (`If-Match`); a
 // mission names the request once (`Idempotency-Key`). Reads follow `office.changed`: an invalidation, never content --
 // the page reads what it may read again, and reads everything again when the app stream reopens.
 import type {
+  AppointRequest,
+  AppointmentChangeRequest,
+  AppointmentView,
   ArchiveDepartmentRequest,
   CommandResult,
   CreateMissionRequest,
   CreateScheduleRequest,
+  DelegationGrantView,
   Department,
   DeliveryView,
   EmployeeDetail,
   EmployeeProfile,
   EmployeeTemplate,
   EmploymentRequest,
+  ExecutionDefaults,
+  GrantDelegationRequest,
   HireEmployeeRequest,
   Inbox,
   MissionAccepted,
@@ -21,6 +28,7 @@ import type {
   OccurrenceView,
   Office,
   OfficeArea,
+  ReplaceAppointmentRequest,
   ResolveDeliveryRequest,
   ResourcePreset,
   Roster,
@@ -65,12 +73,26 @@ export interface ProfileRevisionContent {
   profile: EmployeeProfile;
 }
 
+// What a person may do to an appointment that has an incumbent, besides replacing it, as its route names it.
+export type AppointmentChange = "suspend" | "reinstate" | "revoke";
+
 export const office = {
   roster: (r: RosterQuery) => get<Roster>(`/api/office/roster${query({ department: r.department, q: r.q.trim(), status: r.status, cursor: r.cursor ?? null })}`),
   setUp: (body: SetUpOfficeRequest) => send<Office>("POST", "/api/office/setup", body),
   createDepartment: (name: string) => send<Department>("POST", "/api/office/departments", { name }),
   renameDepartment: (d: Department, name: string) => send<Department>("PATCH", `/api/office/departments/${id(d.id)}`, { name }, ifMatch(d.version)),
   archiveDepartment: (d: Department, body: ArchiveDepartmentRequest) => send<Department>("POST", `/api/office/departments/${id(d.id)}/archive`, body, ifMatch(d.version)),
+  // Execution defaults, saved whole: the company's against the office's version, a department's against its own.
+  setCompanyDefaults: (o: Office, defaults: ExecutionDefaults) => send<Office>("PATCH", "/api/office/defaults", { defaults }, ifMatch(o.version)),
+  setDepartmentDefaults: (d: Department, defaults: ExecutionDefaults) => send<Department>("PATCH", `/api/office/departments/${id(d.id)}`, { defaults }, ifMatch(d.version)),
+  // The company's authority: an empty slot is appointed to; an incumbent is replaced, suspended, reinstated or revoked
+  // against the version of the appointment read.
+  appoint: (body: AppointRequest) => send<AppointmentView>("POST", "/api/office/appointments", body),
+  replaceAppointment: (appointmentId: string, version: number, body: ReplaceAppointmentRequest) => send<AppointmentView>("POST", `/api/office/appointments/${id(appointmentId)}/replace`, body, ifMatch(version)),
+  changeAppointment: (appointmentId: string, version: number, change: AppointmentChange, body: AppointmentChangeRequest) => send<AppointmentView>("POST", `/api/office/appointments/${id(appointmentId)}/${change}`, body, ifMatch(version)),
+  // Whom an employee who holds no appointment may give work to.
+  grantDelegation: (employeeId: string, body: GrantDelegationRequest) => send<DelegationGrantView>("POST", `/api/employees/${id(employeeId)}/delegation-grants`, body),
+  revokeDelegation: (g: DelegationGrantView) => send<{ ok: true }>("POST", `/api/delegation-grants/${id(g.id)}/revoke`, {}, ifMatch(g.version)),
   templates: () => get<EmployeeTemplate[]>("/api/office/templates"),
   presets: () => get<ResourcePreset[]>("/api/office/resource-presets"),
   hire: (body: HireEmployeeRequest) => send<EmployeeDetail>("POST", "/api/employees", body),
@@ -94,6 +116,23 @@ export const office = {
   resolveDelivery: (deliveryId: string, body: ResolveDeliveryRequest) => send<DeliveryView>("POST", `/api/deliveries/${id(deliveryId)}/resolve`, body),
   artifactHref: (artifactId: string) => `/api/artifacts/${id(artifactId)}/content`,
 };
+
+// How many pages of the roster a choice among every employee reads at most (a page holds 100 of them).
+const MAX_ROSTER_PAGES = 20;
+
+// The roster unfiltered -- one department's, or the whole office's -- with every page of its employees: whom to appoint,
+// or to give work to, is chosen among all of them, never among the first page or what the overview's filters show.
+export async function wholeRoster(department: string | null = null): Promise<Roster> {
+  const first = await office.roster({ department, q: "", status: null });
+  const employees = [...first.employees];
+  let cursor = first.nextCursor;
+  for (let pages = 1; cursor !== null && pages < MAX_ROSTER_PAGES; pages++) {
+    const next = await office.roster({ department, q: "", status: null, cursor });
+    employees.push(...next.employees);
+    cursor = next.nextCursor;
+  }
+  return { ...first, employees, nextCursor: cursor };
+}
 
 // A route this Orbit Web does not serve (yet): schedules and deliveries come after the rest of the office, and until then
 // their routes answer 404 -- said as such by the page, never a crash and never "nothing scheduled".

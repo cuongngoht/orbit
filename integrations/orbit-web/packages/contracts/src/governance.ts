@@ -7,7 +7,26 @@
 // One sign-in: the person whose browser finished the Claude sign-in is the OWNER of the account of that identity, and
 // governs it -- its chats, its research, its policy. There is no operator, no password and no organization to set up.
 // What is governed is that account's alone: nothing here names another account, and no request picks the account.
-import { type ActionKind, type AuditEvent, type ChainProblem, type DailyReport, type EnforcementPoint, type EnforcementScope, type Environment, type Evaluation, type Finding, type Impact, type PolicyOverlay, type PolicyWarning, type PrincipalType, type RevisionState, type RiskLevel, type RunKind } from "@orbit-web/governance-core";
+import {
+  type ActionKind,
+  type AuditEvent,
+  type ChainProblem,
+  type DailyReport,
+  type DepartmentRow,
+  type EffectiveEmployeeNetwork,
+  type EnforcementPoint,
+  type EnforcementScope,
+  type Environment,
+  type Evaluation,
+  type Finding,
+  type Impact,
+  type PolicyOverlay,
+  type PolicyWarning,
+  type PrincipalType,
+  type RevisionState,
+  type RiskLevel,
+  type RunKind,
+} from "@orbit-web/governance-core";
 
 // What the Governance pages say about the employee network access (`employeeNetwork` of the account's policy), and the
 // disclosure every page that chooses what an employee may reach shows: from governance-core, where the policy is checked.
@@ -206,6 +225,47 @@ export function checkPublishRevision(body: unknown): Checked<PublishRevisionRequ
   return checked(errors, () => ({ digest: b.digest as string, base: (b.base as string | null | undefined) ?? null, acknowledgedRisk: (b.acknowledgedRisk as RiskLevel | null | undefined) ?? null }));
 }
 
+// ---- a department's policy (governance-core department.ts) ------------------------------------------------------------
+
+// A revision of one department's policy: as the company's, plus the company revision its publication must be confirmed
+// against (`companyBase`: the delegation decides what the department may say).
+export interface DepartmentRevisionView extends RevisionView {
+  departmentId: string;
+  companyBase: string | null;
+}
+
+// GET /api/governance/departments/:id/policy: what is in effect for the department's employees -- row by row against the
+// company's (inherited, overridden, effective, locked, capped), the composed network access and models -- its revision
+// in effect (null: none, the company's alone) and every revision.
+export interface DepartmentPolicyOverview {
+  departmentId: string;
+  departmentName: string;
+  // The company revision in effect these rows were worked out under.
+  companyRevision: { id: string; revision: number | null } | null;
+  effective: DepartmentRevisionView | null;
+  revisions: RevisionSummary[];
+  rows: DepartmentRow[];
+  network: EffectiveEmployeeNetwork | null;
+  models: { allow: string[] | null; capped: boolean };
+  // What the company delegates to its departments (null: nothing -- a department only narrows).
+  delegation: unknown;
+}
+
+// A department's publication: the company's confirmation, plus the company revision in effect that was read.
+export interface PublishDepartmentRevisionRequest extends PublishRevisionRequest {
+  companyBase: string | null;
+}
+
+export function checkPublishDepartmentRevision(body: unknown): Checked<PublishDepartmentRevisionRequest> {
+  const b = objectOf(body);
+  if (b === null) return { ok: false, errors: ["the body must be a JSON object"] };
+  const { companyBase, ...rest } = b;
+  const inner = checkPublishRevision(rest);
+  const errors = inner.ok ? [] : [...inner.errors];
+  if (companyBase !== null && (typeof companyBase !== "string" || companyBase.length === 0 || companyBase.length > 64)) errors.push("companyBase must name the company revision in effect that was read, or be null");
+  return checked(errors, () => ({ ...(inner as { ok: true; value: PublishRevisionRequest }).value, companyBase: (companyBase as string | null) ?? null }));
+}
+
 // ---- simulation, overrides ------------------------------------------------------------------------------------------
 
 export interface SimulatedRequest {
@@ -219,6 +279,8 @@ export interface SimulatedRequest {
   // access), for this employee (what an employee's override targets). Absent: not a run.
   runKind?: RunKind;
   employeeId?: string | null;
+  // An employee's request: the department whose policy decides with the company's.
+  departmentId?: string | null;
 }
 
 export interface SimulateRequest {
@@ -233,7 +295,7 @@ export interface SimulateResult {
   evaluation: Evaluation;
 }
 
-const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "researchWorkspaceId", "runKind", "employeeId"];
+const SIMULATED_FIELDS = ["principalType", "action", "resource", "environment", "workspaceId", "researchWorkspaceId", "runKind", "employeeId", "departmentId"];
 const ENVIRONMENT_WORDS = ["local", "test", "development", "staging", "production", "unknown"];
 const PRINCIPAL_WORDS = ["human", "agent", "service"];
 const RUN_WORDS = ["chat", "research", "assignment"];
@@ -250,7 +312,7 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
   if (typeof r.action !== "string" || r.action.length === 0 || r.action.length > 128) errors.push("request.action must name an action");
   if (typeof r.resource !== "string" || r.resource.length > GOVERNANCE_LIMITS.resourceLength) errors.push("request.resource must be text");
   if (!ENVIRONMENT_WORDS.includes(String(r.environment ?? "local"))) errors.push("request.environment is not an environment Orbit Web knows");
-  for (const f of ["workspaceId", "researchWorkspaceId", "employeeId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
+  for (const f of ["workspaceId", "researchWorkspaceId", "employeeId", "departmentId"]) if (!optionalId(r[f])) errors.push(`request.${f} must be an id or null`);
   if (r.runKind !== undefined && r.runKind !== null && !RUN_WORDS.includes(String(r.runKind))) errors.push("request.runKind must be chat, research or assignment");
   if (b.revisionId !== undefined && (typeof b.revisionId !== "string" || b.revisionId.length === 0)) errors.push("revisionId must name a revision");
   return checked(errors, () => ({
@@ -263,6 +325,7 @@ export function checkSimulate(body: unknown): Checked<SimulateRequest> {
       researchWorkspaceId: (r.researchWorkspaceId as string | undefined) ?? null,
       ...(r.runKind !== undefined && r.runKind !== null ? { runKind: r.runKind as RunKind } : {}),
       ...(r.employeeId !== undefined ? { employeeId: (r.employeeId as string | null) ?? null } : {}),
+      ...(r.departmentId !== undefined ? { departmentId: (r.departmentId as string | null) ?? null } : {}),
     },
     ...(typeof b.revisionId === "string" ? { revisionId: b.revisionId } : {}),
   }));

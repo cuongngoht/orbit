@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { authSession } from "../../testing/fixtures";
-import { resourceSummary } from "../../testing/officeFixtures";
+import { AS_OF, resourceSummary } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { ComputeStorageSection } from "./ComputeStorageSection";
 
@@ -117,6 +117,37 @@ describe("Settings → Compute & storage: what the account's employees may use, 
     const reads = api.calls.filter((c) => c.path === "/api/office/resources").length;
     await userEvent.click(within(form).getByRole("button", { name: "Load the latest" }));
     await waitFor(() => expect(api.calls.filter((c) => c.path === "/api/office/resources").length).toBeGreaterThan(reads));
+  });
+
+  test("observed use: what the running attempts were last measured using, a block of its own -- apart from what admission reserved and from the storage committed", async () => {
+    fakeApi().on("GET", "/api/office/resources", () => resourceSummary());
+    const { unmount } = renderLive(<ComputeStorageSection />);
+    const observed = await screen.findByRole("region", { name: "Observed use" });
+    expect(observed.textContent).toContain("Memory now1.8 GiB");
+    expect(observed.textContent).toContain("Memory at peak2.5 GiB");
+    expect(observed.textContent).toContain("CPU time340 s");
+    expect(observed.textContent).toContain("Attempts measured2");
+    expect(observed.textContent).toContain("never what they reserved");
+    expect(observed.textContent).toMatch(/Sampled .+\./);
+    // Reserved stays in its own block, and says it is not use.
+    const now = screen.getByRole("region", { name: "Now" });
+    expect(now.textContent).toContain("Memory reserved5 GiB");
+    expect(now.textContent).not.toContain("Memory now");
+    expect(now.textContent).toContain("Reserved is what admission holds for running work, not what it uses");
+    unmount();
+    // A number nobody measured is said as such; nothing sampled lately says so, never a zero.
+    fakeApi().on("GET", "/api/office/resources", () => resourceSummary({ observed: { runs: 1, memoryCurrentMiB: 512, memoryPeakMiB: null, cpuSeconds: null, sampledAt: AS_OF } }));
+    const partly = renderLive(<ComputeStorageSection />);
+    const some = await screen.findByRole("region", { name: "Observed use" });
+    expect(some.textContent).toContain("Memory now512 MiB");
+    expect(some.textContent).toContain("Memory at peaknot measured");
+    expect(some.textContent).toContain("CPU timenot measured");
+    partly.unmount();
+    fakeApi().on("GET", "/api/office/resources", () => resourceSummary({ observed: { runs: 0, memoryCurrentMiB: null, memoryPeakMiB: null, cpuSeconds: null, sampledAt: null } }));
+    renderLive(<ComputeStorageSection />);
+    const none = await screen.findByRole("region", { name: "Observed use" });
+    expect(within(none).getByText("Nothing measured lately.")).toBeInTheDocument();
+    expect(none.textContent).not.toContain("Memory now");
   });
 
   test("a budget below what running work holds says it is over budget until that work ends -- nothing is stopped", async () => {

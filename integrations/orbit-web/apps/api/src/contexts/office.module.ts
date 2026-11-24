@@ -18,6 +18,7 @@ import { EmployeeTools } from "../modules/employee-access/employee-tools.js";
 import { EmployeeAccessModule } from "../modules/employee-access/employee-access.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
 import { AttemptInputs } from "./execution/application/attempt-inputs.js";
+import { AttemptManifest } from "./execution/infrastructure/attempt-manifest.js";
 import { CONNECTOR_TOOLS } from "./execution/application/connector-tools.port.js";
 import { REPOSITORY_BUNDLES } from "./execution/application/repository-bundles.port.js";
 import { MISSION_REPOSITORIES } from "./work/application/mission-repositories.port.js";
@@ -45,6 +46,7 @@ import { Outbox } from "./shared/infrastructure/outbox.js";
 import { DeliveriesService } from "./work/application/deliveries.service.js";
 import { MissionQueries } from "./work/application/mission.queries.js";
 import { SchedulesService } from "./work/application/schedules.service.js";
+import { AttemptDataService } from "./work/application/attempt-data.service.js";
 import { TeamService } from "./work/application/team.service.js";
 import { MissionsService } from "./work/application/missions.service.js";
 import { DecisionRepository } from "./work/infrastructure/decisions.js";
@@ -97,6 +99,7 @@ const PROVIDERS: Provider[] = [
   SchedulesService,
   DeliveriesService,
   TeamService,
+  AttemptDataService,
   // execution
   RunRepository,
   RunRequests,
@@ -105,6 +108,7 @@ const PROVIDERS: Provider[] = [
   AdmissionService,
   ArtifactStore,
   ResearchInputs,
+  AttemptManifest,
   ToolsService,
   WorkspacePublisher,
   ExecutionWorker,

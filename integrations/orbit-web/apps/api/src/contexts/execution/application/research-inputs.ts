@@ -17,7 +17,8 @@ import { APP_CONFIG } from "../../../core/tokens.js";
 import { Db } from "../../../infra/db/db.js";
 import { ObjectStore } from "../../../modules/research/sources/object-store.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
-import type { PinnedSource } from "./run-outcomes.port.js";
+import type { StagedInput } from "./attempt-inputs.js";
+import type { AttemptData, PinnedSource } from "./run-outcomes.port.js";
 
 const TEXT_TYPES = /^(text\/|application\/(json|xml|csv))/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -65,14 +66,31 @@ export class ResearchInputs {
     });
   }
 
-  // A manager's review: what each part handed in, as files `unit-<key>-<name>` (an accepted artifact's verified bytes).
-  unitInputsOf(orbitId: string, units: readonly { key: string; handoff: { artifacts: { name: string; sha256: string }[] } | null }[]): { name: string; storePath: string }[] {
-    return units.flatMap((u) => (u.handoff?.artifacts ?? []).map((a) => ({ name: `unit-${u.key}-${a.name.replace(/[^A-Za-z0-9._-]+/g, "-")}`.slice(0, 120), storePath: `artifact:${orbitId}/${a.sha256}` })));
+  // What one attempt may read, as the files of its /input (ADR 0061 §9): each granted source (by its mission label), the
+  // hand-ins of the parts it supervises (`unit-<key>-<file>`, as before), and what its lead shared of a part it waits for
+  // (`from-<key>-summary.md`, and `from-<key>-<file>` when shared in full).
+  stagedOf(orbitId: string, data: Pick<AttemptData, "sources" | "handoffs">): StagedInput[] {
+    const sources = data.sources.flatMap((s) => this.inputsOf(orbitId, [s]).map((i) => ({ ...i, origin: s.origin, ref: s.ref, why: s.origin === "mission" ? "a source of the mission" : "a source your lead shared with you" })));
+    const handoffs = data.handoffs.flatMap((h): StagedInput[] => {
+      const file = (prefix: string, name: string) => `${prefix}-${h.unitKey}-${name.replace(/[^A-Za-z0-9._-]+/g, "-")}`.slice(0, 120);
+      if (h.origin === "supervision") return h.artifacts.map((a) => ({ name: file("unit", a.name), storePath: `artifact:${orbitId}/${a.sha256}`, origin: "supervision", ref: null, why: `what "${h.unitKey}" handed in (revision ${h.revision}) for your review` }));
+      const why = `"${h.unitKey}"'s accepted hand-in (revision ${h.revision}), shared by your lead`;
+      const summary: StagedInput = { name: file("from", "summary.md"), storePath: `handoff-summary:${orbitId}/${h.handoffId}`, origin: "share", ref: h.ref, why: `${why}: its summary` };
+      if (h.mode === "summary") return [summary];
+      return [summary, ...h.artifacts.map((a) => ({ name: file("from", a.name), storePath: `artifact:${orbitId}/${a.sha256}`, origin: "share" as const, ref: h.ref, why }))];
+    });
+    return [...sources, ...handoffs];
   }
 
-  // What the sandbox provider asks for an input's bytes: a research revision's text or file, or a hand-in's artifact --
-  // of that account only.
+  // What the sandbox provider asks for an input's bytes: a research revision's text or file, a hand-in's artifact or a
+  // hand-in's summary -- of that account only (AttemptInputs holds each to the attempt's grant first).
   async read(storePath: string): Promise<Buffer> {
+    const sum = /^handoff-summary:([0-9a-f-]{36})\/([0-9a-f-]{36})$/.exec(storePath);
+    if (sum !== null) {
+      const h = await this.db.one("SELECT revision, summary FROM workforce.handoffs WHERE account_id = $1 AND id = $2", [sum[1], sum[2]]);
+      if (h === null) throw new Error("the hand-in is not there");
+      return Buffer.from(`# Hand-in summary (revision ${Number(h.revision)})\n\n${String(h.summary)}\n`, "utf8");
+    }
     const art = /^artifact:([0-9a-f-]{36})\/([0-9a-f]{64})$/.exec(storePath);
     if (art !== null) {
       const bytes = this.artifacts.read(art[1] as string, art[2] as string);

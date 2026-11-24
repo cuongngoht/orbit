@@ -1,8 +1,9 @@
 // SETTINGS → COMPUTE & STORAGE: what this account's employees may use, level by level -- what the host can give (and how
 // that was learned), the account's budget beside the ceiling the operator authorized, what is reserved by work running
-// now and what is free, the storage promised and really used per category with how each limit is enforced, and how
-// much work runs, waits, or can never start as configured. The owner may lower the budget; raising it above the
-// authorization is the operator's, in a terminal of the server, and the API refuses it whatever a page sends.
+// now and what is free, what the running attempts were last measured USING (never what they reserved), the storage
+// promised and really used per category with how each limit is enforced, and how much work runs, waits, or can never
+// start as configured. The owner may lower the budget; raising it above the authorization is the operator's, in a
+// terminal of the server, and the API refuses it whatever a page sends.
 import { Badge, Button, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import type { AccountResourceBudget, PerEmployeeCeiling, ResourceSummary, StorageCategory, UpdateBudgetRequest } from "@orbit-web/contracts";
 import { STORAGE_CATEGORIES } from "@orbit-web/contracts";
@@ -52,6 +53,39 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       </Text>
       <Text className={s.value}>{value}</Text>
     </div>
+  );
+}
+
+// OBSERVED USE: what the running attempts' containers were last measured using -- memory now and at peak, CPU time --
+// kept apart from what admission reserved for them and from the storage committed. A number nobody measured is said as
+// such, and nothing sampled lately says so instead of a zero.
+function ObservedUse({ observed }: { observed: ResourceSummary["observed"] }) {
+  const { t } = useI18n();
+  const when = useWhen();
+  const s = useStyles();
+  const measured = (v: string | null) => v ?? t("settings.resources.observed.notMeasured");
+  return (
+    <section className={s.block} aria-label={t("settings.resources.observed.title")}>
+      <Text weight="semibold">{t("settings.resources.observed.title")}</Text>
+      <Text size={200} className={s.muted}>
+        {t("settings.resources.observed.hint")}
+      </Text>
+      {observed.sampledAt === null ? (
+        <Text size={200}>{t("settings.resources.observed.none")}</Text>
+      ) : (
+        <>
+          <div className={s.stats}>
+            <Stat label={t("settings.resources.observed.memoryNow")} value={measured(observed.memoryCurrentMiB === null ? null : sizeText(observed.memoryCurrentMiB))} />
+            <Stat label={t("settings.resources.observed.memoryPeak")} value={measured(observed.memoryPeakMiB === null ? null : sizeText(observed.memoryPeakMiB))} />
+            <Stat label={t("settings.resources.observed.cpuTime")} value={measured(observed.cpuSeconds === null ? null : t("settings.resources.observed.seconds", { value: observed.cpuSeconds.toLocaleString("en-US", { maximumFractionDigits: 1 }) }))} />
+            <Stat label={t("settings.resources.observed.runs")} value={observed.runs} />
+          </div>
+          <Text size={200} className={s.muted}>
+            {t("settings.resources.observed.sampled", { when: when(observed.sampledAt) })}
+          </Text>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -353,7 +387,12 @@ export function ComputeStorageSection() {
             {t("settings.resources.now.modelPlanePrefix", { items: r.modelPlane.map((m) => t("settings.resources.now.modelPlaneItem", { runtime: m.runtime, cpu: cpuText(m.cpuMillis), memory: sizeText(m.memoryMiB) })).join("; ") })}
           </Text>
         )}
+        <Text size={200} className={s.muted}>
+          {t("settings.resources.now.reservedNote")}
+        </Text>
       </section>
+
+      {r.observed && <ObservedUse observed={r.observed} />}
 
       <section className={s.block} aria-label={t("settings.resources.storage.title")}>
         <Text weight="semibold">{t("settings.resources.storage.title")}</Text>

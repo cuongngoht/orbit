@@ -215,6 +215,12 @@ export class HandoffRepository {
     return row === null ? null : handoffOf(row);
   }
 
+  // The latest hand-in whose status is one of these (a lead supervises its parts' submitted or accepted ones).
+  async latestIn(orbitId: string, assignmentId: string, statuses: readonly HandoffRecord["status"][]): Promise<HandoffRecord | null> {
+    const row = await this.db.one("SELECT * FROM workforce.handoffs WHERE account_id = $1 AND assignment_id = $2 AND status = ANY($3) ORDER BY revision DESC LIMIT 1", [orbitId, assignmentId, [...statuses]]);
+    return row === null ? null : handoffOf(row);
+  }
+
   async bySubmission(orbitId: string, key: string): Promise<HandoffRecord | null> {
     const row = await this.db.one("SELECT * FROM workforce.handoffs WHERE account_id = $1 AND submission_key = $2", [orbitId, key]);
     return row === null ? null : handoffOf(row);

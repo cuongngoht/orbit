@@ -267,12 +267,12 @@ const SESSION_FIELDS = ["accountId", "sessionId", "connectionId", "runId", "disp
 export function checkSessionSpec(v: unknown): SessionSpec {
   if (!isRecord(v)) return bad("spec must be an object");
   for (const k of Object.keys(v)) if (!SESSION_FIELDS.includes(k)) bad(`${k} is not a field of a run's sandbox`);
-  const kind = v.kind === "chat" || v.kind === "research" ? v.kind : bad("kind must be chat or research");
+  const kind = v.kind === "chat" || v.kind === "research" || v.kind === "executive" ? v.kind : bad("kind must be chat, research or executive");
   const workspace = v.workspace === "rw" || v.workspace === "ro" || v.workspace === "none" ? v.workspace : bad("workspace must be rw, ro or none");
   const sw = isRecord(v.switches) && typeof v.switches.github === "boolean" && typeof v.switches.azure === "boolean" ? v.switches : bad("switches must be {github, azure}, each true or false");
   if (kind === "chat" && workspace === "none") bad("a chat's run mounts its workspace (rw or ro)");
-  if (kind === "research" && workspace !== "none") bad("a research run has no workspace");
-  if (kind === "research" && (sw.github === true || sw.azure === true)) bad("a research run is given no sign-in of GitHub or Azure");
+  if (kind !== "chat" && workspace !== "none") bad(`a ${kind} run has no workspace`);
+  if (kind !== "chat" && (sw.github === true || sw.azure === true)) bad(`a ${kind} run is given no sign-in of GitHub or Azure`);
   return {
     accountId: checkId(v.accountId, "accountId"),
     sessionId: checkId(v.sessionId, "sessionId"),

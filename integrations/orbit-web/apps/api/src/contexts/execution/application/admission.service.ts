@@ -7,6 +7,12 @@
 //
 // RELEASE is idempotent (a reservation is released once: `released_at IS NULL`), and is done only once the attempt's
 // containers are verified gone -- never because a lease ran out.
+//
+// CONVERSATION RUNS (ADR 0062: the CEO's answer in CEO Chat, with no tool) are candidates of the same pass, under the
+// same locks and the same decision, and count in the same budget (their demand: their runtime's model plane). ONE RUN
+// OF AN EMPLOYEE AT A TIME, both ways: a conversation run waits while an attempt of its employee is live, an attempt
+// waits while a conversation run of its employee is, and one pass admits at most one run of an employee. One that can
+// never start fails with why -- never a Needs-me item: its caller says it where it was asked.
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ResourceProfile } from "@orbit-web/contracts";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
@@ -14,6 +20,7 @@ import { AuditService } from "../../../modules/governance/audit.service.js";
 import { systemActor } from "../../shared/application/commands.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { decideAdmissions, type AccountState, type Candidate, type HostState, type Verdict } from "../domain/admission.js";
+import { ConversationRunRepository, conversationRunOf, type ConversationRunRecord } from "../infrastructure/conversation-runs.repository.js";
 import { ResourcesService, SYSTEM_ACCOUNT } from "./resources.service.js";
 
 export interface AdmissionPolicy {
@@ -24,7 +31,30 @@ export interface AdmissionPolicy {
 export interface Admitted {
   runId: string;
   orbitId: string;
+  // An attempt's run (the worker drives it) or a conversation run (its caller does: CONVERSATION_DISPATCH).
+  kind: "attempt" | "conversation";
 }
+
+// A conversation run whose wait changed, or that can never start: its caller is told.
+export interface ConversationHeld {
+  runId: string;
+  orbitId: string;
+  kind: "wait" | "unschedulable";
+  reason: string;
+}
+
+export interface PassResult {
+  admitted: Admitted[];
+  held: ConversationHeld[];
+}
+
+interface PendingConversation {
+  run: ConversationRunRecord;
+  // A run of its employee is live now: it waits for it, and is no candidate.
+  busy: boolean;
+}
+
+const EMPLOYEE_RUNNING = "Its employee is running work now: this answer starts once that run ends.";
 
 interface PendingRow {
   run: Row;
@@ -44,16 +74,24 @@ export class AdmissionService {
     @Inject(ResourcesService) private readonly resources: ResourcesService,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(ConversationRunRepository) private readonly conversations: ConversationRunRepository,
   ) {}
 
   // One pass. The admitted runs are leased to `owner` (the worker that will dispatch them).
-  async pass(owner: string, policy: AdmissionPolicy, leaseMs: number): Promise<Admitted[]> {
+  async pass(owner: string, policy: AdmissionPolicy, leaseMs: number): Promise<PassResult> {
     return this.db.tx(async () => {
       const capacity = await this.resources.capacity(true);
       const pending = await this.pending();
-      if (pending.length === 0) return [];
+      const conversations = await this.pendingConversations();
+      if (pending.length === 0 && conversations.length === 0) return { admitted: [], held: [] };
+      const waits: ConversationHeld[] = [];
+      for (const c of conversations.filter((x) => x.busy)) {
+        const h = await this.holdConversation(c.run, { kind: "wait", code: "employee_running", reason: EMPLOYEE_RUNNING });
+        if (h !== null) waits.push(h);
+      }
+      const free = conversations.filter((x) => !x.busy);
       const accounts = new Map<string, AccountState>();
-      for (const id of [...new Set(pending.map((p) => String(p.run.account_id)))].sort()) {
+      for (const id of [...new Set([...pending.map((p) => String(p.run.account_id)), ...free.map((c) => c.run.orbitId)])].sort()) {
         const b = await this.resources.budget(id, true);
         const r = await this.resources.reserved(id);
         accounts.set(id, { cpuMillis: b.cpuMillis, memoryMiB: b.memoryMiB, storageMiB: b.storageMiB, maxConcurrent: b.maxConcurrent, reservedCpu: r.cpuMillis, reservedMemory: r.memoryMiB, running: r.running, committedStorage: await this.resources.committedStorage(id) });
@@ -61,26 +99,97 @@ export class AdmissionService {
       const held = await this.db.one("SELECT COALESCE(SUM(reserved_cpu_millis), 0) AS c, COALESCE(SUM(reserved_memory_mib), 0) AS m FROM workforce.budgets");
       const host: HostState = { usableCpu: capacity.usable.cpuMillis, usableMemory: capacity.usable.memoryMiB, reservedCpu: Number(held?.c ?? 0), reservedMemory: Number(held?.m ?? 0) };
       const byRun = new Map(pending.map((p) => [String(p.run.id), p]));
-      const candidates: Candidate[] = pending.map((p) => {
-        const mp = this.resources.modelPlane(p.runtime);
-        return {
-          runId: String(p.run.id),
-          orbitId: String(p.run.account_id),
-          priority: Number(p.run.priority),
-          waitingSince: String(p.run.waiting_since ?? p.run.created_at),
-          demand: { cpuMillis: p.profile.cpuMillis + mp.cpuMillis, memoryMiB: p.profile.memoryMiB + mp.memoryMiB, scratchMiB: p.scratchCommitted ? 0 : p.profile.scratchStorageMiB },
-        };
-      });
+      const byConversation = new Map(free.map((c) => [c.run.id, c.run]));
+      const candidates: Candidate[] = [
+        ...pending.map((p) => {
+          const mp = this.resources.modelPlane(p.runtime);
+          return {
+            runId: String(p.run.id),
+            orbitId: String(p.run.account_id),
+            priority: Number(p.run.priority),
+            waitingSince: String(p.run.waiting_since ?? p.run.created_at),
+            demand: { cpuMillis: p.profile.cpuMillis + mp.cpuMillis, memoryMiB: p.profile.memoryMiB + mp.memoryMiB, scratchMiB: p.scratchCommitted ? 0 : p.profile.scratchStorageMiB },
+            employeeId: String(p.run.employee_id),
+          };
+        }),
+        // A conversation run needs its runtime's model plane alone: it has no tool plane and no scratch.
+        ...free.map((c) => {
+          const mp = this.resources.modelPlane(c.run.requested.runtime);
+          return { runId: c.run.id, orbitId: c.run.orbitId, priority: c.run.priority, waitingSince: c.run.waitingSince, demand: { cpuMillis: mp.cpuMillis, memoryMiB: mp.memoryMiB, scratchMiB: 0 }, employeeId: c.run.employeeId };
+        }),
+      ];
       const verdicts = decideAdmissions(candidates, accounts, host, { now: Date.now(), ...policy });
       const admitted: Admitted[] = [];
       for (const v of verdicts) {
+        const conversation = byConversation.get(v.runId);
+        if (conversation !== undefined) {
+          if (v.kind === "admit") {
+            await this.admitConversation(conversation, (candidates.find((c) => c.runId === v.runId) as Candidate).demand, owner, leaseMs);
+            admitted.push({ runId: v.runId, orbitId: v.orbitId, kind: "conversation" });
+          } else {
+            const h = await this.holdConversation(conversation, v);
+            if (h !== null) waits.push(h);
+          }
+          continue;
+        }
         const p = byRun.get(v.runId) as PendingRow;
         if (v.kind === "admit") {
           await this.admit(p, candidates.find((c) => c.runId === v.runId) as Candidate, owner, leaseMs);
-          admitted.push({ runId: v.runId, orbitId: v.orbitId });
+          admitted.push({ runId: v.runId, orbitId: v.orbitId, kind: "attempt" });
         } else await this.hold(p, v);
       }
-      return admitted;
+      return { admitted, held: waits };
+    });
+  }
+
+  // The conversation runs waiting to start (one asked to stop is its caller's to end, not a candidate), each said busy
+  // when a run of its employee is live now.
+  private async pendingConversations(): Promise<PendingConversation[]> {
+    const rows = await this.db.query(
+      `SELECT c.*,
+              (EXISTS (SELECT 1 FROM workforce.runs o WHERE o.account_id = c.account_id AND o.employee_id = c.employee_id AND o.state IN ('starting', 'running', 'unknown'))
+               OR EXISTS (SELECT 1 FROM workforce.conversation_runs o WHERE o.account_id = c.account_id AND o.employee_id = c.employee_id AND o.id <> c.id AND o.state IN ('starting', 'running'))) AS busy
+       FROM workforce.conversation_runs c
+       WHERE c.state IN ('requested', 'waiting') AND c.stop_requested IS NULL
+       ORDER BY c.waiting_since, c.id LIMIT 500 FOR UPDATE OF c SKIP LOCKED`,
+    );
+    return rows.map((r) => ({ run: conversationRunOf(r), busy: r.busy === true }));
+  }
+
+  private async admitConversation(run: ConversationRunRecord, demand: Candidate["demand"], owner: string, leaseMs: number): Promise<void> {
+    await this.db.query("UPDATE workforce.budgets SET reserved_cpu_millis = reserved_cpu_millis + $2, reserved_memory_mib = reserved_memory_mib + $3, running = running + 1 WHERE account_id = $1", [run.orbitId, demand.cpuMillis, demand.memoryMiB]);
+    await this.db.query(
+      `UPDATE workforce.conversation_runs SET state = 'starting', cpu_millis = $3, memory_mib = $4, reserved_at = now(), waiting_reason = NULL, lease_owner = $5, lease_until = $6, updated_at = now(), version = version + 1
+       WHERE account_id = $1 AND id = $2`,
+      [run.orbitId, run.id, demand.cpuMillis, demand.memoryMiB, owner, new Date(Date.now() + leaseMs).toISOString()],
+    );
+    const actor = systemActor(run.orbitId, "admission", `admission:${run.id}`);
+    await this.audit.record(actor.governance, { type: "office.conversation.admitted", outcome: "admitted", runId: run.id, data: { runId: run.id, employeeId: run.employeeId, cpuMillis: demand.cpuMillis, memoryMiB: demand.memoryMiB } });
+    await this.outbox.touched(run.orbitId, ["roster"]);
+  }
+
+  // Waiting (its reason written only when it changed), or failed for good: its caller is told either way.
+  private async holdConversation(run: ConversationRunRecord, v: { kind: "wait" | "unschedulable"; code: string; reason: string }): Promise<ConversationHeld | null> {
+    if (v.kind === "unschedulable") {
+      const failed = await this.conversations.move(run.orbitId, run.id, ["requested", "waiting"], "failed", { detail: v.reason, waitingReason: v.reason, endedAt: new Date().toISOString() });
+      return failed ? { runId: run.id, orbitId: run.orbitId, kind: "unschedulable", reason: v.reason } : null;
+    }
+    if (run.state === "waiting" && run.waitingReason === v.reason) return null;
+    await this.conversations.move(run.orbitId, run.id, ["requested", "waiting"], "waiting", { waitingReason: v.reason });
+    return { runId: run.id, orbitId: run.orbitId, kind: "wait", reason: v.reason };
+  }
+
+  // A conversation run's compute given back once its process is gone. Idempotent; true when this call released it.
+  async releaseConversation(orbitId: string, runId: string, reason: string): Promise<boolean> {
+    return this.db.tx(async () => {
+      await this.resources.budget(orbitId, true);
+      const r = await this.db.one("UPDATE workforce.conversation_runs SET released_at = now() WHERE account_id = $1 AND id = $2 AND reserved_at IS NOT NULL AND released_at IS NULL RETURNING cpu_millis, memory_mib", [orbitId, runId]);
+      if (r === null) return false;
+      await this.db.query("UPDATE workforce.budgets SET reserved_cpu_millis = GREATEST(0, reserved_cpu_millis - $2), reserved_memory_mib = GREATEST(0, reserved_memory_mib - $3), running = GREATEST(0, running - 1) WHERE account_id = $1", [orbitId, Number(r.cpu_millis), Number(r.memory_mib)]);
+      const actor = systemActor(orbitId, "admission", `release:${runId}`);
+      await this.audit.record(actor.governance, { type: "office.conversation.released", outcome: "released", runId, data: { runId, reason: reason.slice(0, 200) } });
+      await this.outbox.touched(orbitId, ["roster"]);
+      return true;
     });
   }
 
@@ -93,8 +202,10 @@ export class AdmissionService {
        JOIN workforce.employee_resources er ON er.account_id = e.account_id AND er.employee_id = e.id AND er.revision = e.resource_revision
        JOIN workforce.assignments a ON a.account_id = r.account_id AND a.id = r.assignment_id
        WHERE r.state IN ('requested', 'waiting_for_resources', 'unschedulable')
-         -- One live attempt per employee: a new attempt waits until its employee's previous one has ended.
+         -- One live run per employee: a new attempt waits until its employee's previous one -- an attempt, or its answer
+         -- in CEO Chat -- has ended.
          AND NOT EXISTS (SELECT 1 FROM workforce.runs o WHERE o.account_id = r.account_id AND o.employee_id = r.employee_id AND o.id <> r.id AND o.state IN ('starting', 'running', 'unknown'))
+         AND NOT EXISTS (SELECT 1 FROM workforce.conversation_runs c WHERE c.account_id = r.account_id AND c.employee_id = r.employee_id AND c.state IN ('starting', 'running'))
        ORDER BY r.waiting_since, r.id LIMIT 500 FOR UPDATE OF r SKIP LOCKED`,
     );
     return rows.map((r) => ({ run: r, profile: r.resource_profile as ResourceProfile, resourceRevision: Number(r.current_resources), runtime: String((r.requested as { runtime?: string }).runtime ?? "claude"), scratchCommitted: r.scratch_committed === true, missionId: String(r.mission_id) }));

@@ -658,7 +658,7 @@ CREATE TABLE governance.run_bindings (
   run_id text PRIMARY KEY,
   token_hash text NOT NULL UNIQUE,
   account_id uuid NOT NULL REFERENCES app.accounts (id),
-  kind text NOT NULL CHECK (kind IN ('chat', 'research', 'assignment')),
+  kind text NOT NULL CHECK (kind IN ('chat', 'research', 'assignment', 'executive')),
   resource_kind text NOT NULL,
   resource_id text NOT NULL,
   research_session_id text,
@@ -678,7 +678,7 @@ CREATE TABLE governance.run_bindings (
   UNIQUE (account_id, run_id),
   CONSTRAINT run_binding_assignment CHECK ((kind = 'assignment') = (assignment_id IS NOT NULL)),
   CHECK ((kind = 'chat') = (resource_kind = 'workspace')),
-  CHECK ((kind = 'assignment') = (resource_kind = 'employee')),
+  CHECK ((kind IN ('assignment', 'executive')) = (resource_kind = 'employee')),
   CHECK ((kind = 'research') = (research_session_id IS NOT NULL)),
   FOREIGN KEY (account_id, resource_kind, resource_id) REFERENCES governance.account_resources (account_id, kind, id),
   FOREIGN KEY (account_id, policy_revision) REFERENCES governance.policy_revisions (account_id, id)
@@ -901,7 +901,8 @@ CREATE TABLE workforce.offices (
   created_by text NOT NULL,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
-  version integer NOT NULL DEFAULT 1
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT office_account_id UNIQUE (account_id, id)
 );
 
 -- defaults: its execution defaults (above the company's); manager_revision: the counter its manager appointments are
@@ -1316,6 +1317,42 @@ CREATE TABLE workforce.compute_reservations (
   FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
 );
 CREATE INDEX compute_held ON workforce.compute_reservations (account_id) WHERE released_at IS NULL;
+
+-- A CONVERSATION RUN (Execution, ADR 0062): one bounded inference of an employee with no tool -- the CEO answering in
+-- CEO Chat -- admitted by the same pass as the attempts (the host's and the account's compute, the account's
+-- concurrency) and never at the same time as another run of its employee: an attempt waits for it, and it for an
+-- attempt. It holds its compute from admission until its process is gone (released_at), and a lease names the process
+-- that drives it: one whose lease ran out is interrupted, never run again.
+CREATE TABLE workforce.conversation_runs (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  employee_id uuid NOT NULL,
+  state text NOT NULL CHECK (state IN ('requested', 'waiting', 'starting', 'running', 'succeeded', 'failed', 'interrupted', 'cancelled')),
+  requested jsonb NOT NULL,
+  priority integer NOT NULL DEFAULT 5,
+  cpu_millis integer,
+  memory_mib integer,
+  reserved_at timestamptz,
+  released_at timestamptz,
+  lease_owner text,
+  lease_until timestamptz,
+  stop_requested text,
+  waiting_reason text,
+  waiting_since timestamptz NOT NULL,
+  started_at timestamptz,
+  ended_at timestamptz,
+  detail text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  CONSTRAINT conversation_run_reserved CHECK ((reserved_at IS NULL) = (cpu_millis IS NULL) AND (cpu_millis IS NULL) = (memory_mib IS NULL))
+);
+CREATE UNIQUE INDEX one_live_conversation_run ON workforce.conversation_runs (account_id, employee_id) WHERE state IN ('starting', 'running');
+CREATE INDEX conversation_runs_pending ON workforce.conversation_runs (waiting_since, id) WHERE state IN ('requested', 'waiting');
+CREATE INDEX conversation_runs_live ON workforce.conversation_runs (lease_until) WHERE state IN ('starting', 'running');
+CREATE TRIGGER conversation_runs_account_fixed BEFORE UPDATE ON workforce.conversation_runs FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 -- What the host can give employee containers: the SYSTEM account's one row. The admission pass locks it.
 CREATE TABLE workforce.capacity (
@@ -1828,7 +1865,144 @@ CREATE TRIGGER department_policy_revisions_fixed BEFORE UPDATE ON governance.dep
 ALTER TABLE governance.run_bindings ADD CONSTRAINT run_binding_department_revision FOREIGN KEY (account_id, department_revision) REFERENCES governance.department_policy_revisions (account_id, id);
 `;
 
+const EXECUTIVE = String.raw`
+-- ===================================================================================================================
+-- CEO CHAT (executive, ADR 0062): the company owner's conversations with the AI CEO. A conversation is the company's,
+-- never a CEO's; a CEO message keeps the employee, the appointment and the revision it answered under; a turn is one
+-- answer, by the CEO in office when it was asked, run as a conversation run (workforce.conversation_runs); a mission given
+-- from a conversation is linked to it and to the message it came from. A conversation's events are its own journal,
+-- numbered by its last_seq and replayed to a client that reconnects.
+-- ===================================================================================================================
+CREATE SCHEMA executive;
+
+CREATE TABLE executive.conversations (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  office_id uuid NOT NULL,
+  title text NOT NULL,
+  created_by_user uuid NOT NULL REFERENCES app.users (id),
+  last_seq bigint NOT NULL DEFAULT 0,
+  next_position bigint NOT NULL DEFAULT 1,
+  messages integer NOT NULL DEFAULT 0,
+  last_message_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT conversation_account_id UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, office_id) REFERENCES workforce.offices (account_id, id)
+);
+CREATE INDEX conversations_recent ON executive.conversations (account_id, last_message_at DESC NULLS LAST, id);
+CREATE TRIGGER conversations_account_fixed BEFORE UPDATE ON executive.conversations FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- A message: the owner's (its user), the CEO's (its employee, appointment and revision: kept when the CEO changes), or
+-- Orbit's records (a report, a notice). Its words are written once; only a proposal's state and its mission move.
+CREATE TABLE executive.messages (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  position bigint NOT NULL CHECK (position >= 1),
+  role text NOT NULL CHECK (role IN ('owner', 'ceo', 'system')),
+  author_name text NOT NULL,
+  user_id uuid REFERENCES app.users (id),
+  employee_id uuid,
+  appointment_id uuid,
+  appointment_revision integer,
+  text text NOT NULL,
+  partial boolean NOT NULL DEFAULT false,
+  model text,
+  effort text,
+  report jsonb,
+  proposal jsonb,
+  proposal_state text CHECK (proposal_state IN ('open', 'given', 'dismissed')),
+  proposal_note text,
+  mission_id uuid,
+  turn_id uuid,
+  notice_key text,
+  created_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT message_account_id UNIQUE (account_id, id),
+  CONSTRAINT message_position UNIQUE (conversation_id, position),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  FOREIGN KEY (account_id, appointment_id) REFERENCES workforce.appointments (account_id, id),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  CONSTRAINT message_owner CHECK ((role = 'owner') = (user_id IS NOT NULL)),
+  CONSTRAINT message_ceo CHECK ((role = 'ceo') = (employee_id IS NOT NULL AND appointment_id IS NOT NULL AND appointment_revision IS NOT NULL)),
+  CONSTRAINT message_report CHECK (report IS NULL OR role = 'system'),
+  CONSTRAINT message_proposal CHECK ((proposal IS NULL) = (proposal_state IS NULL) AND (proposal IS NULL OR role = 'ceo'))
+);
+CREATE UNIQUE INDEX one_notice ON executive.messages (account_id, notice_key) WHERE notice_key IS NOT NULL;
+CREATE TRIGGER messages_account_fixed BEFORE UPDATE ON executive.messages FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- A TURN: one answer of the CEO to the owner's messages since its last one -- by the CEO in office when they were sent
+-- (its appointment and revision: a CEO replaced before it ran does not answer for the new one, nor the new one for it).
+-- One waits (queued or waiting) and one runs at a time per conversation. context: the records it was given.
+CREATE TABLE executive.turns (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  request_message_id uuid NOT NULL,
+  response_message_id uuid,
+  employee_id uuid NOT NULL,
+  author_name text NOT NULL,
+  appointment_id uuid NOT NULL,
+  appointment_revision integer NOT NULL,
+  run_id uuid,
+  state text NOT NULL CHECK (state IN ('queued', 'waiting', 'running', 'completed', 'failed', 'interrupted', 'cancelled')),
+  waiting_reason text,
+  code text,
+  detail text,
+  context jsonb,
+  created_at timestamptz NOT NULL,
+  started_at timestamptz,
+  ended_at timestamptz,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT turn_account_id UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id),
+  FOREIGN KEY (account_id, request_message_id) REFERENCES executive.messages (account_id, id),
+  FOREIGN KEY (account_id, response_message_id) REFERENCES executive.messages (account_id, id),
+  FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  FOREIGN KEY (account_id, appointment_id) REFERENCES workforce.appointments (account_id, id),
+  FOREIGN KEY (account_id, run_id) REFERENCES workforce.conversation_runs (account_id, id)
+);
+CREATE UNIQUE INDEX one_pending_turn ON executive.turns (account_id, conversation_id) WHERE state IN ('queued', 'waiting');
+CREATE UNIQUE INDEX one_running_turn ON executive.turns (account_id, conversation_id) WHERE state = 'running';
+CREATE INDEX turns_of_conversation ON executive.turns (account_id, conversation_id, created_at);
+CREATE TRIGGER turns_account_fixed BEFORE UPDATE ON executive.turns FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+ALTER TABLE executive.messages ADD CONSTRAINT message_turn FOREIGN KEY (account_id, turn_id) REFERENCES executive.turns (account_id, id);
+
+-- A mission given to the CEO from a conversation: the link lives on the conversation's side (a mission is the Work's).
+CREATE TABLE executive.mission_links (
+  account_id uuid NOT NULL,
+  mission_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  message_id uuid NOT NULL,
+  linked_by text NOT NULL,
+  linked_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, mission_id),
+  FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id),
+  FOREIGN KEY (account_id, message_id) REFERENCES executive.messages (account_id, id)
+);
+CREATE INDEX mission_links_of_conversation ON executive.mission_links (account_id, conversation_id, linked_at);
+
+-- THE JOURNAL of a conversation's stream: what a client that reconnects is replayed after its Last-Event-ID.
+CREATE TABLE executive.events (
+  account_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  seq bigint NOT NULL,
+  turn_id uuid,
+  type text NOT NULL,
+  data jsonb NOT NULL,
+  at timestamptz NOT NULL,
+  PRIMARY KEY (conversation_id, seq),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id)
+);
+`;
+
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier
 // build is upgraded; `cli/db.js reset` empties one). Later releases add migrations after it.
 export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "initial", sql: `${INITIAL}
-${WORKFORCE}` }];
+${WORKFORCE}
+${EXECUTIVE}` }];

@@ -171,6 +171,8 @@ function sentenceOf(type: string, p: Record<string, unknown>): string {
       return str("addressee") === "owner" ? `A question was moved up to you (${str("kind").replace(/_/g, " ")}).` : "A question was moved up to the next lead.";
     case "ClarificationWithdrawn":
       return "A question was withdrawn: the one who asked ended.";
+    case "ExecutiveMissionLinked":
+      return "Given to the CEO from CEO Chat.";
     case "AssignmentHandedOver":
       return "The work was handed over to another employee.";
     default:

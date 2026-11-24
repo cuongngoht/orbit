@@ -17,6 +17,9 @@
 //             removed, and Work is told the attempt was interrupted -- never a second spawn to guess. When the provider
 //             cannot say, the run is `unknown`, the assignment RECOVERING, and a person decides.
 import { REPOSITORY_BUNDLES, type AttemptRepository, type RepositoryBundles, type RepositoryInputs } from "./repository-bundles.port.js";
+import { CONVERSATION_DISPATCH, type ConversationDispatch } from "./conversation-dispatch.port.js";
+import { WorkerSignals } from "./worker-signals.js";
+import { ConversationRunRepository } from "../infrastructure/conversation-runs.repository.js";
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import { RUNTIME_LABELS, type ExecutionProfile, type ResourceEvidence, type ResourceProfile, type RunState, type SandboxAttestation } from "@orbit-web/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -137,7 +140,8 @@ const NETWORK_TEXT = (n: EmployeeNetwork): string =>
 
 @Injectable()
 export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy {
-  readonly owner = `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`;
+  // This process's worker's name: the lease owner of what it admits (WorkerSignals: shared with the conversations' runner).
+  readonly owner: string;
   private readonly logger = new Logger("ExecutionWorker");
   private readonly active = new Map<string, Active>();
   private readonly timings: WorkerTimings;
@@ -166,8 +170,13 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     @Optional() @Inject(CONNECTION_SECRETS) private readonly secrets: ConnectionSecrets | null = null,
     // What says whether an OpenAI Codex model is held to Orbit's tools, and gives Orbit's entry for it (observed).
     @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
+    // Conversation runs (the CEO's answers in CEO Chat): admitted and recovered here, run by whoever binds the port.
+    @Optional() @Inject(ConversationRunRepository) private readonly conversationRuns: ConversationRunRepository | null = null,
+    @Optional() @Inject(CONVERSATION_DISPATCH) private readonly conversations: ConversationDispatch | null = null,
+    @Optional() @Inject(WorkerSignals) private readonly signals: WorkerSignals | null = null,
   ) {
     this.timings = workerTimings(config.sourceEnv);
+    this.owner = signals?.owner ?? `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`;
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -177,8 +186,11 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     // Runs an earlier process on this host was driving are this host's to recover now, not after their lease ran out.
     await this.db.run("UPDATE workforce.runs SET lease_until = now() WHERE state IN ('starting', 'running', 'unknown') AND lease_owner LIKE $1 AND lease_owner <> $2", [`${hostname()}:%`, this.owner]);
-    // Anything appended to the outbox (a run requested, resources released, a budget or a profile changed) asks for a pass.
+    await this.conversationRuns?.expireHost(hostname(), this.owner);
+    // Anything appended to the outbox (a run requested, resources released, a budget or a profile changed) asks for a pass,
+    // and so does a conversation run requested (WorkerSignals).
     this.outbox.onAppended(() => this.kick());
+    this.signals?.onKick(() => this.kick());
     this.timer = setInterval(() => this.kick(), this.timings.tickMs);
     this.timer.unref();
     this.heartbeat = setInterval(() => void this.beat(), this.timings.heartbeatMs);
@@ -221,9 +233,13 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   private async tick(): Promise<void> {
     try {
       await this.stopRequested();
-      if ((await this.runs.pending(1)).length > 0) {
-        const admitted = await this.admission.pass(this.owner, { agingMinutes: this.timings.agingMinutes, guardMinutes: this.timings.guardMinutes }, this.timings.leaseMs);
-        for (const a of admitted) this.launch(a.orbitId, a.runId);
+      if ((await this.runs.pending(1)).length > 0 || (await this.conversationRuns?.anyPending()) === true) {
+        const pass = await this.admission.pass(this.owner, { agingMinutes: this.timings.agingMinutes, guardMinutes: this.timings.guardMinutes }, this.timings.leaseMs);
+        for (const a of pass.admitted) {
+          if (a.kind === "conversation") await this.converse(a.orbitId, a.runId);
+          else this.launch(a.orbitId, a.runId);
+        }
+        for (const h of pass.held) await this.conversations?.held(h.orbitId, h.runId, { kind: h.kind, reason: h.reason }).catch((err: unknown) => this.logger.warn(`A conversation run's wait was not told: ${this.messageOf(err)}`));
       }
       if (Date.now() - this.lastSweep >= this.timings.sweepMs) {
         this.lastSweep = Date.now();
@@ -231,6 +247,26 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       }
     } catch (err) {
       this.logger.warn(`The worker's pass failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}`);
+    }
+  }
+
+  // ---- one conversation run (its caller runs it: CONVERSATION_DISPATCH) ------------------------------------------------
+
+  private async converse(orbitId: string, runId: string): Promise<void> {
+    if (this.conversations !== null) return this.conversations.admitted(orbitId, runId);
+    // Nobody here runs conversations: it never starts, and what it reserved goes back.
+    await this.conversationRuns?.move(orbitId, runId, ["starting"], "failed", { detail: "Nothing in this installation answers a conversation run.", endedAt: new Date().toISOString() });
+    await this.admission.releaseConversation(orbitId, runId, "nothing runs conversations here");
+  }
+
+  // A conversation run whose process is gone (its lease ran out): interrupted, released, its caller told -- never run
+  // again.
+  private async recoverConversations(): Promise<void> {
+    for (const run of (await this.conversationRuns?.expired()) ?? []) {
+      const at = new Date().toISOString();
+      if (!(await this.conversationRuns?.move(run.orbitId, run.id, ["starting", "running"], "interrupted", { detail: "Its process was lost (a restart, or it stopped answering): it is not run again.", endedAt: at }))) continue;
+      await this.admission.releaseConversation(run.orbitId, run.id, "interrupted: its process was lost");
+      await this.conversations?.interrupted(run.orbitId, run.id, "server_restart").catch((err: unknown) => this.logger.warn(`An interrupted conversation run was not told: ${this.messageOf(err)}`));
     }
   }
 
@@ -638,6 +674,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   private async recover(): Promise<void> {
+    await this.recoverConversations().catch((err: unknown) => this.logger.warn(`Recovery of conversation runs failed: ${this.messageOf(err)}`));
     for (const run of await this.runs.orphaned()) {
       if (this.active.has(run.id) || !(await this.runs.lease(run.orbitId, run.id, this.owner, this.timings.leaseMs))) continue;
       await this.reconcile(run).catch((err: unknown) => this.logger.warn(`Recovery of ${run.id} failed: ${this.messageOf(err)}`));

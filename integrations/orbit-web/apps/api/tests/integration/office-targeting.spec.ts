@@ -2,7 +2,9 @@
 // the CEO -- resolved in the transaction that makes the mission, and held to what the person saw before sending. Nobody in
 // the slot (no_ceo, no_manager), a suspended holder (appointment_suspended), a slot that moved since the person looked
 // (target_changed, with who is responsible now) are refused and make nothing; a refusal and a success are the answer to
-// their Idempotency-Key, replayed as they were even after the slot moved. Two names for one target conflict (422).
+// their Idempotency-Key, replayed as they were even after the slot moved. Two names for one target conflict (422). The
+// CEO gives work only to departments: with no department that has a manager in office, work for it -- by its slot or by
+// its name -- is refused before anything is made (ceo_needs_departments).
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AppointmentView, type AppointmentsView, type Department, type EmployeeDetail, type MissionAccepted, type MissionDetail, type MissionTargetPreview, type RuntimeConnection } from "@orbit-web/contracts";
@@ -110,9 +112,30 @@ describe("a mission given to a department or to the CEO: resolved now, held to w
     assert.equal(code(await give({ kind: "department", departmentId: dept.Research })), "appointment_suspended");
   });
 
-  test("the CEO: resolved to the CEO in office; two names for one target conflict (422 target_conflict)", async () => {
+  test("the CEO takes work only while a department has a manager in office: refused before (ceo_needs_departments), by slot or by name, replayed under its key", async () => {
     assert.equal((await b.send("POST", "/api/office/appointments", { role: "ceo", employeeId: ids.An })).status, 201);
+    // Research's manager is suspended and Legal has none: nobody the CEO could give the work to.
+    const nobody = await preview("kind=ceo");
+    assert.deepEqual([nobody.responsible, nobody.code], [null, "ceo_needs_departments"]);
+    assert.match(nobody.reason ?? "", /create a department and appoint its manager, or give the work to an employee/);
+    const k = key();
+    const refused = await give({ kind: "ceo" }, {}, k);
+    assert.deepEqual([refused.status, code(refused)], [409, "ceo_needs_departments"]);
+    const again = await give({ kind: "ceo" }, {}, k);
+    assert.deepEqual([again.status, code(again)], [409, "ceo_needs_departments"], "the refusal is the answer to its key");
+    const byName = await b.send("POST", "/api/missions", { title: "x", goal: "[idle] x", targetEmployeeId: ids.An, whenBusy: "enqueue", deliverables: [], acceptanceCriteria: [] }, key());
+    assert.deepEqual([byName.status, code(byName)], [409, "ceo_needs_departments"], "the CEO by name is the CEO");
+    const made = await h.sql("SELECT count(*)::int AS n FROM workforce.missions m JOIN workforce.assignments a ON a.account_id = m.account_id AND a.mission_id = m.id WHERE m.account_id = $1 AND a.employee_id = $2", [h.accountId, ids.An]);
+    assert.equal(made[0]?.n, 0, "nothing was made for the CEO");
+  });
+
+  test("the CEO: resolved to the CEO in office once a department has a manager; two names for one target conflict (422 target_conflict)", async () => {
+    const mai = (await appointments()).managers.find((x) => x.departmentId === dept.Research) as AppointmentView;
+    assert.equal((await b.send("POST", `/api/office/appointments/${mai.id}/reinstate`, { reason: "back" }, ifMatch(mai.version))).status, 200);
+    const p = await preview("kind=ceo");
+    assert.deepEqual([p.code, p.responsible?.employeeId, p.responsible?.role], [null, ids.An, "ceo"]);
     const made = await give({ kind: "ceo" });
+    assert.ok(made.status === 201 || made.status === 202, JSON.stringify(made.body));
     assert.equal((made.body as MissionAccepted).employeeId, ids.An);
     const both = await b.send("POST", "/api/missions", { title: "x", goal: "x", target: { kind: "ceo" }, targetEmployeeId: ids.Mai, deliverables: [], acceptanceCriteria: [] }, key());
     assert.deepEqual([both.status, code(both)], [422, "target_conflict"]);

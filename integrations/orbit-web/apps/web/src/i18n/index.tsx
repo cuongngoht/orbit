@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import chatEn from "./locales/en/chat.json";
 import commonEn from "./locales/en/common.json";
+import executiveEn from "./locales/en/executive.json";
 import governanceEn from "./locales/en/governance.json";
 import officeEn from "./locales/en/office.json";
 import researchEn from "./locales/en/research.json";
@@ -25,6 +26,7 @@ export const EN_MESSAGES = {
   ...prefix("chat", chatEn),
   ...prefix("research", researchEn),
   ...prefix("settings", settingsEn),
+  ...prefix("executive", executiveEn),
 };
 
 export type Locale = "en";

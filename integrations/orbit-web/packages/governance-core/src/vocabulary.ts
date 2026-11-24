@@ -160,11 +160,12 @@ export type ReasonCode = (typeof REASON_CODES)[number];
 export const ENFORCEMENT_SCOPES = ["ACCOUNT", "ACCOUNT_WORKSPACE", "ACCOUNT_RESEARCH", "ACCOUNT_EMPLOYEE"] as const;
 export type EnforcementScope = (typeof ENFORCEMENT_SCOPES)[number];
 
-// The kinds of run a policy decides for: a chat's, a research session's, an employee's assignment.
-export const RUN_KINDS = ["chat", "research", "assignment"] as const;
+// The kinds of run a policy decides for: a chat's, a research session's, an employee's assignment, and an employee's
+// bounded answer in CEO Chat (executive: no tool, decided as the employee, like its assignments).
+export const RUN_KINDS = ["chat", "research", "assignment", "executive"] as const;
 export type RunKind = (typeof RUN_KINDS)[number];
 
 export const isRunKind = (v: unknown): v is RunKind => typeof v === "string" && (RUN_KINDS as readonly string[]).includes(v);
 
 // What a run's decisions are about.
-export const RUN_SCOPES: Record<RunKind, EnforcementScope> = { chat: "ACCOUNT_WORKSPACE", research: "ACCOUNT_RESEARCH", assignment: "ACCOUNT_EMPLOYEE" };
+export const RUN_SCOPES: Record<RunKind, EnforcementScope> = { chat: "ACCOUNT_WORKSPACE", research: "ACCOUNT_RESEARCH", assignment: "ACCOUNT_EMPLOYEE", executive: "ACCOUNT_EMPLOYEE" };

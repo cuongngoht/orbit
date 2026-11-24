@@ -111,4 +111,10 @@ export interface AppEventDataMap {
   "research.evidence.changed": ResearchEvidenceChangedData;
   "office.changed": OfficeChangedData;
   "connections.changed": ConnectionsChangedData;
+  "executive.conversation.created": ExecutiveConversationCreatedData;
+}
+
+// A CEO Chat conversation was started (ids only: what was said is read through the conversation, never broadcast).
+export interface ExecutiveConversationCreatedData {
+  conversationId: string;
 }

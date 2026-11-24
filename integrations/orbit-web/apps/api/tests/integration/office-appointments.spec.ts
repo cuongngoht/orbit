@@ -157,6 +157,11 @@ describe("the company's authority: appointments, delegation grants, execution de
     const [one, two] = await Promise.all([appoint({ role: "manager", departmentId: ids.Finance, employeeId: ids.hoa }), appoint({ role: "manager", departmentId: ids.Finance, employeeId: ids.binh })]);
     assert.deepEqual([one.status, two.status].sort(), [201, 409], JSON.stringify([one.body, two.body]));
     assert.equal((await appointments()).managers.filter((m) => m.departmentId === ids.Finance).length, 1);
+    // Whoever won steps down: the tests below give Finance's people work as members (a manager decides alone, and
+    // one with a team gives the work to it -- roles.ts), so which of them won must not decide what they can do.
+    const winner = (await appointments()).managers.find((m) => m.departmentId === ids.Finance) as AppointmentView;
+    const revoked = await b.send("POST", `/api/office/appointments/${winner.id}/revoke`, { reason: "the race is over" }, ifMatch(winner.version));
+    assert.equal(revoked.status, 200, JSON.stringify(revoked.body));
   });
 
   test("an appointee is not moved out, archived, nor its department archived from under it", async () => {

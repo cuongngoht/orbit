@@ -1,16 +1,19 @@
 // THE DECISIVE ACCEPTANCE (ADR 0061 §8-9), end to end through HTTP on PostgreSQL with scripted CLIs and ONE execution
-// slot. An empty company is activated; Research and Finance are made; An is appointed CEO, Minh Research's manager, Hoa
-// Finance's. The owner gives the CEO "research the game market, propose three business opportunities" (resolved to An,
-// as the person saw). An gives the research to Research and the numbers to Finance -- each to its manager; Minh gives a
-// scan to Lan; Lan asks "global or Southeast Asia?" -- her work ends there -- and Minh, woken to answer, answers; Lan goes
-// on once and hands in; Minh reviews her revision by its digest and hands in; Hoa reads the ledger through the knowledge
-// base granted to her alone and hands in only her summary; An -- refused the knowledge base -- reviews both, integrates and
-// hands in v1. The owner asks on v1 for Vietnam, Thailand and Indonesia; An plans again (Research once more), hands in v2;
-// v1 can no longer be accepted, v2 is, and the mission is complete. Every attempt that delegated, asked or answered ended
-// by design (a success, its slot given back at once), nothing failed, and no two attempts ever held the slot together.
+// slot, under the workforce's roles: the CEO plans and synthesizes, a manager with a team gives the work to it and
+// decides what it asks, a member does the work. An empty company is activated; Research and Finance are made; An is
+// appointed CEO, Minh Research's manager (Lan works there), Hoa Finance's (Binh works there). The owner gives the CEO
+// "research the game market, propose three business opportunities" (resolved to An, as the person saw). An gives the
+// research to Research and the numbers to Finance -- each to its manager; Minh gives a scan to Lan; Lan asks "global or
+// Southeast Asia?" -- her work ends there -- and Minh, woken to answer, answers; Lan goes on once and hands in; Minh
+// reviews her revision by its digest and hands in; Hoa gives the ledger work to Binh, who reads it through the knowledge
+// base granted to him alone and hands in only a summary; Hoa reviews it and hands in hers; An -- offered no knowledge
+// base, and refused it at the door -- reviews both, integrates and hands in v1. The owner asks on v1 for Vietnam,
+// Thailand and Indonesia; An plans again (Research once more, which Minh gives to Lan again), hands in v2; v1 can no
+// longer be accepted, v2 is, and the mission is complete. Every attempt that delegated, asked or answered ended by
+// design (a success, its slot given back at once), nothing failed, and no two attempts ever held the slot together.
 //
-// The knowledge base stands in as a connector tool granted to Hoa only (the real connector broker and its grants are held
-// by their own tests): what matters here is who may call it, and what of it reaches whom.
+// The knowledge base stands in as a connector tool granted to Binh only (the real connector broker and its grants are
+// held by their own tests): what matters here is who may call it, and what of it reaches whom.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AssignmentView, type Department, type EmployeeDetail, type Inbox, type MissionAccepted, type MissionDetail, type MissionTargetPreview, type ResourceSummary, type RuntimeConnection } from "@orbit-web/contracts";
@@ -26,7 +29,7 @@ const FAST = { ORBIT_WEB_SANDBOX_HOST: "127.0.0.1", ORBIT_WEB_WORKER_TICK_MS: "1
 const ifMatch = (v: number) => ({ "if-match": `"${v}"` });
 const LEDGER = "LEDGER 2026 -- revenue by title: Starfall 1,200,000 USD; Riverlands 800,000 USD; payroll 640,000 USD.";
 
-// A knowledge base only Hoa was granted: its calls are recorded with who asked, as which principal.
+// A knowledge base only Binh was granted: its calls are recorded with who asked, as which principal.
 class KnowledgeBase implements ConnectorTools {
   granted = new Set<string>();
   calls: { employeeId: string; agentId: string | null; allowed: boolean }[] = [];
@@ -133,10 +136,23 @@ describe("the company at work: a CEO, two departments, a question answered by it
           await t.call("submit_handoff", { summary: "Research: the market and its segments." });
           return;
         }
+        // ---- Minh again, on the owner's revision: his department does it (Lan), he reviews and hands in.
         if (p.includes("[part:research-sea]")) {
+          const lines = unitLines(p, ["sea-scan"]);
+          if (lines.length === 0) {
+            note("Minh:sea-plan", (await t.call("delegate", { parts: [{ key: "sea-scan", employee: "Lan", title: "Southeast Asia scan", goal: "[part:sea-scan] Size Vietnam, Thailand and Indonesia.", deliverables: ["sea.md"] }] })).text);
+            return;
+          }
+          for (const l of lines.filter((x) => x.includes("awaiting acceptance"))) note("Minh:sea-review", (await t.call("review_unit", { part: "sea-scan", decision: "accept", digest: digestOf(l) })).text);
+          if (pending(lines)) return;
           note("Minh:sea-input", (await t.call("list_files", { path: "/input" })).text);
           await t.call("write_file", { path: "/output/sea.md", content: "Vietnam, Thailand, Indonesia: 210M players.\n" });
           await t.call("submit_handoff", { summary: "Southeast Asia sized." });
+          return;
+        }
+        if (p.includes("[part:sea-scan]")) {
+          await t.call("write_file", { path: "/output/sea.md", content: "Vietnam, Thailand, Indonesia: 210M players.\n" });
+          await t.call("submit_handoff", { summary: "Southeast Asia, scanned." });
           return;
         }
         // ---- Lan, Research's analyst: asks her lead, and goes on once with the answer.
@@ -152,12 +168,26 @@ describe("the company at work: a CEO, two departments, a question answered by it
           await t.call("submit_handoff", { summary: "The scan, global with Southeast Asia." });
           return;
         }
-        // ---- Hoa, Finance's manager: reads the ledger she was granted, hands in only her summary.
+        // ---- Hoa, Finance's manager: her team does it -- she gives the ledger work to Binh, reviews it, hands in.
         if (p.includes("[part:finance]")) {
-          note("Hoa:kb", JSON.stringify(await t.call("finance_ledger", {})));
+          const lines = unitLines(p, ["ledger"]);
+          if (lines.length === 0) {
+            note("Hoa:handin-first", JSON.stringify(await t.call("submit_handoff", { summary: "Finance, done myself." })));
+            note("Hoa:plan", (await t.call("delegate", { parts: [{ key: "ledger", employee: "Binh", title: "Ledger", goal: "[part:ledger] Read the ledger; hand in only a summary of the margins.", deliverables: ["margins.md"] }] })).text);
+            return;
+          }
+          for (const l of lines.filter((x) => x.includes("awaiting acceptance"))) note("Hoa:review", (await t.call("review_unit", { part: "ledger", decision: "accept", digest: digestOf(l) })).text);
+          if (pending(lines)) return;
           note("Hoa:input", (await t.call("list_files", { path: "/input" })).text);
           await t.call("write_file", { path: "/output/finance-summary.md", content: "Margins near 22% on the leading titles.\n" });
           await t.call("submit_handoff", { summary: "Finance: margins near 22%." });
+          return;
+        }
+        // ---- Binh, Finance's accountant: reads the ledger he was granted, hands in only his summary.
+        if (p.includes("[part:ledger]")) {
+          note("Binh:kb", JSON.stringify(await t.call("finance_ledger", {})));
+          await t.call("write_file", { path: "/output/margins.md", content: "Margins near 22% on the leading titles.\n" });
+          await t.call("submit_handoff", { summary: "Margins near 22%." });
         }
       }),
     });
@@ -166,7 +196,7 @@ describe("the company at work: a CEO, two departments, a question answered by it
     await hire("Lan", dept.Research as string, "Analyst");
     await hire("Hoa", dept.Finance as string, "Finance manager");
     await hire("Binh", dept.Finance as string, "Accountant");
-    kb.granted.add(ids.Hoa as string);
+    kb.granted.add(ids.Binh as string);
     for (const body of [{ role: "ceo", employeeId: ids.An }, { role: "manager", departmentId: dept.Research, employeeId: ids.Minh }, { role: "manager", departmentId: dept.Finance, employeeId: ids.Hoa }]) {
       const r = await b.send("POST", "/api/office/appointments", { ...body, reason: "the company's leadership" });
       assert.equal(r.status, 201, JSON.stringify(r.body));
@@ -189,7 +219,7 @@ describe("the company at work: a CEO, two departments, a question answered by it
     const id = (made.body as MissionAccepted).missionId;
 
     // v1, handed in to the owner.
-    let m = await eventually(() => mission(id), (x) => root(x)?.state === "AWAITING_ACCEPTANCE", 120_000);
+    let m = await eventually(() => mission(id), (x) => root(x)?.state === "AWAITING_ACCEPTANCE", 240_000);
     const v1 = m.handoffs.find((x) => x.assignmentId === root(m).id && x.revision === 1);
     assert.ok(v1 !== undefined);
     // Needs me held only the root's acceptance: Lan's question went to her lead, never to the owner.
@@ -204,7 +234,7 @@ describe("the company at work: a CEO, two departments, a question answered by it
     // The owner asks for a revision on v1; An plans again and hands in v2.
     const revise = await b.send("POST", `/api/assignments/${root(m).id}/request-revision`, { handoffDigest: v1.digest, criteria: "Add Vietnam, Thailand and Indonesia." }, ifMatch(root(m).version));
     assert.equal(revise.status, 200, JSON.stringify(revise.body));
-    m = await eventually(() => mission(id), (x) => root(x)?.state === "AWAITING_ACCEPTANCE" && root(x).handoffRevision === 2, 120_000);
+    m = await eventually(() => mission(id), (x) => root(x)?.state === "AWAITING_ACCEPTANCE" && root(x).handoffRevision === 2, 240_000);
     const v2 = m.handoffs.find((x) => x.assignmentId === root(m).id && x.revision === 2);
     assert.ok(v2 !== undefined);
     const stale = await b.send("POST", `/api/assignments/${root(m).id}/accept`, { handoffDigest: v1.digest }, ifMatch(root(m).version));
@@ -219,10 +249,12 @@ describe("the company at work: a CEO, two departments, a question answered by it
     const tree = m.assignments.map((a) => [a.unitKey, a.employeeName, a.target?.kind ?? null, a.target?.departmentName ?? null, a.parentId === null ? null : m.assignments.find((x) => x.id === a.parentId)?.unitKey]);
     assert.deepEqual(tree.sort(), [
       ["finance", "Hoa", "department", "Finance", "root"],
+      ["ledger", "Binh", "employee", null, "finance"],
       ["research", "Minh", "department", "Research", "root"],
       ["research-sea", "Minh", "department", "Research", "root"],
       ["root", "An", "ceo", null, null],
       ["scan", "Lan", "employee", null, "research"],
+      ["sea-scan", "Lan", "employee", null, "research-sea"],
     ].sort());
     assert.ok(m.assignments.every((a) => a.state === "COMPLETED"), JSON.stringify(m.assignments.map((a) => [a.unitKey, a.state])));
     assert.equal(root(m).planCount, 2);
@@ -235,13 +267,20 @@ describe("the company at work: a CEO, two departments, a question answered by it
     assert.match(seen["Lan:after"]?.[0] ?? "", /replaced|stopped|closed/, "an attempt that asked has ended its work");
     assert.match(seen["Lan:prompt"]?.at(-1) ?? "", /Global, with a Southeast Asia section\./);
 
-    // ---- data: Research never held Finance's files; An held Finance's summary, never the ledger; only Hoa read it.
+    // ---- roles: a manager with a team hands in only once it gave the work; the CEO reads no company system.
+    assert.match(seen["Hoa:handin-first"]?.[0] ?? "", /manager_delegates_to_team|give the work to your team first/);
+    assert.match(seen["An:kb"]?.[0] ?? "", /The CEO does not run commands or read the company's systems/);
+
+    // ---- data: Research never held Finance's files; An and Hoa held summaries, never the ledger; only Binh read it.
     for (const k of ["Lan:input", "Minh:input", "Minh:sea-input"]) assert.ok(!/finance|ledger/i.test((seen[k] ?? []).join("\n")), `${k}: ${(seen[k] ?? []).join("\n")}`);
     const anInput = (seen["An:input"] ?? []).join("\n");
     assert.match(anInput, /unit-finance-finance-summary\.md/);
     assert.match(anInput, /unit-research-research\.md/);
     assert.ok(!/ledger/i.test(anInput));
-    assert.deepEqual(new Set(kb.calls.map((c) => `${c.employeeId}:${c.allowed}`)), new Set([`${ids.Hoa}:true`, `${ids.An}:false`]));
+    const hoaInput = (seen["Hoa:input"] ?? []).join("\n");
+    assert.match(hoaInput, /unit-ledger-margins\.md/);
+    assert.ok(!/ledger 2026|1,200,000/i.test(hoaInput));
+    assert.deepEqual(new Set(kb.calls.map((c) => `${c.employeeId}:${c.allowed}`)), new Set([`${ids.Binh}:true`]), "the CEO's call never reached the knowledge base");
     assert.ok(kb.calls.every((c) => c.agentId === `employee:${c.employeeId}`), "each call was made as the employee itself");
     assert.ok(!(await h.sql("SELECT summary FROM workforce.handoffs WHERE account_id = $1", [accountId])).some((r) => String(r.summary).includes("1,200,000")), "the ledger reached no hand-in");
 

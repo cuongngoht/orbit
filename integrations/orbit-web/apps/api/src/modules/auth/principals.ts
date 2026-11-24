@@ -92,8 +92,9 @@ export class PrincipalResolver {
     const runToken = req.headers[RUN_TOKEN_HEADER];
     if (typeof runToken === "string" && runToken.length > 0) {
       const binding = await this.binding(runToken);
-      // A research run's token opens the egress proxy alone: never the agent gateway, never anything else.
-      if (binding === null || binding.kind === "research") return { principal: anonymous, invalidRunToken: true, sessionToken: null };
+      // A research run's token, and an employee's answer in CEO Chat (no tool), open the egress proxy alone: never the
+      // agent gateway, the tool endpoint or anything else.
+      if (binding === null || binding.kind === "research" || binding.kind === "executive") return { principal: anonymous, invalidRunToken: true, sessionToken: null };
       return { principal: { kind: "agent", binding }, invalidRunToken: false, sessionToken: null };
     }
     const token = agentNetwork ? null : cookieValue(req.headers.cookie, SESSION_COOKIE);

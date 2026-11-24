@@ -8,13 +8,16 @@
 //                   text still being written) carry none and are superseded by a durable event.
 //   research stream `GET /api/research/sessions/:id/events`: one research session, numbered and replayed like a chat's,
 //                   in a journal of its own -- a research session is not a chat and shares none of a chat's records.
+//   executive stream `GET /api/executive/conversations/:id/events`: one CEO Chat conversation, numbered and replayed
+//                   like a research session's, in a journal of its own.
 //   app stream      `GET /api/events`: notifications for every page (sidebar, connectors, customizations). None is
 //                   durable: a client that (re)connects reads the read models again, then applies them.
 import type { AppEventDataMap } from "./app.js";
+import type { ExecutiveEventDataMap } from "./executive.js";
 import type { ResearchEventDataMap } from "./research.js";
 import type { SessionEventDataMap } from "./session.js";
 
-export type StreamKind = "session" | "research" | "app";
+export type StreamKind = "session" | "research" | "executive" | "app";
 
 export interface EventSpec {
   stream: StreamKind;
@@ -72,6 +75,15 @@ export const EVENT_CATALOG = {
   "research.evidence.changed": { stream: "app", durable: false, summary: "A research note or finding was created, changed or deleted." },
   "office.changed": { stream: "app", durable: false, summary: "Something in the account's virtual office changed (roster, missions, inbox, schedules, connections): read it again." },
   "connections.changed": { stream: "app", durable: false, summary: "One of the account's AI connections was created, changed, checked, disconnected or removed: read the connections again." },
+  "executive.conversation.created": { stream: "app", durable: false, summary: "A CEO Chat conversation was started: read the conversations again." },
+  "executive.message.created": { stream: "executive", durable: true, summary: "A message was added to a CEO Chat conversation: the owner's, the CEO's, or Orbit's records." },
+  "executive.message.changed": { stream: "executive", durable: true, summary: "A message changed: its mission proposal was given or set aside." },
+  "executive.turn.waiting": { stream: "executive", durable: true, summary: "The CEO's answer waits: queued, or until the CEO's current run ends or resources free up." },
+  "executive.response.started": { stream: "executive", durable: true, summary: "The CEO started answering." },
+  "executive.response.delta": { stream: "executive", durable: false, summary: "A piece of the CEO's answer still being written." },
+  "executive.response.completed": { stream: "executive", durable: true, summary: "The CEO's answer is complete (or was cut off)." },
+  "executive.response.failed": { stream: "executive", durable: true, summary: "The CEO's answer failed, was stopped, or was cut short by a restart: nothing was answered." },
+  "executive.mission.linked": { stream: "executive", durable: true, summary: "A mission was given to the CEO from this conversation." },
 } as const satisfies Record<string, EventSpec>;
 
 export type EventType = keyof typeof EVENT_CATALOG;
@@ -81,12 +93,14 @@ type Catalog = typeof EVENT_CATALOG;
 export type SessionEventType = { [K in EventType]: Catalog[K]["stream"] extends "session" ? K : never }[EventType];
 export type AppStreamEventType = { [K in EventType]: Catalog[K]["stream"] extends "app" ? K : never }[EventType];
 export type ResearchEventType = { [K in EventType]: Catalog[K]["stream"] extends "research" ? K : never }[EventType];
+export type ExecutiveEventType = { [K in EventType]: Catalog[K]["stream"] extends "executive" ? K : never }[EventType];
 export type DurableEventType = { [K in EventType]: Catalog[K]["durable"] extends true ? K : never }[EventType];
 export type DurableSessionEventType = Extract<DurableEventType, SessionEventType>;
 export type DurableResearchEventType = Extract<DurableEventType, ResearchEventType>;
+export type DurableExecutiveEventType = Extract<DurableEventType, ExecutiveEventType>;
 export type TransientEventType = Exclude<SessionEventType, DurableEventType>;
 
-export type EventDataMap = SessionEventDataMap & AppEventDataMap & ResearchEventDataMap;
+export type EventDataMap = SessionEventDataMap & AppEventDataMap & ResearchEventDataMap & ExecutiveEventDataMap;
 
 export const EVENT_TYPES = Object.keys(EVENT_CATALOG) as EventType[];
 

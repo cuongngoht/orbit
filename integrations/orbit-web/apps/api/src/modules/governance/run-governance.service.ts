@@ -251,6 +251,35 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     });
   }
 
+  // An EMPLOYEE'S ANSWER IN CEO CHAT (ADR 0062), held the same way: decided under its account's policy AS the employee
+  // (its overrides apply, and its department's policy when it has one), its model held to the models the company lets
+  // employees run on -- refused, never switched -- and bound to the employee. It has no tool, no gateway and no tool
+  // door; in the governed deployment its only way out is the egress proxy (its token is the proxy's credential).
+  async prepareExecutive(subject: { accountId: string; employeeId: string; title: string; departmentId: string | null }, runId: string, o: { startedBy: Principal; startedByLabel?: string; runtime: RuntimeKind; model: string }): Promise<Prepared> {
+    const { accountId, employeeId, departmentId } = subject;
+    const ctx = contextOf({ kind: "system", id: "run-start", accountId });
+    const scope: EnforcementScope = RUN_SCOPES.executive;
+    const checked = await this.precheck(ctx, scope, employeeId, runId);
+    if (!checked.ok) return checked;
+    const effective = await this.policy.effective(accountId);
+    if (effective === null) return this.refused(ctx, scope, employeeId, runId, "This account has no policy in effect, so nothing may run: publish one under Governance → Policy.", ["NO_PUBLISHED_POLICY"]);
+    const dept = departmentId === null ? null : await this.policy.departmentEffective(accountId, departmentId);
+    const models = composeEmployeeModels(effective.constitution, dept?.policy ?? null).allow;
+    if (!modelAllowed(models, o.runtime, o.model)) return this.refused(ctx, scope, employeeId, runId, `The policy does not let ${subject.title} run on ${o.runtime}:${o.model} (it allows ${models?.join(", ") || "none"}): choose another model on its profile, or change the policy.`, ["RULE_MATCHED"]);
+    await this.resources.ensure("employee", { accountId, id: employeeId, title: subject.title });
+    return this.db.tx(async () => {
+      const { binding, token } = await this.mint({ kind: "executive", accountId, resourceKind: "employee", resourceId: employeeId, researchSessionId: null, agentId: employeeAgent(employeeId), policyRevision: checked.revisionId, startedBy: o.startedByLabel ?? labelOf(o.startedBy), workBranch: null, departmentId, departmentRevision: dept?.record.id ?? null }, runId);
+      const agent: Principal = { kind: "agent", binding };
+      const actx: GovernanceContext = { ...ctx, principal: agent, accountId };
+      const start = await this.policy.decide(actx, { action: "agent.run.start", resource: employeeId, scope, params: { workspace: employeeId, agent: binding.agentId } }, agent);
+      if (start.verdict !== "allow") return this.refusedStart(ctx, scope, binding, start);
+      const isolated = this.config.governance.deployment === "governed";
+      const plan: RunPlan = { scope, binding, env: this.envFor(token, "executive"), webTools: false, execute: false, connectors: [], isolated, note: null, isolation: checked.isolation, revision: checked.revision };
+      await this.started(actx, plan, "executive", binding.startedBy, o.runtime);
+      return { ok: true, plan };
+    });
+  }
+
   // The run ended (however it did): recorded, and its token ends.
   async finished(plan: RunPlan, runId: string, status: string, exitCode: number | null): Promise<void> {
     await this.endBinding(plan.binding, runId, status, exitCode);

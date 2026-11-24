@@ -1,6 +1,7 @@
 // The page's place, kept in the URL hash so a reload or a bookmark comes back to it and the server needs no route but
 // `/`: `#/` is a new session, `#/chat/<id>` an open chat, `#/research/<id>` an open research session,
-// `#/governance/<page>[/<item>]` the Governance console, `#/office[/<page>[/<item>[/<tab>]]]` the virtual office, and
+// `#/governance/<page>[/<item>]` the Governance console, `#/office[/<page>[/<item>[/<tab>]]]` the virtual office,
+// `#/ceo[/<conversationId>]` CEO Chat (a company's: the page sends a person with no company back to `#/`), and
 // `?settings=<section>` opens Settings over any of them.
 import { useCallback, useEffect, useState } from "react";
 
@@ -30,7 +31,8 @@ export type View =
   | { view: "chat"; sessionId: string }
   | { view: "research"; sessionId: string }
   | { view: "governance"; page: GovernancePage; item: string | null }
-  | { view: "office"; page: OfficePage; item: string | null; tab: string | null };
+  | { view: "office"; page: OfficePage; item: string | null; tab: string | null }
+  | { view: "ceo"; conversationId: string | null };
 
 const isGovernancePage = (v: string | undefined): v is GovernancePage => v !== undefined && (GOVERNANCE_PAGES as readonly string[]).includes(v);
 const isOfficePage = (v: string | undefined): v is OfficePage => v !== undefined && (OFFICE_PAGES as readonly string[]).includes(v);
@@ -48,6 +50,7 @@ function viewOf(parts: string[]): View {
   if (parts[0] === "research" && parts[1]) return { view: "research", sessionId: decodeURIComponent(parts[1]) };
   if (parts[0] === "governance") return { view: "governance", page: isGovernancePage(parts[1]) ? parts[1] : "overview", item: parts[2] ? decodeURIComponent(parts[2]) : null };
   if (parts[0] === "office") return officeOf(parts);
+  if (parts[0] === "ceo") return { view: "ceo", conversationId: parts[1] ? decodeURIComponent(parts[1]) : null };
   return { view: "new" };
 }
 
@@ -62,6 +65,7 @@ function pathOf(v: View): string {
   if (v.view === "research") return `#/research/${encodeURIComponent(v.sessionId)}`;
   if (v.view === "governance") return `#/governance/${v.page}${v.item ? `/${encodeURIComponent(v.item)}` : ""}`;
   if (v.view === "office") return officePath(v);
+  if (v.view === "ceo") return v.conversationId === null ? "#/ceo" : `#/ceo/${encodeURIComponent(v.conversationId)}`;
   return "#/";
 }
 

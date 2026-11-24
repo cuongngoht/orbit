@@ -65,6 +65,8 @@ export const AUDIT_EVENTS = {
   "office.resources.changed": row("An employee's resources or the account's budget changed (they apply to future attempts).", "scope", "target", "before", "after"),
   "office.run.admitted": row("An employee's attempt was admitted with the resources it reserved.", "runId", "cpuMillis", "memoryMiB", "scratchMiB", "resourceRevision"),
   "office.run.released": row("An attempt's reserved resources were released once its containers were verified gone.", "runId", "reason"),
+  "office.conversation.admitted": row("An employee's conversation run (its answer in CEO Chat, with no tool) was admitted with the resources it reserved.", "runId", "employeeId", "cpuMillis", "memoryMiB"),
+  "office.conversation.released": row("A conversation run's reserved resources were released once its process was gone.", "runId", "reason"),
   "office.run.inputs": row("What one employee attempt was given to read, and why each (its mission, its lead's share, supervision of its parts, its own grants): the manifest staged before it started.", "runId", "assignmentId", "inputs", "digest"),
   "office.access.revoked": row("An employee attempt was stopped because something it had been given to read is no longer its to read.", "runId", "assignmentId", "cause"),
   "office.data.shared": row("A lead shared data with a part of its team: a source revision or a predecessor's hand-in (summary or full), by revision, recipient and origin.", "missionId", "recipient", "kind", "ref", "mode", "origin"),

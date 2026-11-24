@@ -19,6 +19,9 @@ describe("the page's place, in the URL hash", () => {
       "#/?settings=compute",
       "#/governance/policy/rev-2",
       `#/chat/${EMP}`,
+      "#/ceo",
+      `#/ceo/${MISSION}`,
+      "#/ceo?settings=compute",
       "#/",
     ])
       expect(hrefOf(parseRoute(hash))).toBe(hash);
@@ -35,5 +38,10 @@ describe("the page's place, in the URL hash", () => {
     expect(officeHref("inbox")).toBe("#/office/inbox");
     expect(parseRoute("#/office?settings=ai-connections").settings).toBe("ai-connections");
     expect(parseRoute("#/settings/compute").settings).toBe("compute");
+  });
+
+  test("CEO Chat: its home, and one conversation", () => {
+    expect(parseRoute("#/ceo").view).toEqual({ view: "ceo", conversationId: null });
+    expect(parseRoute(`#/ceo/${MISSION}`).view).toEqual({ view: "ceo", conversationId: MISSION });
   });
 });

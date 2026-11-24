@@ -27,8 +27,9 @@ export interface SessionRunSpec {
   sessionId: string;
   connectionId: string;
   runId: string;
-  kind: "chat" | "research";
-  // A chat's workspace, read-write or (a Plan run its sandbox holds to reading) read-only; research has none.
+  // A chat's run, a research run, or an employee's answer in CEO Chat (executive: like research, no tool and no place).
+  kind: "chat" | "research" | "executive";
+  // A chat's workspace, read-write or (a Plan run its sandbox holds to reading) read-only; research and executive have none.
   workspace: "rw" | "ro" | "none";
   // The installation's GitHub or Azure sign-in, where the account turned that switch on.
   switches: { github: boolean; azure: boolean };

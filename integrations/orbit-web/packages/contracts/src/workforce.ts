@@ -1038,6 +1038,7 @@ export const INTEGRATION_EVENTS = {
   DecisionRequested: 1,
   DecisionResolved: 1,
   OccurrenceCreated: 1,
+  ExecutiveMissionLinked: 1,
   DeliveryRequested: 1,
   DeliveryReconciled: 1,
   PluginGrantChanged: 1,
@@ -1079,7 +1080,7 @@ export interface IntegrationEvent {
   type: IntegrationEventType;
   schemaVersion: number;
   accountId: string;
-  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget" | "appointment" | "delegation" | "clarification";
+  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget" | "appointment" | "delegation" | "clarification" | "conversation";
   aggregateId: string;
   aggregateVersion: number;
   // The order of events one save produced.

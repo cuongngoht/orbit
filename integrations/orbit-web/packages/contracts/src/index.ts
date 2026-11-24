@@ -13,6 +13,7 @@ export * from "./ai-connections.js";
 export * from "./identity.js";
 export * from "./resources.js";
 export * from "./workforce.js";
+export * from "./executive.js";
 
 export const ORBIT_WEB_VERSION = "0.8.0";
 

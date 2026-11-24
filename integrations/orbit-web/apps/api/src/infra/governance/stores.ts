@@ -429,8 +429,9 @@ export class OverrideStore {
 export interface RunBinding {
   runId: string;
   accountId: string;
-  // A chat's run, a research session's, or an employee's assignment's (one attempt: `runId` is the attempt's run).
-  kind: "chat" | "research" | "assignment";
+  // A chat's run, a research session's, an employee's assignment's (one attempt: `runId` is the attempt's run), or an
+  // employee's answer in CEO Chat (executive: `runId` is its conversation run; no tool, the egress proxy alone).
+  kind: "chat" | "research" | "assignment" | "executive";
   // What it works in: a chat (`workspace`), a research workspace with the research session it answers, or -- an
   // assignment -- the employee (`employee`, `resourceId` the employee's id).
   resourceKind: ResourceKind;

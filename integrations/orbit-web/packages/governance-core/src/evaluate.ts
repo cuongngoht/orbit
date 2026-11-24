@@ -108,10 +108,10 @@ interface Step {
   reasonCodes: ReasonCode[];
 }
 
-// The department whose policy decides with the company's: an assignment's run naming its department, and that
-// department's published policy (none published: the company's alone).
+// The department whose policy decides with the company's: an employee's run (an assignment's, or its answer in CEO
+// Chat) naming its department, and that department's published policy (none published: the company's alone).
 export function departmentOf(policy: Policy, request: GovernanceRequest): DepartmentPolicy | null {
-  if (request.runKind !== "assignment" || request.departmentId === undefined || request.departmentId === null) return null;
+  if ((request.runKind !== "assignment" && request.runKind !== "executive") || request.departmentId === undefined || request.departmentId === null) return null;
   return policy.departments?.find((d) => d.metadata.accountId === request.accountId && d.metadata.departmentId === request.departmentId) ?? null;
 }
 

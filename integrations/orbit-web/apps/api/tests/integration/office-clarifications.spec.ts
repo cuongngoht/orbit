@@ -1,13 +1,16 @@
-// QUESTIONS UP THE TREE, the hard cases, through HTTP on PostgreSQL with scripted CLIs (ADR 0061 §8): a question asked of
-// a lead is the lead's -- the person's answer is refused (asked_of_lead) until the lead moves it up, saying why; two
-// answers at once resume the asker exactly once; a lead woken for a question it then leaves unanswered is woken again,
-// and after the last wake the question moves up by itself; a lead cancelled takes its open parts with it and their
-// questions are withdrawn.
+// QUESTIONS UP THE TREE, AND STOPPING BELOW THE CEO -- the hard cases, through HTTP on PostgreSQL with scripted CLIs
+// (ADR 0061 §8, the workforce's roles). A question asked of a lead is the lead's: the person's answer is refused
+// (asked_of_lead). A manager decides -- moving a question up is refused, and it answers. A manager that leaves its team's
+// question unanswered is woken again, and after the last wake the question is ANSWERED FOR ITS ASKER (decide, and say
+// what you assumed): it never reaches the person. A question past its due time is answered the same way (the sweep). A
+// root's own question goes to the person, and two answers at once resume the asker exactly once. A lead cancelled takes
+// its open parts with it and their questions are withdrawn.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AssignmentView, type Department, type EmployeeDetail, type Inbox, type MissionAccepted, type MissionDetail, type RuntimeConnection } from "@orbit-web/contracts";
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import { ClarificationsService } from "../../src/contexts/work/application/clarifications.service.js";
+import { DECIDE_YOURSELF } from "../../src/contexts/work/domain/roles.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
 import { eventually, startHarness, type Browser, type Harness } from "../../src/testing/harness.js";
@@ -18,7 +21,7 @@ const ifMatch = (v: number) => ({ "if-match": `"${v}"` });
 let n = 0;
 const key = () => ({ "idempotency-key": `clarify-key-${Date.now()}-${(n += 1)}` });
 
-describe("questions up the tree: escalation, one answer, unanswered wakes, a cancelled lead", () => {
+describe("questions up the tree, stopping below the CEO: a manager decides, one answer, unanswered wakes, a cancelled lead", () => {
   let h: Harness;
   let b: Browser;
   let connection: RuntimeConnection;
@@ -77,6 +80,7 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
           note("woken", q);
           await gate;
           note("escalate", (await t.call("escalate_question", { question_id: q, why: "human_decision", note: "Pricing is the owner's call." })).text);
+          note("answer", (await t.call("answer_question", { question_id: q, answer: "Premium, with a budget tier." })).text);
           return;
         }
         if (p.includes("[lead:slow]") && q !== undefined) {
@@ -110,11 +114,11 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
     await h?.close();
   });
 
-  test("asked of its lead: the person's answer is refused until the lead moves it up; then two answers at once resume the asker once", async () => {
+  test("asked of its lead: the person's answer is refused; a manager may not move it up -- it decides, and the asker resumes once", async () => {
     const made = await give("Minh", "[lead:escalate] Price the product.");
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const id = (made.body as MissionAccepted).missionId;
-    // Lan asks; Minh is woken to answer. Before he moves it up, it is not the owner's to answer.
+    // Lan asks; Minh is woken to answer. It is not the owner's to answer.
     await eventually(() => said.woken ?? [], (x) => x.length > 0, 30_000);
     let m = await mission(id);
     assert.deepEqual([m.clarifications[0]?.addressee, m.clarifications[0]?.addresseeName], ["lead", "Minh"]);
@@ -123,55 +127,84 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
     const refused = await b.send("POST", `/api/assignments/${early.id}/answer`, { answer: "Premium." }, ifMatch(early.version));
     assert.equal(code(refused), "asked_of_lead", JSON.stringify(refused.body));
     release();
-    m = await eventually(() => mission(id), (x) => x.clarifications[0]?.addressee === "owner", 30_000);
-    assert.deepEqual(m.clarifications[0]?.route.map((r) => [r.addressee, r.why]), [["lead", "asked of its lead"], ["owner", "Pricing is the owner's call."]]);
-    const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id);
-    assert.ok(inbox.some((i) => i.kind === "information" && i.assignmentId === part(m).id), JSON.stringify(inbox));
-    const asker = part(m);
-    assert.ok(asker.actions.includes("answer"), "moved up to the owner: now theirs to answer");
-    const [one, two] = await Promise.all([b.send("POST", `/api/assignments/${asker.id}/answer`, { answer: "Premium." }, ifMatch(asker.version)), b.send("POST", `/api/assignments/${asker.id}/answer`, { answer: "Budget." }, ifMatch(asker.version))]);
-    assert.equal([one.status, two.status].filter((s) => s === 200).length, 1, JSON.stringify([one.body, two.body]));
+    m = await eventually(() => mission(id), (x) => x.clarifications[0]?.state === "answered", 30_000);
+    assert.match(said.escalate?.[0] ?? "", /You decide: questions do not leave your department/, "moving it up was refused at the door");
+    assert.deepEqual(m.clarifications[0]?.route.map((r) => r.addressee), ["lead"], "it never left the department");
+    assert.equal(m.clarifications[0]?.answer, "Premium, with a budget tier.");
+    const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id && i.kind === "information");
+    assert.deepEqual(inbox, [], "nothing of it reached Needs me");
     m = await eventually(() => mission(id), (x) => part(x).state === "AWAITING_ACCEPTANCE" || part(x).state === "COMPLETED", 30_000);
     assert.equal(part(m).attempts, 2, "resumed exactly once");
-    assert.equal(m.clarifications[0]?.state, "answered");
-    assert.equal((said.resumed ?? []).length, 1);
     await cancelRoot(id);
   });
 
-  test("a lead that leaves its team's question unanswered is woken again; after the last wake the question moves up by itself", async () => {
+  test("a root's own question goes to the person; two answers at once resume the asker exactly once", async () => {
+    await eventually(async () => (await b.get(`/api/employees/${ids.Lan}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    const resumed = (said.resumed ?? []).length;
+    const made = await give("Lan", "[part:ask] Price it yourself.");
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    let m = await eventually(() => mission(id), (x) => x.clarifications[0]?.addressee === "owner", 30_000);
+    const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id);
+    assert.ok(inbox.some((i) => i.kind === "information" && i.assignmentId === root(m).id), JSON.stringify(inbox));
+    const asker = root(m);
+    assert.ok(asker.actions.includes("answer"));
+    const [one, two] = await Promise.all([b.send("POST", `/api/assignments/${asker.id}/answer`, { answer: "Premium." }, ifMatch(asker.version)), b.send("POST", `/api/assignments/${asker.id}/answer`, { answer: "Budget." }, ifMatch(asker.version))]);
+    assert.equal([one.status, two.status].filter((x) => x === 200).length, 1, JSON.stringify([one.body, two.body]));
+    m = await eventually(() => mission(id), (x) => root(x).state === "AWAITING_ACCEPTANCE", 30_000);
+    assert.equal(root(m).attempts, 2, "resumed exactly once");
+    assert.equal(m.clarifications[0]?.state, "answered");
+    assert.equal((said.resumed ?? []).length, resumed + 1);
+    await cancelRoot(id);
+  });
+
+  test("a manager that leaves its team's question unanswered is woken again; after the last wake it is answered for the asker, never moved to the person", async () => {
     await eventually(async () => (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    await eventually(async () => (await b.get(`/api/employees/${ids.Lan}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    const resumed = (said.resumed ?? []).length;
     const made = await give("Minh", "[lead:silent] Price it again.");
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const id = (made.body as MissionAccepted).missionId;
-    const m = await eventually(() => mission(id), (x) => x.clarifications[0]?.addressee === "owner", 60_000);
+    const m = await eventually(() => mission(id), (x) => x.clarifications[0]?.state === "answered", 60_000);
     const c = m.clarifications[0];
-    assert.equal(c?.kind, "unanswered");
-    assert.match(c?.route.at(-1)?.why ?? "", /woken 2 times and did not answer it/);
-    assert.ok((said.silent ?? []).length >= 2);
+    assert.deepEqual([c?.addressee, c?.answer], ["lead", DECIDE_YOURSELF]);
+    assert.ok((said.silent ?? []).length >= 2, "woken again before it was answered for the asker");
+    await eventually(() => said.resumed ?? [], (x) => x.length === resumed + 1, 30_000);
+    assert.match((said.resumed ?? []).at(-1) ?? "", /decide with your best judgment and say what you assumed/);
+    const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id && i.kind === "information");
+    assert.deepEqual(inbox, [], "nothing of it reached Needs me");
+    await cancelRoot(id);
   });
 
   test("a lead cancelled takes its open parts with it; their open questions are withdrawn", async () => {
-    const m0 = await eventually(async () => ((await b.get("/api/missions?state=open")).body as { missions: { id: string; title: string }[] }).missions.find((x) => x.title.startsWith("[lead:silent]")), (x) => x !== undefined, 10_000);
-    let m = await mission(m0?.id as string);
-    const lead = root(m);
-    const r = await b.send("POST", `/api/assignments/${lead.id}/cancel`, { reason: "not needed any more" }, ifMatch(lead.version));
-    assert.equal(r.status, 200, JSON.stringify(r.body));
-    m = await eventually(() => mission(m0?.id as string), (x) => part(x).state === "CANCELLED", 30_000);
+    await eventually(async () => (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    await eventually(async () => (await b.get(`/api/employees/${ids.Lan}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    const slow = (said.slow ?? []).length;
+    const made = await give("Minh", "[lead:slow] Price it once more.");
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    await eventually(() => said.slow ?? [], (x) => x.length > slow, 30_000);
+    await cancelRoot(id);
+    const m = await eventually(() => mission(id), (x) => part(x).state === "CANCELLED", 30_000);
     assert.equal(m.clarifications[0]?.state, "withdrawn");
     const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === m.id);
     assert.deepEqual(inbox, [], "nothing of it waits for the person");
   });
-  test("a question past its due time moves up by itself (the sweep): from a root lead, to the person, as a deadline", async () => {
-    const lead = (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail;
-    if (lead.availability !== "available") await eventually(async () => (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+
+  test("a question past its due time is answered for its asker (the sweep): from a root manager, never to the person", async () => {
+    await eventually(async () => (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    await eventually(async () => (await b.get(`/api/employees/${ids.Lan}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    const slow = (said.slow ?? []).length;
     const made = await b.send("POST", "/api/missions", { title: "[lead:slow] With a deadline", goal: "[lead:slow] Price it by Friday.", target: { kind: "employee", employeeId: ids.Minh }, whenBusy: "reject", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: ["Done"], deadline: new Date(Date.now() + 3_600_000).toISOString() }, key());
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const id = (made.body as MissionAccepted).missionId;
-    await eventually(() => said.slow ?? [], (x) => x.length > 0, 30_000);
-    // The sweep, as if the deadline had passed: the question goes up -- here, from the root's lead, to the person.
+    await eventually(() => said.slow ?? [], (x) => x.length > slow, 30_000);
+    // The sweep, as if the deadline had passed: the next hop is the person, so the question is answered for Lan.
     await h.app.get(ClarificationsService).sweep(new Date(Date.now() + 2 * 3_600_000).toISOString());
-    const m = await eventually(() => mission(id), (x) => x.clarifications[0]?.addressee === "owner", 10_000);
-    assert.deepEqual([m.clarifications[0]?.kind, m.clarifications[0]?.route.at(-1)?.why], ["deadline", "it was due and not answered"]);
+    const m = await eventually(() => mission(id), (x) => x.clarifications[0]?.state === "answered", 10_000);
+    assert.deepEqual([m.clarifications[0]?.addressee, m.clarifications[0]?.answer], ["lead", DECIDE_YOURSELF]);
+    const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id && i.kind === "information");
+    assert.deepEqual(inbox, []);
     await cancelRoot(id);
   });
 });

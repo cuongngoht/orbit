@@ -131,7 +131,7 @@ export interface SessionPlaces {
   connectionId: string;
   runId: string;
   dispatchKey: string;
-  kind: "chat" | "research";
+  kind: "chat" | "research" | "executive";
   workspace: "rw" | "ro" | "none";
   switches: { github: boolean; azure: boolean };
 }
@@ -158,12 +158,13 @@ export interface SessionMount {
 
 // What of Orbit Web's data a run's sandbox sees: its chat's workspace (read-only for a Plan run that is held there) and
 // project plugin, its connection's home, its own account's Orbit store -- and the installation's GitHub or Azure
-// sign-in only where the account turned that switch on. A research run: its connection's home alone.
+// sign-in only where the account turned that switch on. A research run, and an employee's answer in CEO Chat: its
+// connection's home alone.
 export function sessionMounts(s: SessionPlaces): SessionMount[] {
   const at = (subpath: string, readOnly = false): SessionMount => ({ subpath, target: `/data/${subpath}`, readOnly });
   const account = checkId(s.accountId, "accountId");
   const connection = at(`connections/${account}/${checkId(s.connectionId, "connectionId")}`);
-  if (s.kind === "research") return [connection];
+  if (s.kind === "research" || s.kind === "executive") return [connection];
   const chat = checkId(s.sessionId, "sessionId");
   return [
     at(`workspaces/${chat}`, s.workspace === "ro"),

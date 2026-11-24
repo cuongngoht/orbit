@@ -26,6 +26,8 @@ export interface Candidate {
   priority: number;
   waitingSince: string;
   demand: Demand;
+  // Whose run it is: one pass admits at most one run of an employee (an attempt and a conversation run take turns).
+  employeeId?: string;
 }
 
 export interface AccountState {
@@ -92,6 +94,7 @@ export function decideAdmissions(candidates: readonly Candidate[], accounts: Map
   for (const q of queues.values()) q.sort((x, y) => agedPriority(y, p) - agedPriority(x, p) || Date.parse(x.waitingSince) - Date.parse(y.waitingSince) || x.runId.localeCompare(y.runId));
   const verdicts: Verdict[] = [];
   const heldAccounts = new Set<string>();
+  const admittedEmployees = new Set<string>();
   let hostHeld = false;
   for (;;) {
     const ready = [...queues.entries()].filter(([, q]) => q.length > 0);
@@ -103,6 +106,10 @@ export function decideAdmissions(candidates: readonly Candidate[], accounts: Map
     const impossible = never(c, a, host);
     if (impossible !== null) {
       verdicts.push({ runId: c.runId, orbitId, kind: "unschedulable", ...impossible });
+      continue;
+    }
+    if (c.employeeId !== undefined && admittedEmployees.has(c.employeeId)) {
+      verdicts.push({ runId: c.runId, orbitId, kind: "wait", code: "employee_running", reason: "Another run of this employee starts first: one run of an employee at a time." });
       continue;
     }
     if (heldAccounts.has(orbitId) || hostHeld) {
@@ -117,6 +124,7 @@ export function decideAdmissions(candidates: readonly Candidate[], accounts: Map
       a.committedStorage += c.demand.scratchMiB;
       host.reservedCpu += c.demand.cpuMillis;
       host.reservedMemory += c.demand.memoryMiB;
+      if (c.employeeId !== undefined) admittedEmployees.add(c.employeeId);
       verdicts.push({ runId: c.runId, orbitId, kind: "admit" });
       continue;
     }

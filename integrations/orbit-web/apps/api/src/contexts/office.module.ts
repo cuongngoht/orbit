@@ -1,7 +1,7 @@
 // THE VIRTUAL OFFICE (ADR 0061), as one Nest module over its bounded contexts -- Workforce (office, departments,
 // employees, their Personal Sandboxes), Work (missions, assignments, handoffs, Needs me), Execution (runs, admission,
-// the worker, the tool plane's door, artifacts) and what they share (the outbox, the consumers, idempotency, the office
-// governance of commands). The contexts talk through their ports (RUN_OUTCOMES, the sandbox provider, the connection
+// the worker, the tool plane's door, artifacts), Executive (CEO Chat, ADR 0062: the owner's conversations with the AI
+// CEO) and what they share (the outbox, the consumers, idempotency, the office governance of commands). The contexts talk through their ports (RUN_OUTCOMES, the sandbox provider, the connection
 // secrets); this module only binds them.
 //
 // The sandbox provider and the connections' credential store are bound by whoever composes the application (the
@@ -71,6 +71,17 @@ import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepo
 import { AppointmentsController } from "./workforce/presentation/appointments.controller.js";
 import { DeskController } from "./workforce/presentation/desk.controller.js";
 import { OfficeController } from "./workforce/presentation/office.controller.js";
+import { CONVERSATION_DISPATCH } from "./execution/application/conversation-dispatch.port.js";
+import { WorkerSignals } from "./execution/application/worker-signals.js";
+import { ConversationRunRepository } from "./execution/infrastructure/conversation-runs.repository.js";
+import { ExecutiveReports } from "./executive/application/executive-reports.js";
+import { ExecutiveService } from "./executive/application/executive.service.js";
+import { ExecutiveNotices } from "./executive/application/notices.consumer.js";
+import { TurnRunner } from "./executive/application/turn-runner.js";
+import { ExecutiveTurns } from "./executive/application/turns.js";
+import { ExecutiveRepository } from "./executive/infrastructure/executive.repository.js";
+import { ExecutiveStream } from "./executive/infrastructure/executive-stream.js";
+import { ExecutiveController } from "./executive/presentation/executive.controller.js";
 
 const PROVIDERS: Provider[] = [
   // shared
@@ -122,8 +133,19 @@ const PROVIDERS: Provider[] = [
   ConnectionWatch,
   AccessWatch,
   ModelPlaneEgress,
+  ConversationRunRepository,
+  WorkerSignals,
   { provide: RUN_OUTCOMES, useExisting: MissionsService },
   { provide: ATTEMPT_DATA, useExisting: AttemptDataService },
+  // executive (CEO Chat, ADR 0062): its conversation runs are admitted and recovered by Execution, run here.
+  ExecutiveRepository,
+  ExecutiveStream,
+  ExecutiveTurns,
+  ExecutiveReports,
+  TurnRunner,
+  ExecutiveService,
+  ExecutiveNotices,
+  { provide: CONVERSATION_DISPATCH, useExisting: TurnRunner },
 ];
 
 @Module({})
@@ -145,7 +167,7 @@ export class OfficeModule {
       module: OfficeModule,
       imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
       providers: [...PROVIDERS, AttemptInputs, ...defaults, ...bindings],
-      controllers: [OfficeController, AppointmentsController, DeskController, MissionsController, SchedulesController, ToolsController],
+      controllers: [OfficeController, AppointmentsController, DeskController, MissionsController, SchedulesController, ToolsController, ExecutiveController],
       exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs],
     };
   }

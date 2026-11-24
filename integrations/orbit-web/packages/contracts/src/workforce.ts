@@ -293,9 +293,11 @@ export interface EmployeeTemplate {
   profile: EmployeeProfile;
 }
 
+// Activating the company (POST /api/office/setup): its name, else the account's company name. A company starts EMPTY --
+// no department, employee, mission or CEO -- so `departments` is accepted only empty: an older client's example
+// departments are refused (422 departments_not_accepted), never made silently.
 export interface SetUpOfficeRequest {
   name?: string;
-  // Example departments to start with (skippable): names only.
   departments?: string[];
 }
 
@@ -1008,15 +1010,17 @@ export function checkEmployeeProfile(v: unknown): Checked<EmployeeProfile> {
   }));
 }
 
-export function checkSetUpOffice(body: unknown): Checked<Required<SetUpOfficeRequest>> {
-  if (body === undefined || body === null) return { ok: true, value: { name: "Office", departments: [] } };
+// `name: null` -- none typed: the account's company name is the company's. `departments` is what the request named (the
+// service refuses any), kept so the refusal can say what it was.
+export function checkSetUpOffice(body: unknown): Checked<{ name: string | null; departments: string[] }> {
+  if (body === undefined || body === null) return { ok: true, value: { name: null, departments: [] } };
   if (!isRecord(body)) return NOT_OBJECT;
   const errors = unknownFields(body, ["name", "departments"]);
-  const name = body.name === undefined ? "Office" : line(body.name, WORKFORCE_LIMITS.nameLength);
+  const name = body.name === undefined ? undefined : line(body.name, WORKFORCE_LIMITS.nameLength);
   const departments = body.departments === undefined ? [] : lines(body.departments, 12, WORKFORCE_LIMITS.nameLength);
   if (name === null) errors.push(`name must be 1-${WORKFORCE_LIMITS.nameLength} printable characters`);
-  if (departments === null) errors.push("departments must be at most 12 names");
-  return checked(errors, () => ({ name: name as string, departments: [...new Set(departments as string[])] }));
+  if (departments === null) errors.push("departments must be a list of names");
+  return checked(errors, () => ({ name: name ?? null, departments: [...new Set(departments as string[])] }));
 }
 
 export function checkCreateDepartment(body: unknown): Checked<CreateDepartmentRequest> {

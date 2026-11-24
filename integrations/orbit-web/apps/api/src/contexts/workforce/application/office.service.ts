@@ -1,6 +1,10 @@
-// THE OFFICE (Workforce context): an account's one virtual office, its departments, and the roster the office shows.
+// THE OFFICE (Workforce context): an account's one virtual office -- its company -- its departments, and the roster the
+// office shows.
 //
-// Setting the office up is idempotent (one per account, a unique constraint behind it). A department is archived only
+// ACTIVATING the company is idempotent (one per account, a unique constraint behind it) and starts it EMPTY: no
+// department, employee, mission or CEO. It needs the account's owner, the company's name, governance that can decide,
+// one AI connection of the account usable for a function Orbit Web supports, and the resource budget; once active, a
+// company stays active whatever happens to its connections (readiness changes, never the company). A department is archived only
 // once its members moved -- to another department or to "Unassigned" -- and the move and the archive cannot race: the
 // archive holds the department's row FOR UPDATE, a move into it FOR SHARE, so one waits for the other and the second
 // sees what the first did. History keeps the department an assignment was claimed under (its pin), whatever happens
@@ -26,11 +30,13 @@ import { randomUUID } from "node:crypto";
 import { Db, type Row } from "../../../infra/db/db.js";
 import { accepted } from "../../../common/errors.js";
 import { OfficeGovernance, type Actor } from "../../shared/application/commands.js";
-import { conflictWith, missing, stale } from "../../shared/domain.js";
+import { conflictWith, missing, refused, stale, unprocessable } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { workLabelOf } from "../domain/work-label.js";
-import { usable } from "../infrastructure/connections.reader.js";
-import { ConnectionsReader } from "../infrastructure/connections.reader.js";
+import { RevisionsService } from "../../../modules/governance/revisions.service.js";
+import { activationOf } from "../../../modules/connections/uses.js";
+import { ResourcesService } from "../../execution/application/resources.service.js";
+import { ConnectionsReader, employeeUse, usesOf } from "../infrastructure/connections.reader.js";
 import { DepartmentRepository, departmentView, EmployeeRepository, OfficeRepository, type DepartmentRecord } from "../infrastructure/repositories.js";
 
 const PAGE = 100;
@@ -62,6 +68,8 @@ export class OfficeService {
     @Inject(ConnectionsReader) private readonly connections: ConnectionsReader,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
+    @Inject(RevisionsService) private readonly policies: RevisionsService,
+    @Inject(ResourcesService) private readonly resources: ResourcesService,
   ) {}
 
   templates(): EmployeeTemplate[] {
@@ -85,23 +93,37 @@ export class OfficeService {
     };
   }
 
-  // Idempotent: a refresh or a second window gets the same office.
-  async setUp(actor: Actor, body: unknown): Promise<Office> {
+  // Activates the company -- or answers the one already active (a refresh, a retry, a second tab: one office, one
+  // OfficeSetUp). Its checks, in this order, inside one transaction: no example departments, the owner, a name, the
+  // policy in effect (provisioned once if missing, BEFORE the decision: with none every decision is a deny), the policy's
+  // decision, then -- only for a company not yet active -- a usable AI connection and the budget made from the capacity.
+  async activate(actor: Actor, body: unknown): Promise<Office> {
     const req = accepted(checkSetUpOffice(body));
-    return this.governance.command(actor, "office.setup", actor.command.orbitId, async () => {
-      await this.governance.authorize(actor, "office.department.manage", actor.command.orbitId, { account: actor.command.orbitId });
+    if (req.departments.length > 0)
+      throw unprocessable("departments_not_accepted", "A company is activated empty: departments are made after it is (New department), never with its activation.", { departments: req.departments });
+    const orbitId = actor.command.orbitId;
+    return this.governance.command(actor, "office.setup", orbitId, async () => {
+      if (actor.owner === null) throw refused("owner_required", "Only the account's owner activates its company.");
+      const name = (req.name ?? (await this.offices.companyName(orbitId)) ?? "").trim();
+      if (name === "") throw unprocessable("company_name_required", "Name the company first: type its name, or set it in Settings → Account.");
+      if ((await this.policies.ensureReady(orbitId)) === "invalid")
+        throw conflictWith("governance_not_ready", "The account's policy in effect no longer reads as valid, so nothing can be decided: publish a valid revision in Governance → Policy first.");
+      await this.governance.authorize(actor, "office.department.manage", orbitId, { account: orbitId });
+      const existing = await this.offices.get(orbitId);
+      if (existing !== null) return existing;
+      const activation = activationOf((await this.connections.all(orbitId)).map(usesOf));
+      if (!activation.ready) throw conflictWith("connection_required", activation.reason ?? "Connect an AI CLI first (Settings → AI Connections).", { where: activation.where, uses: activation.uses });
+      await this.resources.budget(orbitId);
       const at = new Date().toISOString();
-      const { office, created } = await this.offices.ensure(actor.command.orbitId, randomUUID(), req.name, actor.command.actor, at);
+      const { office, created } = await this.offices.ensure(orbitId, randomUUID(), name, actor.command.actor, at);
       if (!created) return office;
-      let position = 0;
-      for (const name of req.departments) {
-        const id = randomUUID();
-        await this.departments.insert({ id, orbitId: actor.command.orbitId, name, position: position++, archivedAt: null, version: 1 }, at);
-        await this.outbox.append(actor.command, [{ type: "DepartmentCreated", aggregateType: "department", aggregateId: id, aggregateVersion: 1, payload: { name } }]);
-      }
       await this.outbox.append(actor.command, [{ type: "OfficeSetUp", aggregateType: "office", aggregateId: office.id, aggregateVersion: 1, payload: { name: office.name } }]);
-      await this.outbox.touched(actor.command.orbitId, ["roster"]);
-      await this.governance.recorded(actor, "office.setup", "office", office.id, 1, `${req.departments.length} department(s)`);
+      await this.outbox.touched(orbitId, ["roster"]);
+      const usable = Object.entries(activation.uses)
+        .filter(([, ok]) => ok)
+        .map(([use]) => use)
+        .join(", ");
+      await this.governance.recorded(actor, "office.setup", "office", office.id, 1, `activated empty; a connection usable for ${usable}`);
       return office;
     });
   }
@@ -238,13 +260,23 @@ export class OfficeService {
     const profile = r.profile as EmployeeProfile;
     const connection = r.connection_id !== null ? (connections.get(String(r.connection_id)) ?? null) : (defaults.get(profile.execution.runtime) ?? null);
     const expiresAt = r.expires_at === null ? null : String(r.expires_at);
+    const use = employeeUse(connection);
     const label = workLabelOf({
       employment: String(r.employment) as EmployeeCard["employment"],
       expired: expiresAt !== null && Date.parse(expiresAt) <= Date.now(),
       sandbox: r.sandbox_state === null ? null : (String(r.sandbox_state) as never),
       sandboxReason: r.sandbox_reason === null ? null : String(r.sandbox_reason),
-      connectionUsable: usable(connection),
-      connectionReason: connection === null ? "No AI connection: connect one in Settings → AI Connections." : connection.auth !== "connected" ? `The ${connection.label} connection is ${connection.auth.replace("_", " ")}${connection.reason ? `: ${connection.reason}` : ""}.` : connection.catalog.source !== "account" ? `The ${connection.label} connection has no model catalog from its CLI yet.` : null,
+      connectionUsable: use.ready,
+      connectionReason:
+        connection === null
+          ? "No AI connection: connect one in Settings → AI Connections."
+          : connection.auth !== "connected"
+            ? `The ${connection.label} connection is ${connection.auth.replace("_", " ")}${connection.reason ? `: ${connection.reason}` : ""}.`
+            : connection.catalog.source !== "account"
+              ? `The ${connection.label} connection has no model catalog from its CLI yet.`
+              : use.ready
+                ? null
+                : `The ${connection.label} connection cannot run employees: ${use.reason}.`,
       held: r.held_id === null ? null : { state: String(r.held_state) as never, waitingOn: r.held_waiting === null ? null : String(r.held_waiting) },
       liveRun: r.run_state === null ? null : (String(r.run_state) as RunState),
     });

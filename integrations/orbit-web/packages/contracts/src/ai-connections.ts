@@ -113,11 +113,44 @@ export interface PluginGrantView {
   revision: number;
 }
 
+// WHAT A CONNECTION CAN BE USED FOR -- three questions kept apart, never one word:
+//   auth                 is it authenticated (the CLI's own status: `auth`)
+//   uses.chat|research   which interactive function of Orbit Web it can serve now
+//   uses.employee        whether its runtime and models can run a governed AI employee now (= `employeeReady`)
+// A use the adapter does not have at all is `runtime_not_supported` (a page hides it rather than showing it "off").
+//   not_connected             its CLI does not say it is signed in
+//   runtime_not_supported     this runtime does not do that here (Antigravity runs no chat; research runs on Claude Code)
+//   not_default               research runs on the account's DEFAULT Claude Code connection, and this is another one
+//   catalog_not_from_account  its models were not read from the account (a fallback list never serves an employee)
+//   no_models                 its CLI listed no model
+//   not_held                  its model plane was not observed held to Orbit's tools
+export const CONNECTION_USE_REASONS = ["not_connected", "runtime_not_supported", "not_default", "catalog_not_from_account", "no_models", "not_held"] as const;
+export type ConnectionUseReason = (typeof CONNECTION_USE_REASONS)[number];
+
+export interface ConnectionUse {
+  ready: boolean;
+  // Why not, in words a person can act on (null when ready).
+  reason: string | null;
+  reasonCode: ConnectionUseReason | null;
+}
+
+export interface ConnectionUses {
+  chat: ConnectionUse;
+  research: ConnectionUse;
+  employee: ConnectionUse;
+}
+
 // Whether a connection can run AI employees: connected, its models read from the account, and its model plane observed held
-// to Orbit's tools (`reason`: why not, in words a person can act on).
-export interface EmployeeReadiness {
+// to Orbit's tools (`reason`: why not, in words a person can act on). The same answer as `uses.employee`.
+export type EmployeeReadiness = ConnectionUse;
+
+// Whether the account can ACTIVATE its company: one connection of its own usable for a function Orbit Web supports --
+// chat, research or an employee. `where` is the page that connects one.
+export interface CompanyActivation {
   ready: boolean;
   reason: string | null;
+  uses: { chat: boolean; research: boolean; employee: boolean };
+  where: string;
 }
 
 export interface ConnectionCatalog {
@@ -155,7 +188,9 @@ export interface RuntimeConnection {
   plugins: PluginGrantView | null;
   // How many employees run on it (a disconnect stops their new work).
   employees: number;
-  // Whether an employee can be hired on it and run with it now, and why not (the reason a person acts on).
+  // What it can be used for now (chat, research, an employee), each with the reason it cannot.
+  uses: ConnectionUses;
+  // Whether an employee can be hired on it and run with it now, and why not (the reason a person acts on): `uses.employee`.
   employeeReady: EmployeeReadiness;
   version: number;
   createdAt: string;
@@ -165,8 +200,10 @@ export interface AiConnectionsView {
   installations: RuntimeInstallation[];
   connections: RuntimeConnection[];
   methods: MethodSupport[];
-  // Whether the account can hire: at least one connection connected with a catalog read from its CLI.
+  // Whether the account can hire: at least one connection that can run an employee now.
   canHire: boolean;
+  // Whether the account can activate its company (one connection usable for chat, research or an employee).
+  activation: CompanyActivation;
   asOf: string;
 }
 

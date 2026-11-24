@@ -154,6 +154,15 @@ export class RevisionsService {
     });
   }
 
+  // Whether the account's governance can decide its office's commands: a policy in effect that still reads as valid.
+  // Missing (an account made before its default was provisioned), it is provisioned now -- once, under the head's lock;
+  // one that no longer reads as valid is reported and never overwritten (its owner publishes a valid one).
+  async ensureReady(accountId: string): Promise<"ready" | "provisioned" | "invalid"> {
+    const record = await this.revisions.effective(accountId);
+    if (record === null) return (await this.provision(accountId)) === null ? "ready" : "provisioned";
+    return checkConstitution(parsed(record.document)).ok ? "ready" : "invalid";
+  }
+
   // ---- writing a draft ----------------------------------------------------------------------------------------------
 
   async create(ctx: GovernanceContext, body: unknown): Promise<RevisionView> {

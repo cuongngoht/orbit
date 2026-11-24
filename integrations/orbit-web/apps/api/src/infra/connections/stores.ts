@@ -3,6 +3,7 @@
 // consent to load the Orbit plugin per connection and use case. Nothing here is a credential: an API key is kept by the
 // credential store (credentials.ts) and named here by reference.
 import type { AuthMethod, AuthState, ConnectionCatalog, ConnectionReason, InstallationState, PluginUseCase, RuntimeCapabilities, RuntimeInstallation, RuntimeKind } from "@orbit-web/contracts";
+import { appendEvents } from "../../contexts/shared/infrastructure/outbox.js";
 import { SYSTEM_ACCOUNT_ID, type Versioned } from "../accounts/stores.js";
 import { Db, jsonParam, type Row } from "../db/db.js";
 
@@ -79,6 +80,14 @@ const connectionOf = (r: Row): ConnectionRecord => ({
   version: Number(r.version),
 });
 
+// Whether a check moved what decides work on a connection: signed in or not, where its models came from and which they
+// are, whether its model plane is held to Orbit's tools.
+const movedForWork = (a: ConnectionRecord, b: ConnectionRecord): boolean =>
+  a.authState !== b.authState ||
+  a.catalog.source !== b.catalog.source ||
+  a.catalog.models.map((m) => m.id).join("\n") !== b.catalog.models.map((m) => m.id).join("\n") ||
+  a.capabilities.toolPlaneSplit !== b.capabilities.toolPlaneSplit;
+
 const LIVE = "removed_at IS NULL";
 
 export class ConnectionStore {
@@ -125,7 +134,9 @@ export class ConnectionStore {
       const c = await this.db.one(`SELECT runtime FROM ai_connections WHERE account_id = $1 AND id = $2 AND ${LIVE} FOR UPDATE`, [accountId, id]);
       if (c === null) return;
       await this.db.query(`UPDATE ai_connections SET is_default = false, updated_at = $3, version = version + 1 WHERE account_id = $1 AND runtime = $2 AND is_default AND ${LIVE}`, [accountId, str(c.runtime), at]);
-      await this.db.query("UPDATE ai_connections SET is_default = true, updated_at = $3, version = version + 1 WHERE account_id = $1 AND id = $2", [accountId, id, at]);
+      const row = await this.db.one("UPDATE ai_connections SET is_default = true, updated_at = $3, version = version + 1 WHERE account_id = $1 AND id = $2 RETURNING *", [accountId, id, at]);
+      // An employee whose profile names no connection runs on its runtime's default: which one that is just moved.
+      if (row !== null) await this.changed(connectionOf(row), false);
     });
   }
 
@@ -136,11 +147,25 @@ export class ConnectionStore {
   // What a status check says. The identity it names may be held by ONE live connection at a time (the partial unique
   // index `one_account_per_identity`): a second holder makes this throw a unique violation, nothing written.
   async setStatus(accountId: string, id: string, s: ConnectionStatus): Promise<ConnectionRecord | null> {
-    const row = await this.db.one(
-      `UPDATE ai_connections SET auth_state = $3, reason = $4, reason_code = $10, identity = $5, identity_key = $6, catalog = $7::jsonb, capabilities = $8::jsonb, checked_at = $9, updated_at = $9, version = version + 1 WHERE account_id = $1 AND id = $2 AND ${LIVE} RETURNING *`,
-      [accountId, id, s.authState, s.reason, s.identity, s.identityKey, jsonParam(s.catalog), jsonParam(s.capabilities), s.checkedAt, s.reasonCode],
-    );
-    return row === null ? null : connectionOf(row);
+    return this.db.tx(async () => {
+      const before = await this.db.one(`SELECT * FROM ai_connections WHERE account_id = $1 AND id = $2 AND ${LIVE} FOR UPDATE`, [accountId, id]);
+      const row = await this.db.one(
+        `UPDATE ai_connections SET auth_state = $3, reason = $4, reason_code = $10, identity = $5, identity_key = $6, catalog = $7::jsonb, capabilities = $8::jsonb, checked_at = $9, updated_at = $9, version = version + 1 WHERE account_id = $1 AND id = $2 AND ${LIVE} RETURNING *`,
+        [accountId, id, s.authState, s.reason, s.identity, s.identityKey, jsonParam(s.catalog), jsonParam(s.capabilities), s.checkedAt, s.reasonCode],
+      );
+      if (row === null) return null;
+      const after = connectionOf(row);
+      if (before !== null && movedForWork(connectionOf(before), after)) await this.changed(after, false);
+      return after;
+    });
+  }
+
+  // What the office must hear of (ConnectionChanged in its journal): work queued on a connection that became usable may
+  // start, and one that stopped being usable makes its employees not ready. Written in the change's own transaction.
+  private async changed(c: ConnectionRecord, removed: boolean): Promise<void> {
+    await appendEvents(this.db, { orbitId: c.accountId, actor: "system:connections", correlationId: `connection:${c.id}:${c.version}` }, [
+      { type: "ConnectionChanged", aggregateType: "connection", aggregateId: c.id, aggregateVersion: c.version, payload: { runtime: c.runtime, auth: c.authState, catalog: c.catalog.source, toolPlaneSplit: c.capabilities.toolPlaneSplit, isDefault: c.isDefault, removed } },
+    ]);
   }
 
   // The live connection that holds an identity now, if any.
@@ -151,7 +176,10 @@ export class ConnectionStore {
 
   // Removed: kept as a row (what referred to it keeps its target), holding no identity and no default any more.
   async remove(accountId: string, id: string, at: string): Promise<void> {
-    await this.db.query(`UPDATE ai_connections SET removed_at = $3, is_default = false, identity_key = NULL, credential_ref = NULL, auth_state = 'disconnected', reason_code = NULL, updated_at = $3, version = version + 1 WHERE account_id = $1 AND id = $2 AND ${LIVE}`, [accountId, id, at]);
+    await this.db.tx(async () => {
+      const row = await this.db.one(`UPDATE ai_connections SET removed_at = $3, is_default = false, identity_key = NULL, credential_ref = NULL, auth_state = 'disconnected', reason_code = NULL, updated_at = $3, version = version + 1 WHERE account_id = $1 AND id = $2 AND ${LIVE} RETURNING *`, [accountId, id, at]);
+      if (row !== null) await this.changed(connectionOf(row), true);
+    });
   }
 
   async pluginsChanged(accountId: string, id: string, at: string): Promise<void> {

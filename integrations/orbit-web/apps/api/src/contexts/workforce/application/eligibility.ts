@@ -5,7 +5,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { EmployeeProfile, Employment, ExecutionProfile } from "@orbit-web/contracts";
 import { WORKING } from "../domain/employee.js";
-import { ConnectionsReader, usable, type ConnectionFacts } from "../infrastructure/connections.reader.js";
+import { ConnectionsReader, employeeUse, type ConnectionFacts } from "../infrastructure/connections.reader.js";
 import { DepartmentRepository, EmployeeRepository, SandboxRepository, type SandboxRecord } from "../infrastructure/repositories.js";
 
 export interface Eligibility {
@@ -61,7 +61,8 @@ export class EmployeeEligibility {
     if (expiresAt !== null && Date.parse(expiresAt) <= Date.now()) return `${name}'s engagement as an assistant ended.`;
     if (sandbox === null) return `${name}'s Personal Sandbox is missing.`;
     if (sandbox.state !== "READY") return `${name}'s Personal Sandbox is ${sandbox.state.toLowerCase()}${sandbox.reason !== null ? `: ${sandbox.reason}` : ""}.`;
-    if (!usable(connection)) return `${name}'s AI connection cannot run work now${connection?.reason ? `: ${connection.reason}` : ""}.`;
+    const use = employeeUse(connection);
+    if (!use.ready) return `${name}'s AI connection cannot run work now: ${use.reason}.`;
     return null;
   }
 }

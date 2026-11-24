@@ -100,19 +100,31 @@ export const notSetUp = (): Roster => roster({ office: null, departments: [], em
 
 export const capabilities = (over: Partial<RuntimeCapabilities> = {}): RuntimeCapabilities => ({ start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit: "yes", pluginObservation: "yes", ...over });
 
+type Made = Omit<RuntimeConnection, "employeeReady" | "uses">;
+
 // What the server says of a connection's readiness for employees (employee-runtimes.ts employeeReadiness), for a fixture
 // that does not say it itself: connected, read from the account, with a model, its model plane held to Orbit's tools.
-function readinessOf(c: Omit<RuntimeConnection, "employeeReady">): RuntimeConnection["employeeReady"] {
-  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})` };
-  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account" };
-  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model" };
-  if (c.runtime === "agy" || c.capabilities.toolPlaneSplit !== "yes") return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})` };
-  return { ready: true, reason: null };
+function readinessOf(c: Made): RuntimeConnection["employeeReady"] {
+  if (c.runtime === "agy") return { ready: false, reason: "Google Antigravity runs no employee.", reasonCode: "runtime_not_supported" };
+  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})`, reasonCode: "not_connected" };
+  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account", reasonCode: "catalog_not_from_account" };
+  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model", reasonCode: "no_models" };
+  if (c.capabilities.toolPlaneSplit !== "yes") return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})`, reasonCode: "not_held" };
+  return { ready: true, reason: null, reasonCode: null };
+}
+
+// What the server says a connection can be used for (modules/connections/uses.ts), for a fixture that does not say it.
+function usesOf(c: Made, employee: RuntimeConnection["employeeReady"]): RuntimeConnection["uses"] {
+  const ready = { ready: true, reason: null, reasonCode: null };
+  const notConnected = { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})`, reasonCode: "not_connected" as const };
+  const chat = c.runtime === "agy" ? { ready: false, reason: "Google Antigravity runs no chat in Orbit Web.", reasonCode: "runtime_not_supported" as const } : c.auth !== "connected" ? notConnected : c.catalog.models.length === 0 ? { ready: false, reason: "its CLI listed no model", reasonCode: "no_models" as const } : ready;
+  const research = c.runtime !== "claude" ? { ready: false, reason: "Research runs on Claude Code.", reasonCode: "runtime_not_supported" as const } : !c.isDefault ? { ready: false, reason: "Research runs on the account's default Claude Code connection.", reasonCode: "not_default" as const } : c.auth !== "connected" ? notConnected : ready;
+  return { chat, research, employee };
 }
 
 // A Claude Code subscription connection, connected, with its account's catalog and the Orbit plugin approved for employees.
 export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnection {
-  const made: Omit<RuntimeConnection, "employeeReady"> = {
+  const made: Made = {
     id: CONN_CLAUDE,
     runtime: "claude",
     label: "Claude subscription",
@@ -142,7 +154,20 @@ export function connection(over: Partial<RuntimeConnection> = {}): RuntimeConnec
     createdAt: "2026-11-20T00:00:00.000Z",
     ...over,
   };
-  return { ...made, employeeReady: over.employeeReady ?? readinessOf(made) };
+  const employeeReady = over.employeeReady ?? readinessOf(made);
+  return { ...made, uses: over.uses ?? usesOf(made, employeeReady), employeeReady };
+}
+
+// Whether a company can be activated with these connections (uses.ts activationOf).
+export function activationOf(connections: readonly RuntimeConnection[]): AiConnectionsView["activation"] {
+  const any = (k: "chat" | "research" | "employee") => connections.some((c) => c.uses[k].ready);
+  const ready = any("chat") || any("research") || any("employee");
+  return {
+    ready,
+    reason: ready ? null : "Connect an AI CLI first: activating the company needs one AI connection of this account that Orbit Web can use for chat, research or an employee (Settings → AI Connections).",
+    uses: { chat: any("chat"), research: any("research"), employee: any("employee") },
+    where: "#/settings/ai-connections",
+  };
 }
 
 export function connectionsView(over: Partial<AiConnectionsView> = {}): AiConnectionsView {
@@ -165,6 +190,7 @@ export function connectionsView(over: Partial<AiConnectionsView> = {}): AiConnec
     canHire: true,
     asOf: AS_OF,
     ...over,
+    activation: over.activation ?? activationOf(over.connections ?? [connection()]),
   };
 }
 

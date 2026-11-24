@@ -52,7 +52,7 @@ describe("an employee on OpenAI Codex", () => {
   test("its binary observed holding the model plane to Orbit's tools, the connection is offered for employees", async () => {
     assert.deepEqual([codex.auth, codex.catalog.source, codex.catalog.recommended], ["connected", "account", "gpt-6.1-sol"]);
     assert.equal(codex.capabilities.toolPlaneSplit, "yes");
-    assert.deepEqual(codex.employeeReady, { ready: true, reason: null });
+    assert.deepEqual(codex.employeeReady, { ready: true, reason: null, reasonCode: null });
     const observed = h.fake.callsOf(program("codex", "exec", "--json")).at(-1) as Call;
     assert.ok(observed.args.includes("--disable") && observed.args.includes("shell_tool"), "observed as an employee's model plane runs");
     assert.ok(observed.args.some((a) => a.startsWith("model_providers.orbit_observation=") && a.includes("127.0.0.1")), "its provider a stand-in on the loopback");

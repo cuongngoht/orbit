@@ -49,10 +49,10 @@ import { ClaudeModelsService } from "./claude-models.service.js";
 import { ConnectionHooks } from "./connection-hooks.js";
 import { mayCreate, METHOD_SUPPORT, supportOf } from "./methods.js";
 import { orbitPlugin } from "./plugin.js";
+import { activationOf, connectionUses } from "./uses.js";
 import { ConnectionProbe, noCatalog } from "./probe.js";
 import { RUNTIME_SPECS } from "./runtimes.js";
 import { signsInHere } from "./sign-in.js";
-import { employeeReadiness } from "../../contexts/execution/infrastructure/employee-runtimes.js";
 
 const METHOD_LABELS: Record<AuthMethod, string> = { subscription: "subscription", api_key: "API key", cloud: "cloud provider" };
 
@@ -87,7 +87,7 @@ export class ConnectionsService {
     const installations = await this.probe.installations();
     const own = await this.connections.list(owner.accountId);
     const connections = await Promise.all(own.map((c) => this.viewOf(c)));
-    return { installations, connections, methods: [...METHOD_SUPPORT], canHire: connections.some((c) => c.employeeReady.ready), asOf: new Date().toISOString() };
+    return { installations, connections, methods: [...METHOD_SUPPORT], canHire: connections.some((c) => c.uses.employee.ready), activation: activationOf(connections.map((c) => c.uses)), asOf: new Date().toISOString() };
   }
 
   async one(owner: Owner, id: string): Promise<RuntimeConnection> {
@@ -257,6 +257,7 @@ export class ConnectionsService {
   // A connection as the page shows it.
   async viewOf(c: ConnectionRecord): Promise<RuntimeConnection> {
     const spec = RUNTIME_SPECS[c.runtime];
+    const uses = connectionUses({ runtime: c.runtime, label: c.label, auth: c.authState, reason: c.reason, isDefault: c.isDefault, catalog: c.catalog, capabilities: c.capabilities });
     return {
       id: c.id,
       runtime: c.runtime,
@@ -274,7 +275,8 @@ export class ConnectionsService {
       signInHere: this.config.signInOnPage && signsInHere(c),
       plugins: c.runtime === "claude" ? await this.pluginsOf(c) : null,
       employees: await this.connections.employeesOn(c.accountId, c.id),
-      employeeReady: employeeReadiness({ runtime: c.runtime, label: c.label, auth: c.authState, reason: c.reason, catalog: c.catalog, capabilities: c.capabilities }),
+      uses,
+      employeeReady: uses.employee,
       version: c.version,
       createdAt: c.createdAt,
     };

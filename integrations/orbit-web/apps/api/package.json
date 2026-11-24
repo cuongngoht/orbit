@@ -14,7 +14,8 @@
     "test:unit": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/src/**/*.spec.js\"",
     "test:integration": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/tests/integration/**/*.spec.js\"",
     "start": "node --disable-warning=ExperimentalWarning dist/main.js",
-    "test:sandbox": "npm run test:compile && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-timeout=1800000 --test-reporter=spec \".spec-dist/tests/sandbox/**/*.spec.js\""
+    "test:sandbox": "npm run test:compile && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-timeout=1800000 --test-reporter=spec \".spec-dist/tests/sandbox/**/*.spec.js\"",
+    "test:native": "npm run test:compile && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-timeout=600000 --test-reporter=spec \".spec-dist/tests/native/**/*.spec.js\""
   },
   "dependencies": {
     "@nestjs/common": "12.5.1",

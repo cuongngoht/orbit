@@ -50,10 +50,11 @@ export class OfficeController {
     return this.office.roster(ownerActor().command.orbitId, { department: str(q.department), q: str(q.q), status: str(q.status), cursor: str(q.cursor) });
   }
 
+  // Activates the company (empty), or answers the one already active.
   @Post("office/setup")
   @HttpCode(HttpStatus.OK)
-  setUp(@Body() body: unknown): Promise<Office> {
-    return this.office.setUp(ownerActor(), body);
+  activate(@Body() body: unknown): Promise<Office> {
+    return this.office.activate(ownerActor(), body);
   }
 
   @Post("office/departments")

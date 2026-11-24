@@ -63,22 +63,7 @@ export class Outbox {
   // Writes the events in the caller's transaction; returns their ids.
   async append(ctx: CommandContext, events: readonly RaisedEvent[]): Promise<string[]> {
     if (events.length > 0) this.db.afterCommit(() => this.listeners.forEach((l) => l()));
-    const ids: string[] = [];
-    const ordinals = new Map<string, number>();
-    const at = new Date().toISOString();
-    for (const e of events) {
-      const key = `${e.aggregateId}:${e.aggregateVersion}`;
-      const ordinal = ordinals.get(key) ?? (await this.nextOrdinal(e.aggregateId, e.aggregateVersion));
-      ordinals.set(key, ordinal + 1);
-      const id = randomUUID();
-      ids.push(id);
-      await this.db.query(
-        `INSERT INTO workforce.events (id, account_id, type, schema_version, aggregate_type, aggregate_id, aggregate_version, ordinal, actor, occurred_at, correlation_id, causation_id, mission_id, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)`,
-        [id, ctx.orbitId, e.type, INTEGRATION_EVENTS[e.type], e.aggregateType, e.aggregateId, e.aggregateVersion, ordinal, ctx.actor, at, ctx.correlationId, ctx.causationId ?? null, e.missionId ?? null, jsonParam(checkedPayload(e.type, e.payload))],
-      );
-    }
-    return ids;
+    return appendEvents(this.db, ctx, events);
   }
 
   // Moves the account's office version and, once committed, tells the account's pages which areas to read again.
@@ -96,8 +81,31 @@ export class Outbox {
     return Number((await this.db.one("SELECT version FROM workforce.office_versions WHERE account_id = $1", [orbitId]))?.version ?? 0);
   }
 
-  private async nextOrdinal(aggregateId: string, version: number): Promise<number> {
-    const row = await this.db.one("SELECT COALESCE(MAX(ordinal) + 1, 0) AS n FROM workforce.events WHERE aggregate_id = $1 AND aggregate_version = $2", [aggregateId, version]);
-    return Number(row?.n ?? 0);
+}
+
+// The journal's one writer: what Outbox.append writes, for a store outside the office's modules that raises an event of
+// its own in the transaction of its change (a connection's status, ConnectionStore) -- delivered by the same dispatcher,
+// which polls the journal, so nothing needs waking.
+export async function appendEvents(db: Db, ctx: CommandContext, events: readonly RaisedEvent[]): Promise<string[]> {
+  const ids: string[] = [];
+  const ordinals = new Map<string, number>();
+  const at = new Date().toISOString();
+  for (const e of events) {
+    const key = `${e.aggregateId}:${e.aggregateVersion}`;
+    const ordinal = ordinals.get(key) ?? (await nextOrdinal(db, e.aggregateId, e.aggregateVersion));
+    ordinals.set(key, ordinal + 1);
+    const id = randomUUID();
+    ids.push(id);
+    await db.query(
+      `INSERT INTO workforce.events (id, account_id, type, schema_version, aggregate_type, aggregate_id, aggregate_version, ordinal, actor, occurred_at, correlation_id, causation_id, mission_id, payload)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)`,
+      [id, ctx.orbitId, e.type, INTEGRATION_EVENTS[e.type], e.aggregateType, e.aggregateId, e.aggregateVersion, ordinal, ctx.actor, at, ctx.correlationId, ctx.causationId ?? null, e.missionId ?? null, jsonParam(checkedPayload(e.type, e.payload))],
+    );
   }
+  return ids;
+}
+
+async function nextOrdinal(db: Db, aggregateId: string, version: number): Promise<number> {
+  const row = await db.one("SELECT COALESCE(MAX(ordinal) + 1, 0) AS n FROM workforce.events WHERE aggregate_id = $1 AND aggregate_version = $2", [aggregateId, version]);
+  return Number(row?.n ?? 0);
 }

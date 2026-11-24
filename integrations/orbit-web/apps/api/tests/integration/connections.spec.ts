@@ -96,7 +96,7 @@ describe("settings → AI connections", () => {
     identities.byAccount.set(h.accountId as string, claudeIdentityOf("octo"));
     const checked = ok<RuntimeConnection>(await h.send("POST", `/api/connections/${c.id}/check`));
     assert.deepEqual([checked.auth, checked.identity, checked.catalog.source], ["connected", "octo@example.com (Octo Org)", "account"]);
-    assert.deepEqual(checked.employeeReady, { ready: true, reason: null }, "its binary splits the tool plane: an employee can run on it");
+    assert.deepEqual(checked.employeeReady, { ready: true, reason: null, reasonCode: null }, "its binary splits the tool plane: an employee can run on it");
     assert.equal((await view(h)).canHire, true);
     assert.ok(heard.some((e) => e.connectionId === c.id && e.change === "checked" && e.auth === "connected"), "other contexts hear it");
     const recorded = await h.sql("SELECT data->>'setting' AS setting FROM audit_events WHERE account_id = $1 AND event_type = 'settings.privileged.changed' AND data->>'setting' LIKE 'ai_connection.%' ORDER BY seq", [h.accountId]);

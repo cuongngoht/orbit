@@ -89,9 +89,12 @@ test("an employee's profile: its title, texts and lists within bounds, its execu
 });
 
 test("the office and its departments: names on one line; a member moves to a department or to Unassigned", () => {
-  assert.deepEqual(checkSetUpOffice(undefined), { ok: true, value: { name: "Office", departments: [] } });
-  assert.deepEqual(checkSetUpOffice({ name: " Head  office ", departments: ["Sales", "Sales", "Research"] }), { ok: true, value: { name: "Head office", departments: ["Sales", "Research"] } });
-  assert.deepEqual(errorsOf(checkSetUpOffice({ departments: Array<string>(13).fill("D") })), ["departments must be at most 12 names"]);
+  assert.deepEqual(checkSetUpOffice(undefined), { ok: true, value: { name: null, departments: [] } }, "no name typed: the account's company name is the company's");
+  assert.deepEqual(checkSetUpOffice({ name: " Head  office " }), { ok: true, value: { name: "Head office", departments: [] } });
+  // An older client's example departments are read as what they are -- the activation refuses them, never makes them.
+  assert.deepEqual(checkSetUpOffice({ name: "Acme", departments: ["Sales", "Sales", "Research"] }), { ok: true, value: { name: "Acme", departments: ["Sales", "Research"] } });
+  assert.deepEqual(errorsOf(checkSetUpOffice({ departments: Array<string>(13).fill("D") })), ["departments must be a list of names"]);
+  assert.deepEqual(errorsOf(checkSetUpOffice({ name: "" })), ["name must be 1-80 printable characters"]);
   assert.deepEqual(checkSetUpOffice("office"), { ok: false, errors: ["the body must be a JSON object"] });
   assert.deepEqual(checkCreateDepartment({ name: "  Finance " }), { ok: true, value: { name: "Finance" } });
   assert.deepEqual(errorsOf(checkCreateDepartment({ name: "a\u0007b" })), ["name must be 1-80 printable characters"]);

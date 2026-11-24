@@ -183,7 +183,7 @@ describe("a subscription signed in from its card (ADR 0061)", () => {
       ["yes", "yes", "yes", "yes", "yes", "unknown"],
     );
     // Read from the account, but its model plane not yet observed held to Orbit's tools: no employee runs on it yet.
-    assert.deepEqual(after.employeeReady, { ready: false, reason: "its model plane is not held to Orbit's tools (Run without local tools: unknown)" });
+    assert.deepEqual(after.employeeReady, { ready: false, reason: "its model plane is not held to Orbit's tools (Run without local tools: unknown)", reasonCode: "not_held" });
     const asked = fake.callsOf(program("codex", "exec", "--skip-git-repo-check")).at(-1) as Call;
     assert.notEqual(asked.env.CODEX_HOME, server.env.CODEX_HOME, "the web search modes are asked in a scratch home, never a connection's");
   });

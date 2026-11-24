@@ -186,11 +186,13 @@ export const EMPLOYEE_RUNTIMES: Record<RuntimeKind, EmployeeRuntime> = { claude:
 // connected, its models read from the account (never a fallback list), and its model plane observed held to Orbit's
 // tools.
 export function employeeReadiness(c: { runtime: RuntimeKind; label: string; auth: AuthState; reason: string | null; catalog: ConnectionCatalog; capabilities: RuntimeCapabilities }): EmployeeReadiness {
-  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})` };
-  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account" };
-  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model" };
-  if (EMPLOYEE_RUNTIMES[c.runtime].refusal(c) !== null) return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})` };
-  return { ready: true, reason: null };
+  // Antigravity runs no employee at all (no non-interactive mode with a closed tool set): said as what the runtime is.
+  if (c.runtime === "agy") return { ready: false, reason: EMPLOYEE_RUNTIMES.agy.refusal(c), reasonCode: "runtime_not_supported" };
+  if (c.auth !== "connected") return { ready: false, reason: `not connected (${c.reason ?? "its CLI says it is not signed in"})`, reasonCode: "not_connected" };
+  if (c.catalog.source !== "account") return { ready: false, reason: "its models were not read from the account", reasonCode: "catalog_not_from_account" };
+  if (c.catalog.models.length === 0) return { ready: false, reason: "its account offers no model", reasonCode: "no_models" };
+  if (EMPLOYEE_RUNTIMES[c.runtime].refusal(c) !== null) return { ready: false, reason: `its model plane is not held to Orbit's tools (Run without local tools: ${c.capabilities.toolPlaneSplit})`, reasonCode: "not_held" };
+  return { ready: true, reason: null, reasonCode: null };
 }
 
 export { emptyFacts };

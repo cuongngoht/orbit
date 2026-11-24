@@ -3,6 +3,10 @@
 // tree is installed), typecheck, lint, the tests of each kind, and the production builds. It needs no credential and
 // no network beyond the package registry, and it prints how many tests of each kind ran and passed.
 //
+// Every test this tier collects must run and pass (pass = tests): a test that needs a real binary or a container is not
+// collected here but in its own tier, run where its condition holds -- npm run test:native -w @orbit-web/api (the pinned
+// codex installed, its sandbox running) and npm run test:sandbox -w @orbit-web/api (Docker) -- and reported apart.
+//
 // The API's integration tests run against a REAL PostgreSQL with pgvector -- never a stand-in: the one
 // ORBIT_WEB_TEST_DATABASE_URL names (the PR workflow's service container), or else the pinned image this script starts
 // in Docker (scripts/test-db.mjs). Without either, it stops and says so.
@@ -83,4 +87,5 @@ for (const step of failed ? [] : STEPS) {
 
 const width = Math.max(...rows.map((r) => r[0].length));
 process.stdout.write(`\nOrbit Web checks\n${rows.map(([n, s, d]) => `  ${n.padEnd(width)}  ${s.padEnd(7)}  ${d}`).join("\n")}\n`);
+process.stdout.write("  not in this tier: npm run test:native -w @orbit-web/api (an installed codex) and npm run test:sandbox -w @orbit-web/api (Docker)\n");
 process.exit(failed ? 1 : 0);

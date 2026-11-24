@@ -3,8 +3,9 @@
 // say, and whether the owner granted the Orbit plugin for employees. A port: the hire and dispatch checks ask it, so a
 // connection disconnected later makes its employees not ready and their work wait.
 import { Inject, Injectable } from "@nestjs/common";
-import type { AuthMethod, AuthState, ConnectionCatalog, RuntimeCapabilities, RuntimeKind } from "@orbit-web/contracts";
+import type { AuthMethod, AuthState, ConnectionCatalog, ConnectionUse, ConnectionUses, RuntimeCapabilities, RuntimeKind } from "@orbit-web/contracts";
 import { Db, type Row } from "../../../infra/db/db.js";
+import { connectionUses } from "../../../modules/connections/uses.js";
 
 export interface ConnectionFacts {
   id: string;
@@ -34,8 +35,14 @@ const factsOf = (r: Row): ConnectionFacts => ({
   credentialRef: r.credential_ref === null ? null : String(r.credential_ref),
 });
 
-// A connection an employee can be hired on and run with: connected, with a catalog its own CLI gave for it.
+// A connection signed in, with a catalog its own CLI gave for it (what hire checks first, with its own message).
 export const usable = (c: ConnectionFacts | null): boolean => c !== null && c.auth === "connected" && c.catalog.source === "account" && c.catalog.models.length > 0;
+
+// What a connection can be used for, as the AI Connections page says it (modules/connections/uses.ts): the one answer.
+export const usesOf = (c: ConnectionFacts): ConnectionUses => connectionUses(c);
+
+// Whether an employee can run on it now -- the same answer the AI Connections page and Hire give (employeeReady).
+export const employeeUse = (c: ConnectionFacts | null): ConnectionUse => (c === null ? { ready: false, reason: "it has no AI connection", reasonCode: "not_connected" } : usesOf(c).employee);
 
 @Injectable()
 export class ConnectionsReader {
@@ -53,10 +60,6 @@ export class ConnectionsReader {
 
   async all(orbitId: string): Promise<ConnectionFacts[]> {
     return (await this.db.query("SELECT * FROM app.ai_connections WHERE account_id = $1 AND removed_at IS NULL ORDER BY runtime, is_default DESC, created_at", [orbitId])).map(factsOf);
-  }
-
-  async canHire(orbitId: string): Promise<boolean> {
-    return (await this.all(orbitId)).some(usable);
   }
 
   async pluginApproved(orbitId: string, connectionId: string): Promise<boolean> {

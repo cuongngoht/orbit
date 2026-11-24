@@ -1,10 +1,11 @@
 // THE OFFICE, at a glance: its employees as cards grouped by department -- each with its work label in words, what it
 // holds and how much waits behind it, why it is not ready, a warning about its connection -- filtered by department
 // (or Unassigned), a search and a work label. From here a person assigns work, hires (once an AI CLI is connected) and
-// shapes the departments. An account with no office yet is offered one, with example departments it may skip.
-import { Button, Checkbox, Field, Input, Link, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
+// shapes the departments. An account with no company yet is offered to activate it -- empty -- once an AI connection
+// of its own can be used.
+import { Button, Field, Input, Link, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular, Filter20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
-import { WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type Roster, type WorkLabel } from "@orbit-web/contracts";
+import { AUTH_STATE_TEXT, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import {
@@ -21,6 +22,7 @@ import { settingsHref, type OfficePage } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
+import { useAppEvent } from "../../services/events/AppEvents";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { office, useOfficeRead, type RosterQuery } from "./api";
 import { AssignDialog } from "./AssignDialog";
@@ -43,11 +45,15 @@ const useStyles = makeStyles({
     alignItems: "center",
     justifyContent: "center",
   },
-  exampleTile: {
-    paddingTop: "6px",
+  useList: { listStyleType: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "8px" },
+  useItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    paddingTop: "8px",
     paddingRight: "12px",
-    paddingBottom: "6px",
-    paddingLeft: "8px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
     borderRadius: "10px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
@@ -86,24 +92,35 @@ const useStyles = makeStyles({
   select: { minWidth: "min(100%, 185px)" },
 });
 
-const EXAMPLES = ["Accounting", "Legal", "Sales"] as const;
+// The three uses a connection is read for, in the order a card says them.
+const USES = ["chat", "research", "employee"] as const;
+const USE_KEYS = { chat: "office.overview.activate.useChat", research: "office.overview.activate.useResearch", employee: "office.overview.activate.useEmployee" } as const;
 
-function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone: () => void }) {
+// ACTIVATING THE COMPANY (ADR 0061 §8): the company starts EMPTY -- no department, employee, mission or CEO -- and is
+// activated only once one AI connection of this account can be used for chat, research or an employee. What each
+// connection can be used for is the server's answer (uses), shown as it says it; a use its runtime does not have is left
+// out. The way to connect one is a link away, and the card reads the connections again when they change.
+function ActivateCompany({ account, onDone }: { account: AuthAccount | null; onDone: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
-  const [name, setName] = useState(account?.companyName || t("office.overview.defaultOfficeName"));
-  const [examples, setExamples] = useState<Record<string, boolean>>({ Accounting: true, Legal: true, Sales: true });
+  const connections = useConnections();
+  useAppEvent("connections.changed", () => void connections.reload());
+  const [name, setName] = useState(account?.companyName ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const view = connections.data;
+  const activation = view?.activation ?? null;
+  const ready = activation?.ready === true && name.trim() !== "";
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
-      await office.setUp({ name: name.trim() || t("office.overview.defaultOfficeName"), departments: EXAMPLES.filter((d) => examples[d]) });
+      await office.setUp({ name: name.trim() });
       onDone();
     } catch (err) {
       setError(errorText(err));
+      void connections.reload();
     } finally {
       setBusy(false);
     }
@@ -112,50 +129,77 @@ function SetUpOffice({ account, onDone }: { account: AuthAccount | null; onDone:
     <div className={s.setupWrap}>
       <form
         className={o.heroCard}
-        aria-label={t("office.overview.setupAria")}
+        aria-label={t("office.overview.activate.aria")}
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          if (ready) void save();
         }}
       >
         <div className={o.row}>
           <IconBadge icon={<OfficeIcon size={22} active />} tone="brand" size="lg" />
           <div className={o.stack}>
             <Text weight="semibold" size={500} as="h2">
-              {t("office.overview.setupTitle")}
+              {t("office.overview.activate.title")}
             </Text>
             <Text size={200} className={o.muted}>
-              {t("office.overview.setupLead")}
+              {t("office.overview.activate.lead")}
             </Text>
           </div>
         </div>
         <div className={o.divider} />
-        <Field label={t("office.overview.officeNameLabel")}>
+        <Field label={t("office.overview.activate.nameLabel")} hint={t("office.overview.activate.nameHint")}>
           <Input value={name} maxLength={80} onChange={(_, d) => setName(d.value)} />
         </Field>
-        <div role="group" aria-label={t("office.overview.exampleDeptsGroup")} className={o.stack}>
+        <section aria-label={t("office.overview.activate.connectionsAria")} className={o.stack}>
           <Text weight="semibold" size={300}>
-            {t("office.overview.exampleDeptsGroup")}
+            {t("office.overview.activate.connectionsTitle")}
           </Text>
-          <div className={o.row}>
-            {EXAMPLES.map((d) => (
-              <span key={d} className={s.exampleTile}>
-                <Checkbox label={d} checked={examples[d] === true} onChange={(_, c) => setExamples((x) => ({ ...x, [d]: c.checked === true }))} />
-              </span>
-            ))}
-          </div>
-          <Text size={200} className={o.muted}>
-            {t("office.overview.exampleDeptsHint")}
-          </Text>
-        </div>
+          {view === null ? (
+            <Spinner size="tiny" label={t("office.overview.checkingConnections")} />
+          ) : view.connections.length === 0 ? (
+            <Text size={200} className={o.muted}>
+              {t("office.overview.activate.noConnection")}
+            </Text>
+          ) : (
+            <ul className={s.useList}>
+              {view.connections.map((c) => {
+                const shown = USES.filter((u) => c.uses[u].reasonCode !== "runtime_not_supported");
+                return (
+                  <li key={c.id} className={s.useItem} aria-label={c.label}>
+                    <Text weight="semibold" size={200}>
+                      {c.label} · {RUNTIME_LABELS[c.runtime]} · {AUTH_STATE_TEXT[c.auth]}
+                    </Text>
+                    {shown.length === 0 ? (
+                      <Text size={200} className={o.muted}>
+                        {t("office.overview.activate.runsNothing", { runtime: RUNTIME_LABELS[c.runtime] })}
+                      </Text>
+                    ) : (
+                      shown.map((u) => (
+                        <Text key={u} size={200} className={c.uses[u].ready ? undefined : o.muted}>
+                          {c.uses[u].ready ? t("office.overview.activate.usable", { use: t(USE_KEYS[u]) }) : t("office.overview.activate.notUsable", { use: t(USE_KEYS[u]), reason: c.uses[u].reason ?? "" })}
+                        </Text>
+                      ))
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <Link href={settingsHref("ai-connections")}>{t("office.overview.openAiConnections")}</Link>
+        </section>
+        {activation !== null && !activation.ready && (
+          <Callout tone="warn" icon={<PlugDisconnected16Regular />} role="status">
+            {activation.reason}
+          </Callout>
+        )}
         {error && (
           <MessageBar intent="error">
             <MessageBarBody>{error}</MessageBarBody>
           </MessageBar>
         )}
         <div className={o.row}>
-          <Button appearance="primary" type="submit" disabled={busy}>
-            {busy ? t("office.overview.settingUp") : t("office.overview.setupSubmit")}
+          <Button appearance="primary" type="submit" disabled={busy || !ready}>
+            {busy ? t("office.overview.activate.activating") : t("office.overview.activate.submit")}
           </Button>
         </div>
       </form>
@@ -266,7 +310,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   if (r.office === null)
     return (
       <div className={o.page}>
-        <SetUpOffice account={account} onDone={() => void roster.reload()} />
+        <ActivateCompany account={account} onDone={() => void roster.reload()} />
       </div>
     );
   const live = r.departments.filter((d) => !d.archived);

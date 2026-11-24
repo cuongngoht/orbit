@@ -80,6 +80,12 @@ export class OfficeRepository {
     return row === null ? null : { id: str(row.id), name: str(row.name), version: Number(row.version), createdAt: str(row.created_at) };
   }
 
+  // The account's company name (Settings → Account): the company's, unless its activation names another.
+  async companyName(orbitId: string): Promise<string | null> {
+    const row = await this.db.one("SELECT company_name FROM app.accounts WHERE id = $1", [orbitId]);
+    return row === null || row.company_name === null ? null : str(row.company_name);
+  }
+
   // Idempotent: one office per account (a unique constraint behind it); the existing one is returned.
   async ensure(orbitId: string, id: string, name: string, by: string, at: string): Promise<{ office: Office; created: boolean }> {
     const inserted = await this.db.one("INSERT INTO workforce.offices (id, account_id, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $5) ON CONFLICT (account_id) DO NOTHING RETURNING id", [id, orbitId, name, by, at]);

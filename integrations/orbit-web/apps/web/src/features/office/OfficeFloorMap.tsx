@@ -209,8 +209,10 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
     minWidth: 0,
   },
-  // A department room's name and who manages it, wrapping before the room's menu does.
-  roomHead: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, flexBasis: 0, minWidth: "min(100%, 160px)" },
+  // A department room's name and who manages it: one line where they fit, the manager under the name where not -- and
+  // room above the first desks, whose speech bubbles reach a little above them.
+  deptTitleBar: { marginBottom: "10px", alignItems: "flex-start" },
+  roomHead: { display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: "12px", rowGap: "2px", flexGrow: 1, flexBasis: 0, minWidth: "min(100%, 160px)" },
   roomTag: {
     display: "inline-flex",
     alignItems: "center",
@@ -772,7 +774,7 @@ export function OfficeFloorMap({
           return (
             <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
               <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
-              <div className={s.roomTitleBar}>
+              <div className={mergeClasses(s.roomTitleBar, s.deptTitleBar)}>
                 <div className={s.roomHead}>
                   <div className={o.row}>
                     <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />

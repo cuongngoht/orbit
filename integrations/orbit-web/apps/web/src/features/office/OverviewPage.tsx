@@ -326,7 +326,8 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
 }
 
 // The unified company floor for one read of the roster, and any extra pages brought by "Load more".
-function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void }) {
+// `onAppointment`: the floor's appointment actions open the Overview's own dialog, which outlives a re-read roster.
+function RosterBody({ roster, filter, query, account, go, onAssign, onEdit, onAppointment }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void; onAppointment: (edit: AppointmentEdit) => void }) {
   const { t } = useI18n();
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
@@ -360,6 +361,7 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit }: { 
         onOpenEmployee={(id) => go("employee", id)}
         onOpenMission={(id) => go("mission", id)}
         onEditDepartment={onEdit}
+        onAppointment={onAppointment}
       />
       {error && (
         <MessageBar intent="error">
@@ -607,7 +609,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </div>
         </ResponsiveSheet>
       )}
-      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} />
+      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} />
       {hiring && (
         <HireWizard
           departments={r.departments}

@@ -84,6 +84,9 @@ const useStyles = makeStyles({
   },
   branchFlat: { paddingLeft: 0 },
   node: { minWidth: 0 },
+  // A row's state and title, wrapping as they need; its menu stays at the top right.
+  rowHead: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", minWidth: 0 },
+  rowMain: { flexGrow: 1 },
   // What a person or an employee wrote, shown as the plain text it is: line breaks kept, never markup.
   plain: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", minWidth: 0 },
   route: { display: "flex", flexDirection: "column", gap: "2px", marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, paddingLeft: "18px", minWidth: 0 },
@@ -165,6 +168,8 @@ const WORKING: readonly Employment[] = ["probation", "active"];
 
 // How deep the tree is drawn under its root; what lies deeper is shown at the top, never hidden.
 const MAX_DEPTH = 8;
+// How many levels the tree is indented; deeper parts line up under the last indented one.
+const INDENTED = 3;
 
 interface TreeNode {
   a: AssignmentView;
@@ -429,8 +434,8 @@ function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentV
   const facts = [reviewText(t, a), a.planCount > 0 ? t("office.mission.plansGiven", { count: a.planCount }) : null, a.questionCount > 0 ? t("office.mission.questionsAskedCount", { count: a.questionCount }) : null].filter((f): f is string => f !== null);
   return (
     <div className={mergeClasses(o.item, nested && s.nested)}>
-      <div className={o.between}>
-        <div className={o.row}>
+      <div className={s.rowHead}>
+        <div className={mergeClasses(o.row, s.rowMain)}>
           <StateBadge text={ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
           <Text weight="semibold" className={o.wrap}>
             {a.title}
@@ -496,7 +501,7 @@ function AssignmentNode({ node, depth, go, onDone, onLoadLatest }: { node: TreeN
     <li className={s.node}>
       <AssignmentRow a={node.a} nested={depth > 0} go={go} onDone={onDone} onLoadLatest={onLoadLatest} />
       {node.children.length > 0 && (
-        <ul className={mergeClasses(s.branch, depth >= 2 && s.branchFlat)} aria-label={t("office.mission.partsOf", { title: node.a.title })}>
+        <ul className={mergeClasses(s.branch, depth + 1 > INDENTED && s.branchFlat)} aria-label={t("office.mission.partsOf", { title: node.a.title })}>
           {node.children.map((child) => (
             <AssignmentNode key={child.a.id} node={child} depth={depth + 1} go={go} onDone={onDone} onLoadLatest={onLoadLatest} />
           ))}
@@ -660,7 +665,7 @@ function Share({ sh, leadName, onDone }: { sh: DataShareView; leadName: string; 
   const [confirming, setConfirming] = useState(false);
   const revoked = sh.revokedAt !== null;
   const unit = sh.fromUnit ?? t("office.mission.unknownUnit");
-  const what = sh.kind === "source" ? t("office.mission.shareSource", { revision: short(sh.sourceRevisionId) }) : t(sh.mode === "full" ? "office.mission.shareHandoffFull" : "office.mission.shareHandoffSummary", { unit });
+  const what = sh.kind === "source" ? t("office.mission.shareSource", { revision: short(sh.sourceRevisionId, 8) }) : t(sh.mode === "full" ? "office.mission.shareHandoffFull" : "office.mission.shareHandoffSummary", { unit });
   const revoke = async () => {
     const ok = await act.run(() => office.revokeShare(sh.id));
     setConfirming(false);

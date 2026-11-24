@@ -165,7 +165,7 @@ describe("a team's mission", () => {
     expect(holding?.textContent).toContain("Ana shared with Bao (part “research”)");
     expect(holding?.textContent).toContain("The hand-in of part “intake”: its summary");
     expect(within(holding as HTMLElement).getByText("Shared")).toBeInTheDocument();
-    expect(revoked?.textContent).toContain(`Source revision ${SOURCE_REVISION_ID.slice(0, 12)}`);
+    expect(revoked?.textContent).toContain(`Source revision ${SOURCE_REVISION_ID.slice(0, 8)}`);
     expect(within(revoked as HTMLElement).getByText("Revoked")).toBeInTheDocument();
     expect(revoked?.textContent).toContain("revoked ");
     expect(revoked?.textContent).toContain(" by Ann Owner");

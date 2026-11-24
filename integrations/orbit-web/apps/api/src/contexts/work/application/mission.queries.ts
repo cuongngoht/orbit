@@ -166,7 +166,7 @@ function sentenceOf(type: string, p: Record<string, unknown>): string {
     case "ClarificationRequested":
       return str("addressee") === "lead" ? "A question was asked of its lead." : "A question was asked of you.";
     case "ClarificationAnswered":
-      return str("by") === "lead" ? "Its lead answered the question." : "You answered the question.";
+      return str("by") === "lead" ? "Its lead answered the question." : str("by") === "system" ? "Its manager did not answer in time: it was told to decide with its best judgment." : "You answered the question.";
     case "ClarificationEscalated":
       return str("addressee") === "owner" ? `A question was moved up to you (${str("kind").replace(/_/g, " ")}).` : "A question was moved up to the next lead.";
     case "ClarificationWithdrawn":

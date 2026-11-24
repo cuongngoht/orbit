@@ -257,7 +257,7 @@ type Outcome =
   | null;
 
 // The refusals that say the slot is not what the preview showed: the preview is read again.
-const SLOT_REFUSALS: readonly string[] = ["no_ceo", "no_manager", "appointment_suspended", "not_working"];
+const SLOT_REFUSALS: readonly string[] = ["no_ceo", "no_manager", "appointment_suspended", "not_working", "ceo_needs_departments"];
 
 // The departments a mission may be given to: not archived, in the order the office shows them.
 const liveDepartments = (departments: readonly Department[]): Department[] => departments.filter((d) => !d.archived).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));

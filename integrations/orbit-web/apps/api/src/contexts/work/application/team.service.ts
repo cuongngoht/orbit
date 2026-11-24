@@ -29,6 +29,7 @@ import { ResourcesService } from "../../execution/application/resources.service.
 import type { TeamRoom } from "../../execution/application/run-outcomes.port.js";
 import { Assignment, type AssignmentTargetData } from "../domain/assignment.js";
 import { delegationScope, resolveTarget, scopeIsEmpty, type DelegationScope } from "../domain/authority.js";
+import { roleFrom, type WorkRole } from "../domain/roles.js";
 import { allEnded, DONE, leadNext, planProblems } from "../domain/team.js";
 import { ClarificationRepository } from "../infrastructure/clarifications.repository.js";
 import { OrgReader } from "../infrastructure/org.reader.js";
@@ -114,8 +115,15 @@ export class TeamService implements OnModuleInit {
   // Whom this assignment's employee may give work to now: its appointment in force and its grants, never itself nor a
   // lead above it in this mission (domain/authority.ts). Empty: it does the work itself.
   async scope(orbitId: string, a: Assignment): Promise<DelegationScope> {
+    return (await this.standing(orbitId, a)).scope;
+  }
+
+  // Its standing in this work, from one read of the company's authority: whom it may give work to, and its role (the
+  // CEO, a manager with or without a team, or an employee: domain/roles.ts).
+  async standing(orbitId: string, a: Assignment): Promise<{ scope: DelegationScope; role: WorkRole }> {
     const chain = await this.org.chainOf(orbitId, a.id);
-    return delegationScope(await this.org.authority(orbitId, a.data.employeeId, chain));
+    const facts = await this.org.authority(orbitId, a.data.employeeId, chain);
+    return { scope: delegationScope(facts), role: roleFrom(facts) };
   }
 
   // The questions its team asked this lead, still open.

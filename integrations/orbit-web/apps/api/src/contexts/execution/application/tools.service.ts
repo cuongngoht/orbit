@@ -96,7 +96,7 @@ const ANSWER_QUESTION: ToolSpec = {
 };
 const ESCALATE_QUESTION: ToolSpec = {
   name: "escalate_question",
-  description: "Move a question your team asked you one level up, when it is not yours to answer: to your own lead, or -- if you lead the whole mission -- to the person who gave the work, which takes a reason that is theirs (human_decision, beyond_authority, deadline, unanswered).",
+  description: "Move a question your team asked you one level up, when it is not yours to answer: to your own lead, never to the CEO nor to the person who gave the work (there you decide, with your best judgment).",
   inputSchema: obj({ question_id: str("The question's id"), why: { type: "string", enum: ["information", "human_decision", "beyond_authority", "deadline", "unanswered"] }, note: str("Why you cannot answer it") }, ["question_id", "why"]),
 };
 
@@ -163,9 +163,11 @@ export class ToolsService {
     if (run === null) return [...TOOLS, askOf(null)];
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null) return [...TOOLS, askOf(null)];
-    const connectors = this.connectors === null ? [] : await this.connectors.tools(run.orbitId, run.employeeId);
     const team = ctx.team;
-    return [...TOOLS, askOf(team.lead), ...(team.canDelegate ? [DELEGATE] : []), ...(team.units.length > 0 ? [REVIEW_UNIT] : []), ...(team.questions.length > 0 ? [ANSWER_QUESTION, ESCALATE_QUESTION] : []), ...(ctx.employee.appointment?.active === true ? [PROPOSE_POLICY] : []), ...connectors];
+    // What its role withholds (Work's roles): never offered -- and refused at the door below.
+    const connectors = this.connectors === null || team.connectorsDenied !== null ? [] : await this.connectors.tools(run.orbitId, run.employeeId);
+    const offered = [...TOOLS, askOf(team.lead), ...(team.canDelegate ? [DELEGATE] : []), ...(team.units.length > 0 ? [REVIEW_UNIT] : []), ...(team.questions.length > 0 ? [ANSWER_QUESTION, ESCALATE_QUESTION] : []), ...(ctx.employee.appointment?.active === true ? [PROPOSE_POLICY] : []), ...connectors];
+    return offered.filter((t) => !team.denied.some((d) => d.name === t.name));
   }
 
   // `governance`: the run's own context (its token's), which a connector's ask is decided as.
@@ -176,7 +178,12 @@ export class ToolsService {
     const cur = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (cur === null || !cur.current) throw refused("attempt_replaced", "This attempt was replaced or stopped: its tools are closed.");
     const h = run.handle;
-    if (this.connectors?.owns(name) === true) {
+    // A tool its role withholds is refused here too, saying why (it was never offered: a model may still name it).
+    const isConnector = this.connectors?.owns(name) === true;
+    const withheld = cur.team.denied.find((d) => d.name === name)?.why ?? (isConnector ? cur.team.connectorsDenied : null);
+    if (withheld !== null) return { text: withheld, isError: true };
+    if (isConnector) {
+      if (this.connectors === null) throw refused("no_connectors", "No connector is bound.");
       if (governance === null) throw refused("no_context", "A connector's tool is asked only through the tool door.");
       return this.connectors.call(governance, run.orbitId, run.employeeId, name, args);
     }

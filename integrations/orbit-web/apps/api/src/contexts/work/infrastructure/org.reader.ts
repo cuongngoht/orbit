@@ -62,7 +62,7 @@ export class OrgReader {
 
   // Who fills the slot a mission's target names, read with the slot's row held (FOR SHARE when `lock`).
   async slot(orbitId: string, target: MissionTarget, lock: boolean): Promise<SlotFacts> {
-    if (target.kind === "employee") return { incumbent: null, departmentName: null };
+    if (target.kind === "employee") return { incumbent: null, departmentName: null, departmentsManaged: 0 };
     const share = lock ? " FOR SHARE" : "";
     let departmentName: string | null = null;
     if (target.kind === "department") {
@@ -81,7 +81,21 @@ export class OrgReader {
     return {
       departmentName,
       incumbent: row === null ? null : { appointmentId: String(row.id), employeeId: String(row.employee_id), employeeName: String(row.name), state: row.state === "suspended" ? "suspended" : "active", slotRevision: Number(row.slot_revision), working: row.working === true },
+      departmentsManaged: target.kind === "ceo" ? await this.departmentsManaged(orbitId) : 0,
     };
+  }
+
+  // The live departments with a manager in office (an active appointment of a working employee): those the CEO can give
+  // work to.
+  async departmentsManaged(orbitId: string): Promise<number> {
+    const r = await this.db.one(
+      `SELECT count(DISTINCT a.department_id) AS n FROM workforce.appointments a
+       JOIN workforce.departments d ON d.account_id = a.account_id AND d.id = a.department_id AND d.archived_at IS NULL
+       JOIN workforce.employees e ON e.account_id = a.account_id AND e.id = a.employee_id
+       WHERE a.account_id = $1 AND a.role = 'manager' AND a.state = 'active' AND ${WORKING}`,
+      [orbitId],
+    );
+    return Number(r?.n ?? 0);
   }
 
   async departmentName(orbitId: string, departmentId: string): Promise<string | null> {

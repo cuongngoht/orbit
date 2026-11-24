@@ -1,13 +1,15 @@
-// QUESTIONS GO UP THE TREE (Work; ADR 0061 §8). An attempt that cannot go on without an answer asks ONE question and its
-// work ends there (BLOCKED, its run stopped by design):
+// QUESTIONS GO UP THE TREE, AND STOP BELOW THE CEO (Work; ADR 0061 §8). An attempt that cannot go on without an answer
+// asks ONE question and its work ends there (BLOCKED, its run stopped by design):
 //
 //   - a PART asks its LEAD: the lead is woken (ANSWERING; or it answers in the review it is already in), and answers it --
-//     the asker resumes ONCE, with the answer in its brief -- or moves it one level up saying why;
-//   - the ROOT asks the person who gave the work (Needs me); a question reaches that person only from the root, or moved
-//     up from it for what is a person's: a human decision, something beyond the lead's authority, a deadline, a question
-//     nobody below answered;
-//   - a lead woken for a question it then leaves unanswered is woken again, at most WORKFORCE_LIMITS.answerWakes times,
-//     then the question moves up by itself; one overdue moves up too (the sweep);
+//     the asker resumes ONCE, with the answer in its brief;
+//   - the ROOT asks the person who gave the work (Needs me) -- unless its role decides alone (a manager: roles.ts);
+//   - a manager and the CEO DECIDE: they never move a question up. A lead who leads by a grant may move one up only to a
+//     lead below the CEO -- never to the CEO, never to the person who gave the work;
+//   - a lead woken for a question it then leaves unanswered is woken again, at most WORKFORCE_LIMITS.answerWakes times;
+//     then -- or when it is overdue (the sweep) -- the question moves up by itself to a lead below the CEO, or, where the
+//     next hop would be the CEO or the person, it is ANSWERED FOR ITS ASKER: decide with your best judgment and say what
+//     you assumed (DECIDE_YOURSELF). Nothing asked below the CEO reaches Needs me;
 //   - an asker cancelled or failed withdraws its question.
 //
 // An answer is a compare-and-set on the open question: a lead's and a person's at once, or the same twice, resume the
@@ -18,16 +20,15 @@ import { randomUUID } from "node:crypto";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
 import { systemActor, type Actor } from "../../shared/application/commands.js";
-import { conflictWith, invalid, missing, type RaisedEvent } from "../../shared/domain.js";
+import { conflictWith, missing, type RaisedEvent } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { Assignment } from "../domain/assignment.js";
+import { DECIDE_YOURSELF, rulesOf, toolRefusal } from "../domain/roles.js";
 import { ClarificationRepository, type ClarificationRecord } from "../infrastructure/clarifications.repository.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { AssignmentRepository } from "../infrastructure/repositories.js";
 import { TeamService } from "./team.service.js";
 
-// What may reach the person who gave the work from below: never a plain request for information a lead could answer.
-export const OWNER_KINDS: readonly ClarificationKind[] = ["human_decision", "beyond_authority", "deadline", "unanswered"];
 const SWEEP_MS = 30_000;
 
 const event = (c: { id: string; missionId: string }, type: RaisedEvent["type"], payload: RaisedEvent["payload"], version = 1): RaisedEvent => ({ type, aggregateType: "clarification", aggregateId: c.id, aggregateVersion: version, missionId: c.missionId, payload });
@@ -82,13 +83,16 @@ export class ClarificationsService implements OnModuleInit, OnModuleDestroy {
     return { events: [...events, ...settled.events], text: `Answered: the colleague who asked continues with your answer.${settled.done ? " Nothing else waits for you now: stop here." : ""}` };
   }
 
+  // A lead moves a question one level up: only one who leads by a grant, and only to a lead below the CEO (roles.ts).
   async escalate(_actor: Actor, lead: Assignment, fence: number, id: string, kind: ClarificationKind, note: string): Promise<{ events: RaisedEvent[]; text: string }> {
     const c = await this.mine(lead, fence, id);
-    if (lead.data.parentId === null && !OWNER_KINDS.includes(kind)) throw invalid("escalation_reason", `A question goes up to the person who gave the work only for what is theirs: ${OWNER_KINDS.join(", ")}. Answer it yourself otherwise.`);
+    const rules = rulesOf((await this.team.standing(lead.orbitId, lead)).role, lead.data.parentId === null);
+    if (!rules.escalates) throw conflictWith("decide_yourself", toolRefusal(rules, "escalate_question", false) ?? "You decide: answer the question yourself.");
+    if ((await this.nextHop(lead)) !== "lead") throw conflictWith("decide_yourself", "A question does not go above your department to the CEO or to the person who gave the work: answer it yourself, with your best judgment, and say what you assumed.");
     const at = new Date().toISOString();
     const events = await this.moveUp(lead, c, kind, note.trim() || `moved up by its lead (${kind.replace(/_/g, " ")})`, at);
     const settled = await this.settle(lead, at, "escalated");
-    return { events: [...events, ...settled.events], text: `Moved the question up${lead.data.parentId === null ? " to the person who gave the work" : " to your lead"}: the colleague who asked waits for that answer.${settled.done ? " Nothing else waits for you now: stop here." : ""}` };
+    return { events: [...events, ...settled.events], text: `Moved the question up to your lead: the colleague who asked waits for that answer.${settled.done ? " Nothing else waits for you now: stop here." : ""}` };
   }
 
   // ---- a person answers (Needs me: a root's question, or one moved up to them) ---------------------------------------
@@ -116,7 +120,7 @@ export class ClarificationsService implements OnModuleInit, OnModuleDestroy {
   async answeringEnded(lead: Assignment, at: string): Promise<RaisedEvent[]> {
     const events: RaisedEvent[] = [];
     for (const q of await this.questions.openTo(lead.orbitId, lead.id)) {
-      if ((await this.questions.woken(lead.orbitId, q.id)) >= WORKFORCE_LIMITS.answerWakes) events.push(...(await this.moveUp(lead, q, "unanswered", `its lead was woken ${WORKFORCE_LIMITS.answerWakes} times and did not answer it`, at)));
+      if ((await this.questions.woken(lead.orbitId, q.id)) >= WORKFORCE_LIMITS.answerWakes) events.push(...(await this.upOrDecide(lead, q, "unanswered", `its lead was woken ${WORKFORCE_LIMITS.answerWakes} times and did not answer it`, at)));
     }
     lead.waitForTeam(at);
     return [...events, ...(await this.team.next(lead, at))];
@@ -138,7 +142,7 @@ export class ClarificationsService implements OnModuleInit, OnModuleDestroy {
       await this.db.tx(async () => {
         const lead = await this.assignments.get(c.orbitId, c.addresseeAssignmentId as string, true);
         if (lead === null) return;
-        const events = await this.moveUp(lead, c, "deadline", "it was due and not answered", now);
+        const events = await this.upOrDecide(lead, c, "deadline", "it was due and not answered", now);
         await this.outbox.append(systemActor(c.orbitId, "clarifications", `clarification:${c.id}`).command, events);
       });
     }
@@ -154,6 +158,27 @@ export class ClarificationsService implements OnModuleInit, OnModuleDestroy {
     if (c === null || c.addressee !== "lead" || c.addresseeAssignmentId !== lead.id) throw missing(`The question ${id} of your team`);
     if (c.state !== "open") throw conflictWith("already_answered", "That question was answered already.");
     return c;
+  }
+
+  // Where a question would go one level up from this lead: the person who gave the work (it is the root), the CEO (its
+  // lead holds the CEO's appointment in force), or a lead below the CEO.
+  private async nextHop(lead: Assignment): Promise<"owner" | "ceo" | "lead"> {
+    if (lead.data.parentId === null) return "owner";
+    const ceo = await this.db.one(
+      `SELECT 1 AS ceo FROM workforce.assignments p
+       JOIN workforce.appointments ap ON ap.account_id = p.account_id AND ap.employee_id = p.employee_id AND ap.role = 'ceo' AND ap.state = 'active'
+       WHERE p.account_id = $1 AND p.id = $2`,
+      [lead.orbitId, lead.data.parentId],
+    );
+    return ceo !== null ? "ceo" : "lead";
+  }
+
+  // A question its lead left unanswered: up to a lead below the CEO, or -- where the next hop would be the CEO or the
+  // person who gave the work -- answered for its asker, once, by Orbit: decide, and say what you assumed.
+  private async upOrDecide(lead: Assignment, c: ClarificationRecord, kind: ClarificationKind, why: string, at: string): Promise<RaisedEvent[]> {
+    if ((await this.nextHop(lead)) === "lead") return this.moveUp(lead, c, kind, why, at);
+    if (!(await this.questions.answer(c.orbitId, c.id, DECIDE_YOURSELF, "system:clarifications", at))) return [];
+    return [event(c, "ClarificationAnswered", { askerAssignmentId: c.askerAssignmentId, by: "system" }, 2), ...(await this.resumeAsker(c, DECIDE_YOURSELF, "its manager did not answer in time"))];
   }
 
   // One level up: to the lead's own lead (woken by its event), or -- from the root -- to the person (Needs me).

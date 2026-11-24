@@ -41,7 +41,8 @@ import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
 import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
 import { scopeIsEmpty } from "../domain/authority.js";
-import { resolveMissionTarget, sameAssignee, type ResolvedMissionTarget } from "../domain/target.js";
+import { CEO_NEEDS_DEPARTMENTS, resolveMissionTarget, sameAssignee, type ResolvedMissionTarget } from "../domain/target.js";
+import { handInRefusal, rulesOf } from "../domain/roles.js";
 import { allEnded, DONE } from "../domain/team.js";
 import { OrgReader } from "../infrastructure/org.reader.js";
 import { ClarificationsService } from "./clarifications.service.js";
@@ -140,6 +141,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         await this.governance.authorize(actor, "work.assign", employeeId, { employee: employeeId });
         const el = await this.eligibility.of(orbitId, employeeId, true);
         if (el === null) throw missing("Employee");
+        // The CEO gives work only to departments (roles.ts): by its slot or by its name, work for it waits for nobody.
+        if (el.appointment?.role === "ceo" && el.appointment.active && (await this.org.departmentsManaged(orbitId)) === 0) throw conflictWith("ceo_needs_departments", CEO_NEEDS_DEPARTMENTS, { target: req.target });
         if (req.workspaceId !== null) await this.sources.check(orbitId, req.workspaceId, req.sourceRevisionIds);
         const repositories = await this.repositoriesFor(orbitId, employeeId, req.repositories);
         const execution = req.execution === undefined ? el.execution : await this.hiring.executionFor(orbitId, { ...el.execution, ...(req.execution.model !== undefined ? { model: req.execution.model } : {}), ...(req.execution.effort !== undefined ? { effort: req.execution.effort } : {}) }, el.departmentId);
@@ -170,7 +173,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       });
     } catch (err) {
       // A refusal is the answer to this key too: the same request again gets the same answer, without running again.
-      if (err instanceof DomainError && ["employee_busy", "employee_ineligible", "target_changed", "no_ceo", "no_manager", "appointment_suspended"].includes(err.code)) {
+      if (err instanceof DomainError && ["employee_busy", "employee_ineligible", "target_changed", "no_ceo", "no_manager", "appointment_suspended", "not_working", "ceo_needs_departments"].includes(err.code)) {
         await this.db.tx(() => this.idempotency.complete(scope, req, { status: 409, body: { error: { code: err.code, message: err.message, details: err.details } } })).catch(() => undefined);
       }
       throw err;
@@ -419,7 +422,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     const b = a.data.brief;
     // What THIS attempt may read: the mission's sources for its root, what its lead shared for a part (§9).
     const data = await this.attemptData.of(orbitId, a.id);
-    const scope = await this.team.scope(orbitId, a);
+    const { scope, role } = await this.team.standing(orbitId, a);
+    const rules = rulesOf(role, a.data.parentId === null);
     const lead = a.data.parentId === null ? null : await this.assignments.get(orbitId, a.data.parentId);
     const leadName = lead === null ? null : await this.employeeName(orbitId, lead.data.employeeId);
     return {
@@ -436,6 +440,9 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
       repositories: data?.repositories === true && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
+        role,
+        denied: rules.denied,
+        connectorsDenied: rules.connectorsDenied,
         canDelegate: !scopeIsEmpty(scope),
         scope: { employees: scope.employees.map((e) => ({ id: e.id, name: e.name, title: e.title, departmentName: e.departmentName, via: e.via })), departments: scope.departments.map((d) => ({ id: d.id, name: d.name, managerName: d.manager?.name ?? null, via: d.via })) },
         units: await this.team.units(orbitId, a.id),
@@ -474,6 +481,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     await this.onRun(actor, assignmentId, fence, async (a) => {
       if (!a.acting(fence)) throw conflictWith("stale_fence", "This attempt has ended its work: its hand-in is not taken.");
       const parts = await this.team.units(actor.command.orbitId, a.id);
+      const refusal = handInRefusal(rulesOf((await this.team.standing(orbitId, a)).role, a.data.parentId === null), parts.length);
+      if (refusal !== null) throw conflictWith(refusal.code, refusal.message);
       if (!allEnded(parts)) throw conflictWith("parts_not_ended", `Your team's parts are not all ended (${parts.filter((u) => !DONE.includes(u.state)).map((u) => u.key).join(", ")}): review them before you hand in.`);
       const revision = a.data.handoffRevision + 1;
       const required = a.data.brief.deliverables.filter((d) => d.required).map((d) => d.name);

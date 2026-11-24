@@ -95,6 +95,12 @@ export interface AttemptContext {
   // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
   // what each handed in, and the mission's team room (null: none).
   team: {
+    // Its role in this work (Work decides it from the appointment in force and the department's working members): the
+    // CEO, a manager with or without a team, or an employee -- what it is told, and what that role withholds: the tools
+    // never offered (and refused at the door, saying why), and every connector tool when `connectorsDenied` says why.
+    role: "ceo" | "manager_with_team" | "manager_alone" | "employee";
+    denied: { name: string; why: string }[];
+    connectorsDenied: string | null;
     // Whether it may give parts of the work to anyone: its appointment in force or a person's grant (never a title).
     canDelegate: boolean;
     // Whom: employees (by appointment or grant) and departments (each to its manager in office).

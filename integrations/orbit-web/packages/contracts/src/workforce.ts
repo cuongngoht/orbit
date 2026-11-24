@@ -472,11 +472,12 @@ export interface ExpectedAssignee {
 }
 
 // Who is responsible for a target NOW (GET /api/missions/target), or why nobody is: the CEO slot is empty (no_ceo), the
-// department has no manager (no_manager), the incumbent is suspended (appointment_suspended).
+// department has no manager (no_manager), the incumbent is suspended (appointment_suspended) or does not work
+// (not_working), or the CEO has no department with a manager to give the work to (ceo_needs_departments).
 export interface MissionTargetPreview {
   target: MissionTarget;
   responsible: (ExpectedAssignee & { employeeName: string; role: "ceo" | "manager" | null; departmentName: string | null }) | null;
-  code: "no_ceo" | "no_manager" | "appointment_suspended" | "not_working" | null;
+  code: "no_ceo" | "no_manager" | "appointment_suspended" | "not_working" | "ceo_needs_departments" | null;
   reason: string | null;
 }
 

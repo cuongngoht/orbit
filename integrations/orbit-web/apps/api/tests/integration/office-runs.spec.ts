@@ -49,7 +49,7 @@ describe("the office's runs, interrupted, raced, recovered and scheduled", () =>
 
   before(async () => {
     h = await startHarness({ overrides: [[SANDBOX_PROVIDER, sandbox]], env: FAST });
-    sandbox.readInput = (p) => h.app.get(ResearchInputs).read(p);
+    sandbox.readInput = (p) => h.app.get(AttemptInputs).read(p);
     b = h.owner as Browser;
     connection = ((await b.get("/api/connections")).body as { connections: RuntimeConnection[] }).connections.find((x) => x.runtime === "claude" && x.auth === "connected") as RuntimeConnection;
     assert.equal((await b.send("POST", "/api/office/setup", { name: "Stress office" })).status, 200);

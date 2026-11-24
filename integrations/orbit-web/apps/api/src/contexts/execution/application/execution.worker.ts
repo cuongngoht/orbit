@@ -293,7 +293,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     // The mission's repositories, as git bundles: read by the provider as it starts the attempt, then released.
     const repositories = await this.repositoryInputs(run, ctx.repositories);
     // What it may read (ADR 0061 §9): staged from its grant alone, written down with why each, recorded -- before it starts.
-    const staged: StagedInput[] = [...this.inputs.stagedOf(run.orbitId, ctx), ...repositories.inputs.map((i) => ({ ...i, origin: "repository" as const, ref: null, why: "a repository of the mission" }))];
+    const staged: StagedInput[] = [...this.inputs.stagedOf(run.orbitId, { sources: ctx.sources, handoffs: ctx.data.handoffs }), ...repositories.inputs.map((i) => ({ ...i, origin: "repository" as const, ref: null, why: "a repository of the mission" }))];
     try {
       const digest = await this.manifest.write(run.orbitId, run.id, staged);
       await this.audit.record(actor.governance, { type: "office.run.inputs", outcome: "staged", runId: run.id, data: { runId: run.id, assignmentId: run.assignmentId, inputs: staged.length, digest } });

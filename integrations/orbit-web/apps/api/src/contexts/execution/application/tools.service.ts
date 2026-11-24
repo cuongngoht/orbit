@@ -50,12 +50,25 @@ const TOOLS: ToolSpec[] = [
 // Offered only to an employee who may give work to colleagues, and only while it reviews its team's parts.
 const DELEGATE: ToolSpec = {
   name: "delegate",
-  description: "Give parts of your assignment to colleagues (you stay responsible). Each part: a short key, the colleague (their id or exact name), a title and goal, the files it must produce, its acceptance criteria, and the keys of parts it must wait for. Your attempt ends: you are woken to review what they hand in. Use /team to share files with them.",
+  description: "Give parts of your assignment to colleagues (you stay responsible). Each part: a short key, the colleague (their id or exact name), a title and goal, the files it must produce, its acceptance criteria, the keys of parts it must wait for, the sources it may read (share_sources) and what it receives of a part it waits for (receives: its summary, or in full). A part reads nothing you do not share. Your attempt ends: you are woken to review what they hand in. /team is shared only with the colleagues of your own department.",
   inputSchema: obj(
     {
       parts: {
         type: "array",
-        items: obj({ key: str("A short key: lower-case letters, digits, dashes"), employee: str("The colleague's id or exact name"), title: str("A short title"), goal: str("What this part must achieve"), deliverables: { type: "array", items: { type: "string" } }, criteria: { type: "array", items: { type: "string" } }, waits_for: { type: "array", items: { type: "string" } } }, ["key", "employee", "title", "goal"]),
+        items: obj(
+          {
+            key: str("A short key: lower-case letters, digits, dashes"),
+            employee: str("The colleague's id or exact name"),
+            title: str("A short title"),
+            goal: str("What this part must achieve"),
+            deliverables: { type: "array", items: { type: "string" } },
+            criteria: { type: "array", items: { type: "string" } },
+            waits_for: { type: "array", items: { type: "string" } },
+            share_sources: { type: "array", items: { type: "string" }, description: "Labels of the sources you were given that this part may read (S1, S2 ...), or [\"all\"]. Nothing is shared unless you say." },
+            receives: { type: "array", items: obj({ from: str("The key of a part this one waits for"), as: { type: "string", enum: ["summary", "full"] } }, ["from", "as"]), description: "The accepted hand-in of a part it waits for: its summary alone, or in full (its files too)." },
+          },
+          ["key", "employee", "title", "goal"],
+        ),
       },
     },
     ["parts"],
@@ -207,6 +220,11 @@ export class ToolsService {
         deliverables: list(x.deliverables).filter((n) => isDeliverableName(n)).map((name) => ({ name, required: true })),
         acceptanceCriteria: list(x.criteria),
         dependsOn: list(x.waits_for),
+        shareSources: list(x.share_sources),
+        receives: (Array.isArray(x.receives) ? x.receives : []).slice(0, 20).flatMap((r) => {
+          const y = (typeof r === "object" && r !== null ? r : {}) as Record<string, unknown>;
+          return typeof y.from === "string" ? [{ from: y.from.trim().slice(0, 64), as: y.as === "full" ? ("full" as const) : ("summary" as const) }] : [];
+        }),
       };
     });
     const r = await this.outcomes.delegate(actor, run.assignmentId, run.fence, units);

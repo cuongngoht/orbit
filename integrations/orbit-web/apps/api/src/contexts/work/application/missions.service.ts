@@ -76,7 +76,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
     @Inject(TeamService) private readonly team: TeamService,
-    @Inject(AttemptDataService) private readonly data: AttemptDataService,
+    @Inject(AttemptDataService) private readonly attemptData: AttemptDataService,
     @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
@@ -355,7 +355,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     const profile = el === null ? null : pinned === null || pinned === el.profileRevision ? el.profile : await this.hiring.profileAt(orbitId, a.data.employeeId, pinned);
     const b = a.data.brief;
     // What THIS attempt may read: the mission's sources for its root, what its lead shared for a part (§9).
-    const data = await this.data.of(orbitId, a.id);
+    const data = await this.attemptData.of(orbitId, a.id);
     return {
       current: a.data.fence === fence && a.holding && a.state !== "CANCELLING" && a.state !== "PAUSED",
       missionId: a.data.missionId,
@@ -378,7 +378,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   }
 
   data(orbitId: string, assignmentId: string): Promise<AttemptData | null> {
-    return this.data.of(orbitId, assignmentId);
+    return this.attemptData.of(orbitId, assignmentId);
   }
 
   async roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null> {

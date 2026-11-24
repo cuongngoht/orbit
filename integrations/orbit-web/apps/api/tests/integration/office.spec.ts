@@ -73,7 +73,7 @@ describe("the virtual office, end to end", () => {
   before(async () => {
     c.sandbox = new FakeSandboxProvider();
     c.h = await startHarness({ overrides: [[SANDBOX_PROVIDER, c.sandbox]], env: FAST });
-    c.sandbox.readInput = (p) => c.h.app.get(ResearchInputs).read(p);
+    c.sandbox.readInput = (p) => c.h.app.get(AttemptInputs).read(p);
     c.b = c.h.owner as Browser;
     const list = (await c.b.get("/api/connections")).body as { connections: RuntimeConnection[] };
     c.connection = list.connections.find((x) => x.runtime === "claude" && x.auth === "connected") as RuntimeConnection;

@@ -331,4 +331,33 @@ describe("signed in: the workspace, as in Claude Code", () => {
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(window.location.hash).toBe("#/office"));
   });
+
+  test("CEO Chat is a company's: with no company, #/ceo goes back to a new session, and the sidebar offers Create company", async () => {
+    window.location.hash = "#/ceo";
+    signedIn().on("GET", "/api/executive", () => ({ company: null, state: "no_company", ceo: null, converse: { ok: false, code: "office_not_set_up", reason: "No company." }, assign: { ok: false, code: "office_not_set_up", reason: "No company." } }));
+    render(<App />);
+    await waitFor(() => expect(window.location.hash).toBe("#/"));
+    const sidebar = await screen.findByRole("navigation", { name: "Orbit" });
+    expect(await within(sidebar).findByRole("button", { name: "Create company" })).toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: "CEO Chat" })).toBeNull();
+  });
+
+  test("with a company and its CEO, CEO Chat is in the company section and opens its home", async () => {
+    window.location.hash = "#/";
+    signedIn()
+      .on("GET", "/api/executive", () => ({
+        company: { id: "o1", name: "Chat Co" },
+        state: "available",
+        ceo: { employeeId: EMP_ANA, name: "An", title: "Chief executive", employment: "active", appointment: { id: "ap1", revision: 1, state: "active", since: "2026-11-20T00:00:00.000Z" }, execution: { runtime: "claude", connectionId: null, connectionName: null, model: "claude-sonnet-5-5", effort: null, sources: { connection: "runtime", model: "employee", effort: "runtime" } }, holding: null },
+        converse: { ok: true, code: null, reason: null },
+        assign: { ok: true, code: null, reason: null },
+      }))
+      .on("GET", "/api/executive/conversations", () => ({ conversations: [], nextCursor: null }));
+    render(<App />);
+    const sidebar = await screen.findByRole("navigation", { name: "Orbit" });
+    await userEvent.click(await within(sidebar).findByRole("button", { name: "CEO Chat" }));
+    expect(await screen.findByText("What should we work on today?")).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/ceo");
+    expect(within(sidebar).getByRole("button", { name: "Resources" })).toBeInTheDocument();
+  });
 });

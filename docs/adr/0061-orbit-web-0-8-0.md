@@ -619,7 +619,9 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   row held, and kept on the work with the appointment and slot revision that resolved it. What the person saw may be
   named (`expectedAssignee`, from `GET /api/missions/target`): a slot that moved since is refused (409 `target_changed`,
   with who is responsible now) and nothing is made; an empty slot is `no_ceo` / `no_manager`, a suspended holder
-  `appointment_suspended`. A refusal and a success are the answer to their `Idempotency-Key`, replayed as they were.
+  `appointment_suspended`. The CEO gives work only to departments: while no live department has a manager in office,
+  work for the CEO -- by its slot or by its name -- is refused before anything is made (409 `ceo_needs_departments`, said
+  by the preview too). A refusal and a success are the answer to their `Idempotency-Key`, replayed as they were.
 - **A team, by the tree.** Whom a lead may give work to is ONE function over its appointment and grants
   (`work/domain/authority.ts`): the CEO gives work to the managers in office (a department goes to its manager), a
   manager to the working members of its department, anyone to whom a person granted it -- never to itself or a lead
@@ -631,15 +633,25 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   the decision), and hands its own result in only once every part has ended (`parts_not_ended`). Limits: five revisions
   of one hand-in, three plans per assignment, three questions per assignment, delegation three levels deep. Temporary
   assistants (`employee.hire_assistant`) are a word of the vocabulary, not built.
-- **Questions go up the tree.** An attempt that cannot go on asks ONE question and its work ends there: a part asks its
-  LEAD, the root the person who gave the work. The lead is woken (ANSWERING; a review it is already in answers too) and
-  answers -- the asker resumes ONCE with the answer in its brief: an answer is a compare-and-set on the open question,
-  so two at once (a lead and a person, two tabs) resume it exactly once -- or moves it one level up saying why. A
-  question reaches the person only from the root, or moved up for what is a person's: a human decision, something beyond
-  the lead's authority, a deadline, one nobody below answered; the person's answer to a question asked of a lead is
-  refused (409 `asked_of_lead`). A lead woken for a question it then leaves unanswered is woken again at most twice, then
-  the question moves up by itself; an overdue one moves up too; one whose asker ends is withdrawn, and a lead that ends
-  takes its open parts with it. Every hop is appended to the question's route.
+- **Roles: the CEO plans, managers run their departments** (`work/domain/roles.ts`, one place for what an attempt is
+  told, the tools it is offered, the tool door and its hand-in). A role comes from the appointment in force and the
+  department's working members, never a title. The CEO plans and synthesizes: it is offered no shell and no connector
+  or knowledge-base tool (both refused at the door, saying why), and its hand-in before it gave the work to its
+  departments is refused (`ceo_delegates_only`). A manager with working members gives the work to its team, coordinates,
+  reviews and synthesizes, and hands in only once it gave it (`manager_delegates_to_team`); a manager alone does the work
+  itself. A manager -- with or without a team -- and the CEO DECIDE: they never ask up nor move a question up. Members
+  discuss in the department's room (`/team/discussion/<name>.md`) and ask their manager only what they cannot settle.
+- **Questions go up the tree, and stop below the CEO.** An attempt that cannot go on asks ONE question and its work ends
+  there: a part asks its LEAD, the root the person who gave the work (a manager root asks nobody: it decides). The lead
+  is woken (ANSWERING; a review it is already in answers too) and answers -- the asker resumes ONCE with the answer in
+  its brief: an answer is a compare-and-set on the open question, so two at once (a lead and a person, two tabs) resume
+  it exactly once. A lead who leads by a grant may move a question one level up only to a lead below the CEO. A lead
+  woken for a question it then leaves unanswered is woken again at most twice; then -- or when it is overdue -- the
+  question moves up by itself to a lead below the CEO, or, where the next hop would be the CEO or the person, it is
+  ANSWERED FOR ITS ASKER by Orbit ("decide with your best judgment and say what you assumed in your hand-in"): nothing
+  asked below the CEO reaches *Needs me*. The person's answer to a question asked of a lead is refused (409
+  `asked_of_lead`); one whose asker ends is withdrawn, and a lead that ends takes its open parts with it. Every hop is
+  appended to the question's route.
 - **An attempt that delegated, asked or answered ENDED BY DESIGN.** Its assignment moved on in the same transaction
   (WAITING_FOR_SUBORDINATES, BLOCKED on its question, waiting again), its tools close at once (an attempt acts only while
   its fence is current AND its work is in a state that runs one), and its run is asked to stop and recorded as a SUCCESS

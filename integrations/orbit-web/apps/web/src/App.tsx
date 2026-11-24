@@ -8,13 +8,15 @@
 import { Button, FluentProvider, MessageBar, MessageBarActions, MessageBarBody, OverlayDrawer, Spinner, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
 import { PASSWORD_CHANGE_REQUIRED, SIGN_IN_REQUIRED, type AuthStatus, type ConnectorName, type SessionSummary, type Settings } from "@orbit-web/contracts";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrialBar } from "./features/auth/TrialBar";
 import { useSignOut, type SignOut } from "./features/auth/useSignOut";
 import { ChatScreen } from "./features/chat/ChatScreen";
 import { GovernanceView } from "./features/governance/GovernanceView";
 import { NewSession } from "./features/newSession/NewSession";
 import { OfficeView } from "./features/office/OfficeView";
+import { useExecutiveState } from "./features/executive/api";
+import { CeoChatView } from "./features/executive/CeoChatView";
 import { ResearchPage } from "./features/research/ResearchPage";
 import { SettingsDialog } from "./features/settings/SettingsDialog";
 import { useHashRoute, type GovernancePage, type OfficePage } from "./hooks/useHashRoute";
@@ -107,7 +109,11 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
       delete document.documentElement.dataset.orbitShell;
     };
   }, []);
-  const { route, open, openSettings, closeSettings } = useHashRoute();
+  const { route, open, replace, openSettings, closeSettings } = useHashRoute();
+  // What CEO Chat is for this account: whether it has a company decides the navigation (and the `#/ceo` route).
+  const executiveState = useExecutiveState();
+  const companyName = executiveState.data === null ? undefined : (executiveState.data.company?.name ?? null);
+  const company = useMemo(() => (companyName === undefined ? undefined : companyName === null ? null : { name: companyName }), [companyName]);
   const sessions = useSessions();
   const researchSessions = useResearchSessions();
   const sources = useSources();
@@ -118,6 +124,11 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
   const selected = route.view.view === "chat" || route.view.view === "research" ? route.view.sessionId : null;
   const governance = route.view.view === "governance" ? route.view : null;
   const office = route.view.view === "office" ? route.view : null;
+  const ceo = route.view.view === "ceo" ? route.view : null;
+  // CEO Chat is a company's: with no company, its route is not a place to be.
+  useEffect(() => {
+    if (ceo !== null && company === null) replace({ view: "new" });
+  }, [ceo, company, replace]);
   const goGovernance = useCallback((page: GovernancePage, item: string | null = null) => open({ view: "governance", page, item }), [open]);
   const goOffice = useCallback((page: OfficePage, item: string | null = null, tab: string | null = null) => open({ view: "office", page, item, tab }), [open]);
 
@@ -180,6 +191,10 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
     onOffice: closeDrawer(() => goOffice("overview")),
     governance: governance !== null,
     onGovernance: closeDrawer(() => goGovernance("overview")),
+    company,
+    ceo: ceo !== null,
+    onCeo: closeDrawer(() => open({ view: "ceo", conversationId: null })),
+    onResources: closeDrawer(() => openSettings("compute")),
     onSignOut: closeDrawer(() => void signOut.signOut()),
     onRenamed: sessions.upsert,
     onDeleted: removed,
@@ -208,7 +223,9 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
           </MessageBar>
         )}
         <div className={s.view}>
-          {office !== null ? (
+          {ceo !== null ? (
+            company === null ? null : <CeoChatView state={executiveState} conversationId={ceo.conversationId} go={(conversationId) => open({ view: "ceo", conversationId })} onOpenNav={onOpenNav} />
+          ) : office !== null ? (
             <OfficeView page={office.page} item={office.item} tab={office.tab} go={goOffice} account={auth.account} onOpenNav={onOpenNav} />
           ) : governance !== null ? (
             <GovernanceView

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SessionSummary } from "@orbit-web/contracts";
 import { describe, expect, test, vi } from "vitest";
@@ -133,6 +133,32 @@ describe("the sidebar", () => {
     expect(screen.getByRole("button", { name: "New session" })).not.toHaveAttribute("aria-current");
     await userEvent.click(office);
     expect(onOffice).toHaveBeenCalled();
+  });
+
+  test("the company section: with no company, Create company and Governance; with one, CEO Chat, Office, Governance, Resources; unknown, as before", async () => {
+    fakeApi();
+    const handlers = { onOffice: vi.fn(), onGovernance: vi.fn(), onCeo: vi.fn(), onResources: vi.fn() };
+    const none = show({ ...handlers, company: null });
+    expect(screen.queryByRole("button", { name: "CEO Chat" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Create company" }));
+    expect(none.onOffice).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Governance" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resources" })).toBeNull();
+    cleanup();
+    const one = show({ ...handlers, company: { name: "Chat Co" }, ceo: true, selected: null });
+    expect(screen.getByText("Chat Co")).toBeInTheDocument();
+    const ceo = screen.getByRole("button", { name: "CEO Chat" });
+    expect(ceo).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "New session" })).not.toHaveAttribute("aria-current");
+    await userEvent.click(ceo);
+    expect(one.onCeo).toHaveBeenCalled();
+    for (const name of ["Office", "Governance"]) expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Resources" }));
+    expect(one.onResources).toHaveBeenCalled();
+    cleanup();
+    show({ ...handlers });
+    expect(screen.getByRole("button", { name: "Office" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CEO Chat" })).toBeNull();
   });
 
   test("no chats yet, and while signing out the account cannot be used twice", () => {

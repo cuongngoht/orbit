@@ -51,6 +51,14 @@ test("the acceptance example: Research opens the public web within its delegatio
   for (const d of [RESEARCH, FINANCE]) assert.equal(decide(c, [asks], employee(d, { action: "connector.write", resource: "github:o/r" })), "require_approval", d);
 });
 
+test("an employee's answer in CEO Chat (run kind executive) is decided with its department's policy, as its assignments are", () => {
+  const c = company();
+  const depts = [research()];
+  assert.equal(decide(c, depts, employee(RESEARCH, { runKind: "executive", action: "tool.web", resource: "*" })), "allow");
+  assert.equal(decide(c, depts, employee(FINANCE, { runKind: "executive", action: "tool.web", resource: "*" })), "deny");
+  assert.equal(decide(c, depts, employee(RESEARCH, { runKind: "executive", action: "connector.write", resource: "github:o/r" })), "require_approval", "the company's mandatory approval binds it too");
+});
+
 test("a chat, a research question and a person decide exactly as without departments, bindings or delegation -- for every action, principal and environment", () => {
   const c = company();
   const plain: Constitution = { ...c, delegation: undefined, rules: c.rules.map(({ binding: _b, ...r }) => r) };

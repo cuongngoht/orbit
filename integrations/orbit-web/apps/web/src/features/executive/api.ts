@@ -37,12 +37,15 @@ export const executive = {
   eventsUrl: (conversationId: string, after: number) => `${at(conversationId)}/events?after=${after}`,
 };
 
-// What CEO Chat is for this account now: read again when the office changes (a company set up, an appointment, a hire),
-// when a connection changes, and whenever the app stream reopens.
+// What CEO Chat is for this account now: read again when the office's roster changes (a company set up, an appointment,
+// a hire, a run of the CEO admitted or released), when a connection changes, and whenever the app stream reopens -- not
+// on every mission's step.
 export function useExecutiveState(): Resource<ExecutiveState> {
   const { generation } = useAppStream();
   const [changed, setChanged] = useState(0);
-  useAppEvent("office.changed", () => setChanged((n) => n + 1));
+  useAppEvent("office.changed", (e) => {
+    if (e.data.areas.includes("roster") || e.data.areas.includes("connections")) setChanged((n) => n + 1);
+  });
   useAppEvent("connections.changed", () => setChanged((n) => n + 1));
   return useResource<ExecutiveState>(() => executive.state(), [generation, changed]);
 }

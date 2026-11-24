@@ -27,7 +27,10 @@ flowchart LR
     missions["missions · targets · assignments · reservations<br/>handoffs · decisions (Needs me) · questions<br/>data shares · team rooms · schedules · deliveries"]
   end
   subgraph execution["Execution (contexts/execution)"]
-    runs["runs · admission · the worker<br/>artifacts · tool endpoint · desk publisher"]
+    runs["runs · conversation runs · admission · the worker<br/>artifacts · tool endpoint · desk publisher"]
+  end
+  subgraph executive["Executive (contexts/executive): CEO Chat"]
+    chat["conversations · messages · turns<br/>mission links · the conversation's stream"]
   end
   allocator[["orbit-allocator<br/>(Docker socket)"]]
 
@@ -43,13 +46,26 @@ flowchart LR
   missions -->|"run intents · stop requests"| runs
   runs -->|"RunOutcomes port: handoff · ended · delegate · review · question · answer · data · room"| missions
   runs -->|"SandboxProvider port (signed HTTP)"| allocator
+  chat -->|"the CEO in office · eligibility · records (read)"| office
+  chat -->|"missions.create (target: CEO) · records (read)"| missions
+  chat -->|"conversation runs (requested)"| runs
+  runs -->|"CONVERSATION_DISPATCH: admitted · held · interrupted"| chat
 ```
 
 - **Shared** (`contexts/shared`): the outbox (`workforce.events`), the per-consumer inbox, idempotency keys, the
   office version and `office.changed` on the app stream. Every table carries `account_id` (the OrbitId).
 - **Domain purity**: `contexts/*/domain/` imports no framework, database, file system or HTTP (`boundaries.spec.ts`).
 - **Ports**: `SANDBOX_PROVIDER` (container or development `process`), `CONNECTION_SECRETS` (the credential store),
-  `RUN_OUTCOMES` (Execution → Work).
+  `RUN_OUTCOMES` (Execution → Work), `CONVERSATION_DISPATCH` (Execution → Executive: a conversation run the pass
+  admitted, held or found interrupted).
+- **Roles** (`contexts/work/domain/roles.ts`): the CEO, a manager with or without a team, an employee -- from the
+  appointment in force and the department's working members. One place feeds what an attempt is told, the tools it is
+  offered and the tool door (`AttemptContext.team.denied`, `connectorsDenied`) and whether its hand-in is taken.
+- **CEO Chat** (`contexts/executive`, ADR 0062): a conversation is the company's; an answer (a TURN) is a CONVERSATION
+  RUN of the CEO in office (`workforce.conversation_runs`), admitted by the same pass as attempts and never at the same
+  time as another run of the CEO (both ways); it runs the Claude CLI with no tool in a session sandbox of kind
+  `executive`, decided by governance as the employee (run kind `executive`). Quick actions are Orbit's records
+  (`executive/domain/records.ts`); a proposal becomes a mission only through `MissionsService.create`.
 - **The CEO belongs to no department**: an employee appointed CEO from a department leaves it in the same transaction
   (`EmployeeDepartmentChanged`), a move of the CEO into one is refused (`appointed_ceo`), and the database's
   `appointment_matches()` holds it at commit -- so the CEO's work is the company's: its policy, its room, its defaults.
@@ -91,6 +107,8 @@ each event they handled in the inbox (`consumer_inbox`) in the transaction of th
 | `AssignmentCancelling`, `AssignmentCancelled`, `AssignmentFailed` | Work | `work.team`, `work.cascade` (a lead's open parts end with it; its question is withdrawn), `execution.workspace-cleanup` |
 | `EmployeeDepartmentChanged` | Workforce | `execution.access` (an attempt holding another department's room is stopped) |
 | `ReservationReleased` | Work (the employee is free) | `work.scheduler` (its next queued work) |
+| `ExecutiveMissionLinked` | Executive (a mission given from a CEO Chat conversation) | the mission's timeline ("Given to the CEO from CEO Chat") |
+| `HandoffSubmitted`, `AssignmentAccepted`, `AssignmentBlocked`, `AssignmentFailed`, `AssignmentCancelled`, `ClarificationRequested`, `RunUnschedulable` | Work / Execution | also `executive.notices`: one system message in the conversation a mission was given from (its root's end, a question for the owner, work that cannot start) |
 | `DecisionRequested`, `DecisionResolved` | Work (Needs me) | the pages |
 | `OccurrenceCreated` | Work (a schedule's period) | the pages |
 | `DeliveryRequested`, `DeliveryReconciled` | Work (deliveries) | the pages |
@@ -154,11 +172,25 @@ its parts. Bounds: 5 revisions of one hand-in (`rework_limit`), 3 plans (`replan
 
 ### A question (Work)
 
-A part asks its LEAD; the root asks the person who gave the work (Needs me). `open` → `answered` (a compare-and-set:
-two answers at once resume the asker exactly once) or `withdrawn` (its asker ended). A lead may move it one level up --
-to its own lead, or from the root to the person, only for `human_decision`, `beyond_authority`, `deadline` or
-`unanswered`; each hop is appended to its route (`workforce.clarification_routes`, never changed). The person's answer to
-a question asked of a lead is refused (409 `asked_of_lead`).
+A part asks its LEAD; the root asks the person who gave the work (Needs me) -- unless it is a manager, which decides.
+`open` → `answered` (a compare-and-set: two answers at once resume the asker exactly once) or `withdrawn` (its asker
+ended). Managers and the CEO never move a question up; a lead who leads by a grant may, only to a lead below the CEO.
+A question left unanswered after its lead's wakes, or overdue, moves up by itself to a lead below the CEO -- or, where
+the next hop would be the CEO or the person, is answered for its asker by `system:clarifications` ("decide with your
+best judgment and say what you assumed"). Each hop is appended to its route (`workforce.clarification_routes`, never
+changed). The person's answer to a question asked of a lead is refused (409 `asked_of_lead`).
+
+### A conversation run, and a turn (Execution, Executive)
+
+A CONVERSATION RUN (`workforce.conversation_runs`): `requested` → `waiting` (said why: the employee's attempt runs, the
+account's budget or the host is in use) → `starting` (admitted: its compute reserved, leased to this process's worker)
+→ `running` → `succeeded` | `failed` | `interrupted` | `cancelled`; one that can never start as configured is `failed`
+with the numbers. One live per employee (a unique index), and none while an attempt of the employee is live (and the
+reverse: the admission pass holds the attempt). Released (`released_at`, the budget's counters) once its process is gone.
+A TURN (`executive.turns`) follows it: `queued` (behind the conversation's running answer) → `waiting` → `running` →
+`completed` | `failed` (`ceo_changed`, `ceo_unavailable`, `governance`, `unschedulable`, `tool_refused`, `cli_error`) |
+`interrupted` (a stop, a restart, a time limit, a connection gone) | `cancelled`; one waiting and one running per
+conversation at most, and an owner's message joins the turn that has not started.
 
 ### A run, one attempt (Execution)
 

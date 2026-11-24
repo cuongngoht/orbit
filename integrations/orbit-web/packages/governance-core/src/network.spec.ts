@@ -239,9 +239,9 @@ test("the table carries the employee network access: read, changed and written b
   assert.deepEqual(withTable(changed, { ...tableOf(changed), employeeNetwork: { mode: "AUTONOMOUS", allow: [] } }).employeeNetwork, { mode: "AUTONOMOUS", allow: [] });
 });
 
-test("an employee's run is its own kind of run, with its own scope; the sign-in channel's word is gone", () => {
-  assert.deepEqual([...RUN_KINDS], ["chat", "research", "assignment"]);
-  assert.deepEqual(RUN_SCOPES, { chat: "ACCOUNT_WORKSPACE", research: "ACCOUNT_RESEARCH", assignment: "ACCOUNT_EMPLOYEE" });
+test("an employee's run is its own kind of run, with its own scope -- its assignment's, and its answer in CEO Chat (ADR 0062), both decided as the employee; the sign-in channel's word is gone", () => {
+  assert.deepEqual([...RUN_KINDS], ["chat", "research", "assignment", "executive"]);
+  assert.deepEqual(RUN_SCOPES, { chat: "ACCOUNT_WORKSPACE", research: "ACCOUNT_RESEARCH", assignment: "ACCOUNT_EMPLOYEE", executive: "ACCOUNT_EMPLOYEE" });
   assert.ok((ENFORCEMENT_SCOPES as readonly string[]).includes("ACCOUNT_EMPLOYEE"));
   assert.deepEqual([isRunKind("assignment"), isRunKind("chats"), isRunKind(null)], [true, false, false]);
   for (const code of ["EMPLOYEE_NETWORK_AUTONOMOUS", "EMPLOYEE_NETWORK_ALLOWED", "EMPLOYEE_NETWORK_NOT_LISTED", "EMPLOYEE_NETWORK_PORT"]) assert.ok((REASON_CODES as readonly string[]).includes(code), code);

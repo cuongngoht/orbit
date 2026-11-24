@@ -222,4 +222,26 @@ describe("CEO Chat: company-aware, the actual CEO answers with no tool, a propos
       live.close();
     }
   });
+
+  test("each answer was bound and decided as the CEO (governance run kind executive); work given in the owner's own words starts a conversation; a budget that allows no run refuses an answer, saying why", async () => {
+    const bindings = await h.sql("SELECT kind, resource_kind, resource_id, agent_id, ended_at FROM governance.run_bindings WHERE account_id = $1 AND kind = 'executive'", [h.accountId as string]);
+    assert.ok(bindings.length >= 3, JSON.stringify(bindings));
+    assert.ok(bindings.every((r) => r.resource_kind === "employee" && r.resource_id === ids.An && r.agent_id === `employee:${ids.An}` && r.ended_at !== null), "bound to the CEO, and ended");
+
+    const p = (await b.get("/api/missions/target?kind=ceo")).body as MissionTargetPreview;
+    const started = await b.send("POST", "/api/executive/conversations", { mission: { title: "Close Q4", goal: "Close the quarter's books.", deliverables: [], acceptanceCriteria: [], deadline: null, priority: 5 }, expectedAssignee: { employeeId: p.responsible?.employeeId, appointmentId: p.responsible?.appointmentId, appointmentRevision: p.responsible?.appointmentRevision } }, key());
+    assert.equal(started.status, 201, JSON.stringify(started.body));
+    const own = await detail((started.body as { conversationId: string }).conversationId);
+    assert.deepEqual([own.conversation.title, own.messages.map((m) => m.role), own.links.length], ["Close Q4", ["owner"], 1]);
+    assert.match(own.messages[0]?.text ?? "", /^Work for the CEO: Close Q4/);
+
+    const r = await b.get("/api/office/resources");
+    const version = (r.body as { budget: { version: number } }).budget.version;
+    assert.equal((await b.send("PATCH", "/api/office/resources/budget", { maxConcurrent: 0 }, { "if-match": `"${version}"` })).status, 200);
+    const sent = (await b.send("POST", `/api/executive/conversations/${own.conversation.id}/messages`, { text: "Status?" }, key())).body as ExecutiveSent;
+    const d = await eventually(() => detail(own.conversation.id), (x) => x.turns.find((t) => t.id === sent.turn.id)?.state === "failed", 15_000);
+    const t = d.turns.find((x) => x.id === sent.turn.id);
+    assert.equal(t?.code, "unschedulable");
+    assert.match(t?.detail ?? "", /allows no attempt to run at once/);
+  });
 });

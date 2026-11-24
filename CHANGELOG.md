@@ -54,11 +54,22 @@ down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.p
   the attempt holding it (`office.access.revoked`).
 - **Work given to a department or to the CEO** (ADR 0061 §8). *Give work* to an employee, a department (its manager in
   office) or the CEO, shown who is responsible before sending; a slot that moved since is refused (409
-  `target_changed`) and nothing is made; `no_ceo`, `no_manager`, `appointment_suspended` say why.
-- **Questions go up the tree; review follows it** (ADR 0061 §8). A part asks its lead, who is woken to answer (or moves
-  it up, saying why); the asker resumes once. Only the root's questions, or ones moved up for what is a person's, reach
-  *Needs me*. A lead reviews its parts by the digest of the revision read and hands in only once they all ended; the
-  person reviews the mission's result only. Every revision is kept as handed in (v1 asked to revise beside v2 accepted).
+  `target_changed`) and nothing is made; `no_ceo`, `no_manager`, `appointment_suspended` say why, and
+  `ceo_needs_departments` while no department has a manager in office (the CEO gives work only to departments).
+- **Roles: the CEO plans, managers run their departments** (ADR 0061 §8). The CEO is offered no shell and no connector
+  or knowledge-base tool (refused at the door, saying why) and hands in only once it gave the work to its departments; a
+  manager with working members gives the work to its team and decides what it asks, a manager alone does the work
+  itself; managers and the CEO never ask up nor move a question up. A question its manager leaves unanswered (after its
+  wakes, or overdue) is answered for its asker -- decide, and say what you assumed -- and never reaches *Needs me*.
+- **CEO Chat** (ADR 0062). A company's owner talks to the actual appointed CEO: a new *Company* section in the sidebar
+  (CEO Chat, Office, Governance, Resources; *Create company* before there is one), `#/ceo`. The CEO answers with no tool,
+  on its own model and effort, as a conversation run admitted like any run of the CEO and never at the same time as its
+  attempts (it waits for one, said why, and one waits for it); quick actions show Orbit's own records; a mission the CEO
+  proposes is given in one click through the existing mission creation, linked to the conversation, and the conversation
+  is told how it goes. A replaced CEO's queued answer fails `ceo_changed`; what a former CEO said stays theirs.
+- **Questions go up the tree, and stop below the CEO; review follows it** (ADR 0061 §8). A part asks its lead, who is
+  woken to answer; the asker resumes once. Only a root's own questions reach *Needs me*. A lead reviews its parts by the
+  digest of the revision read and hands in only once they all ended; the person reviews the mission's result only. Every revision is kept as handed in (v1 asked to revise beside v2 accepted).
   Bounded: 5 revisions, 3 plans and 3 questions per assignment.
 - **An attempt that delegated, asked or answered ends by design** -- a success, its compute given back at once -- so a lead
   and its part never hold one execution slot together; each attempt says why it started.

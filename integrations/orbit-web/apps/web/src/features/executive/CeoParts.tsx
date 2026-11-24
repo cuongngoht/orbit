@@ -4,7 +4,7 @@
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, Textarea, makeStyles, tokens } from "@fluentui/react-components";
 import { Briefcase20Regular, Building20Regular, DataBarVertical20Regular, PersonAdd20Regular, PersonStar20Regular, Wrench20Regular } from "@fluentui/react-icons";
 import { checkMissionFields, type Department, type ExecutionDefaults, type ExecutiveMissionFields, type ExecutiveReportKind, type ExecutiveState, type ExpectedAssignee, type MissionTargetPreview, type Roster } from "@orbit-web/contracts";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { errorText, newIdempotencyKey } from "../../services/api";
@@ -25,7 +25,7 @@ const useStyles = makeStyles({
   center: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexGrow: 1, gap: "16px", padding: "24px" },
 });
 
-export const REPORT_ACTIONS: { kind: ExecutiveReportKind; key: "executive.quick.status" | "executive.quick.missions" | "executive.quick.departments" | "executive.quick.resources" | "executive.quick.decisions"; icon: ReactNode }[] = [
+export const REPORT_ACTIONS: { kind: ExecutiveReportKind; key: "executive.quick.status" | "executive.quick.missions" | "executive.quick.departments" | "executive.quick.resources" | "executive.quick.decisions"; icon: ReactElement }[] = [
   { kind: "status", key: "executive.quick.status", icon: <Building20Regular /> },
   { kind: "missions", key: "executive.quick.missions", icon: <Briefcase20Regular /> },
   { kind: "departments", key: "executive.quick.departments", icon: <PersonStar20Regular /> },

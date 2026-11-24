@@ -36,7 +36,9 @@ import {
 } from "@fluentui/react-components";
 import {
   Add20Regular,
+  Building20Regular,
   BookOpen16Regular,
+  ChatSparkle20Regular,
   ChevronDown12Regular,
   Code16Regular,
   Delete16Regular,
@@ -48,6 +50,7 @@ import {
   People16Regular,
   Rename16Regular,
   Search20Regular,
+  Server20Regular,
   Settings20Regular,
   SignOut20Regular,
 } from "@fluentui/react-icons";
@@ -149,6 +152,15 @@ export interface SidebarProps {
   // The Governance console is open (and its entry is the current page).
   governance?: boolean;
   onGovernance?: () => void;
+  // The account's company as CEO Chat's state says it: undefined while that is not known (the entries are as they always
+  // were), null when the account has none (Create company and Governance), else the company section -- CEO Chat, Office,
+  // Governance, Resources.
+  company?: { name: string } | null;
+  // CEO Chat is open (and its entry is the current page).
+  ceo?: boolean;
+  onCeo?: () => void;
+  // Resources: Settings → Compute.
+  onResources?: () => void;
   onSignOut: () => void;
   onRenamed: (s: SessionSummary) => void;
   onDeleted: (id: string) => void;
@@ -236,14 +248,24 @@ export function Sidebar(p: SidebarProps) {
           <Tooltip content={t("common.sidebar.customize")} relationship="label">
             <Button appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
           </Tooltip>
+          {p.company && p.onCeo && (
+            <Tooltip content={t("executive.nav.ceoChat")} relationship="label">
+              <Button appearance="subtle" icon={<ChatSparkle20Regular />} aria-current={p.ceo ? "page" : undefined} onClick={p.onCeo} />
+            </Tooltip>
+          )}
           {p.onOffice && (
-            <Tooltip content={t("common.sidebar.office")} relationship="label">
+            <Tooltip content={p.company === null ? t("executive.nav.createCompany") : t("common.sidebar.office")} relationship="label">
               <Button appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
             </Tooltip>
           )}
           {p.onGovernance && (
             <Tooltip content={t("common.sidebar.governance")} relationship="label">
               <Button appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
+            </Tooltip>
+          )}
+          {p.company && p.onResources && (
+            <Tooltip content={t("executive.nav.resources")} relationship="label">
+              <Button appearance="subtle" icon={<Server20Regular />} onClick={p.onResources} />
             </Tooltip>
           )}
         </div>
@@ -268,7 +290,7 @@ export function Sidebar(p: SidebarProps) {
         </Tooltip>
       </div>
       <div className={s.nav}>
-        <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && !p.office && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance && !p.office ? "page" : undefined} onClick={p.onNew}>
+        <Button className={mergeClasses(s.navItem, p.selected === null && !p.governance && !p.office && !p.ceo && s.navSelected)} appearance="subtle" icon={<Add20Regular />} aria-current={p.selected === null && !p.governance && !p.office && !p.ceo ? "page" : undefined} onClick={p.onNew}>
           {t("common.sidebar.newSession")}
         </Button>
         {searching ? (
@@ -295,14 +317,31 @@ export function Sidebar(p: SidebarProps) {
         <Button className={s.navItem} appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize}>
           {t("common.sidebar.customize")}
         </Button>
+        {p.company !== undefined && (
+          <div className={s.section} role="presentation">
+            <Text size={100} weight="semibold" className={s.sectionText}>
+              {p.company === null ? t("executive.nav.section") : p.company.name || t("executive.nav.section")}
+            </Text>
+          </div>
+        )}
+        {p.company && p.onCeo && (
+          <Button className={mergeClasses(s.navItem, p.ceo && s.navSelected)} appearance="subtle" icon={<ChatSparkle20Regular />} aria-current={p.ceo ? "page" : undefined} onClick={p.onCeo}>
+            {t("executive.nav.ceoChat")}
+          </Button>
+        )}
         {p.onOffice && (
-          <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
-            {t("common.sidebar.office")}
+          <Button className={mergeClasses(s.navItem, p.office && s.navSelected)} appearance="subtle" icon={p.company === null ? <Building20Regular /> : <OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice}>
+            {p.company === null ? t("executive.nav.createCompany") : t("common.sidebar.office")}
           </Button>
         )}
         {p.onGovernance && (
           <Button className={mergeClasses(s.navItem, p.governance && s.navSelected)} appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance}>
             {t("common.sidebar.governance")}
+          </Button>
+        )}
+        {p.company && p.onResources && (
+          <Button className={s.navItem} appearance="subtle" icon={<Server20Regular />} onClick={p.onResources}>
+            {t("executive.nav.resources")}
           </Button>
         )}
       </div>

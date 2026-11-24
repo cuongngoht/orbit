@@ -22,6 +22,8 @@ Codex, Google Antigravity -- each with a login or an API key of its own: never t
   sandbox with limits of its own -- give them work, and review what they hand in. Every attempt runs in two containers of
   its own; you request a revision or accept, and the employee takes its next work. Work may pin research sources, be
   split across a team, or recur on a schedule.
+- **[CEO Chat](#ceo-chat)**: once your company exists, talk to its AI CEO -- ask about the company, discuss ideas, and
+  give it work, which it hands to the departments.
 - **[Governance](#governance)**: each account's policy, approvals and hash-chained audit record.
 
 Docker is the only thing to install. Orbit Web keeps its records in **PostgreSQL 17 with pgvector** (the compose
@@ -801,6 +803,25 @@ periods missed while Orbit Web was down is yours to choose (the latest, each, or
 delivered -- to *Needs me*, or to an external channel this installation does not have yet, where it waits *for a
 channel*. A delivery is *sent* only with a receipt; one that may or may not have reached its receiver is settled by a
 person.
+
+## CEO Chat
+
+Once the company is activated, the sidebar's **Company** section has **CEO Chat** (before that: *Create company*). It
+is a conversation with the employee you appointed CEO -- never a virtual one. With no CEO yet, it says so and opens the
+Office's own hire and appointment dialogs; nobody is appointed for you.
+
+- **Talk.** Ask, discuss, think aloud: the CEO answers on its own connection, model and effort, with NO tool (it runs
+  no command and reads no company system). Its answer is a run of the CEO like any other: while the CEO's own work runs,
+  your message waits and the page says why; while the CEO only waits for its departments, it answers at once.
+- **Orbit's records.** The quick actions (*Company status*, *Active missions*, *Department performance*, *Resource
+  usage*, *Pending decisions*) show Orbit's own records, labelled as such -- available even when the CEO is busy or
+  cannot answer.
+- **Work.** When you ask for work, the CEO proposes a mission (title, goal, deliverables, criteria). Nothing happens
+  until you press **Give it to the CEO**: the mission goes to the CEO in office exactly as from the Office (who you saw
+  responsible, queued if the CEO is busy), the CEO gives it to its departments, and the conversation is told as it is
+  handed in, accepted, blocked or cancelled. *Assign work* gives the CEO work in your own words.
+- **A new CEO.** Replacing the CEO keeps every conversation; what the former CEO said stays theirs, and an answer it had
+  not started is not answered by the new one (*Ask again* asks the new CEO).
 
 ## Governance
 

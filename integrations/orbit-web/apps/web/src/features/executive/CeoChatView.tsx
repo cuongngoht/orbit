@@ -54,11 +54,7 @@ export function CeoChatView({ state, conversationId, go, onOpenNav }: CeoChatVie
   const [records, setRecords] = useState<string[]>([]);
   const data = state.data;
   if (data === null)
-    return (
-      <div className={s.center}>
-        <Spinner label={t("executive.page.loading")} />
-      </div>
-    );
+    return <div className={s.center}>{state.error !== null ? <Text>{state.error}</Text> : <Spinner label={t("executive.page.loading")} />}</div>;
   const ceo = data.ceo;
   const availability = availabilityOf(t, data);
   const panel = <CeoDetails state={data} records={records} />;

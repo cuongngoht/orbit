@@ -1221,7 +1221,9 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
   const [departmentId, setDepartmentId] = useState(e.departmentId ?? "");
   const moves = MOVES[e.employment];
   const departments = (roster.data?.departments ?? []).filter((d) => !d.archived);
-  const currentDept = departments.find((d) => d.id === e.departmentId)?.name ?? t("office.overview.unassigned");
+  // The CEO belongs to no department: its place is the Director's Office, and it is not moved into a department.
+  const isCeo = e.role === "ceo";
+  const currentDept = isCeo ? t("office.floor.directorsOffice") : (departments.find((d) => d.id === e.departmentId)?.name ?? t("office.overview.unassigned"));
   return (
     <div className={s.colStack}>
       <div className={s.twoCol}>
@@ -1312,26 +1314,32 @@ function EmploymentTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSave
             </Badge>
           </div>
           <div className={o.divider} />
-          <div className={o.form}>
-            <Field label={t("office.employee.moveToLabel")}>
-              <Select value={departmentId} onChange={(_, d) => setDepartmentId(d.value)}>
-                <option value="">{t("office.overview.unassigned")}</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <div className={s.actionRow}>
-              <Button className={o.touch} appearance="primary" disabled={act.busy || departmentId === (e.departmentId ?? "")} onClick={() => void act.run(async () => onSaved(await office.moveEmployee(e, departmentId === "" ? null : departmentId)))}>
-                {t("office.employee.move")}
-              </Button>
-            </div>
+          {isCeo ? (
             <Text size={200} className={o.muted}>
-              {t("office.employee.deptMoveNote")}
+              {t("office.employee.ceoNoDepartment")}
             </Text>
-          </div>
+          ) : (
+            <div className={o.form}>
+              <Field label={t("office.employee.moveToLabel")}>
+                <Select value={departmentId} onChange={(_, d) => setDepartmentId(d.value)}>
+                  <option value="">{t("office.overview.unassigned")}</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <div className={s.actionRow}>
+                <Button className={o.touch} appearance="primary" disabled={act.busy || departmentId === (e.departmentId ?? "")} onClick={() => void act.run(async () => onSaved(await office.moveEmployee(e, departmentId === "" ? null : departmentId)))}>
+                  {t("office.employee.move")}
+                </Button>
+              </div>
+              <Text size={200} className={o.muted}>
+                {t("office.employee.deptMoveNote")}
+              </Text>
+            </div>
+          )}
         </section>
       </div>
       <ProblemBar problem={act.problem} onLoadLatest={onLoadLatest} />

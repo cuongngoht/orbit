@@ -98,6 +98,8 @@ export const officeHref = (page: OfficePage, item: string | null = null, tab: st
 export interface Navigation {
   route: Route;
   open: (view: View) => void;
+  // The same, in place of the page that is open (a place a person may not be: Back does not return to it).
+  replace: (view: View) => void;
   openSettings: (section: SettingsSection) => void;
   closeSettings: () => void;
 }
@@ -113,9 +115,14 @@ export function useHashRoute(): Navigation {
     window.location.hash = hrefOf(next);
     setRoute(next);
   }, []);
+  const swap = useCallback((next: Route) => {
+    window.history.replaceState(window.history.state, "", hrefOf(next));
+    setRoute(next);
+  }, []);
   return {
     route,
     open: useCallback((view: View) => go({ view, settings: null }), [go]),
+    replace: useCallback((view: View) => swap({ view, settings: null }), [swap]),
     openSettings: useCallback((section: SettingsSection) => go({ view: parseRoute(window.location.hash).view, settings: section }), [go]),
     closeSettings: useCallback(() => go({ view: parseRoute(window.location.hash).view, settings: null }), [go]),
   };

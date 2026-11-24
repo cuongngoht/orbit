@@ -135,17 +135,27 @@ function Candidates({ roster, slot, value, onChange }: { roster: Roster; slot: A
         {department === null ? t("office.appointment.noCandidate") : t("office.appointment.noMember", { department: department.name })}
       </Text>
     );
+  // The CEO belongs to no department: one appointed CEO leaves theirs, and the dialog says so before it is done.
+  const chosen = slot.role === "ceo" ? (people.find((e) => e.id === value) ?? null) : null;
+  const leaves = chosen !== null && chosen.departmentId !== null ? (roster.departments.find((d) => d.id === chosen.departmentId)?.name ?? null) : null;
   return (
-    <Field label={t("office.appointment.whoLabel")} required hint={department === null ? t("office.appointment.whoHintCeo") : t("office.appointment.whoHintManager", { department: department.name })}>
-      <Select value={value} onChange={(_, d) => onChange(d.value)}>
-        <option value="">{t("office.appointment.whoPlaceholder")}</option>
-        {people.map((e) => (
-          <option key={e.id} value={e.id} disabled={e.role !== null}>
-            {e.role !== null ? t("office.appointment.holdsOne", { name: e.name }) : t("office.appointment.option", { name: e.name, title: e.title })}
-          </option>
-        ))}
-      </Select>
-    </Field>
+    <>
+      <Field label={t("office.appointment.whoLabel")} required hint={department === null ? t("office.appointment.whoHintCeo") : t("office.appointment.whoHintManager", { department: department.name })}>
+        <Select value={value} onChange={(_, d) => onChange(d.value)}>
+          <option value="">{t("office.appointment.whoPlaceholder")}</option>
+          {people.map((e) => (
+            <option key={e.id} value={e.id} disabled={e.role !== null}>
+              {e.role !== null ? t("office.appointment.holdsOne", { name: e.name }) : t("office.appointment.option", { name: e.name, title: e.title })}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {chosen !== null && leaves !== null && (
+        <Text size={200} role="note" className={o.muted}>
+          {t("office.appointment.ceoLeaves", { name: chosen.name, department: leaves })}
+        </Text>
+      )}
+    </>
   );
 }
 

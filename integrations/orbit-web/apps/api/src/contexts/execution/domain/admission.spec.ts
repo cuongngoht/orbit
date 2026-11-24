@@ -73,3 +73,12 @@ test("a budget lowered below what runs now refuses nothing that runs: new attemp
   const [v] = decideAdmissions([want("r1", "A", 500, 256)], new Map([["A", lowered]]), host(), policy);
   assert.ok(v?.kind === "wait" && v.code === "budget_cpu");
 });
+
+test("one run of an employee at a time: an attempt and its answer in CEO Chat never both start in one pass", () => {
+  const attempt = { ...want("attempt", "A", 1000, 1024, 5), employeeId: "an" };
+  const answer = { ...want("answer", "A", 500, 512, 1), employeeId: "an" };
+  const other = { ...want("other", "A", 500, 512, 1), employeeId: "minh" };
+  const verdicts = decideAdmissions([attempt, answer, other], new Map([["A", account()]]), host(), policy);
+  assert.deepEqual(verdicts.map((v) => [v.runId, v.kind]).sort(), [["answer", "wait"], ["attempt", "admit"], ["other", "admit"]]);
+  assert.equal(codeOf(verdicts.find((v) => v.runId === "answer")), "employee_running");
+});

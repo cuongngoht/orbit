@@ -130,10 +130,15 @@ test("the event catalog is the one list of what exists, which stream it travels 
   assert.equal(isDurableType("tool.started"), true);
   assert.equal(isEventType("constructor"), false);
   assert.equal(streamOf("connector.flow"), "app");
-  // Only a chat's and a research session's streams keep anything; the app stream never does.
-  assert.equal(DURABLE_EVENT_TYPES.every((t) => streamOf(t) === "session" || streamOf(t) === "research"), true);
+  // Only a chat's, a research session's and a CEO Chat conversation's streams keep anything (each its own journal);
+  // the app stream never does.
+  assert.equal(DURABLE_EVENT_TYPES.every((t) => streamOf(t) === "session" || streamOf(t) === "research" || streamOf(t) === "executive"), true);
   assert.equal(isDurableType("research.message.delta"), false);
   assert.equal(isDurableType("research.citation.recorded"), true);
+  assert.equal(isDurableType("executive.response.delta"), false, "the answer being written is transient");
+  assert.equal(isDurableType("executive.response.completed"), true);
+  assert.equal(streamOf("executive.conversation.created"), "app");
+  assert.equal(isDurableType("executive.conversation.created"), false, "the app stream says ids only, and keeps nothing");
 });
 
 test("a delta never doubles text a client already holds, and a gap waits", () => {

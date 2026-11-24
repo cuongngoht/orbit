@@ -19,8 +19,8 @@ export interface Conversation {
 
 export function useConversation(conversationId: string | null): Conversation {
   const [view, dispatch] = useReducer(executiveReducer, EMPTY);
-  const [loading, setLoading] = useState(conversationId !== null);
-  const [error, setError] = useState<string | null>(null);
+  // Which conversation was read last, and how that went: loading is "not read yet", derived, never set in the effect.
+  const [read, setRead] = useState<{ id: string | null; error: string | null }>({ id: null, error: null });
   const [connected, setConnected] = useState(false);
   const [round, setRound] = useState(0);
 
@@ -28,26 +28,24 @@ export function useConversation(conversationId: string | null): Conversation {
     if (conversationId === null) return undefined;
     let live = true;
     let sub: { close(): void } | null = null;
-    setLoading(true);
-    setError(null);
     executive
       .conversation(conversationId)
       .then((detail) => {
         if (!live) return;
         dispatch({ type: "loaded", detail });
-        setLoading(false);
+        setRead({ id: conversationId, error: null });
         sub = subscribe<AnyExecutiveEvent>(executive.eventsUrl(conversationId, detail.lastSeq), (event) => dispatch({ type: "event", event }), setConnected);
       })
       .catch((err: unknown) => {
-        if (!live) return;
-        setError(errorText(err));
-        setLoading(false);
+        if (live) setRead({ id: conversationId, error: errorText(err) });
       });
     return () => {
       live = false;
       sub?.close();
     };
   }, [conversationId, round]);
+  const loading = conversationId !== null && read.id !== conversationId;
+  const error = read.id === conversationId ? read.error : null;
 
   const first = view.messages[0]?.position ?? null;
   const loadOlder = useCallback(async () => {

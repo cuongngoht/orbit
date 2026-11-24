@@ -264,8 +264,9 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(appointment("/api/office/appointments")(api)?.body).toEqual({ role: "manager", departmentId: DEPT_ACCOUNTING, employeeId: EMP_ANA });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // The CEO replaced: anybody on trial or active but the incumbent, against the appointment's version.
-    await userEvent.click(within(leadership).getByRole("button", { name: "CEO appointment actions" }));
+    // The CEO replaced: anybody on trial or active but the incumbent, against the appointment's version. (The roster is
+    // read again after each change: the card is found again, never held from before.)
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Leadership" })).findByRole("button", { name: "CEO appointment actions" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Replace" }));
     dialog = await screen.findByRole("dialog", { name: "Replace the CEO" });
     expect(dialog.textContent).toContain("Eve is the CEO now.");
@@ -277,7 +278,7 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(appointment(`/api/office/appointments/${APPOINTMENT_ID}/replace`)(api)?.headers["if-match"]).toBe('"3"');
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // Legal's manager revoked: the slot is left empty.
-    await userEvent.click(within(leadership).getByRole("button", { name: "Leadership actions for Legal" }));
+    await userEvent.click(await within(await screen.findByRole("region", { name: "Leadership" })).findByRole("button", { name: "Leadership actions for Legal" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
     dialog = await screen.findByRole("dialog", { name: "Revoke the manager of Legal" });
     expect(dialog.textContent).toContain("The slot is left empty");

@@ -415,9 +415,12 @@ async function inBrowser(port) {
   const url = `http://127.0.0.1:${port}`;
   const errors = [];
   const browser = await chromium.launch();
+  // The page a failure happened on: photographed, so the failure says what the person would have seen.
+  let current = null;
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
     const page = await context.newPage();
+    current = page;
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
     await page.goto(url);
@@ -440,10 +443,15 @@ async function inBrowser(port) {
     await page.goto(`${url}/#/settings/ai-connections`);
     await page.getByRole("button", { name: "Add a connection" }).first().click();
     await page.getByRole("button", { name: "Add connection", exact: true }).click();
+    // A subscription is signed in from its card where this installation lets it (the CLI's own sign-in started on the
+    // server: its page to open, then its code); the terminal's command is there too, one click away.
+    await page.getByText(/Open the sign-in page and sign in|Use the server's terminal instead/).first().waitFor({ timeout: 15_000 });
+    const onCard = (await page.getByText("Use the server's terminal instead").count()) > 0;
+    if (onCard) await page.getByText("Use the server's terminal instead").first().click();
     const command = page.getByText(/docker compose exec orbit-web node \/opt\/orbit-web\/apps\/api\/dist\/cli\/connect\.js [0-9a-f-]{36}/).first();
     await command.waitFor({ timeout: 15_000 });
     await shot(page, "ai-connections.png");
-    check("   a Claude Code subscription connection is added, Disconnected, with the terminal command that signs it in", (await page.getByText("Disconnected").count()) > 0, (await command.innerText()).replace(/[0-9a-f-]{36}/, "<id>"));
+    check("   a Claude Code subscription connection is added, Disconnected, with the terminal command that signs it in", (await page.getByText("Disconnected").count()) > 0, `${(await command.innerText()).replace(/[0-9a-f-]{36}/, "<id>")}${onCard ? " (signed in from its card, the command one click away)" : ""}`);
     await page.goto(`${url}/#/settings/compute`);
     await page.getByText("Infrastructure capacity").waitFor({ timeout: 15_000 });
     const compute = await page.getByRole("dialog").first().innerText();
@@ -456,6 +464,7 @@ async function inBrowser(port) {
     await context.close();
     const small = await browser.newContext({ viewport: { width: 320, height: 720 }, storageState: undefined });
     const p = await small.newPage();
+    current = p;
     p.on("pageerror", (e) => errors.push(`320 px: ${e.message}`));
     await p.goto(url);
     await p.getByRole("textbox", { name: "Username" }).fill("admin");
@@ -474,7 +483,11 @@ async function inBrowser(port) {
     check("   at 320 px no page of the Office, Settings or Governance scrolls sideways", wide.length === 0, wide.join(", ") || "7 pages");
     await small.close();
   } catch (err) {
-    check("   the browser walk-through", false, String(err.message ?? err).split("\n")[0].slice(0, 300));
+    // Playwright's first line says what timed out; its call log says which locator it was waiting for, and where.
+    const lines = String(err.message ?? err).split("\n");
+    const waiting = lines.find((l) => /waiting for/.test(l))?.trim() ?? "";
+    if (current !== null) await shot(current, "failure.png").catch(() => undefined);
+    check("   the browser walk-through", false, `${lines[0]}${waiting ? ` -- ${waiting}` : ""}${current !== null ? ` (at ${current.url()})` : ""}`.slice(0, 400));
   } finally {
     await browser.close();
   }

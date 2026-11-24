@@ -413,6 +413,52 @@ function TerminalCommand({ command, secondary }: { command: string; secondary: b
   );
 }
 
+// WHAT A CONNECTION CAN BE USED FOR, as the server answers it (uses): a chat, research, AI employees -- each usable or
+// not, with the reason a person acts on. Authenticated is the badge above; a use its runtime does not have here is left
+// out rather than shown "off".
+const USE_KEYS: Record<keyof RuntimeConnection["uses"], MessageKey> = {
+  chat: "settings.connections.uses.chat",
+  research: "settings.connections.uses.research",
+  employee: "settings.connections.uses.employee",
+};
+
+function Uses({ c }: { c: RuntimeConnection }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const shown = (Object.keys(USE_KEYS) as (keyof RuntimeConnection["uses"])[]).filter((u) => c.uses[u].reasonCode !== "runtime_not_supported");
+  if (shown.length === 0)
+    return (
+      <Text size={200} className={s.muted}>
+        {t("settings.connections.uses.runsNothing", { runtime: RUNTIME_LABELS[c.runtime] })}
+      </Text>
+    );
+  return (
+    <>
+      <dl className={s.caps} aria-label={t("settings.connections.uses.aria")}>
+        {shown.map((u) => (
+          <div key={u} className={s.cap}>
+            <dt>
+              <Text size={200}>{t(USE_KEYS[u])}</Text>
+            </dt>
+            <dd style={{ margin: 0 }}>
+              <Text size={200} weight="semibold">
+                {c.uses[u].ready ? t("settings.connections.uses.ready") : t("settings.connections.uses.notReady")}
+              </Text>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {shown
+        .filter((u) => !c.uses[u].ready && c.uses[u].reason !== null)
+        .map((u) => (
+          <Text key={u} size={200} className={s.muted}>
+            {t("settings.connections.uses.why", { use: t(USE_KEYS[u]), reason: c.uses[u].reason ?? "" })}
+          </Text>
+        ))}
+    </>
+  );
+}
+
 function Capabilities({ caps }: { caps: RuntimeCapabilities }) {
   const { t } = useI18n();
   const s = useStyles();
@@ -627,6 +673,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
           {c.reason}
         </Text>
       )}
+      <Uses c={c} />
       <Catalog c={c} />
       <Capabilities caps={c.capabilities} />
       {c.method === "subscription" && c.signInHere && (c.auth !== "connected" || reconnecting) && (

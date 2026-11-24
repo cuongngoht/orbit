@@ -16,6 +16,7 @@ import type { MissionRepositoryRequest } from "@orbit-web/contracts";
 import { MISSION_REPOSITORIES, type MissionRepositories, type MissionRepository as ResolvedRepository } from "./mission-repositories.port.js";
 import {
   checkAccept,
+  checkHandOver,
   checkAnswer,
   checkCreateMission,
   checkReason,
@@ -87,7 +88,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     // of its queue is claimed through the same claim as a person's "start now".
     this.dispatcher.register({
       id: "work.scheduler",
-      types: ["ReservationReleased", "AssignmentQueued", "EmployeeActivated", "SandboxReady", "ConnectionChanged", "EmployeeEmploymentChanged"],
+      types: ["ReservationReleased", "AssignmentQueued", "EmployeeActivated", "SandboxReady", "ConnectionChanged", "EmployeeEmploymentChanged", "AssignmentHandedOver"],
       handle: async (event) => {
         const employeeId = typeof event.payload.employeeId === "string" ? event.payload.employeeId : event.aggregateType === "employee" ? event.aggregateId : null;
         if (employeeId !== null) await this.claimNext(event.accountId, employeeId, event.correlationId, event.id);
@@ -123,7 +124,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         if (repositories.length > 0) await this.repositories?.keep(orbitId, mission.id, repositories, actor.command.actor);
         if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id);
         const claimNow = held === null && el.eligible;
-        if (claimNow) a.claim(this.pinOf(el, execution), at);
+        if (claimNow) a.claim(this.pinOf(el, execution, req.execution ?? null), at);
         await this.assignments.save(a);
         const events: RaisedEvent[] = [...mission.pullEvents(), ...a.pullEvents()];
         if (claimNow) events.push(await this.runs.request({ orbitId, assignmentId: a.id, missionId: mission.id, employeeId: a.data.employeeId, fence: a.data.fence, priority: a.data.priority, execution }));
@@ -163,7 +164,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       if (next === null) return null;
       const actor = systemActor(orbitId, "scheduler", correlationId, causationId);
       const execution = next.data.execution === null ? el.execution : { ...el.execution, ...(next.data.execution.model !== undefined ? { model: next.data.execution.model } : {}), ...(next.data.execution.effort !== undefined ? { effort: next.data.execution.effort } : {}) };
-      next.claim(this.pinOf(el, execution), new Date().toISOString());
+      next.claim(this.pinOf(el, execution, next.data.execution), new Date().toISOString());
       await this.assignments.save(next);
       const events = [...next.pullEvents(), await this.runs.request({ orbitId, assignmentId: next.id, missionId: next.data.missionId, employeeId, fence: next.data.fence, priority: next.data.priority, execution })];
       await this.outbox.append(actor.command, events);
@@ -176,8 +177,11 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     return (await this.db.query("SELECT DISTINCT employee_id FROM workforce.assignments WHERE account_id = $1 AND state = 'QUEUED'", [orbitId])).map((r) => String(r.employee_id));
   }
 
-  private pinOf(el: Eligibility, execution: Eligibility["execution"]): Pinned {
-    return { profileRevision: el.profileRevision, departmentId: el.departmentId, departmentName: el.departmentName, execution };
+  // What a claim pins: the profile revision, the department, and the execution with the layer each field came from (a
+  // mission's own override of the model or effort beats the employee's, which beats its department's and the company's).
+  private pinOf(el: Eligibility, execution: Eligibility["execution"], override: { model?: string; effort?: string | null } | null = null): Pinned {
+    const sources = { ...el.sources, ...(override?.model !== undefined ? { model: "mission" as const } : {}), ...(override?.effort !== undefined ? { effort: "mission" as const } : {}) };
+    return { profileRevision: el.profileRevision, departmentId: el.departmentId, departmentName: el.departmentName, execution, sources };
   }
 
   // ---- deciding on a result --------------------------------------------------------------------------------------
@@ -237,6 +241,49 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       const fence = a.state === "RECOVERING" ? a.recovered(new Date().toISOString()) : a.unblock(new Date().toISOString(), null);
       await this.decisions.closeAllFor(actor.command.orbitId, a.id, "retried");
       return [await this.requestRun(a, fence)];
+    });
+  }
+
+  // A HANDOVER: open work moves to another employee, by a person's act (a replaced appointment moves none by itself).
+  // Only before or between attempts: an attempt still running refuses it (pause it first); one asked for and not started
+  // is cancelled. Work held is re-pinned to its new holder -- able to take it now -- with a new fence (a late result of the
+  // old holder's attempt is refused), and an ASSIGNED one gets a new attempt.
+  async handOver(actor: Actor, id: string, body: unknown, expectedVersion: number): Promise<CommandResult> {
+    const req = accepted(checkHandOver(body));
+    const orbitId = actor.command.orbitId;
+    return this.governance.command(actor, "assignment.hand_over", id, async () => {
+      const a = isWorkforceId(id) ? await this.assignments.get(orbitId, id, true) : null;
+      if (a === null) throw missing("Assignment");
+      await this.governance.authorize(actor, "work.assign", req.employeeId, { employee: req.employeeId, from: a.data.employeeId });
+      if (a.data.version !== expectedVersion) throw stale("This assignment changed since you read it: load the latest.", { version: a.data.version });
+      const live = await this.runs.live(orbitId, a.id);
+      if (live !== null && ["starting", "running", "unknown"].includes(live.state)) throw conflictWith("attempt_live", "An attempt of this work is running: pause it first, then hand it over.");
+      const el = await this.eligibility.of(orbitId, req.employeeId, true);
+      if (el === null) throw missing("Employee");
+      if (a.holding && !el.eligible) throw conflictWith("employee_ineligible", el.reason ?? "That employee cannot take work now.", { employeeId: req.employeeId });
+      await this.runs.stop(orbitId, a.id, "handed_over");
+      const at = new Date().toISOString();
+      const from = a.handOver({ employeeId: req.employeeId, pinned: a.holding ? this.pinOf(el, el.execution) : null }, at);
+      const version = await this.assignments.handOver(a, from);
+      const events = a.pullEvents();
+      if (a.state === "ASSIGNED") events.push(await this.requestRun(a, a.data.fence));
+      await this.outbox.append(actor.command, events);
+      const resourceVersion = await this.outbox.touched(orbitId, ["roster", "missions", "inbox"], a.data.missionId);
+      await this.governance.recorded(actor, "assignment.hand_over", "assignment", a.id, version, `${from} → ${req.employeeId}${req.reason ? `: ${req.reason}` : ""}`);
+      return { assignmentId: a.id, state: a.state, version, resourceVersion, correlationId: actor.command.correlationId };
+    });
+  }
+
+  // A REPIN: work blocked or paused continues on its employee's profile in effect NOW (after a provider changed, say) --
+  // a person's choice, never automatic. The brief, its answers and revisions, the hand-ins and the sources are Orbit's
+  // records, so the next attempt -- on the new provider -- starts from them.
+  async repin(actor: Actor, id: string, expectedVersion: number): Promise<CommandResult> {
+    return this.onAssignment(actor, id, expectedVersion, "assignment.repin", async (a) => {
+      const el = await this.eligibility.of(actor.command.orbitId, a.data.employeeId, true);
+      if (el === null) throw missing("Employee");
+      if (!el.eligible) throw conflictWith("employee_ineligible", el.reason ?? "This employee cannot take work now.", { employeeId: a.data.employeeId });
+      a.repin(this.pinOf(el, el.execution, a.data.execution), new Date().toISOString());
+      return [];
     });
   }
 

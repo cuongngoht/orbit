@@ -20,6 +20,7 @@
 // account's compute is busy right now (then its work waits).
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import {
+  type UsageView,
   ceilingProblems,
   DEFAULT_PRESETS,
   type AccountResourceBudget,
@@ -53,6 +54,8 @@ const sandboxConfigOrNull = (env: AppConfig["sourceEnv"]): SandboxConfig | null 
 export const SYSTEM_ACCOUNT = "00000000-0000-4000-8000-000000000001";
 
 const MiB = 1024 * 1024;
+// A running attempt's last sample counts as "observed now" for this long (heartbeats sample far more often).
+const OBSERVED_FRESH_MS = 2 * 60_000;
 
 interface Amounts3 {
   cpuMillis: number;
@@ -284,9 +287,24 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     return this.budget(orbitId, lock);
   }
 
+  // What the account's admitted attempts hold now: CPU and memory from the budget's counters (moved under its lock), and
+  // scratch from the attempts' own reservations still held -- the one record of it (no second counter to drift).
   async reserved(orbitId: string): Promise<Reserved> {
-    const row = await this.db.one("SELECT reserved_cpu_millis, reserved_memory_mib, reserved_scratch_mib, running FROM workforce.budgets WHERE account_id = $1", [orbitId]);
-    return row === null ? { cpuMillis: 0, memoryMiB: 0, scratchMiB: 0, running: 0 } : { cpuMillis: Number(row.reserved_cpu_millis), memoryMiB: Number(row.reserved_memory_mib), scratchMiB: Number(row.reserved_scratch_mib), running: Number(row.running) };
+    const row = await this.db.one(
+      "SELECT b.reserved_cpu_millis, b.reserved_memory_mib, b.running, (SELECT COALESCE(SUM(scratch_mib), 0) FROM workforce.compute_reservations c WHERE c.account_id = b.account_id AND c.released_at IS NULL) AS scratch FROM workforce.budgets b WHERE b.account_id = $1",
+      [orbitId],
+    );
+    return row === null ? { cpuMillis: 0, memoryMiB: 0, scratchMiB: 0, running: 0 } : { cpuMillis: Number(row.reserved_cpu_millis), memoryMiB: Number(row.reserved_memory_mib), scratchMiB: Number(row.scratch), running: Number(row.running) };
+  }
+
+  // What the account's running attempts were last MEASURED using (their containers' cgroups, sampled at each heartbeat):
+  // never a reservation. Null fields: nothing running, or nothing sampled lately.
+  async observed(orbitId: string): Promise<ResourceSummary["observed"]> {
+    const rows = await this.db.query("SELECT usage FROM workforce.runs WHERE account_id = $1 AND state IN ('starting', 'running') AND usage IS NOT NULL", [orbitId]);
+    const fresh = rows.map((r) => r.usage as UsageView).filter((u) => u.sampledAt !== null && Date.now() - Date.parse(u.sampledAt) < OBSERVED_FRESH_MS);
+    const sum = (k: "cpuSeconds" | "memoryCurrentMiB" | "memoryPeakMiB"): number | null => (fresh.some((u) => u[k] !== null) ? fresh.reduce((n, u) => n + (u[k] ?? 0), 0) : null);
+    const sampledAt = fresh.reduce<string | null>((latest, u) => (u.sampledAt !== null && (latest === null || u.sampledAt > latest) ? u.sampledAt : latest), null);
+    return { runs: fresh.length, memoryCurrentMiB: sum("memoryCurrentMiB"), memoryPeakMiB: sum("memoryPeakMiB"), cpuSeconds: sum("cpuSeconds"), sampledAt };
   }
 
   // The owner lowers (or restores up to the authorization) the account's budget. A budget below what running attempts
@@ -345,7 +363,6 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
   async committedStorage(orbitId: string): Promise<number> {
     const row = await this.db.one(
       `SELECT COALESCE((SELECT SUM(committed_mib) FROM workforce.storage_usage WHERE account_id = $1), 0)
-            + COALESCE((SELECT reserved_scratch_mib FROM workforce.budgets WHERE account_id = $1), 0)
             + COALESCE((SELECT SUM(used_mib) FROM workforce.storage_usage WHERE account_id = $1 AND category IN ('artifacts', 'research', 'logs')), 0) AS n`,
       [orbitId],
     );
@@ -397,7 +414,6 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
       byCategory[c] = { committedMiB: Number(r.c), usedMiB: Number(r.u) };
       if (r.m !== null && (measuredAt === null || String(r.m) > measuredAt)) measuredAt = String(r.m);
     }
-    byCategory.scratch = { committedMiB: reserved.scratchMiB, usedMiB: byCategory.scratch.usedMiB };
     byCategory.artifacts = { committedMiB: 0, usedMiB: Math.ceil(artifacts / MiB) };
     byCategory.research = { committedMiB: 0, usedMiB: Math.ceil(research / MiB) };
     const counts = await this.db.one(
@@ -416,6 +432,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
       waiting: Number(counts?.waiting ?? 0),
       unschedulable: Number(counts?.unschedulable ?? 0),
       modelPlane: Object.keys(MODEL_PLANE_DEFAULTS).map((runtime) => ({ runtime, ...this.modelPlane(runtime) })),
+      observed: await this.observed(orbitId),
       asOf: new Date().toISOString(),
     };
   }

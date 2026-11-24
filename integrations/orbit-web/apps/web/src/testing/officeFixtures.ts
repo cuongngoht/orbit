@@ -41,7 +41,7 @@ export const PLUGIN_DIGEST = "9".repeat(64);
 export const HANDOFF_DIGEST = "ab".repeat(32);
 export const HANDOFF_DIGEST_1 = "cd".repeat(32);
 
-export const department = (over: Partial<Department> = {}): Department => ({ id: DEPT_ACCOUNTING, name: "Accounting", position: 0, archived: false, version: 1, members: 1, ...over });
+export const department = (over: Partial<Department> = {}): Department => ({ id: DEPT_ACCOUNTING, name: "Accounting", position: 0, archived: false, version: 1, members: 1, manager: null, defaults: {}, ...over });
 
 export const execution = (over: Partial<ExecutionProfile> = {}): ExecutionProfile => ({ runtime: "claude", connectionId: CONN_CLAUDE, model: "sonnet", effort: "medium", webSearch: false, orbitPlugin: false, ...over });
 
@@ -62,6 +62,7 @@ export function employeeCard(over: Partial<EmployeeCard> = {}): EmployeeCard {
     execution: execution(),
     connectionWarning: null,
     expiresAt: null,
+    role: null,
     version: 4,
     updatedAt: "2026-11-21T08:30:00.000Z",
     ...over,
@@ -84,7 +85,8 @@ export const busyBao = (over: Partial<EmployeeCard> = {}): EmployeeCard =>
 
 export function roster(over: Partial<Roster> = {}): Roster {
   return {
-    office: { id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo office", version: 7, createdAt: "2026-11-20T00:00:00.000Z" },
+    office: { id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo office", version: 7, createdAt: "2026-11-20T00:00:00.000Z", defaults: {} },
+    ceo: null,
     departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1 })],
     employees: [employeeCard(), busyBao()],
     nextCursor: null,
@@ -166,7 +168,7 @@ export function activationOf(connections: readonly RuntimeConnection[]): AiConne
     ready,
     reason: ready ? null : "Connect an AI CLI first: activating the company needs one AI connection of this account that Orbit Web can use for chat, research or an employee (Settings → AI Connections).",
     uses: { chat: any("chat"), research: any("research"), employee: any("employee") },
-    where: "#/settings/ai-connections",
+    where: "#/?settings=ai-connections",
   };
 }
 
@@ -227,6 +229,7 @@ export function resourceSummary(over: Partial<ResourceSummary> = {}): ResourceSu
     waiting: 1,
     unschedulable: 0,
     modelPlane: [{ runtime: "claude", cpuMillis: 500, memoryMiB: 1024 }],
+    observed: { runs: 2, memoryCurrentMiB: 1800, memoryPeakMiB: 2600, cpuSeconds: 340, sampledAt: AS_OF },
     asOf: AS_OF,
     ...over,
   };
@@ -288,6 +291,9 @@ export function employeeDetail(over: Partial<EmployeeDetail> = {}): EmployeeDeta
     },
     resourceRevisions: [{ revision: 1, profile: profile(), note: "At hire", createdBy: "Ann Owner", createdAt: "2026-11-20T07:00:00.000Z" }],
     activeRun: null,
+    appointment: null,
+    appointments: [],
+    delegationGrants: [],
     ...over,
   };
 }

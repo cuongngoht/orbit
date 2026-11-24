@@ -12,7 +12,7 @@
 // Every transition says its precondition and raises its event; a command that does not fit the state is refused with
 // `invalid_transition` and changes nothing. The fence moves at every claim and every new attempt: a worker's result
 // carries the fence it was given, and a result under an older fence is refused (handled where results are accepted).
-import { isHolding, type AssignmentState, type Deliverable, type ExecutionProfile } from "@orbit-web/contracts";
+import { isHolding, type AssignmentState, type Deliverable, type ExecutionProfile, type ExecutionSources } from "@orbit-web/contracts";
 import { AccountOwned, conflictWith, type OrbitId, type RaisedEvent } from "../../shared/domain.js";
 
 export interface Brief {
@@ -33,6 +33,8 @@ export interface Pinned {
   departmentId: string | null;
   departmentName: string | null;
   execution: ExecutionProfile;
+  // Which layer gave each field of the execution (mission, employee, department, company, the runtime's default).
+  sources?: ExecutionSources;
 }
 
 export interface AssignmentData {
@@ -231,6 +233,28 @@ export class Assignment extends AccountOwned {
   waitForTeam(at: string): void {
     if (this.d.state !== "REVIEWING") transition(this.d.state, "wait for its team");
     this.d = { ...this.d, state: "WAITING_FOR_SUBORDINATES", reason: "Waiting for revisions it asked of its team", waitingOn: "team", updatedAt: at };
+  }
+
+  // A HANDOVER: a person moves this open work to another employee -- never a side effect of a replaced appointment --
+  // only before or between attempts (QUEUED, ASSIGNED, BLOCKED, PAUSED, WAITING_FOR_SUBORDINATES), with a new fence so a
+  // result of the old holder's attempt is refused. Work held is re-pinned to the new holder's profile; queued work is
+  // pinned when it is claimed. Returns the employee who held it.
+  handOver(to: { employeeId: string; pinned: Pinned | null }, at: string): string {
+    if (!["QUEUED", "ASSIGNED", "BLOCKED", "PAUSED", "WAITING_FOR_SUBORDINATES"].includes(this.d.state)) transition(this.d.state, "be handed over");
+    if (to.employeeId === this.d.employeeId) throw conflictWith("same_holder", "That employee holds this work already.");
+    const from = this.d.employeeId;
+    const pinned = this.holding ? to.pinned : null;
+    this.d = { ...this.d, employeeId: to.employeeId, pinned, fence: this.holding ? this.d.fence + 1 : this.d.fence, updatedAt: at };
+    this.raise("AssignmentHandedOver", { fromEmployeeId: from, employeeId: to.employeeId, fence: this.d.fence });
+    if (this.holding) this.raise("ReservationReleased", { employeeId: from, outcome: "handed_over" });
+    return from;
+  }
+
+  // A REPIN: work blocked or paused after its employee's profile changed (a provider changed, say) continues on the
+  // profile in effect now, by a person's choice -- never by itself. The fence moves: the next attempt is a new one.
+  repin(pinned: Pinned, at: string): void {
+    if (this.d.state !== "BLOCKED" && this.d.state !== "PAUSED") transition(this.d.state, "be re-pinned");
+    this.d = { ...this.d, pinned, fence: this.d.fence + 1, updatedAt: at };
   }
 
   // Cancel: QUEUED or not running → CANCELLED at once; a live run → CANCELLING (the caller stops it, then `cancelled`).

@@ -15,6 +15,7 @@
 // employee network access itself is compared field by field (network.ts): RESTRICTED to AUTONOMOUS, an allow-list that
 // lets in a host it did not, a limit raised or removed WEAKEN it, and are high risk; the reverse narrows.
 import type { Constitution, Obligations, Rule } from "./constitution.js";
+import { composeEmployeeModels, composeEmployeeNetwork, type DepartmentPolicy } from "./department.js";
 import { evaluate } from "./evaluate.js";
 import { egressTargetOf, EMPLOYEE_PORTS, employeeNetworkChanges, employeeNetworkOf, type EmployeeNetworkChange, type EmployeeNetworkField } from "./network.js";
 import { ACTION_KINDS, ACTIONS, ENVIRONMENTS, PRINCIPAL_TYPES, rankOf, type ActionKind, type Effect, type Environment, type PrincipalType, type RunKind } from "./vocabulary.js";
@@ -37,8 +38,9 @@ export interface ImpactCell {
 }
 
 export interface ObligationChange {
-  // An obligation, the default decision, or a field of the employee network access.
-  field: keyof Obligations | "defaults.decision" | EmployeeNetworkField;
+  // An obligation, the default decision, a field of the employee network access, of what the company delegates to its
+  // departments, or of the models employees may run on.
+  field: keyof Obligations | "defaults.decision" | EmployeeNetworkField | `delegation.${string}` | `employeeModels.${string}`;
   before: string;
   after: string;
   weakened: boolean;
@@ -150,7 +152,43 @@ function obligationChanges(base: Constitution, candidate: Constitution): Obligat
   return changes;
 }
 
-const sameRule = (a: Rule, b: Rule): boolean => JSON.stringify([a.action, a.effect, a.resource, a.principalType, a.environment, a.note]) === JSON.stringify([b.action, b.effect, b.resource, b.principalType, b.environment, b.note]);
+// A rule changed when anything it says changed -- its binding too: a mandatory rule made a default is one a department
+// may now replace.
+const sameRule = (a: Rule, b: Rule): boolean =>
+  JSON.stringify([a.action, a.effect, a.resource, a.principalType, a.environment, a.note, a.binding ?? "mandatory"]) === JSON.stringify([b.action, b.effect, b.resource, b.principalType, b.environment, b.note, b.binding ?? "mandatory"]);
+
+const listOf = (v: readonly string[] | undefined): string => (v === undefined ? "any" : v.length === 0 ? "none" : v.join(", "));
+// Whether the second list lets in something the first did not (undefined: anything).
+const opens = (before: readonly string[] | undefined, after: readonly string[] | undefined): boolean => after === undefined ? before !== undefined : before !== undefined && after.some((x) => !before.includes(x));
+
+// What the company lets its departments decide, field by field: a cap that is new or looser, an allow-list or model set
+// that lets in more, a limit cap raised or removed WEAKEN the policy (a department may now go further), however no
+// department uses it yet; a mandatory rule made a default weakens it too (ruleChanges shows it).
+export function delegationChanges(base: Constitution, candidate: Constitution): ObligationChange[] {
+  const b = base.delegation?.departments;
+  const c = candidate.delegation?.departments;
+  const changes: ObligationChange[] = [];
+  for (const action of [...new Set([...Object.keys(b?.actions ?? {}), ...Object.keys(c?.actions ?? {})])].sort()) {
+    const before = b?.actions?.[action as ActionKind];
+    const after = c?.actions?.[action as ActionKind];
+    if (before === after) continue;
+    const weakened = after !== undefined && (before === undefined || rankOf(after) < rankOf(before));
+    changes.push({ field: `delegation.departments.actions.${action}`, before: before ?? "not delegated", after: after ?? "not delegated", weakened });
+  }
+  const bn = b?.employeeNetwork;
+  const cn = c?.employeeNetwork;
+  if (bn?.mode !== cn?.mode) changes.push({ field: "delegation.departments.employeeNetwork.mode", before: bn?.mode ?? "not delegated", after: cn?.mode ?? "not delegated", weakened: cn?.mode === "AUTONOMOUS" });
+  if (listOf(bn?.allowWithin) !== listOf(cn?.allowWithin) && (bn !== undefined || cn !== undefined)) changes.push({ field: "delegation.departments.employeeNetwork.allowWithin", before: listOf(bn?.allowWithin), after: listOf(cn?.allowWithin), weakened: cn !== undefined && opens(bn?.allowWithin, cn.allowWithin) });
+  for (const key of [...new Set([...Object.keys(bn?.limits ?? {}), ...Object.keys(cn?.limits ?? {})])].sort()) {
+    const before = (bn?.limits as Record<string, number> | undefined)?.[key];
+    const after = (cn?.limits as Record<string, number> | undefined)?.[key];
+    if (before === after) continue;
+    changes.push({ field: `delegation.departments.employeeNetwork.limits.${key}`, before: before === undefined ? "off" : String(before), after: after === undefined ? "off" : String(after), weakened: before !== undefined && (after === undefined || after > before) });
+  }
+  if (listOf(b?.models?.allow) !== listOf(c?.models?.allow)) changes.push({ field: "delegation.departments.models.allow", before: listOf(b?.models?.allow), after: listOf(c?.models?.allow), weakened: opens(b?.models?.allow, c?.models?.allow) });
+  if (listOf(base.employeeModels?.allow) !== listOf(candidate.employeeModels?.allow)) changes.push({ field: "employeeModels.allow", before: listOf(base.employeeModels?.allow), after: listOf(candidate.employeeModels?.allow), weakened: opens(base.employeeModels?.allow, candidate.employeeModels?.allow) });
+  return changes;
+}
 
 export function ruleChanges(base: readonly Rule[], candidate: readonly Rule[]): RuleChange[] {
   const before = new Map(base.map((r) => [r.id, r]));
@@ -188,6 +226,44 @@ export function impactOf(base: Constitution, candidate: Constitution): Impact {
   const widened = cells.filter((c) => rankOf(c.after) < rankOf(c.before));
   const narrowed = cells.filter((c) => rankOf(c.after) > rankOf(c.before));
   const network = employeeNetworkChanges(employeeNetworkOf(base), employeeNetworkOf(candidate));
-  const obligations: ObligationChange[] = [...obligationChanges(base, candidate), ...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened }))];
-  return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base.rules, candidate.rules), reasons: reasonsOf(widened, obligations, network) };
+  const delegation = delegationChanges(base, candidate);
+  const obligations: ObligationChange[] = [...obligationChanges(base, candidate), ...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...delegation];
+  const delegated = delegation.filter((c) => c.weakened).map((c) => `It lets departments go further: ${c.field} from ${c.before} to ${c.after}.`);
+  return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base.rules, candidate.rules), reasons: [...reasonsOf(widened, obligations, network), ...delegated] };
+}
+
+// WHAT A CHANGE OF A DEPARTMENT'S POLICY DOES, under the company's policy in effect: its employees' answers asked of both
+// (every action, every environment, every resource either names, as an assignment's run of the department), its
+// composed network access field by field, and the models its employees may run on. `base` null: the department had no
+// policy of its own (it inherited the company's).
+export function departmentImpactOf(company: Constitution, base: DepartmentPolicy | null, candidate: DepartmentPolicy): Impact {
+  const departmentId = candidate.metadata.departmentId;
+  const accountId = company.metadata.accountId;
+  const ask = (dept: DepartmentPolicy | null, action: ActionKind, environment: Environment, resource: string): Effect =>
+    evaluate({ constitution: company, overlays: [], departments: dept === null ? [] : [dept] }, { principalId: "probe", principalType: "agent", accountId, workspaceId: null, researchWorkspaceId: null, action, resource, environment, runKind: "assignment", departmentId }).verdict;
+  const cells = new Map<string, ImpactCell>();
+  const rules = [...company.rules, ...(base?.rules ?? []), ...candidate.rules];
+  for (const action of ACTION_KINDS) {
+    const named = rules.filter((r) => r.action === action && r.resource !== undefined).map((r) => r.resource as string);
+    for (const pattern of [...new Set([...named, "*"])].sort()) {
+      for (const environment of ENVIRONMENTS) {
+        const before = ask(base, action, environment, probeOf(pattern));
+        const after = ask(candidate, action, environment, probeOf(pattern));
+        if (before === after) continue;
+        const key = [action, pattern, before, after].join("\u0001");
+        const cell = cells.get(key) ?? { action, principalType: "agent", resource: pattern, environments: [], before, after, sensitive: ACTIONS[action].sensitive, runKind: "assignment" };
+        cell.environments.push(environment);
+        cells.set(key, cell);
+      }
+    }
+  }
+  const all = [...cells.values()];
+  const widened = all.filter((c) => rankOf(c.after) < rankOf(c.before));
+  const narrowed = all.filter((c) => rankOf(c.after) > rankOf(c.before));
+  const network = employeeNetworkChanges(composeEmployeeNetwork(company, base), composeEmployeeNetwork(company, candidate));
+  const mb = composeEmployeeModels(company, base).allow ?? undefined;
+  const mc = composeEmployeeModels(company, candidate).allow ?? undefined;
+  const models: ObligationChange[] = listOf(mb) === listOf(mc) ? [] : [{ field: "employeeModels.allow", before: listOf(mb), after: listOf(mc), weakened: opens(mb, mc) }];
+  const obligations: ObligationChange[] = [...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...models];
+  return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base?.rules ?? [], candidate.rules), reasons: reasonsOf(widened, obligations, network) };
 }

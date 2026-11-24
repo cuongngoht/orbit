@@ -882,21 +882,30 @@ CREATE TABLE workforce.office_versions (
   version bigint NOT NULL DEFAULT 0
 );
 
+-- The company of an account (its office): activated once, empty. defaults: what an employee of a runtime runs on when
+-- its profile and its department leave a field to the company (execution precedence). ceo_revision: the counter its
+-- CEO appointments are numbered by (the slot's own row, taken FOR UPDATE by a command that appoints).
 CREATE TABLE workforce.offices (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL UNIQUE REFERENCES app.accounts (id),
   name text NOT NULL,
+  defaults jsonb NOT NULL DEFAULT '{}' CONSTRAINT office_defaults_object CHECK (jsonb_typeof(defaults) = 'object'),
+  ceo_revision integer NOT NULL DEFAULT 0,
   created_by text NOT NULL,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   version integer NOT NULL DEFAULT 1
 );
 
+-- defaults: its execution defaults (above the company's); manager_revision: the counter its manager appointments are
+-- numbered by.
 CREATE TABLE workforce.departments (
   id uuid PRIMARY KEY,
   account_id uuid NOT NULL REFERENCES app.accounts (id),
   name text NOT NULL,
   position integer NOT NULL DEFAULT 0,
+  defaults jsonb NOT NULL DEFAULT '{}' CONSTRAINT department_defaults_object CHECK (jsonb_typeof(defaults) = 'object'),
+  manager_revision integer NOT NULL DEFAULT 0,
   archived_at timestamptz,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
@@ -933,6 +942,84 @@ CREATE TABLE workforce.employees (
 );
 CREATE INDEX employees_by_department ON workforce.employees (account_id, department_id) WHERE employment NOT IN ('archived', 'deleted');
 CREATE TRIGGER employees_account_fixed BEFORE UPDATE ON workforce.employees FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- APPOINTMENTS: the company's authority -- its CEO, a department's manager -- held by an existing employee; never a
+-- title, instructions or a profile switch. One row per appointment, kept as history: at most one INCUMBENT (active or
+-- suspended) per slot and per employee, a manager a member of its own department (checked at commit), and each slot's
+-- appointments numbered by a counter on the slot's own row (offices.ceo_revision, departments.manager_revision), which
+-- a command takes FOR UPDATE -- two appointments of one slot take turns. An appointment never changes who, where or
+-- when, and one that ended stays ended.
+CREATE TABLE workforce.appointments (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  role text NOT NULL CONSTRAINT appointment_role CHECK (role IN ('ceo', 'manager')),
+  department_id uuid,
+  employee_id uuid NOT NULL,
+  state text NOT NULL CONSTRAINT appointment_state CHECK (state IN ('active', 'suspended', 'revoked', 'replaced')),
+  slot_revision integer NOT NULL CONSTRAINT appointment_slot_revision CHECK (slot_revision >= 1),
+  replaces uuid,
+  reason text NOT NULL DEFAULT '',
+  appointed_by text NOT NULL,
+  appointed_at timestamptz NOT NULL,
+  ended_by text,
+  ended_at timestamptz,
+  end_reason text,
+  updated_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT appointment_account_id UNIQUE (account_id, id),
+  CONSTRAINT appointment_department FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id),
+  CONSTRAINT appointment_employee FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  CONSTRAINT appointment_replaces FOREIGN KEY (account_id, replaces) REFERENCES workforce.appointments (account_id, id),
+  CONSTRAINT appointment_slot CHECK ((role = 'ceo') = (department_id IS NULL)),
+  CONSTRAINT appointment_ended CHECK ((state IN ('revoked', 'replaced')) = (ended_at IS NOT NULL))
+);
+CREATE UNIQUE INDEX one_incumbent_ceo ON workforce.appointments (account_id) WHERE role = 'ceo' AND state IN ('active', 'suspended');
+CREATE UNIQUE INDEX one_incumbent_manager ON workforce.appointments (account_id, department_id) WHERE role = 'manager' AND state IN ('active', 'suspended');
+CREATE UNIQUE INDEX one_appointment_per_employee ON workforce.appointments (account_id, employee_id) WHERE state IN ('active', 'suspended');
+CREATE UNIQUE INDEX appointment_slot_revisions ON workforce.appointments (account_id, role, department_id, slot_revision) NULLS NOT DISTINCT;
+CREATE TRIGGER appointments_account_fixed BEFORE UPDATE ON workforce.appointments FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+CREATE FUNCTION workforce.appointment_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'appointment % is history: it is never deleted', OLD.id USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.role <> OLD.role OR NEW.department_id IS DISTINCT FROM OLD.department_id OR NEW.employee_id <> OLD.employee_id OR NEW.slot_revision <> OLD.slot_revision
+     OR NEW.replaces IS DISTINCT FROM OLD.replaces OR NEW.appointed_by <> OLD.appointed_by OR NEW.appointed_at <> OLD.appointed_at THEN
+    RAISE EXCEPTION 'appointment % never changes who, where or when', OLD.id USING ERRCODE = 'P0001';
+  END IF;
+  IF OLD.state IN ('revoked', 'replaced') THEN
+    RAISE EXCEPTION 'appointment % has ended', OLD.id USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER appointment_fixed BEFORE UPDATE OR DELETE ON workforce.appointments FOR EACH ROW EXECUTE FUNCTION workforce.appointment_fixed();
+
+-- DELEGATION GRANTS: what lets an employee who holds no appointment give work to colleagues -- named employees or a
+-- department's members -- given by a person, revoked by its state (the row stays as history).
+CREATE TABLE workforce.delegation_grants (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  employee_id uuid NOT NULL,
+  target_kind text NOT NULL CONSTRAINT delegation_target_kind CHECK (target_kind IN ('employee', 'department')),
+  target_employee_id uuid,
+  target_department_id uuid,
+  state text NOT NULL CONSTRAINT delegation_state CHECK (state IN ('active', 'revoked')),
+  note text NOT NULL DEFAULT '',
+  granted_by text NOT NULL,
+  granted_at timestamptz NOT NULL,
+  revoked_by text,
+  revoked_at timestamptz,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT delegation_account_id UNIQUE (account_id, id),
+  CONSTRAINT delegation_grantee FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id),
+  CONSTRAINT delegation_target_employee FOREIGN KEY (account_id, target_employee_id) REFERENCES workforce.employees (account_id, id),
+  CONSTRAINT delegation_target_department FOREIGN KEY (account_id, target_department_id) REFERENCES workforce.departments (account_id, id),
+  CONSTRAINT delegation_target CHECK ((target_kind = 'employee') = (target_employee_id IS NOT NULL) AND (target_kind = 'department') = (target_department_id IS NOT NULL)),
+  CONSTRAINT delegation_not_self CHECK (target_employee_id IS DISTINCT FROM employee_id),
+  CONSTRAINT delegation_revoked CHECK ((state = 'revoked') = (revoked_at IS NOT NULL))
+);
+CREATE UNIQUE INDEX one_live_delegation ON workforce.delegation_grants (account_id, employee_id, target_kind, COALESCE(target_employee_id, target_department_id)) WHERE state = 'active';
+CREATE TRIGGER delegation_grants_account_fixed BEFORE UPDATE ON workforce.delegation_grants FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 -- An employee's profile, one immutable revision at a time (an assignment pins the one it was claimed under).
 CREATE TABLE workforce.employee_profiles (
@@ -1111,6 +1198,23 @@ END $$;
 CREATE CONSTRAINT TRIGGER assignment_reservation AFTER INSERT OR UPDATE OF state, employee_id ON workforce.assignments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
 CREATE CONSTRAINT TRIGGER reservation_assignment AFTER INSERT OR UPDATE OR DELETE ON workforce.reservations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.reservation_matches();
 
+-- A HANDOVER moves an open assignment to another employee -- a person's act, never a side effect of a replaced
+-- appointment -- only before or between attempts, and with a new fence (a result of the old holder's attempt is then
+-- refused). The reservation moves with it (checked at commit by assignment_reservation).
+CREATE FUNCTION workforce.assignment_holder_moves() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.employee_id IS DISTINCT FROM OLD.employee_id THEN
+    IF OLD.state NOT IN ('QUEUED', 'ASSIGNED', 'BLOCKED', 'PAUSED', 'WAITING_FOR_SUBORDINATES') THEN
+      RAISE EXCEPTION 'assignment % is % and is not handed over', OLD.id, OLD.state USING ERRCODE = 'P0001';
+    END IF;
+    IF workforce.holds_employee(OLD.state) AND NEW.fence <= OLD.fence THEN
+      RAISE EXCEPTION 'handing assignment % over moves its fence', OLD.id USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER assignment_holder_moves BEFORE UPDATE OF employee_id ON workforce.assignments FOR EACH ROW EXECUTE FUNCTION workforce.assignment_holder_moves();
+
 -- An ACCEPTED assignment's workspace, published to its employee's desk once (this row is that "once"). The next attempt
 -- of the employee is prepared only after every accepted workspace of its reached the desk, so its next work starts from
 -- what was accepted (its toolbox included).
@@ -1211,7 +1315,6 @@ CREATE TABLE workforce.budgets (
   authorized jsonb NOT NULL,
   reserved_cpu_millis bigint NOT NULL DEFAULT 0 CHECK (reserved_cpu_millis >= 0),
   reserved_memory_mib bigint NOT NULL DEFAULT 0 CHECK (reserved_memory_mib >= 0),
-  reserved_scratch_mib bigint NOT NULL DEFAULT 0 CHECK (reserved_scratch_mib >= 0),
   running integer NOT NULL DEFAULT 0 CHECK (running >= 0),
   updated_at timestamptz NOT NULL,
   version integer NOT NULL DEFAULT 1
@@ -1493,6 +1596,30 @@ CREATE TABLE workforce.deliveries (
   FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
   FOREIGN KEY (account_id, handoff_id) REFERENCES workforce.handoffs (account_id, id)
 );
+
+-- An INCUMBENT appointment (active or suspended) stays true to its employee and its slot, checked at commit whatever
+-- changed: its employee is in the office (not archived or deleted), and a manager is a member of its department, which is
+-- not archived. A move, an archive or an appointment that would break it is refused whole.
+CREATE FUNCTION workforce.appointment_matches() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  bad uuid;
+BEGIN
+  SELECT a.id INTO bad
+  FROM workforce.appointments a
+  JOIN workforce.employees e ON e.account_id = a.account_id AND e.id = a.employee_id
+  LEFT JOIN workforce.departments d ON d.account_id = a.account_id AND d.id = a.department_id
+  WHERE a.account_id = NEW.account_id
+    AND a.state IN ('active', 'suspended')
+    AND (e.employment IN ('archived', 'deleted') OR (a.role = 'manager' AND (e.department_id IS DISTINCT FROM a.department_id OR d.archived_at IS NOT NULL)))
+  LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'appointment % no longer matches its employee or its department', bad USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER appointment_holds AFTER INSERT OR UPDATE ON workforce.appointments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
+CREATE CONSTRAINT TRIGGER employee_appointment_holds AFTER UPDATE OF department_id, employment ON workforce.employees DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
+CREATE CONSTRAINT TRIGGER department_appointment_holds AFTER UPDATE OF archived_at ON workforce.departments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION workforce.appointment_matches();
 `;
 
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier

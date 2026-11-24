@@ -37,7 +37,7 @@ test("a company is activated by ONE connection usable for chat, research or an e
   const none = activationOf([]);
   assert.equal(none.ready, false);
   assert.match(none.reason ?? "", /Connect an AI CLI first/);
-  assert.equal(none.where, "#/settings/ai-connections");
+  assert.equal(none.where, "#/?settings=ai-connections");
   const unusable = activationOf([connectionUses(facts({ auth: "disconnected" })), connectionUses(facts({ runtime: "agy", label: "Gemini" }))]);
   assert.equal(unusable.ready, false);
   assert.match(unusable.reason ?? "", /None of this account's AI connections/);

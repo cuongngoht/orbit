@@ -10,7 +10,7 @@
 // The document carries no revision number and no author: those are facts ABOUT a revision, kept by whoever stores it,
 // so that the same content always has the same digest.
 import { checked, isRecord, unknownFields, type Checked } from "./canonical.js";
-import { employeeNetworkErrors, type EmployeeNetwork } from "./network.js";
+import { EMPLOYEE_NETWORK_MODES, employeeNetworkErrors, isAllowEntry, NETWORK_LIMIT_KEYS, type EmployeeNetwork, type EmployeeNetworkMode, type NetworkLimits } from "./network.js";
 import {
   ACTIONS,
   CLAUDE_ACCOUNT_HOSTS,
@@ -38,6 +38,38 @@ export interface Rule {
   principalType?: PrincipalType;
   environment?: Environment;
   note?: string;
+  // The account policy's rules only. MANDATORY (the default when unsaid) binds every department; DEFAULT is the company's
+  // answer for an action it DELEGATED to its departments (`delegation`), which a department's own rule replaces within
+  // the delegation's limit. An action not delegated is the company's whatever a rule says here.
+  binding?: Binding;
+}
+
+export const BINDINGS = ["mandatory", "default"] as const;
+export type Binding = (typeof BINDINGS)[number];
+
+// WHAT THE COMPANY LETS ITS DEPARTMENTS DECIDE for their employees (department.ts), each with how far:
+//   actions          an action delegated, with the LOOSEST effect a department may give it (a department may always
+//                    narrow; an action not listed it may only narrow)
+//   employeeNetwork  the loosest mode a department may choose, the hosts its allow-list may name (`allowWithin`: absent
+//                    any public host, [] none) and the highest limit it may set; absent: a department only narrows
+//   models           the models a department may choose among (absent: any the company allows)
+export interface DepartmentDelegation {
+  actions?: Partial<Record<ActionKind, Effect>>;
+  employeeNetwork?: NetworkDelegation;
+  models?: { allow?: string[] };
+}
+
+export interface NetworkDelegation {
+  mode: EmployeeNetworkMode;
+  allowWithin?: string[];
+  limits?: NetworkLimits;
+}
+
+// Which models employees may run on, as `<runtime>:<model>` (claude:sonnet). Absent: any model the connection's catalog
+// offers; [] none. Model selection has semantics of its own: sets only intersect downward -- company ∩ delegation ∩
+// department -- and an unset department inherits.
+export interface EmployeeModels {
+  allow?: string[];
 }
 
 // What the account owes itself whatever the rules say. Each has a strong and a weak word; moving to the weak one
@@ -65,6 +97,10 @@ export interface Constitution {
   obligations: Obligations;
   // What an employee's assignment may reach from its sandbox (network.ts). Not said: AUTONOMOUS, with no limit.
   employeeNetwork?: EmployeeNetwork;
+  // What the company lets its departments decide (department.ts). Not said: nothing -- a department only narrows.
+  delegation?: { departments?: DepartmentDelegation };
+  // Which models employees may run on. Not said: any the connection's catalog offers.
+  employeeModels?: EmployeeModels;
   rules: Rule[];
 }
 
@@ -91,9 +127,10 @@ const RESOURCE = /^[^*\s\u0000-\u001f\u007f]*\*?$/;
 
 const isText = (v: unknown, max: number): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max;
 
-function ruleErrors(rule: unknown, at: string): string[] {
+function ruleErrors(rule: unknown, at: string, bindings = false): string[] {
   if (!isRecord(rule)) return [`${at} must be an object`];
-  const errors = unknownFields(rule, ["id", "action", "effect", "resource", "principalType", "environment", "note"], `${at}.`);
+  const errors = unknownFields(rule, ["id", "action", "effect", "resource", "principalType", "environment", "note", ...(bindings ? ["binding"] : [])], `${at}.`);
+  if (rule.binding !== undefined && !(BINDINGS as readonly unknown[]).includes(rule.binding)) errors.push(`${at}.binding must be mandatory or default`);
   if (!isText(rule.id, LIMITS.idLength) || !ID.test(rule.id)) errors.push(`${at}.id must be lower-case letters, digits and dashes (at most ${LIMITS.idLength})`);
   if (!isActionKind(rule.action)) errors.push(`${at}.action is not an action Orbit Web knows`);
   if (!isEffect(rule.effect)) errors.push(`${at}.effect must be allow, require_approval or deny`);
@@ -115,10 +152,10 @@ function ceilingErrors(rule: Rule, at: string): string[] {
   return [`${at}: ${rule.action} can never be more than "${most}" for ${WHOM[rule.principalType]}`];
 }
 
-function rulesErrors(rules: unknown, at: string): string[] {
+export function rulesErrors(rules: unknown, at: string, bindings = false): string[] {
   if (!Array.isArray(rules)) return [`${at} must be a list`];
   if (rules.length > LIMITS.rules) return [`${at} holds more than ${LIMITS.rules} rules`];
-  const errors = rules.flatMap((r, i) => ruleErrors(r, `${at}[${i}]`));
+  const errors = rules.flatMap((r, i) => ruleErrors(r, `${at}[${i}]`, bindings));
   const seen = new Set<string>();
   for (const r of rules) {
     if (!isRecord(r) || typeof r.id !== "string") continue;
@@ -159,16 +196,66 @@ function defaultsErrors(d: unknown): string[] {
   return errors;
 }
 
+// A list of models as `<runtime>:<model>`, each once.
+const MODEL_ENTRY = /^(claude|codex|agy):[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,79}$/;
+export function modelListErrors(list: unknown, at: string): string[] {
+  if (!Array.isArray(list)) return [`${at} must be a list of models (runtime:model), empty for none`];
+  const errors = list.flatMap((m, i) => (typeof m === "string" && MODEL_ENTRY.test(m) ? [] : [`${at}[${i}] must be runtime:model, as claude:sonnet`]));
+  if (new Set(list).size !== list.length) errors.push(`${at} names a model twice`);
+  return errors;
+}
+
+export function employeeModelsErrors(m: unknown, at = "employeeModels"): string[] {
+  if (m === undefined) return [];
+  if (!isRecord(m)) return [`${at} must be an object`];
+  return [...unknownFields(m, ["allow"], `${at}.`), ...(m.allow === undefined ? [] : modelListErrors(m.allow, `${at}.allow`))];
+}
+
+function networkDelegationErrors(n: unknown, at: string): string[] {
+  if (n === undefined) return [];
+  if (!isRecord(n)) return [`${at} must be an object`];
+  const errors = unknownFields(n, ["mode", "allowWithin", "limits"], `${at}.`);
+  if (!(EMPLOYEE_NETWORK_MODES as readonly unknown[]).includes(n.mode)) errors.push(`${at}.mode must be the loosest mode a department may choose: "AUTONOMOUS" or "RESTRICTED"`);
+  if (n.allowWithin !== undefined && (!Array.isArray(n.allowWithin) || !n.allowWithin.every(isAllowEntry))) errors.push(`${at}.allowWithin must be hosts or *.domains (empty for none)`);
+  if (n.limits !== undefined) {
+    if (!isRecord(n.limits)) errors.push(`${at}.limits must be an object`);
+    else {
+      errors.push(...unknownFields(n.limits, NETWORK_LIMIT_KEYS.filter((k) => k !== "downloadBytesPerDay"), `${at}.limits.`));
+      for (const [k, v] of Object.entries(n.limits)) if (!(Number.isSafeInteger(v) && (v as number) >= 1)) errors.push(`${at}.limits.${k} must be a whole number of at least 1`);
+    }
+  }
+  return errors;
+}
+
+export function delegationErrors(d: unknown): string[] {
+  if (d === undefined) return [];
+  if (!isRecord(d)) return ["delegation must be an object"];
+  const errors = unknownFields(d, ["departments"], "delegation.");
+  const dd = d.departments;
+  if (dd === undefined) return errors;
+  if (!isRecord(dd)) return [...errors, "delegation.departments must be an object"];
+  errors.push(...unknownFields(dd, ["actions", "employeeNetwork", "models"], "delegation.departments."));
+  if (dd.actions !== undefined) {
+    if (!isRecord(dd.actions)) errors.push("delegation.departments.actions must be an object of action → the loosest effect a department may give it");
+    else for (const [a, e] of Object.entries(dd.actions)) if (!isActionKind(a) || !isEffect(e)) errors.push(`delegation.departments.actions.${a} must be an action Orbit Web knows, with allow, require_approval or deny`);
+  }
+  errors.push(...networkDelegationErrors(dd.employeeNetwork, "delegation.departments.employeeNetwork"));
+  if (dd.models !== undefined) errors.push(...employeeModelsErrors(dd.models, "delegation.departments.models"));
+  return errors;
+}
+
 export function checkConstitution(body: unknown): Checked<Constitution> {
   if (!isRecord(body)) return { ok: false, errors: ["a policy is a JSON object"] };
   const errors = [
-    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "employeeNetwork", "rules"]),
+    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "employeeNetwork", "delegation", "employeeModels", "rules"]),
     ...headErrors(body, POLICY_KIND),
     ...constitutionMetadataErrors(body.metadata),
     ...defaultsErrors(body.defaults),
     ...obligationErrors(body.obligations),
     ...employeeNetworkErrors(body.employeeNetwork),
-    ...rulesErrors(body.rules, "rules"),
+    ...delegationErrors(body.delegation),
+    ...employeeModelsErrors(body.employeeModels),
+    ...rulesErrors(body.rules, "rules", true),
   ];
   return checked(errors, () => body as unknown as Constitution);
 }
@@ -191,8 +278,23 @@ export function checkOverlay(body: unknown): Checked<PolicyOverlay> {
 
 export interface PolicyWarning {
   ruleId: string;
-  code: "NO_EXECUTOR" | "RUNTIME_ONLY" | "OVERLAY_CANNOT_WIDEN";
+  code: "NO_EXECUTOR" | "RUNTIME_ONLY" | "OVERLAY_CANNOT_WIDEN" | "DEFAULT_NOT_DELEGATED" | "APPROVAL_UNSUPPORTED";
   message: string;
+}
+
+// The office's own actions an approval would only block: nothing in the office asks a person to approve them, so a
+// rule saying "a person approves first" stops the work there.
+const NO_APPROVAL_FLOW: readonly ActionKind[] = ["work.delegate", "work.assign", "artifact.publish"];
+
+// What a company's delegation cannot do as written: a rule marked DEFAULT for an action nothing delegates binds every
+// department anyway; an approval the office never asks for blocks the work.
+export function lintDelegation(policy: Pick<Constitution, "rules" | "delegation">): PolicyWarning[] {
+  const delegated = policy.delegation?.departments?.actions ?? {};
+  return policy.rules.flatMap((rule): PolicyWarning[] => {
+    if (rule.binding === "default" && delegated[rule.action] === undefined) return [{ ruleId: rule.id, code: "DEFAULT_NOT_DELEGATED", message: `${rule.action} is not delegated to departments: this default binds them all, as a mandatory rule would.` }];
+    if (rule.effect === "require_approval" && NO_APPROVAL_FLOW.includes(rule.action)) return [{ ruleId: rule.id, code: "APPROVAL_UNSUPPORTED", message: `Nothing asks a person to approve ${rule.action}: requiring it stops that work.` }];
+    return [];
+  });
 }
 
 // What a valid policy still cannot do. Said beside the policy, so that nobody reads a rule as a wall it is not.

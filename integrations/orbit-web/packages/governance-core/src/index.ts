@@ -5,6 +5,7 @@ export * from "./audit.js";
 export * from "./auditor.js";
 export * from "./canonical.js";
 export * from "./constitution.js";
+export * from "./department.js";
 export * from "./evaluate.js";
 export * from "./lifecycle.js";
 export * from "./network.js";

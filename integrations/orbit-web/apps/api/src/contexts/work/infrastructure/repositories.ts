@@ -146,6 +146,20 @@ export class AssignmentRepository {
     return Number(row.version);
   }
 
+  // A handover written: the holder moves with its reservation (the old one's released, the new one's taken -- a busy
+  // new holder refuses it with employee_busy), against the version read; the database holds the rest at commit.
+  async handOver(a: Assignment, fromEmployeeId: string): Promise<number> {
+    const d = a.data;
+    if (a.holding) await this.db.query("DELETE FROM workforce.reservations WHERE account_id = $1 AND assignment_id = $2 AND employee_id = $3", [d.orbitId, d.id, fromEmployeeId]);
+    const row = await this.db.one(
+      "UPDATE workforce.assignments SET employee_id = $3, pinned = $4::jsonb, fence = $5, updated_at = $6, version = version + 1 WHERE account_id = $1 AND id = $2 AND version = $7 RETURNING version",
+      [d.orbitId, d.id, d.employeeId, d.pinned === null ? null : jsonParam(d.pinned), d.fence, d.updatedAt, d.version],
+    );
+    if (row === null) throw stale("This assignment changed since it was read: read it again.", { assignmentId: d.id });
+    if (a.holding) await this.reserve(d.orbitId, d.employeeId, d.id, d.updatedAt);
+    return Number(row.version);
+  }
+
   private async reserve(orbitId: string, employeeId: string, assignmentId: string, at: string): Promise<void> {
     try {
       await this.db.tx(async () => {

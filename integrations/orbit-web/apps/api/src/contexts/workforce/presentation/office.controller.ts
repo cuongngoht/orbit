@@ -3,9 +3,10 @@
 // existing record names the version it was made against (If-Match → 412 when it moved).
 //
 //   GET   /api/office/roster?department=&q=&status=&cursor=   the office, its departments and employee cards
-//   POST  /api/office/setup                                    set up the office (idempotent)
+//   POST  /api/office/setup                                    activate the company, empty (idempotent)
+//   PATCH /api/office/defaults                                 the company's execution defaults (If-Match)
 //   POST  /api/office/departments                              create a department
-//   PATCH /api/office/departments/:id                          rename / reorder              (If-Match)
+//   PATCH /api/office/departments/:id                          rename / reorder / defaults   (If-Match)
 //   POST  /api/office/departments/:id/archive                  archive, moving its members   (If-Match)
 //   GET   /api/office/templates                                employee templates
 //   GET   /api/office/resource-presets                         resource presets (suggestions)
@@ -55,6 +56,11 @@ export class OfficeController {
   @HttpCode(HttpStatus.OK)
   activate(@Body() body: unknown): Promise<Office> {
     return this.office.activate(ownerActor(), body);
+  }
+
+  @Patch("office/defaults")
+  updateDefaults(@Body() body: unknown, @Req() req: Request): Promise<Office> {
+    return this.office.updateDefaults(ownerActor(), body, expectedVersion(req));
   }
 
   @Post("office/departments")

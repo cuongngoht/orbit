@@ -9,15 +9,20 @@
 // place and its id, a row nobody ticked keeps following the default decision, and a policy that does not say its
 // employee network access goes on not saying it while it is left as it was. What the table writes is checked by the
 // same checkConstitution as any document, on the server.
-import type { Constitution, DefaultDecision, Obligations, Rule } from "./constitution.js";
+import type { Binding, Constitution, DefaultDecision, Obligations, Rule } from "./constitution.js";
+import { delegatedCap, type DepartmentPolicy } from "./department.js";
+import { evaluate } from "./evaluate.js";
 import { employeeNetworkOf, NETWORK_LIMIT_KEYS, type EmployeeNetwork } from "./network.js";
-import { ACTION_KINDS, strictest, type ActionKind, type Effect } from "./vocabulary.js";
+import { ACTION_KINDS, ACTIONS, rankOf, strictest, type ActionKind, type Effect } from "./vocabulary.js";
 
 export interface ActionRow {
   action: ActionKind;
   effect: Effect;
   // Whether a rule says it; otherwise the row follows the default decision.
   stated: boolean;
+  // Whether the company's rule for it binds every department (mandatory, the default) or is the company's default for an
+  // action it delegated (a department's own rule replaces it, within the delegation).
+  binding?: Binding;
 }
 
 export interface ConstitutionTable {
@@ -42,8 +47,11 @@ const isHost = (r: Rule): boolean => r.action === "network.egress" && r.effect =
 const shownAs = (r: Rule): "row" | "host" | "kept" => (plain(r) ? "row" : isHost(r) ? "host" : "kept");
 
 function rowOf(c: Constitution, action: ActionKind): ActionRow {
-  const said = c.rules.filter((r) => r.action === action && plain(r)).map((r) => r.effect);
-  return said.length === 0 ? { action, effect: c.defaults.decision, stated: false } : { action, effect: said.reduce(strictest), stated: true };
+  const said = c.rules.filter((r) => r.action === action && plain(r));
+  if (said.length === 0) return { action, effect: c.defaults.decision, stated: false };
+  // Said only when it is a delegated default: unsaid is mandatory, as in the document.
+  const binding: Binding = said.every((r) => r.binding === "default") ? "default" : "mandatory";
+  return { action, effect: said.map((r) => r.effect).reduce(strictest), stated: true, ...(binding === "default" ? { binding } : {}) };
 }
 
 export function tableOf(c: Constitution): ConstitutionTable {
@@ -101,12 +109,63 @@ export function withTable(c: Constitution, t: ConstitutionTable): Constitution {
     else if (shown === "host" && wanted.delete(r.resource as string)) rules.push(r);
     else if (shown === "row" && row?.stated === true && !written.has(r.action)) {
       written.add(r.action);
-      rules.push({ ...r, effect: row.effect });
+      const { binding: _was, ...rule } = r;
+      rules.push({ ...rule, effect: row.effect, ...(row.binding === "default" ? { binding: "default" as const } : {}) });
     }
   }
   const taken = new Set(rules.map((r) => r.id));
-  for (const row of t.rows) if (row.stated && !written.has(row.action)) rules.push({ id: freshId(slug(row.action), taken), action: row.action, effect: row.effect });
+  for (const row of t.rows) if (row.stated && !written.has(row.action)) rules.push({ id: freshId(slug(row.action), taken), action: row.action, effect: row.effect, ...(row.binding === "default" ? { binding: "default" as const } : {}) });
   for (const host of wanted) rules.push({ id: freshId(`egress-${slug(host)}`, taken), action: "network.egress", resource: host, effect: "allow" });
   const { employeeNetwork: _said, ...rest } = c;
   return { ...rest, defaults: { decision: t.defaultDecision }, obligations: { ...t.obligations }, ...networkOf(c, t), rules };
+}
+
+// ---- a department's policy as a table ---------------------------------------------------------------------------------
+
+// One row per action, for the people of one department: what the company says (and whether it binds them), how far the
+// company lets the department go, what the department itself says, what is in effect for its employees (worked out by
+// evaluate(), the one decision function), and why a row cannot be loosened here.
+export interface DepartmentRow {
+  action: ActionKind;
+  company: ActionRow;
+  // The loosest effect the department may give it (null: not delegated -- it may only narrow).
+  cap: Effect | null;
+  // The department's own answer (null: it says nothing and inherits).
+  department: Effect | null;
+  effective: Effect;
+  // Why the department cannot loosen it: the deployment's ceiling for an employee, an action the company did not
+  // delegate, a mandatory company rule. Null: it may.
+  locked: "ceiling" | "not_delegated" | "mandatory" | null;
+  // The department's answer was held to the delegation (a cap lowered after it was published).
+  capped: boolean;
+}
+
+export function departmentTableOf(company: Constitution, dept: DepartmentPolicy | null, departmentId: string): DepartmentRow[] {
+  const accountId = company.metadata.accountId;
+  return ACTION_KINDS.map((action): DepartmentRow => {
+    const companyRow = rowOf(company, action);
+    const cap = delegatedCap(company, action);
+    const own = (dept?.rules ?? []).filter((r) => r.action === action && plain(r));
+    const department = own.length === 0 ? null : own.map((r) => r.effect).reduce(strictest);
+    const effective = evaluate({ constitution: company, overlays: [], departments: dept === null ? [] : [dept] }, { principalId: "probe", principalType: "agent", accountId, workspaceId: null, researchWorkspaceId: null, action, resource: "probe.invalid", environment: "development", runKind: "assignment", departmentId }).verdict;
+    const ceiling = (ACTIONS[action].ceiling as Partial<Record<string, Effect>>).agent;
+    const locked = ceiling === "deny" ? "ceiling" : cap === null ? "not_delegated" : company.rules.some((r) => r.action === action && plain(r) && (r.binding ?? "mandatory") === "mandatory") ? "mandatory" : null;
+    return { action, company: companyRow, cap, department, effective, locked, capped: cap !== null && department !== null && rankOf(department) < rankOf(cap) };
+  });
+}
+
+// The department's policy the rows say, written over the one it was read from: a row's department answer is its plain
+// rule for that action (none: it inherits); every rule the table does not show is kept as written.
+export function withDepartmentTable(dept: DepartmentPolicy, rows: readonly Pick<DepartmentRow, "action" | "department">[]): DepartmentPolicy {
+  const wanted = new Map(rows.map((r) => [r.action, r.department]));
+  const kept = dept.rules.filter((r) => !plain(r) || !wanted.has(r.action));
+  const taken = new Set(kept.map((r) => r.id));
+  const said = dept.rules.filter((r) => plain(r) && wanted.has(r.action));
+  const rules: Rule[] = [...kept];
+  for (const [action, effect] of wanted) {
+    if (effect === null) continue;
+    const before = said.find((r) => r.action === action);
+    rules.push(before === undefined ? { id: freshId(slug(action), taken), action, effect } : { ...before, effect });
+  }
+  return { ...dept, rules };
 }

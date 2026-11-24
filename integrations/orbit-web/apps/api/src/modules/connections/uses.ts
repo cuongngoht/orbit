@@ -23,7 +23,7 @@ export interface UseFacts {
 }
 
 // Where a person connects or fixes one.
-export const AI_CONNECTIONS_HREF = "#/settings/ai-connections";
+export const AI_CONNECTIONS_HREF = "#/?settings=ai-connections";
 
 const READY: ConnectionUse = { ready: true, reason: null, reasonCode: null };
 const not = (reasonCode: NonNullable<ConnectionUse["reasonCode"]>, reason: string): ConnectionUse => ({ ready: false, reason, reasonCode });

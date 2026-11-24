@@ -32,12 +32,12 @@ describe("activating a company: empty, after a usable AI connection, once", () =
     assert.equal(view.connections.length, 0);
     assert.deepEqual(view.activation.uses, { chat: false, research: false, employee: false });
     assert.equal(view.activation.ready, false);
-    assert.equal(view.activation.where, "#/settings/ai-connections");
+    assert.equal(view.activation.where, "#/?settings=ai-connections");
     assert.match(view.activation.reason ?? "", /AI Connections/);
     const refused = await b.send("POST", "/api/office/setup", { name: "Acme" });
     assert.equal(refused.status, 409, JSON.stringify(refused.body));
     assert.equal(code(refused), "connection_required");
-    assert.equal(details(refused).where, "#/settings/ai-connections");
+    assert.equal(details(refused).where, "#/?settings=ai-connections");
     assert.equal(((await b.get("/api/office/roster")).body as Roster).office, null, "nothing was made");
     assert.equal((await b.get("/api/settings")).status, 200, "Settings answers before any company exists");
   });

@@ -3,10 +3,11 @@
 // one rule decides them all. It locks the employee's row FIRST (FOR UPDATE): every claim takes its locks in the same
 // order (employee → assignment → reservation → office version), and two claims of one employee take turns.
 import { Inject, Injectable } from "@nestjs/common";
-import type { EmployeeProfile, Employment, ExecutionProfile } from "@orbit-web/contracts";
+import type { EmployeeProfile, Employment, ExecutionProfile, ExecutionSources } from "@orbit-web/contracts";
 import { WORKING } from "../domain/employee.js";
+import { resolveExecution } from "../domain/execution-precedence.js";
 import { ConnectionsReader, employeeUse, type ConnectionFacts } from "../infrastructure/connections.reader.js";
-import { DepartmentRepository, EmployeeRepository, SandboxRepository, type SandboxRecord } from "../infrastructure/repositories.js";
+import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository, type SandboxRecord } from "../infrastructure/repositories.js";
 
 export interface Eligibility {
   eligible: boolean;
@@ -17,7 +18,10 @@ export interface Eligibility {
   resourceRevision: number;
   departmentId: string | null;
   departmentName: string | null;
+  // The execution its work runs on: the profile's own fields, else its department's default, else the company's.
   execution: ExecutionProfile;
+  // Which layer gave each field.
+  sources: ExecutionSources;
   profile: EmployeeProfile;
   sandboxId: string | null;
 }
@@ -29,6 +33,7 @@ export class EmployeeEligibility {
     @Inject(SandboxRepository) private readonly sandboxes: SandboxRepository,
     @Inject(DepartmentRepository) private readonly departments: DepartmentRepository,
     @Inject(ConnectionsReader) private readonly connections: ConnectionsReader,
+    @Inject(OfficeRepository) private readonly offices: OfficeRepository,
   ) {}
 
   // Null: no such employee in this account.
@@ -39,8 +44,11 @@ export class EmployeeEligibility {
     const profile = (await this.employees.profile(orbitId, employeeId, d.profileRevision)) as EmployeeProfile;
     const department = d.departmentId === null ? null : await this.departments.get(orbitId, d.departmentId);
     const sandbox = await this.sandboxes.ofEmployee(orbitId, employeeId);
-    const connection = profile.execution.connectionId !== null ? await this.connections.get(orbitId, profile.execution.connectionId) : await this.connections.defaultFor(orbitId, profile.execution.runtime);
-    const reason = this.reasonOf(d.name, d.employment, d.expiresAt, sandbox, connection);
+    const resolved = resolveExecution({ override: null, profile: profile.execution, department: department?.defaults ?? null, company: (await this.offices.get(orbitId))?.defaults ?? null });
+    const connectionId = resolved.execution.connectionId;
+    const connection = connectionId !== null ? await this.connections.get(orbitId, connectionId) : await this.connections.defaultFor(orbitId, profile.execution.runtime);
+    const unresolved = resolved.unresolved.length > 0 ? `${d.name}'s profile leaves its ${resolved.unresolved.join(" and ")} to its department or company, and neither names one: set a default, or choose it on the profile.` : null;
+    const reason = unresolved ?? this.reasonOf(d.name, d.employment, d.expiresAt, sandbox, connection);
     return {
       eligible: reason === null,
       reason,
@@ -50,7 +58,8 @@ export class EmployeeEligibility {
       resourceRevision: d.resourceRevision,
       departmentId: d.departmentId,
       departmentName: department?.name ?? null,
-      execution: { ...profile.execution, connectionId: connection?.id ?? profile.execution.connectionId },
+      execution: { ...resolved.execution, connectionId: connection?.id ?? resolved.execution.connectionId },
+      sources: resolved.sources,
       profile,
       sandboxId: sandbox?.id ?? null,
     };

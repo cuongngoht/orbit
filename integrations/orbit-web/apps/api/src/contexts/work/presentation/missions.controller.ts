@@ -110,6 +110,20 @@ export class MissionsController {
     return this.missions.answer(ownerActor(), id, body, expectedVersion(req));
   }
 
+  // Open work handed to another employee (a person's act; a replaced appointment moves none by itself).
+  @Post("assignments/:id/hand-over")
+  @HttpCode(HttpStatus.OK)
+  handOver(@Param("id") id: string, @Body() body: unknown, @Req() req: Request): Promise<CommandResult> {
+    return this.missions.handOver(ownerActor(), id, body, expectedVersion(req));
+  }
+
+  // Blocked or paused work continued on its employee's profile in effect now (after a provider changed, say).
+  @Post("assignments/:id/repin")
+  @HttpCode(HttpStatus.OK)
+  repin(@Param("id") id: string, @Req() req: Request): Promise<CommandResult> {
+    return this.missions.repin(ownerActor(), id, expectedVersion(req));
+  }
+
   @Get("inbox")
   inbox(@Query("state") state?: string, @Query("cursor") cursor?: string): Promise<Inbox> {
     return this.queries.inbox(ownerActor().command.orbitId, { open: state !== "history", cursor: cursor !== undefined && isWorkforceId(cursor) ? cursor : null });

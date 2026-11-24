@@ -64,9 +64,13 @@ export interface Confirmation {
   // The revision in effect the person compared it with, and the one in effect now (null: none).
   readBase: string | null;
   base: string | null;
+  // A department's revision: the COMPANY policy in effect the person read it against, and the one in effect now (its
+  // delegation decides what the department may say). Absent for the company's own policy.
+  readCompanyBase?: string | null;
+  companyBase?: string | null;
 }
 
-export type ConfirmationRefusal = "NOT_A_PERSON" | "STALE_CONTENT" | "STALE_BASE" | "RISK_NOT_ACKNOWLEDGED";
+export type ConfirmationRefusal = "NOT_A_PERSON" | "STALE_CONTENT" | "STALE_BASE" | "STALE_COMPANY_POLICY" | "RISK_NOT_ACKNOWLEDGED";
 
 const rank = (r: RiskLevel): number => RISK_LEVELS.indexOf(r);
 
@@ -76,6 +80,7 @@ export function confirmationRefusal(c: Confirmation): ConfirmationRefusal | null
   if (c.actorType !== "human") return "NOT_A_PERSON";
   if (c.readDigest !== c.digest) return "STALE_CONTENT";
   if (c.readBase !== c.base) return "STALE_BASE";
+  if (c.companyBase !== undefined && c.readCompanyBase !== c.companyBase) return "STALE_COMPANY_POLICY";
   if (rank(c.risk) > rank(c.acknowledgedRisk ?? "low")) return "RISK_NOT_ACKNOWLEDGED";
   return null;
 }

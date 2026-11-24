@@ -28,7 +28,7 @@ export class WorkspacePublisher implements OnModuleInit {
   onModuleInit(): void {
     if (this.provider === null) return;
     this.dispatcher.register({ id: "execution.desk", types: ["AssignmentAccepted"], handle: async (e) => this.publish(e.accountId, e.aggregateId) });
-    this.dispatcher.register({ id: "execution.workspace-cleanup", types: ["DeskPublished", "AssignmentCancelled", "AssignmentFailed"], handle: async (e) => this.cleanup(e) });
+    this.dispatcher.register({ id: "execution.workspace-cleanup", types: ["DeskPublished", "AssignmentCancelled", "AssignmentFailed", "AssignmentHandedOver"], handle: async (e) => this.cleanup(e) });
   }
 
   // Every accepted workspace of the employee that has not reached its desk yet, oldest first.
@@ -77,12 +77,15 @@ export class WorkspacePublisher implements OnModuleInit {
     const assignmentId = e.type === "DeskPublished" ? String(e.payload.assignmentId ?? "") : e.aggregateId;
     const a = await this.db.one("SELECT employee_id FROM workforce.assignments WHERE account_id = $1 AND id = $2", [e.accountId, assignmentId]);
     if (a === null) return;
-    const s = await this.db.one("SELECT id FROM workforce.sandboxes WHERE account_id = $1 AND employee_id = $2", [e.accountId, String(a.employee_id)]);
+    // Handed over: the workspace that goes is the one its former holder worked in (the new holder starts from its own desk).
+    const holder = e.type === "AssignmentHandedOver" ? String(e.payload.fromEmployeeId ?? "") : String(a.employee_id);
+    const s = await this.db.one("SELECT id FROM workforce.sandboxes WHERE account_id = $1 AND employee_id = $2", [e.accountId, holder]);
     if (s === null) return;
     const live = await this.db.one("SELECT 1 AS live FROM workforce.runs WHERE account_id = $1 AND assignment_id = $2 AND state IN ('starting', 'running', 'unknown') LIMIT 1", [e.accountId, assignmentId]);
     if (live !== null) throw new Error("an attempt of the assignment is still ending; its workspace is removed once it has");
-    const r = await provider.removeWorkspace({ orbitId: e.accountId, employeeId: String(a.employee_id), sandboxId: String(s.id) }, assignmentId);
+    const r = await provider.removeWorkspace({ orbitId: e.accountId, employeeId: holder, sandboxId: String(s.id) }, assignmentId);
     if (!r.gone) throw new Error(`the workspace was not verified removed: ${r.detail}`);
-    await this.admission.releaseScratch(e.accountId, assignmentId);
+    // The work goes on under its new holder: its scratch commitment (per assignment) stays.
+    if (e.type !== "AssignmentHandedOver") await this.admission.releaseScratch(e.accountId, assignmentId);
   }
 }

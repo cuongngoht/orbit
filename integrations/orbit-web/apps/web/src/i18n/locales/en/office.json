@@ -51,7 +51,7 @@
 
   "overview.activate.aria": "Activate your company",
   "overview.activate.title": "Activate your company",
-  "overview.activate.lead": "Your company starts empty: no department, no employee, no mission, no CEO. Activating it needs one AI connection of your account that Orbit Web can use -- for a chat, research or an AI employee.",
+  "overview.activate.lead": "Your company starts empty: no department, no employee, no mission, no CEO. Activating it needs one AI connection of your account that Orbit Web can use — for a chat, research or an AI employee.",
   "overview.activate.nameLabel": "Company name",
   "overview.activate.nameHint": "From Settings → Account; change it here if you like.",
   "overview.activate.connectionsAria": "What your AI connections can be used for",
@@ -62,7 +62,7 @@
   "overview.activate.useResearch": "Research",
   "overview.activate.useEmployee": "AI employees",
   "overview.activate.usable": "{use}: usable",
-  "overview.activate.notUsable": "{use}: not usable -- {reason}",
+  "overview.activate.notUsable": "{use}: not usable — {reason}",
   "overview.activate.activating": "Activating…",
   "overview.activate.submit": "Activate the company",
   "overview.emptyTitle": "No departments or employees yet",

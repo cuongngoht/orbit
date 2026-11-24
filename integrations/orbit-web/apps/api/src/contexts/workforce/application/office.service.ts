@@ -11,6 +11,8 @@
 // to the department later.
 import { Inject, Injectable } from "@nestjs/common";
 import {
+  checkUpdateOfficeDefaults,
+  type ExecutionDefaults,
   checkArchiveDepartment,
   checkCreateDepartment,
   checkSetUpOffice,
@@ -36,6 +38,7 @@ import { workLabelOf } from "../domain/work-label.js";
 import { RevisionsService } from "../../../modules/governance/revisions.service.js";
 import { activationOf } from "../../../modules/connections/uses.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
+import { AppointmentRepository } from "../infrastructure/appointments.repository.js";
 import { ConnectionsReader, employeeUse, usesOf } from "../infrastructure/connections.reader.js";
 import { DepartmentRepository, departmentView, EmployeeRepository, OfficeRepository, type DepartmentRecord } from "../infrastructure/repositories.js";
 
@@ -70,6 +73,7 @@ export class OfficeService {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(RevisionsService) private readonly policies: RevisionsService,
     @Inject(ResourcesService) private readonly resources: ResourcesService,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
   ) {}
 
   templates(): EmployeeTemplate[] {
@@ -151,12 +155,13 @@ export class OfficeService {
       const d = await this.department(actor.command.orbitId, id, "update");
       if (d.archivedAt !== null) throw conflictWith("department_archived", "This department is archived.");
       if (d.version !== expectedVersion) throw stale("This department changed since it was read: read it again.");
-      const next = { ...d, name: req.name ?? d.name, position: req.position ?? d.position };
+      if (req.defaults !== undefined) await this.checkDefaults(actor.command.orbitId, req.defaults);
+      const next = { ...d, name: req.name ?? d.name, position: req.position ?? d.position, ...(req.defaults !== undefined ? { defaults: req.defaults } : {}) };
       const version = await this.departments.save(next, expectedVersion, new Date().toISOString());
-      await this.outbox.append(actor.command, [{ type: "DepartmentChanged", aggregateType: "department", aggregateId: d.id, aggregateVersion: version, payload: { name: next.name, position: next.position } }]);
+      await this.outbox.append(actor.command, [{ type: "DepartmentChanged", aggregateType: "department", aggregateId: d.id, aggregateVersion: version, payload: { name: next.name, position: next.position, defaults: req.defaults !== undefined } }]);
       await this.outbox.touched(actor.command.orbitId, ["roster"]);
       await this.governance.recorded(actor, "department.update", "department", d.id, version, next.name);
-      return departmentView({ ...next, version }, (await this.departments.members(actor.command.orbitId)).get(d.id) ?? 0);
+      return departmentView({ ...next, version }, (await this.departments.members(actor.command.orbitId)).get(d.id) ?? 0, (await this.appointments.incumbents(actor.command.orbitId)).managers.get(d.id) ?? null);
     });
   }
 
@@ -169,6 +174,8 @@ export class OfficeService {
       const d = await this.department(actor.command.orbitId, id, "update");
       if (d.archivedAt !== null) throw conflictWith("department_archived", "This department is already archived.");
       if (d.version !== expectedVersion) throw stale("This department changed since it was read: read it again.");
+      const manager = await this.appointments.incumbent(actor.command.orbitId, { role: "manager", departmentId: id });
+      if (manager !== null) throw conflictWith("department_has_manager", "This department has a manager: revoke (or end) the appointment before archiving it -- a manager is never moved out by an archive.", { appointmentId: manager.id });
       const members = await this.employees.inDepartment(actor.command.orbitId, id);
       if (members.length > 0 && req.moveTo === undefined) throw conflictWith("department_not_empty", `This department still has ${members.length} employee(s): choose where they go first (another department, or Unassigned).`, { members: members.length });
       const at = new Date().toISOString();
@@ -191,6 +198,33 @@ export class OfficeService {
     });
   }
 
+  // The company's execution defaults (whole), against the version read: what an employee of a runtime runs on where its
+  // profile and its department leave a field to the company. Work already claimed keeps what it pinned.
+  async updateDefaults(actor: Actor, body: unknown, expectedVersion: number): Promise<Office> {
+    const req = accepted(checkUpdateOfficeDefaults(body));
+    const orbitId = actor.command.orbitId;
+    return this.governance.command(actor, "office.defaults", orbitId, async () => {
+      const office = await this.requireOffice(orbitId);
+      await this.governance.authorize(actor, "office.roster.manage", office.id, { account: orbitId });
+      await this.checkDefaults(orbitId, req.defaults);
+      const version = await this.offices.setDefaults(orbitId, req.defaults, expectedVersion, new Date().toISOString());
+      await this.outbox.touched(orbitId, ["roster"]);
+      await this.governance.recorded(actor, "office.defaults", "office", office.id, version, Object.keys(req.defaults).join(", ") || "none");
+      return { ...office, defaults: req.defaults, version };
+    });
+  }
+
+  // A default names a connection of this account of its own runtime (its model is held to that connection's catalog
+  // when work is claimed, never here: a catalog moves).
+  private async checkDefaults(orbitId: string, defaults: ExecutionDefaults): Promise<void> {
+    for (const [runtime, d] of Object.entries(defaults)) {
+      if (d?.connectionId === undefined || d.connectionId === null) continue;
+      const c = await this.connections.get(orbitId, d.connectionId);
+      if (c === null) throw unprocessable("default_connection", `The ${runtime} default names a connection this account does not have.`);
+      if (c.runtime !== runtime) throw unprocessable("default_connection", `The ${runtime} default names a ${c.runtime} connection: a default never switches an employee's provider.`);
+    }
+  }
+
   // THE ROSTER: one read of the account's office -- departments, employee cards with their work label, counts -- filtered
   // and paged by a stable cursor (department position, name, id).
   async roster(orbitId: string, q: RosterQuery): Promise<Roster> {
@@ -202,8 +236,9 @@ export class OfficeService {
     const version = await this.outbox.version(orbitId);
     const asOf = new Date().toISOString();
     const empty = { employees: 0, ready: 0, busy: 0, notReady: 0, queued: 0, inbox: 0 };
-    if (office === null) return { office: null, departments: [], employees: [], nextCursor: null, version, asOf, counts: empty };
+    if (office === null) return { office: null, ceo: null, departments: [], employees: [], nextCursor: null, version, asOf, counts: empty };
     const departments = await this.departments.list(orbitId);
+    const incumbents = await this.appointments.incumbents(orbitId);
     const members = await this.departments.members(orbitId);
     const cards = await this.cards(orbitId);
     const inbox = Number((await this.db.one("SELECT count(*) AS n FROM workforce.decisions WHERE account_id = $1 AND state = 'open'", [orbitId]))?.n ?? 0);
@@ -226,7 +261,8 @@ export class OfficeService {
     const page = filtered.slice(start, start + PAGE);
     return {
       office,
-      departments: departments.map((d) => departmentView(d, members.get(d.id) ?? 0)),
+      ceo: incumbents.ceo,
+      departments: departments.map((d) => departmentView(d, members.get(d.id) ?? 0, incumbents.managers.get(d.id) ?? null)),
       employees: page,
       nextCursor: start + PAGE < filtered.length ? (page.at(-1)?.id ?? null) : null,
       version,
@@ -241,7 +277,8 @@ export class OfficeService {
       `SELECT e.*, p.profile, s.state AS sandbox_state, s.reason AS sandbox_reason,
               a.id AS held_id, a.mission_id AS held_mission, a.state AS held_state, a.waiting_on AS held_waiting, a.claimed_at AS held_since, m.title AS held_title,
               (SELECT r.state FROM workforce.runs r WHERE r.account_id = e.account_id AND r.assignment_id = a.id ORDER BY r.attempt_no DESC LIMIT 1) AS run_state,
-              (SELECT count(*) FROM workforce.assignments q WHERE q.account_id = e.account_id AND q.employee_id = e.id AND q.state = 'QUEUED') AS queued
+              (SELECT count(*) FROM workforce.assignments q WHERE q.account_id = e.account_id AND q.employee_id = e.id AND q.state = 'QUEUED') AS queued,
+              (SELECT ap.role FROM workforce.appointments ap WHERE ap.account_id = e.account_id AND ap.employee_id = e.id AND ap.state IN ('active', 'suspended')) AS appointed_role
        FROM workforce.employees e
        JOIN workforce.employee_profiles p ON p.account_id = e.account_id AND p.employee_id = e.id AND p.revision = e.profile_revision
        LEFT JOIN workforce.sandboxes s ON s.account_id = e.account_id AND s.employee_id = e.id
@@ -296,6 +333,7 @@ export class OfficeService {
       execution: profile.execution,
       connectionWarning: label.connectionWarning,
       expiresAt,
+      role: r.appointed_role === null || r.appointed_role === undefined ? null : (String(r.appointed_role) as EmployeeCard["role"]),
       version: Number(r.version),
       updatedAt: String(r.updated_at),
     };

@@ -52,14 +52,17 @@ import { AssignmentRepository, HandoffRepository, MissionRepository } from "./wo
 import { SourcesCheck } from "./work/infrastructure/sources.check.js";
 import { MissionsController } from "./work/presentation/missions.controller.js";
 import { SchedulesController } from "./work/presentation/schedules.controller.js";
+import { AppointmentsService } from "./workforce/application/appointments.service.js";
 import { EmployeeEligibility } from "./workforce/application/eligibility.js";
 import { DeskService } from "./workforce/application/desk.service.js";
 import { EmployeeQueries } from "./workforce/application/employee.queries.js";
 import { HiringService } from "./workforce/application/hiring.service.js";
 import { OfficeService } from "./workforce/application/office.service.js";
 import { SandboxProvisioner } from "./workforce/application/sandbox-provisioner.js";
+import { AppointmentRepository } from "./workforce/infrastructure/appointments.repository.js";
 import { ConnectionsReader } from "./workforce/infrastructure/connections.reader.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository } from "./workforce/infrastructure/repositories.js";
+import { AppointmentsController } from "./workforce/presentation/appointments.controller.js";
 import { DeskController } from "./workforce/presentation/desk.controller.js";
 import { OfficeController } from "./workforce/presentation/office.controller.js";
 
@@ -74,8 +77,10 @@ const PROVIDERS: Provider[] = [
   DepartmentRepository,
   EmployeeRepository,
   SandboxRepository,
+  AppointmentRepository,
   ConnectionsReader,
   OfficeService,
+  AppointmentsService,
   HiringService,
   EmployeeEligibility,
   EmployeeQueries,
@@ -127,7 +132,7 @@ export class OfficeModule {
       module: OfficeModule,
       imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
       providers: [...PROVIDERS, AttemptInputs, ...defaults, ...bindings],
-      controllers: [OfficeController, DeskController, MissionsController, SchedulesController, ToolsController],
+      controllers: [OfficeController, AppointmentsController, DeskController, MissionsController, SchedulesController, ToolsController],
       exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs],
     };
   }

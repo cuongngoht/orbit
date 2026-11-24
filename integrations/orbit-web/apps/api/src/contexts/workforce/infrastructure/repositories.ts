@@ -2,7 +2,7 @@
 // revisions, and their Personal Sandboxes. Every method takes the OrbitId first; a save names the version it read.
 import { Inject, Injectable } from "@nestjs/common";
 import type { AreaState } from "../../execution/application/sandbox.port.js";
-import type { Department, EmployeeProfile, Office, ResourceProfile, SandboxState } from "@orbit-web/contracts";
+import type { AppointmentSummary, Department, EmployeeProfile, ExecutionDefaults, Office, ResourceProfile, SandboxState } from "@orbit-web/contracts";
 import { Db, jsonParam, pgCode, UNIQUE_VIOLATION, type Row } from "../../../infra/db/db.js";
 import { conflictWith, stale } from "../../shared/domain.js";
 import { Employee, type EmployeeData } from "../domain/employee.js";
@@ -37,11 +37,13 @@ export interface DepartmentRecord {
   position: number;
   archivedAt: string | null;
   version: number;
+  // Its execution defaults (read; written by a command of their own).
+  defaults?: ExecutionDefaults;
 }
 
-const departmentOf = (r: Row): DepartmentRecord => ({ id: str(r.id), orbitId: str(r.account_id), name: str(r.name), position: Number(r.position), archivedAt: strOrNull(r.archived_at), version: Number(r.version) });
+const departmentOf = (r: Row): DepartmentRecord => ({ id: str(r.id), orbitId: str(r.account_id), name: str(r.name), position: Number(r.position), archivedAt: strOrNull(r.archived_at), version: Number(r.version), defaults: (r.defaults ?? {}) as ExecutionDefaults });
 
-export const departmentView = (d: DepartmentRecord, members: number): Department => ({ id: d.id, name: d.name, position: d.position, archived: d.archivedAt !== null, version: d.version, members });
+export const departmentView = (d: DepartmentRecord, members: number, manager: AppointmentSummary | null = null): Department => ({ id: d.id, name: d.name, position: d.position, archived: d.archivedAt !== null, version: d.version, members, manager, defaults: d.defaults ?? {} });
 
 export interface SandboxRecord {
   id: string;
@@ -77,7 +79,14 @@ export class OfficeRepository {
 
   async get(orbitId: string): Promise<Office | null> {
     const row = await this.db.one("SELECT * FROM workforce.offices WHERE account_id = $1", [orbitId]);
-    return row === null ? null : { id: str(row.id), name: str(row.name), version: Number(row.version), createdAt: str(row.created_at) };
+    return row === null ? null : { id: str(row.id), name: str(row.name), version: Number(row.version), createdAt: str(row.created_at), defaults: (row.defaults ?? {}) as ExecutionDefaults };
+  }
+
+  // The company's execution defaults, whole, against the office's version (If-Match).
+  async setDefaults(orbitId: string, defaults: ExecutionDefaults, expectedVersion: number, at: string): Promise<number> {
+    const row = await this.db.one("UPDATE workforce.offices SET defaults = $2::jsonb, updated_at = $3, version = version + 1 WHERE account_id = $1 AND version = $4 RETURNING version", [orbitId, jsonParam(defaults), at, expectedVersion]);
+    if (row === null) throw stale("The company changed since it was read: read it again.");
+    return Number(row.version);
   }
 
   // The account's company name (Settings → Account): the company's, unless its activation names another.
@@ -126,7 +135,10 @@ export class DepartmentRepository {
   async save(d: DepartmentRecord, expectedVersion: number, at: string): Promise<number> {
     try {
       return await this.db.tx(async () => {
-        const row = await this.db.one("UPDATE workforce.departments SET name = $3, position = $4, archived_at = $5, updated_at = $6, version = version + 1 WHERE account_id = $1 AND id = $2 AND version = $7 RETURNING version", [d.orbitId, d.id, d.name, d.position, d.archivedAt, at, expectedVersion]);
+        const row = await this.db.one(
+          "UPDATE workforce.departments SET name = $3, position = $4, archived_at = $5, defaults = COALESCE($8::jsonb, defaults), updated_at = $6, version = version + 1 WHERE account_id = $1 AND id = $2 AND version = $7 RETURNING version",
+          [d.orbitId, d.id, d.name, d.position, d.archivedAt, at, expectedVersion, d.defaults === undefined ? null : jsonParam(d.defaults)],
+        );
         if (row === null) throw stale("This department changed since it was read: read it again.");
         return Number(row.version);
       });
@@ -144,6 +156,12 @@ export class EmployeeRepository {
   async get(orbitId: string, id: string, lock = false): Promise<Employee | null> {
     const row = await this.db.one(`SELECT * FROM workforce.employees WHERE account_id = $1 AND id = $2${lock ? " FOR UPDATE" : ""}`, [orbitId, id]);
     return row === null ? null : Employee.restore(employeeDataOf(row));
+  }
+
+  // Every employee's name (archived ones too: a record may refer to one who left).
+  async names(orbitId: string): Promise<Map<string, string>> {
+    const rows = await this.db.query("SELECT id, name FROM workforce.employees WHERE account_id = $1", [orbitId]);
+    return new Map(rows.map((r) => [str(r.id), str(r.name)]));
   }
 
   async managers(orbitId: string): Promise<Map<string, string | null>> {

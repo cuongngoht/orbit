@@ -8,10 +8,13 @@
 // administrator up with the one-time code its terminal prints (used once), signs a browser in with a password, and keeps
 // its state (Settings, the browser's session, and a research workspace with a source it read and indexed in the
 // container's own worker) across a restart and across re-creating the container. Then the trial: refused at start where
-// another machine could reach it, and on this machine `admin` / `123456` signs in. With --browser (Playwright's Chromium
-// on this machine) the trial is then walked through in a real browser: the sign-in page, the office set up, Hire waiting
-// for a connection and saying why, a subscription connection added and its terminal command shown, Compute & storage,
-// Employee network access, and every page at 320 px without sideways scrolling (screenshots into --out).
+// another machine could reach it, and on this machine `admin` / `123456` signs in. The company: with no AI connection it
+// is not activated (409 connection_required, saying where to connect); with a Codex API-key connection holding a
+// PLACEHOLDER key -- readiness is the CLI's own status, no provider is asked -- it is activated, empty, when the CLI says
+// so, and the line is BLOCKED (never a pass) when it does not. With --browser (Playwright's Chromium on this machine) the
+// trial is then walked through in a real browser: the sign-in page, the company waiting for a usable AI connection and
+// saying why, a subscription connection added and its terminal command shown, Compute & storage, Employee network
+// access, and every page at 320 px without sideways scrolling (screenshots into --out).
 //
 //   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep] [--browser [--out=<dir>]]
 import { spawnSync } from "node:child_process";
@@ -45,6 +48,14 @@ const docker = (args, o = {}) => spawnSync("docker", args, { encoding: "utf8", m
 function check(label, ok, detail = "") {
   results.push({ label, ok: Boolean(ok), detail });
   process.stdout.write(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` -- ${detail}` : ""}\n`);
+}
+
+// What this machine could not show (a real AI account): said as BLOCKED, with the behaviour left unverified -- never a
+// pass, never a failure of the image.
+const blockedLines = [];
+function blocked(label, detail = "") {
+  blockedLines.push({ label, detail });
+  process.stdout.write(`BLOCKED  ${label}${detail ? ` -- ${detail}` : ""}\n`);
 }
 
 const freePort = () =>
@@ -311,6 +322,21 @@ async function main() {
   const setup = await web(port, "/api/setup/status");
   check("   the session opens the API", setup.status === 200, `HTTP ${setup.status}`);
   check("   ...which reads the build info", /^[0-9a-f]{40}$/.test(setup.body.versions?.orbitCommit ?? ""), JSON.stringify(setup.body.versions));
+  // The company: activated only with an AI connection of the account that can be used now.
+  const unconnected = await web(port, "/api/connections");
+  const waiting = await web(port, "/api/office/setup", { method: "POST", body: JSON.stringify({ name: "Smoke company" }) });
+  check("   with no AI connection the company is not activated: 409 connection_required, saying where to connect", unconnected.body?.activation?.ready === false && waiting.status === 409 && waiting.body?.error?.code === "connection_required" && waiting.body?.error?.details?.where === "#/?settings=ai-connections", `HTTP ${waiting.status} ${waiting.body?.error?.code ?? ""}`);
+  const examples = await web(port, "/api/office/setup", { method: "POST", body: JSON.stringify({ name: "Smoke company", departments: ["Accounting", "Legal", "Sales"] }) });
+  check("   an older client's example departments are refused (422), never made", examples.status === 422 && examples.body?.error?.code === "departments_not_accepted", `HTTP ${examples.status}`);
+  const keyed = await web(port, "/api/connections", { method: "POST", body: JSON.stringify({ runtime: "codex", method: "api_key", label: "Smoke placeholder", apiKey: `sk-proj-smoke-${randomBytes(18).toString("hex")}` }) });
+  const usable = (await web(port, "/api/connections")).body?.activation;
+  if (keyed.status === 201 && usable?.ready === true) {
+    const activated = await web(port, "/api/office/setup", { method: "POST", body: JSON.stringify({ name: "Smoke company" }) });
+    const roster = await web(port, "/api/office/roster");
+    check("   a Codex API-key connection its CLI reports signed in activates the company -- EMPTY (placeholder key: readiness is the CLI's own status, no provider asked)", activated.status === 200 && roster.body?.office?.name === "Smoke company" && roster.body?.departments?.length === 0 && roster.body?.employees?.length === 0, `HTTP ${activated.status}; uses ${JSON.stringify(usable.uses)}`);
+  } else {
+    blocked("activating the company with a usable AI connection, in the real image", `the Codex connection with a placeholder key is ${keyed.body?.auth ?? `HTTP ${keyed.status}`} (${keyed.body?.reason ?? keyed.body?.error?.message ?? "no reason"}); the success path needs a real AI connection here -- it is covered with scripted CLIs in office-activation.spec.ts`);
+  }
   const change = await web(port, "/api/settings", { method: "PATCH", body: JSON.stringify({ theme: "dark", defaultModel: "opus" }) });
   check("9. state is written to the volume", change.status === 200 && change.body.defaultModel === "opus");
   // Research keeps its workspaces in the database and its documents under /data/research: one of each, made now, read
@@ -370,7 +396,7 @@ async function main() {
 
   if (!flag("keep")) cleanUp();
   const failed = results.filter((r) => !r.ok);
-  process.stdout.write(`\n${results.length - failed.length}/${results.length} Docker checks passed${flag("keep") ? ` (kept ${name}, volume ${volume})` : ""}\n`);
+  process.stdout.write(`\n${results.length - failed.length}/${results.length} Docker checks passed${blockedLines.length > 0 ? `, ${blockedLines.length} BLOCKED (not passes): ${blockedLines.map((b) => b.label).join("; ")}` : ""}${flag("keep") ? ` (kept ${name}, volume ${volume})` : ""}\n`);
   process.exit(failed.length === 0 ? 0 : 1);
 }
 
@@ -404,13 +430,13 @@ async function inBrowser(port) {
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.getByRole("button", { name: "Office" }).waitFor({ timeout: 15_000 });
     await page.goto(`${url}/#/office`);
-    await page.getByRole("textbox", { name: /Office name/ }).fill("Smoke office");
-    await page.getByRole("button", { name: "Set up the office" }).click();
-    const hire = page.getByRole("button", { name: "Hire employee" });
-    await hire.waitFor({ timeout: 15_000 });
+    const activate = page.getByRole("button", { name: "Activate the company" });
+    await activate.waitFor({ timeout: 15_000 });
     const why = await page.getByText(/Connect an AI CLI first/).count();
+    const link = await page.getByRole("link", { name: "Open Settings → AI Connections" }).count();
+    const preselected = await page.getByRole("checkbox").count();
     await shot(page, "office.png");
-    check("   the office is set up with no AI connection; Hire waits for one and says why", (await hire.isDisabled()) && why > 0, `hire ${(await hire.isDisabled()) ? "disabled" : "enabled"}`);
+    check("   with no AI connection the company waits: Activate is disabled, says why and where to connect, and nothing is preselected", (await activate.isDisabled()) && why > 0 && link > 0 && preselected === 0, `activate ${(await activate.isDisabled()) ? "disabled" : "enabled"}, ${preselected} checkbox(es)`);
     await page.goto(`${url}/#/settings/ai-connections`);
     await page.getByRole("button", { name: "Add a connection" }).first().click();
     await page.getByRole("button", { name: "Add connection", exact: true }).click();

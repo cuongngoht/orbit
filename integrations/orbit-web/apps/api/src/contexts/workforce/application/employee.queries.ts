@@ -7,6 +7,7 @@ import { Db, type Row } from "../../../infra/db/db.js";
 import { RunViews } from "../../execution/application/run-views.js";
 import { missing } from "../../shared/domain.js";
 import { EmployeeRepository, SandboxRepository } from "../infrastructure/repositories.js";
+import { AppointmentsService } from "./appointments.service.js";
 import { OfficeService } from "./office.service.js";
 
 const s = (v: unknown): string => String(v);
@@ -34,6 +35,7 @@ export class EmployeeQueries {
   constructor(
     @Inject(Db) private readonly db: Db,
     @Inject(OfficeService) private readonly office: OfficeService,
+    @Inject(AppointmentsService) private readonly appointments: AppointmentsService,
     @Inject(EmployeeRepository) private readonly employees: EmployeeRepository,
     @Inject(SandboxRepository) private readonly sandboxes: SandboxRepository,
     @Inject(RunViews) private readonly runViews: RunViews,
@@ -132,6 +134,7 @@ export class EmployeeQueries {
       sandbox: sandboxView,
       resourceRevisions: await this.employees.resourceRevisions(orbitId, id),
       activeRun: await this.runViews.liveOfEmployee(orbitId, id),
+      ...(await this.appointments.ofEmployee(orbitId, id)),
     };
   }
 

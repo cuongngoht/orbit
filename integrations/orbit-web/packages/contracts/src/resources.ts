@@ -159,6 +159,8 @@ export interface ResourceSummary {
   unschedulable: number;
   // The model-plane overhead each runtime's attempt reserves beside the employee's own limits.
   modelPlane: { runtime: string; cpuMillis: number; memoryMiB: number }[];
+  // What the running attempts were last MEASURED using -- never what they reserved. Null: nothing sampled lately.
+  observed: { runs: number; memoryCurrentMiB: number | null; memoryPeakMiB: number | null; cpuSeconds: number | null; sampledAt: string | null };
   asOf: string;
 }
 

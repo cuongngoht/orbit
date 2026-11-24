@@ -30,6 +30,8 @@ import { OfficeGovernance, type Actor } from "../../shared/application/commands.
 import { conflictWith, missing, stale, unprocessable } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { Employee, managerCycle, type EmploymentMove } from "../domain/employee.js";
+import { resolveExecution } from "../domain/execution-precedence.js";
+import { AppointmentRepository } from "../infrastructure/appointments.repository.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../infrastructure/connections.reader.js";
 import { ConnectionProbe } from "../../../modules/connections/probe.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository } from "../infrastructure/repositories.js";
@@ -58,6 +60,7 @@ export class HiringService {
     @Inject(GovernedResources) private readonly governed: GovernedResources,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     // What says whether an OpenAI Codex model is held to Orbit's tools on the binary installed (observed).
     @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
@@ -74,10 +77,10 @@ export class HiringService {
     return this.governance.command(actor, "employee.hire", id, async () => {
       if ((await this.offices.get(orbitId)) === null) throw conflictWith("office_not_set_up", "Set up the office first.");
       await this.governance.authorize(actor, "employee.hire", id, { employee: id });
-      const execution = await this.executionFor(orbitId, req.profile.execution);
       const departmentId = req.departmentId ?? null;
       const managerId = req.managerId ?? null;
       if (departmentId !== null) await this.liveDepartment(orbitId, departmentId);
+      const execution = await this.executionFor(orbitId, req.profile.execution, departmentId);
       if (managerId !== null && (await this.employees.get(orbitId, managerId)) === null) throw missing("Manager");
       await this.resources.checkProfile(orbitId, req.resources);
       const at = new Date().toISOString();
@@ -121,7 +124,7 @@ export class HiringService {
       }
       if (req.profile !== undefined) {
         if (req.basedOn !== undefined && (await this.employees.profile(orbitId, employeeId, req.basedOn)) === null) throw missing("Profile revision");
-        const execution = await this.executionFor(orbitId, req.profile.execution);
+        const execution = await this.executionFor(orbitId, req.profile.execution, e.data.departmentId);
         const revision = e.revisedProfile(at, execution.connectionId);
         await this.employees.insertProfile(orbitId, employeeId, revision, { ...req.profile, execution }, req.note ?? "", req.basedOn ?? null, actor.command.actor, at);
       }
@@ -170,6 +173,9 @@ export class HiringService {
       // FOR SHARE: a move into a department waits for an archive of it under way, and then sees it archived.
       if (req.departmentId !== null) await this.liveDepartment(orbitId, req.departmentId);
       const e = await this.employee(orbitId, employeeId, expectedVersion);
+      const held = await this.appointments.heldBy(orbitId, employeeId);
+      if (held !== null && held.data.role === "manager" && held.data.departmentId !== req.departmentId)
+        throw conflictWith("appointed_manager", `${e.data.name} manages a department: replace or revoke the appointment before moving them -- a manager is a member of the department it manages.`, { appointmentId: held.id });
       e.moveToDepartment(req.departmentId, new Date().toISOString());
       const v = await this.employees.save(e, expectedVersion);
       await this.outbox.append(actor.command, e.pullEvents().map((x) => ({ ...x, aggregateVersion: v })));
@@ -186,6 +192,10 @@ export class HiringService {
     await this.governance.command(actor, `employee.${req.command}`, employeeId, async () => {
       await this.governance.authorize(actor, "employee.hire", employeeId, { employee: employeeId });
       const e = await this.employee(orbitId, employeeId, expectedVersion);
+      if (req.command === "archive" || req.command === "reject" || req.command === "delete") {
+        const held = await this.appointments.heldBy(orbitId, employeeId);
+        if (held !== null) throw conflictWith("employee_appointed", `${e.data.name} holds an appointment (${held.data.role === "ceo" ? "CEO" : "manager"}): replace or revoke it first.`, { appointmentId: held.id });
+      }
       const holds = this.heldWork !== null && (await this.heldWork.holds(orbitId, employeeId));
       if ((req.command === "suspend" || req.command === "archive" || req.command === "reject") && holds) {
         if (req.held === undefined && req.command === "suspend") throw conflictWith("employee_holds_work", "This employee holds an assignment: choose whether it is paused (kept) or cancelled.");
@@ -228,7 +238,14 @@ export class HiringService {
     return this.employees.profile(orbitId, employeeId, revision);
   }
 
-  async executionFor(orbitId: string, asked: ExecutionProfile): Promise<ExecutionProfile> {
+  // A profile that leaves fields to its department or company (`inherit`) is checked as it would RUN -- its department's
+  // default, else the company's -- and kept as WRITTEN: an inherited field stays inherited, so a later default applies to
+  // later work (work already claimed keeps what it pinned). A model nobody names is refused, saying so.
+  async executionFor(orbitId: string, written: ExecutionProfile, departmentId: string | null = null): Promise<ExecutionProfile> {
+    const department = departmentId === null ? null : await this.departments.get(orbitId, departmentId);
+    const resolved = resolveExecution({ override: null, profile: written, department: department?.defaults ?? null, company: (await this.offices.get(orbitId))?.defaults ?? null });
+    if (resolved.unresolved.length > 0) throw unprocessable("execution_unresolved", `This profile leaves its ${resolved.unresolved.join(" and ")} to its department or company, and neither names one for ${written.runtime}: set a default, or choose it here.`, { unresolved: resolved.unresolved });
+    const asked = resolved.execution;
     const connection: ConnectionFacts | null = asked.connectionId !== null ? await this.connections.get(orbitId, asked.connectionId) : await this.connections.defaultFor(orbitId, asked.runtime);
     if (connection === null || !usable(connection)) throw conflictWith("connection_required", "Connect an AI CLI first: hiring needs a connection that is signed in and gave its model catalog (Settings → AI Connections).", { runtime: asked.runtime });
     if (connection.runtime !== asked.runtime) throw unprocessable("connection_runtime", `That connection is ${connection.runtime}, not ${asked.runtime}.`);
@@ -246,7 +263,9 @@ export class HiringService {
     if (model.efforts.length > 0 && (asked.effort === null || !model.efforts.includes(asked.effort))) throw unprocessable("effort_not_offered", `${model.label} takes the effort levels ${model.efforts.join(", ")}.`, { efforts: model.efforts });
     if (asked.webSearch && connection.capabilities.webSearch !== "yes") throw unprocessable("search_not_offered", `The runtime's own search is not available on this connection (${connection.capabilities.webSearch}).`);
     if (asked.orbitPlugin && (asked.runtime !== "claude" || !(await this.connections.pluginApproved(orbitId, connection.id)))) throw unprocessable("plugin_not_granted", "The Orbit plugin is offered on Claude Code only, once its owner granted it for employees (Settings → AI Connections → Claude Code → Plugins).");
-    return { ...asked, connectionId: connection.id };
+    const inherits = new Set(written.inherit ?? []);
+    if (inherits.size === 0) return { ...asked, connectionId: connection.id };
+    return { ...written, connectionId: inherits.has("connection") ? null : connection.id, model: inherits.has("model") ? "" : asked.model, effort: inherits.has("effort") ? null : asked.effort };
   }
 
   private async employee(orbitId: string, id: string, expectedVersion: number): Promise<Employee> {

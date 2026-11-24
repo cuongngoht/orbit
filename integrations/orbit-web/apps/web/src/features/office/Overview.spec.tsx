@@ -6,7 +6,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, busyBao, connectionsView, department, employeeCard, notSetUp, roster } from "../../testing/officeFixtures";
+import { DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, busyBao, capabilities, connection, connectionsView, department, employeeCard, notSetUp, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { OfficeView } from "./OfficeView";
 
@@ -26,19 +26,48 @@ async function streamOpen() {
 }
 
 describe("the office: its overview", () => {
-  test("an account with no office is offered one -- example departments it may skip -- and setting it up needs no AI connection", async () => {
-    let setUp = false;
+  test("an account with no company and no AI connection: the company waits, saying why and where to connect -- nothing is preselected", async () => {
     const api = fakeApi()
-      .on("GET", "/api/office/roster", () => (setUp ? roster({ employees: [] }) : notSetUp()))
-      .on("GET", "/api/connections", () => connectionsView({ connections: [], canHire: false }))
-      .on("POST", "/api/office/setup", () => ((setUp = true), { id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo & Co", version: 1, createdAt: "2026-11-21T00:00:00.000Z" }));
+      .on("GET", "/api/office/roster", () => notSetUp())
+      .on("GET", "/api/connections", () => connectionsView({ connections: [], canHire: false }));
     show();
-    const form = await screen.findByRole("form", { name: "Set up the office" });
-    expect(within(form).getByRole("textbox", { name: "Office name" })).toHaveValue("Octo & Co");
-    for (const d of ["Accounting", "Legal", "Sales"]) expect(within(form).getByRole("checkbox", { name: d })).toBeChecked();
-    await userEvent.click(within(form).getByRole("checkbox", { name: "Legal" }));
-    await userEvent.click(within(form).getByRole("button", { name: "Set up the office" }));
-    await waitFor(() => expect(api.calls.find((c) => c.path === "/api/office/setup")?.body).toEqual({ name: "Octo & Co", departments: ["Accounting", "Sales"] }));
+    const form = await screen.findByRole("form", { name: "Activate your company" });
+    expect(within(form).getByRole("textbox", { name: /Company name/ })).toHaveValue("Octo & Co");
+    expect(await within(form).findByText("No AI connection yet. Connect Claude Code or OpenAI Codex first.")).toBeInTheDocument();
+    expect(within(form).getByRole("link", { name: "Open Settings → AI Connections" })).toHaveAttribute("href", "#/?settings=ai-connections");
+    expect(within(form).queryAllByRole("checkbox")).toHaveLength(0);
+    expect(within(form).getByRole("status")).toHaveTextContent(/Connect an AI CLI first/);
+    expect(within(form).getByRole("button", { name: "Activate the company" })).toBeDisabled();
+    expect(api.calls.some((c) => c.path === "/api/office/setup")).toBe(false);
+  });
+
+  test("with a usable connection the company is activated EMPTY, by name -- what each connection can be used for is said, and an unsupported use is left out", async () => {
+    let active = false;
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => (active ? roster({ employees: [], departments: [] }) : notSetUp()))
+      .on("GET", "/api/connections", () =>
+        connectionsView({
+          connections: [
+            connection(),
+            connection({ id: "c0de0000-0000-4000-8000-000000000002", runtime: "codex", label: "ChatGPT", isDefault: true, capabilities: capabilities({ toolPlaneSplit: "no" }) }),
+            connection({ id: "c0de0000-0000-4000-8000-000000000003", runtime: "agy", label: "Gemini", isDefault: true }),
+          ],
+        }),
+      )
+      .on("POST", "/api/office/setup", () => ((active = true), { id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo & Co", version: 1, createdAt: "2026-11-21T00:00:00.000Z" }));
+    show();
+    const form = await screen.findByRole("form", { name: "Activate your company" });
+    const claude = await within(form).findByRole("listitem", { name: "Claude subscription" });
+    expect(within(claude).getByText("Chat: usable")).toBeInTheDocument();
+    expect(within(claude).getByText("Research: usable")).toBeInTheDocument();
+    expect(within(claude).getByText("AI employees: usable")).toBeInTheDocument();
+    const codex = within(form).getByRole("listitem", { name: "ChatGPT" });
+    expect(within(codex).getByText("Chat: usable")).toBeInTheDocument();
+    expect(within(codex).queryByText(/^Research/)).toBeNull();
+    expect(within(codex).getByText(/^AI employees: not usable — its model plane is not held/)).toBeInTheDocument();
+    expect(within(within(form).getByRole("listitem", { name: "Gemini" })).getByText("Orbit Web runs nothing on Google Antigravity yet.")).toBeInTheDocument();
+    await userEvent.click(within(form).getByRole("button", { name: "Activate the company" }));
+    await waitFor(() => expect(api.calls.find((c) => c.path === "/api/office/setup")?.body).toEqual({ name: "Octo & Co" }));
     expect(await screen.findByRole("heading", { name: "Octo office" })).toBeInTheDocument();
   });
 

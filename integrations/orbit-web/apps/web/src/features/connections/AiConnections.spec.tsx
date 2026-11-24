@@ -68,6 +68,26 @@ describe("Settings → AI Connections: three CLIs, each said as its own CLI says
     expect(caps.textContent).toContain("Run without local tools (employees)");
   });
 
+  test("three answers kept apart on a card: authenticated (its status), which use it serves now, whether it runs employees -- an unsupported use left out", async () => {
+    fakeApi().on("GET", "/api/connections", () =>
+      connectionsView({
+        connections: [
+          connection(),
+          connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", method: "api_key", isDefault: true, capabilities: { start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit: "no", pluginObservation: "no" }, plugins: null }),
+        ],
+      }),
+    );
+    renderLive(<AiConnectionsSection />);
+    const claude = await within(await card("Claude Code")).findByRole("listitem", { name: "Connection Claude subscription" });
+    const uses = within(claude).getByLabelText("What this connection can be used for");
+    expect(uses.textContent).toBe("ChatUsableResearchUsableAI employeesUsable");
+    const codex = await within(await card("OpenAI Codex")).findByRole("listitem", { name: "Connection ChatGPT" });
+    const codexUses = within(codex).getByLabelText("What this connection can be used for");
+    // Research runs on Claude Code: it is not shown as "off" on Codex, it is not shown at all.
+    expect(codexUses.textContent).toBe("ChatUsableAI employeesNot usable");
+    expect(within(codex).getByText(/^AI employees: its model plane is not held to Orbit's tools/)).toBeInTheDocument();
+  });
+
   test("where the operator switched signing in from a card off, a subscription shows the one terminal command to run on the server -- nothing of that sign-in passes through Orbit", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

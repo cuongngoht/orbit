@@ -144,6 +144,13 @@ export const REASON_CODES = [
   "EMPLOYEE_NETWORK_ALLOWED",
   "EMPLOYEE_NETWORK_NOT_LISTED",
   "EMPLOYEE_NETWORK_PORT",
+  // An employee's request decided with its department's policy (department.ts): the department set an action the company
+  // delegated to it; the department narrowed what the company said; the department's choice was held to the company's
+  // delegation (a cap lowered after it was published); a grant the decision needs is not held.
+  "DEPARTMENT_DECIDED",
+  "DEPARTMENT_NARROWED",
+  "DELEGATION_CAPPED",
+  "NO_GRANT",
 ] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 

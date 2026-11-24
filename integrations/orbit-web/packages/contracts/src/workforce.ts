@@ -103,6 +103,9 @@ export interface ExecutionProfile {
   // Whether the run asks for the Orbit plugin's skills (Claude Code only; needs the owner's grant for the employee use
   // case). Its hooks are never loaded on the model plane.
   orbitPlugin: boolean;
+  // The fields this profile leaves to its department's default, else the company's (execution precedence). Absent or
+  // empty: every field is the profile's own, as every profile written before defaults existed. Never the runtime.
+  inherit?: InheritableField[];
 }
 
 // What stands between an attempt and the rest of the machine, as the trusted side established it: the provider, whether
@@ -125,6 +128,8 @@ export interface Office {
   name: string;
   version: number;
   createdAt: string;
+  // The company's execution defaults, per runtime (execution precedence).
+  defaults: ExecutionDefaults;
 }
 
 export interface Department {
@@ -135,6 +140,19 @@ export interface Department {
   version: number;
   // Members not archived (the viewer's scope).
   members: number;
+  // Its manager's appointment (null: none -- a department may have no manager yet), and its execution defaults.
+  manager: AppointmentSummary | null;
+  defaults: ExecutionDefaults;
+}
+
+// An incumbent appointment, as a card or a page shows it.
+export interface AppointmentSummary {
+  appointmentId: string;
+  employeeId: string;
+  name: string;
+  state: AppointmentState;
+  slotRevision: number;
+  version: number;
 }
 
 // `deleted`: an archived employee whose desk its owner deleted (Governance → Employee desks); kept for what refers to it.
@@ -219,6 +237,8 @@ export interface EmployeeCard {
   connectionWarning: string | null;
   // Set for a temporary assistant: when its engagement ends.
   expiresAt: string | null;
+  // The appointment the employee holds now (CEO, or its department's manager), if any: authority is this, never a title.
+  role: AppointmentRole | null;
   version: number;
   updatedAt: string;
 }
@@ -236,6 +256,10 @@ export interface EmployeeDetail extends EmployeeCard {
   resourceRevisions: ResourceRevisionView[];
   // The attempt running now, if any: its containers' resources and use.
   activeRun: RunView | null;
+  // Its appointment now (null: none) and every appointment it held; the colleagues it may give work to without one.
+  appointment: AppointmentView | null;
+  appointments: AppointmentView[];
+  delegationGrants: DelegationGrantView[];
 }
 
 // GOVERNANCE → EMPLOYEE DESKS (ADR 0061): every employee's desk -- of those in the office, and of those who left (archived,
@@ -275,8 +299,10 @@ export interface EmployeeDeskList {
 }
 
 export interface Roster {
-  // Null: the account has no office yet (the page shows how to set one up).
+  // Null: the account has no company yet (the page offers to activate it).
   office: Office | null;
+  // The company's CEO (null: none yet -- a company works without one).
+  ceo: AppointmentSummary | null;
   departments: Department[];
   employees: EmployeeCard[];
   nextCursor: string | null;
@@ -308,6 +334,8 @@ export interface CreateDepartmentRequest {
 export interface UpdateDepartmentRequest {
   name?: string;
   position?: number;
+  // Its execution defaults, whole (what its employees run on where their profile leaves a field to it).
+  defaults?: ExecutionDefaults;
 }
 
 export interface ArchiveDepartmentRequest {
@@ -917,6 +945,11 @@ export const INTEGRATION_EVENTS = {
   BudgetChanged: 1,
   CapacityChanged: 1,
   ConnectionChanged: 1,
+  // The company's authority: an appointment made, replaced, suspended, reinstated or revoked; a delegation granted or
+  // revoked; open work handed from one employee to another.
+  AppointmentChanged: 1,
+  DelegationGrantChanged: 1,
+  AssignmentHandedOver: 1,
 } as const;
 
 export type IntegrationEventType = keyof typeof INTEGRATION_EVENTS;
@@ -928,7 +961,7 @@ export interface IntegrationEvent {
   type: IntegrationEventType;
   schemaVersion: number;
   accountId: string;
-  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget";
+  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget" | "appointment" | "delegation";
   aggregateId: string;
   aggregateVersion: number;
   // The order of events one save produced.
@@ -950,20 +983,24 @@ export const isDeliverableName = (v: unknown): v is string => typeof v === "stri
 
 export function checkExecutionProfile(v: unknown): Checked<ExecutionProfile> {
   if (!isRecord(v)) return { ok: false, errors: ["execution must be an object"] };
-  const errors = unknownFields(v, ["runtime", "connectionId", "model", "effort", "webSearch", "orbitPlugin"]);
+  const errors = unknownFields(v, ["runtime", "connectionId", "model", "effort", "webSearch", "orbitPlugin", "inherit"]);
+  const inherit = v.inherit === undefined ? [] : Array.isArray(v.inherit) && v.inherit.every((f) => (INHERITABLE_FIELDS as readonly unknown[]).includes(f)) ? [...new Set(v.inherit as InheritableField[])] : null;
+  if (inherit === null) errors.push(`execution.inherit must list fields of ${INHERITABLE_FIELDS.join(", ")}`);
+  const inheritsModel = inherit?.includes("model") === true;
   if (!isRuntimeKind(v.runtime)) errors.push(`execution.runtime must be one of ${RUNTIME_KINDS.join(", ")}`);
   if (v.connectionId !== undefined && v.connectionId !== null && !isWorkforceId(v.connectionId)) errors.push("execution.connectionId must be an id");
-  if (typeof v.model !== "string" || !MODEL_SHAPE.test(v.model)) errors.push("execution.model must be a model the runtime names");
+  if (!(inheritsModel && (v.model === undefined || v.model === "")) && (typeof v.model !== "string" || !MODEL_SHAPE.test(v.model))) errors.push("execution.model must be a model the runtime names");
   if (v.effort !== undefined && v.effort !== null && (typeof v.effort !== "string" || !EFFORT_SHAPE.test(v.effort))) errors.push("execution.effort must be an effort level the runtime names, or null");
   if (v.webSearch !== undefined && typeof v.webSearch !== "boolean") errors.push("execution.webSearch must be true or false");
   if (v.orbitPlugin !== undefined && typeof v.orbitPlugin !== "boolean") errors.push("execution.orbitPlugin must be true or false");
   return checked(errors, () => ({
     runtime: v.runtime as RuntimeKind,
     connectionId: (v.connectionId as string | null | undefined) ?? null,
-    model: v.model as string,
+    model: typeof v.model === "string" ? v.model : "",
     effort: (v.effort as string | null | undefined) ?? null,
     webSearch: v.webSearch === true,
     orbitPlugin: v.orbitPlugin === true,
+    ...(inherit !== null && inherit.length > 0 ? { inherit } : {}),
   }));
 }
 
@@ -1033,12 +1070,18 @@ export function checkCreateDepartment(body: unknown): Checked<CreateDepartmentRe
 
 export function checkUpdateDepartment(body: unknown): Checked<UpdateDepartmentRequest> {
   if (!isRecord(body)) return NOT_OBJECT;
-  const errors = unknownFields(body, ["name", "position"]);
+  const errors = unknownFields(body, ["name", "position", "defaults"]);
   const name = body.name === undefined ? undefined : line(body.name, WORKFORCE_LIMITS.nameLength);
   if (name === null) errors.push(`name must be 1-${WORKFORCE_LIMITS.nameLength} printable characters`);
   if (body.position !== undefined && (!Number.isInteger(body.position) || (body.position as number) < 0 || (body.position as number) > 999)) errors.push("position must be 0-999");
-  if (body.name === undefined && body.position === undefined) errors.push("nothing to change: send name or position");
-  return checked(errors, () => ({ ...(name !== undefined ? { name: name as string } : {}), ...(body.position !== undefined ? { position: body.position as number } : {}) }));
+  const defaults = body.defaults === undefined ? undefined : checkExecutionDefaults(body.defaults);
+  if (defaults !== undefined && !defaults.ok) errors.push(...defaults.errors);
+  if (body.name === undefined && body.position === undefined && body.defaults === undefined) errors.push("nothing to change: send name, position or defaults");
+  return checked(errors, () => ({
+    ...(name !== undefined ? { name: name as string } : {}),
+    ...(body.position !== undefined ? { position: body.position as number } : {}),
+    ...(defaults !== undefined && defaults.ok ? { defaults: defaults.value } : {}),
+  }));
 }
 
 export function checkArchiveDepartment(body: unknown): Checked<ArchiveDepartmentRequest> {
@@ -1386,3 +1429,203 @@ export function versionOf(header: unknown): number | null {
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/;
 
 export const isIdempotencyKey = (v: unknown): v is string => typeof v === "string" && IDEMPOTENCY_KEY.test(v);
+
+// ---- the organization: appointments, delegation grants, execution defaults --------------------------------------------
+
+// AN APPOINTMENT is the company's authority -- its CEO, a department's MANAGER -- held by an existing employee, never a
+// title, instructions or a profile switch (canDelegate grants nothing). At most one INCUMBENT (active or suspended) per
+// slot and per employee; a manager is a member of its department. Each slot's appointments are numbered (`slotRevision`)
+// so a mission given "to the Research department" names the appointment it was resolved to. An appointment that ended
+// (revoked, or replaced by the next) is history: who held it, when, and why it ended.
+export const APPOINTMENT_ROLES = ["ceo", "manager"] as const;
+export type AppointmentRole = (typeof APPOINTMENT_ROLES)[number];
+export const APPOINTMENT_STATES = ["active", "suspended", "revoked", "replaced"] as const;
+export type AppointmentState = (typeof APPOINTMENT_STATES)[number];
+export const isIncumbent = (s: AppointmentState): boolean => s === "active" || s === "suspended";
+
+export interface AppointmentView {
+  id: string;
+  role: AppointmentRole;
+  // The manager's department (null for the CEO).
+  departmentId: string | null;
+  departmentName: string | null;
+  employeeId: string;
+  employeeName: string;
+  state: AppointmentState;
+  slotRevision: number;
+  // The appointment this one replaced, when it did.
+  replaces: string | null;
+  reason: string;
+  appointedBy: string;
+  appointedAt: string;
+  endedBy: string | null;
+  endedAt: string | null;
+  endReason: string | null;
+  version: number;
+}
+
+// GET /api/office/appointments: the incumbents, then every appointment newest first.
+export interface AppointmentsView {
+  ceo: AppointmentView | null;
+  managers: AppointmentView[];
+  history: AppointmentView[];
+  asOf: string;
+}
+
+// POST /api/office/appointments (a slot with no incumbent: 409 appointment_conflict otherwise -- replace it).
+export interface AppointRequest {
+  role: AppointmentRole;
+  departmentId?: string;
+  employeeId: string;
+  reason?: string;
+}
+
+// POST /api/office/appointments/:id/replace (If-Match the appointment's version): the incumbent ends `replaced` and the
+// new one starts, in one transaction. Open work the replaced one holds stays with it until it is handed over.
+export interface ReplaceAppointmentRequest {
+  employeeId: string;
+  reason?: string;
+}
+
+// POST /api/office/appointments/:id/{suspend,reinstate,revoke} (If-Match).
+export interface AppointmentChangeRequest {
+  reason?: string;
+}
+
+export function checkAppoint(body: unknown): Checked<{ role: AppointmentRole; departmentId: string | null; employeeId: string; reason: string }> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["role", "departmentId", "employeeId", "reason"]);
+  if (!(APPOINTMENT_ROLES as readonly unknown[]).includes(body.role)) errors.push(`role must be one of ${APPOINTMENT_ROLES.join(", ")}`);
+  if (body.role === "manager" && !isWorkforceId(body.departmentId)) errors.push("a manager's departmentId must be the department's id");
+  if (body.role === "ceo" && body.departmentId !== undefined && body.departmentId !== null) errors.push("a CEO has no department");
+  if (!isWorkforceId(body.employeeId)) errors.push("employeeId must be an employee's id");
+  const reason = body.reason === undefined ? "" : text(body.reason, 1000, true);
+  if (reason === null) errors.push("reason must be at most 1000 printable characters");
+  return checked(errors, () => ({ role: body.role as AppointmentRole, departmentId: body.role === "manager" ? (body.departmentId as string) : null, employeeId: body.employeeId as string, reason: reason as string }));
+}
+
+export function checkReplaceAppointment(body: unknown): Checked<{ employeeId: string; reason: string }> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["employeeId", "reason"]);
+  if (!isWorkforceId(body.employeeId)) errors.push("employeeId must be an employee's id");
+  const reason = body.reason === undefined ? "" : text(body.reason, 1000, true);
+  if (reason === null) errors.push("reason must be at most 1000 printable characters");
+  return checked(errors, () => ({ employeeId: body.employeeId as string, reason: reason as string }));
+}
+
+export function checkAppointmentChange(body: unknown): Checked<{ reason: string }> {
+  if (body === undefined || body === null) return { ok: true, value: { reason: "" } };
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["reason"]);
+  const reason = body.reason === undefined ? "" : text(body.reason, 1000, true);
+  if (reason === null) errors.push("reason must be at most 1000 printable characters");
+  return checked(errors, () => ({ reason: reason as string }));
+}
+
+// A DELEGATION GRANT: what lets an employee who holds no appointment give work to colleagues -- named employees, or a
+// department's members -- made by a person (office.roster.manage), revoked by a new row's state, never silently.
+export type DelegationTarget = { kind: "employee"; employeeId: string } | { kind: "department"; departmentId: string };
+
+export interface DelegationGrantView {
+  id: string;
+  employeeId: string;
+  target: DelegationTarget & { name: string };
+  state: "active" | "revoked";
+  note: string;
+  grantedBy: string;
+  grantedAt: string;
+  revokedBy: string | null;
+  revokedAt: string | null;
+  version: number;
+}
+
+export interface GrantDelegationRequest {
+  target: DelegationTarget;
+  note?: string;
+}
+
+export function checkGrantDelegation(body: unknown): Checked<{ target: DelegationTarget; note: string }> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["target", "note"]);
+  const t = body.target;
+  let target: DelegationTarget | null = null;
+  if (isRecord(t) && t.kind === "employee" && isWorkforceId(t.employeeId) && Object.keys(t).length === 2) target = { kind: "employee", employeeId: t.employeeId };
+  else if (isRecord(t) && t.kind === "department" && isWorkforceId(t.departmentId) && Object.keys(t).length === 2) target = { kind: "department", departmentId: t.departmentId };
+  if (target === null) errors.push('target must be {"kind":"employee","employeeId":…} or {"kind":"department","departmentId":…}');
+  const note = body.note === undefined ? "" : text(body.note, 500, true);
+  if (note === null) errors.push("note must be at most 500 printable characters");
+  return checked(errors, () => ({ target: target as DelegationTarget, note: note as string }));
+}
+
+// EXECUTION DEFAULTS: what a department -- else the company -- chooses for an employee of a runtime that leaves a field to
+// it (ExecutionProfile.inherit). A default of another runtime never applies: nothing here switches an employee's
+// provider. Precedence, field by field: the mission's own override > the employee's profile > its department's default
+// > the company's default.
+export const INHERITABLE_FIELDS = ["connection", "model", "effort"] as const;
+export type InheritableField = (typeof INHERITABLE_FIELDS)[number];
+
+export interface ExecutionDefault {
+  connectionId?: string | null;
+  model?: string;
+  effort?: string | null;
+}
+
+export type ExecutionDefaults = Partial<Record<RuntimeKind, ExecutionDefault>>;
+
+// Which layer gave each field of a pinned execution.
+export const EXECUTION_LAYERS = ["mission", "employee", "department", "company", "runtime"] as const;
+export type ExecutionLayer = (typeof EXECUTION_LAYERS)[number];
+export type ExecutionSources = Record<InheritableField, ExecutionLayer>;
+
+export function checkExecutionDefaults(v: unknown): Checked<ExecutionDefaults> {
+  if (!isRecord(v)) return { ok: false, errors: ["defaults must be an object"] };
+  const errors = unknownFields(v, [...RUNTIME_KINDS]);
+  const out: ExecutionDefaults = {};
+  for (const runtime of RUNTIME_KINDS) {
+    const d = v[runtime];
+    if (d === undefined) continue;
+    if (!isRecord(d)) {
+      errors.push(`defaults.${runtime} must be an object`);
+      continue;
+    }
+    errors.push(...unknownFields(d, ["connectionId", "model", "effort"]).map((e) => `defaults.${runtime}.${e}`));
+    if (d.connectionId !== undefined && d.connectionId !== null && !isWorkforceId(d.connectionId)) errors.push(`defaults.${runtime}.connectionId must be an id`);
+    if (d.model !== undefined && (typeof d.model !== "string" || !MODEL_SHAPE.test(d.model))) errors.push(`defaults.${runtime}.model must be a model the runtime names`);
+    if (d.effort !== undefined && d.effort !== null && (typeof d.effort !== "string" || !EFFORT_SHAPE.test(d.effort))) errors.push(`defaults.${runtime}.effort must be an effort level, or null`);
+    out[runtime] = {
+      ...(d.connectionId !== undefined ? { connectionId: d.connectionId as string | null } : {}),
+      ...(d.model !== undefined ? { model: d.model as string } : {}),
+      ...(d.effort !== undefined ? { effort: d.effort as string | null } : {}),
+    };
+  }
+  return checked(errors, () => out);
+}
+
+// PATCH /api/office/defaults (If-Match the office's version).
+export interface UpdateOfficeDefaultsRequest {
+  defaults: ExecutionDefaults;
+}
+
+export function checkUpdateOfficeDefaults(body: unknown): Checked<UpdateOfficeDefaultsRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["defaults"]);
+  const defaults = checkExecutionDefaults(body.defaults);
+  if (!defaults.ok) errors.push(...defaults.errors);
+  return checked(errors, () => ({ defaults: (defaults as { ok: true; value: ExecutionDefaults }).value }));
+}
+
+// POST /api/assignments/:id/hand-over (If-Match): open work moves to another employee -- a person's act, never a side
+// effect of a replaced appointment.
+export interface HandOverRequest {
+  employeeId: string;
+  reason?: string;
+}
+
+export function checkHandOver(body: unknown): Checked<{ employeeId: string; reason: string }> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["employeeId", "reason"]);
+  if (!isWorkforceId(body.employeeId)) errors.push("employeeId must be an employee's id");
+  const reason = body.reason === undefined ? "" : text(body.reason, 1000, true);
+  if (reason === null) errors.push("reason must be at most 1000 printable characters");
+  return checked(errors, () => ({ employeeId: body.employeeId as string, reason: reason as string }));
+}

@@ -7,14 +7,20 @@
 //   2. the account policy's rules that match -- the strictest wins; none matching gives the default decision. An
 //      employee's connection (`network.egress` asked by an assignment's run) is the one exception: the policy's employee
 //      network access answers it (any public host on 80 or 443, or only the allow-list's), and a rule that matches can
-//      only make that answer stricter -- an allow rule never opens what the mode does not;
+//      only make that answer stricter -- an allow rule never opens what the mode does not. An EMPLOYEE's request (an
+//      assignment's run, naming its department) is decided with its department's policy too (department.ts): the
+//      company's mandatory rules bind it, a department's own rules replace the company's defaults for an action the
+//      company delegated (held to the delegation) and only narrow any other; its network access is the composed one.
+//      A chat's, a research question's and a person's requests never read a department's policy;
+//   2b. a grant the decision needs that the principal does not hold (a connector it was not granted) is a deny;
 //   3. each override that applies to this chat, research workspace or employee -- the strictest wins again (an override
 //      narrows, never widens);
 //   4. the action's ceiling for this kind of principal;
 //   5. an action nothing can carry out is denied.
 // Nothing an agent says about itself is read here: who asks is what the caller PROVED and passed in.
 import type { Constitution, PolicyOverlay, Rule } from "./constitution.js";
-import { allowListed, egressTargetOf, EMPLOYEE_PORTS, employeeNetworkOf, type EmployeeNetwork } from "./network.js";
+import { composeEmployeeNetwork, delegatedCap, type DepartmentPolicy } from "./department.js";
+import { allowListed, egressTargetOf, EMPLOYEE_PORTS, type EmployeeNetwork } from "./network.js";
 import { ACTIONS, isActionKind, rankOf, strictest, type ActionKind, type Effect, type EnforcementPoint, type Environment, type PrincipalType, type ReasonCode, type RunKind } from "./vocabulary.js";
 
 export interface GovernanceRequest {
@@ -35,12 +41,24 @@ export interface GovernanceRequest {
   runKind?: RunKind;
   // The employee whose assignment's run asks: what an `employee` override targets.
   employeeId?: string | null;
+  // The employee's department (its policy decides with the company's), and the work it asks about.
+  departmentId?: string | null;
+  assignmentId?: string | null;
+  missionId?: string | null;
 }
 
 export interface Policy {
   // Null while nothing is published.
   constitution: Constitution | null;
   overlays: readonly PolicyOverlay[];
+  // The departments' policies in effect (each department's published one): read only for an employee's request.
+  departments?: readonly DepartmentPolicy[];
+}
+
+// What the caller established outside the policy, for this one decision: whether the principal holds the grant the
+// action needs (a connector granted to this employee, say). Absent: no grant is part of this decision.
+export interface EvaluationFacts {
+  grant?: "held" | "not_held";
 }
 
 export interface Evaluation {
@@ -90,11 +108,64 @@ interface Step {
   reasonCodes: ReasonCode[];
 }
 
-function accountStep(constitution: Constitution, request: GovernanceRequest): Step {
-  if (request.runKind === "assignment" && request.action === "network.egress") return employeeConnectionStep(constitution, request);
+// The department whose policy decides with the company's: an assignment's run naming its department, and that
+// department's published policy (none published: the company's alone).
+export function departmentOf(policy: Policy, request: GovernanceRequest): DepartmentPolicy | null {
+  if (request.runKind !== "assignment" || request.departmentId === undefined || request.departmentId === null) return null;
+  return policy.departments?.find((d) => d.metadata.accountId === request.accountId && d.metadata.departmentId === request.departmentId) ?? null;
+}
+
+const strictestOf = (rules: readonly Rule[]): Effect => rules.map((r) => r.effect).reduce(strictest);
+
+function accountStep(constitution: Constitution, dept: DepartmentPolicy | null, request: GovernanceRequest): Step {
+  if (request.runKind === "assignment" && request.action === "network.egress") return employeeConnectionStep(constitution, dept, request);
   const matched = constitution.rules.filter((r) => ruleMatches(r, request));
-  if (matched.length === 0) return { verdict: constitution.defaults.decision, matchedRules: [], reasonCodes: ["DEFAULT_DECISION"] };
-  return { verdict: matched.map((r) => r.effect).reduce(strictest), matchedRules: matched.map((r) => `account:${r.id}`), reasonCodes: ["RULE_MATCHED"] };
+  if (dept === null) {
+    if (matched.length === 0) return { verdict: constitution.defaults.decision, matchedRules: [], reasonCodes: ["DEFAULT_DECISION"] };
+    return { verdict: strictestOf(matched), matchedRules: matched.map((r) => `account:${r.id}`), reasonCodes: ["RULE_MATCHED"] };
+  }
+  return departmentStep(constitution, dept, request, matched);
+}
+
+// An employee's request, its department's policy in effect: the company's MANDATORY rules always bind; for an action the
+// company DELEGATED, the department's own rules (when it has any) replace the company's DEFAULT rules, held to the
+// delegation's loosest effect; for any other action the department's rules only narrow what the company says.
+function departmentStep(constitution: Constitution, dept: DepartmentPolicy, request: GovernanceRequest, matched: readonly Rule[]): Step {
+  const mandatory = matched.filter((r) => (r.binding ?? "mandatory") === "mandatory");
+  const defaults = matched.filter((r) => r.binding === "default");
+  const own = dept.rules.filter((r) => ruleMatches(r, request));
+  const cap = delegatedCap(constitution, request.action);
+  const layer = `department:${dept.metadata.departmentId}`;
+  const matchedRules: string[] = [];
+  const reasonCodes: ReasonCode[] = [];
+  let verdict: Effect | null = null;
+  if (cap !== null && own.length > 0) {
+    const said = strictestOf(own);
+    verdict = rankOf(said) < rankOf(cap) ? cap : said;
+    matchedRules.push(...own.map((r) => `${layer}:${r.id}`));
+    reasonCodes.push("DEPARTMENT_DECIDED", ...(verdict !== said ? (["DELEGATION_CAPPED"] as const) : []));
+  } else {
+    if (defaults.length > 0) {
+      verdict = strictestOf(defaults);
+      matchedRules.push(...defaults.map((r) => `account:${r.id}`));
+      reasonCodes.push("RULE_MATCHED");
+    }
+    if (own.length > 0) {
+      const before = verdict ?? (mandatory.length === 0 ? constitution.defaults.decision : null);
+      const said = strictestOf(own);
+      verdict = before === null ? said : strictest(before, said);
+      matchedRules.push(...own.map((r) => `${layer}:${r.id}`));
+      if (before === null || rankOf(said) > rankOf(before)) reasonCodes.push("DEPARTMENT_NARROWED");
+    }
+  }
+  if (mandatory.length > 0) {
+    const bound = strictestOf(mandatory);
+    verdict = verdict === null ? bound : strictest(verdict, bound);
+    matchedRules.push(...mandatory.map((r) => `account:${r.id}`));
+    if (!reasonCodes.includes("RULE_MATCHED")) reasonCodes.push("RULE_MATCHED");
+  }
+  if (verdict === null) return { verdict: constitution.defaults.decision, matchedRules: [], reasonCodes: ["DEFAULT_DECISION"] };
+  return { verdict, matchedRules, reasonCodes };
 }
 
 // What the employee network access alone says about a connection to `host:port`. The address it resolves to is not
@@ -111,11 +182,20 @@ function employeeNetworkStep(network: EmployeeNetwork, resource: string): Step {
 // An employee's connection: the employee network access answers, and a rule of the policy that matches it can only make
 // the answer stricter (a deny still wins; an allow never opens what the mode does not). Only the rules that narrowed it
 // are named.
-function employeeConnectionStep(constitution: Constitution, request: GovernanceRequest): Step {
-  const base = employeeNetworkStep(employeeNetworkOf(constitution), request.resource);
-  const narrowing = constitution.rules.filter((r) => ruleMatches(r, request) && rankOf(r.effect) > rankOf(base.verdict));
+// With a department, the network access is the composed one (department.ts), and a department's rule narrows it too --
+// a company's rule (mandatory or not) is never lifted by a department for a connection.
+function employeeConnectionStep(constitution: Constitution, dept: DepartmentPolicy | null, request: GovernanceRequest): Step {
+  const base = employeeNetworkStep(composeEmployeeNetwork(constitution, dept), request.resource);
+  const layer = dept === null ? "" : `department:${dept.metadata.departmentId}`;
+  const narrowing = [...constitution.rules.map((r) => ({ r, id: `account:${r.id}` })), ...(dept?.rules ?? []).map((r) => ({ r, id: `${layer}:${r.id}` }))].filter(({ r }) => ruleMatches(r, request) && rankOf(r.effect) > rankOf(base.verdict));
   if (narrowing.length === 0) return base;
-  return { verdict: narrowing.map((r) => r.effect).reduce(strictest, base.verdict), matchedRules: [...base.matchedRules, ...narrowing.map((r) => `account:${r.id}`)], reasonCodes: [...base.reasonCodes, "RULE_MATCHED"] };
+  return { verdict: narrowing.map(({ r }) => r.effect).reduce(strictest, base.verdict), matchedRules: [...base.matchedRules, ...narrowing.map(({ id }) => id)], reasonCodes: [...base.reasonCodes, "RULE_MATCHED"] };
+}
+
+// A grant the decision needs that the principal does not hold: denied, whatever the rules said.
+function grantStep(step: Step, facts: EvaluationFacts): Step {
+  if (facts.grant !== "not_held" || step.verdict === "deny") return step;
+  return { ...step, verdict: "deny", reasonCodes: [...step.reasonCodes, "NO_GRANT"] };
 }
 
 function overlayStep(step: Step, overlays: readonly PolicyOverlay[], request: GovernanceRequest): Step {
@@ -142,13 +222,13 @@ function executorStep(step: Step, enforcement: EnforcementPoint): Step {
   return { ...step, verdict: "deny", reasonCodes: [...step.reasonCodes, "NO_EXECUTOR"] };
 }
 
-export function evaluate(policy: Policy, request: GovernanceRequest): Evaluation {
+export function evaluate(policy: Policy, request: GovernanceRequest, facts: EvaluationFacts = {}): Evaluation {
   const refused = unjudgeable(policy, request);
   if (refused !== null) return refused;
   const action = request.action as ActionKind;
   const enforcement = ACTIONS[action].enforcement;
-  const base = accountStep(policy.constitution as Constitution, request);
-  const layered = overlayStep(base, policy.overlays, request);
+  const base = accountStep(policy.constitution as Constitution, departmentOf(policy, request), request);
+  const layered = grantStep(overlayStep(base, policy.overlays, request), facts);
   const step = executorStep(ceilingStep(layered, action, request.principalType), enforcement);
   return { ...step, enforcement };
 }

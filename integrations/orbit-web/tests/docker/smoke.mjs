@@ -431,7 +431,14 @@ async function inBrowser(port) {
     await page.getByRole("textbox", { name: "Username" }).fill("admin");
     await page.getByRole("textbox", { name: "Password" }).fill("123456");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.getByRole("button", { name: "Office" }).waitFor({ timeout: 15_000 });
+    // No company yet: the sidebar's Company section offers Create company (the Office's setup) and no CEO Chat, and CEO
+    // Chat's own address goes back to a new session (ADR 0062).
+    await page.getByRole("button", { name: "Create company" }).waitFor({ timeout: 15_000 });
+    const ceoOffered = await page.getByRole("button", { name: "CEO Chat" }).count();
+    await page.goto(`${url}/#/ceo`);
+    await page.waitForFunction("window.location.hash === '#/'", null, { timeout: 15_000 }).catch(() => undefined);
+    const ceoHash = await page.evaluate("window.location.hash");
+    check("   before a company: Create company in the sidebar, no CEO Chat, and #/ceo goes back to a new session", ceoOffered === 0 && ceoHash === "#/", `CEO Chat ${ceoOffered === 0 ? "not offered" : "offered"}, #/ceo -> ${ceoHash}`);
     await page.goto(`${url}/#/office`);
     const activate = page.getByRole("button", { name: "Activate the company" });
     await activate.waitFor({ timeout: 15_000 });

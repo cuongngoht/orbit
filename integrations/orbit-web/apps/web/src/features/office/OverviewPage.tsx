@@ -6,7 +6,7 @@
 // an AI connection of its own can be used.
 import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
-import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type Roster, type WorkLabel } from "@orbit-web/contracts";
+import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import {
@@ -242,14 +242,18 @@ interface Group {
   employees: EmployeeCard[];
 }
 
+const isCeoEmployee = (e: EmployeeCard, ceo: AppointmentSummary | null): boolean =>
+  e.role === "ceo" || (ceo !== null && e.id === ceo.employeeId);
+
 // The departments not archived, in the order the office shows them.
 const liveDepartments = (departments: Department[]): Department[] => departments.filter((d) => !d.archived).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
 function groupsOf(roster: Roster, employees: EmployeeCard[], filter: string): Group[] {
   const live = liveDepartments(roster.departments);
-  const groups: Group[] = live.map((d) => ({ department: d, employees: employees.filter((e) => e.departmentId === d.id) }));
+  const floorEmployees = employees.filter((e) => !isCeoEmployee(e, roster.ceo));
+  const groups: Group[] = live.map((d) => ({ department: d, employees: floorEmployees.filter((e) => e.departmentId === d.id) }));
   const known = new Set(live.map((d) => d.id));
-  groups.push({ department: null, employees: employees.filter((e) => e.departmentId === null || !known.has(e.departmentId)) });
+  groups.push({ department: null, employees: floorEmployees.filter((e) => e.departmentId === null || !known.has(e.departmentId)) });
   if (filter === "none") return groups.filter((g) => g.department === null);
   if (filter !== "all") return groups.filter((g) => g.department?.id === filter);
   return groups.filter((g) => g.department !== null || g.employees.length > 0);
@@ -348,13 +352,16 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit, onAp
     }
   };
   const groups = groupsOf(roster, employees, filter);
-  if (groups.length === 0) {
+  const ceoEmployee = employees.find((e) => isCeoEmployee(e, roster.ceo)) ?? null;
+  if (groups.length === 0 && ceoEmployee === null) {
     return <EmptyState icon={<RosterIcon size={22} />} tone="brand" title={t("office.overview.emptyTitle")} body={t("office.overview.emptyBody")} />;
   }
   return (
     <>
       <OfficeFloorMap
         groups={groups}
+        ceo={roster.ceo}
+        ceoEmployee={ceoEmployee}
         filter={filter}
         account={account}
         onAssign={onAssign}

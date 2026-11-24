@@ -47,6 +47,15 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
   const give = (employee: string, goal: string) => b.send("POST", "/api/missions", { title: goal.slice(0, 60), goal, target: { kind: "employee", employeeId: ids[employee] }, whenBusy: "reject", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: ["Done"] }, key());
   const mission = async (id: string): Promise<MissionDetail> => (await b.get(`/api/missions/${id}`)).body as MissionDetail;
   const part = (m: MissionDetail): AssignmentView => m.assignments.find((a) => a.parentId !== null) as AssignmentView;
+  // Cancels a mission's root against the version read just before -- read again while its lead is still moving
+  // (a review that ends, a wake), until the cancel is taken.
+  const cancelRoot = async (missionId: string): Promise<void> => {
+    await eventually(async () => {
+      const r = root(await mission(missionId));
+      if (r.state === "CANCELLED" || r.state === "CANCELLING") return true;
+      return (await b.send("POST", `/api/assignments/${r.id}/cancel`, { reason: "done with it" }, ifMatch(r.version))).status === 200;
+    }, (ok) => ok, 30_000);
+  };
   const root = (m: MissionDetail): AssignmentView => m.assignments.find((a) => a.parentId === null) as AssignmentView;
 
   before(async () => {
@@ -126,8 +135,7 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
     assert.equal(part(m).attempts, 2, "resumed exactly once");
     assert.equal(m.clarifications[0]?.state, "answered");
     assert.equal((said.resumed ?? []).length, 1);
-    const cancel = root(m);
-    await b.send("POST", `/api/assignments/${cancel.id}/cancel`, { reason: "done" }, ifMatch(cancel.version));
+    await cancelRoot(id);
   });
 
   test("a lead that leaves its team's question unanswered is woken again; after the last wake the question moves up by itself", async () => {
@@ -164,7 +172,6 @@ describe("questions up the tree: escalation, one answer, unanswered wakes, a can
     await h.app.get(ClarificationsService).sweep(new Date(Date.now() + 2 * 3_600_000).toISOString());
     const m = await eventually(() => mission(id), (x) => x.clarifications[0]?.addressee === "owner", 10_000);
     assert.deepEqual([m.clarifications[0]?.kind, m.clarifications[0]?.route.at(-1)?.why], ["deadline", "it was due and not answered"]);
-    const root = m.assignments.find((a) => a.parentId === null) as AssignmentView;
-    assert.equal((await b.send("POST", `/api/assignments/${root.id}/cancel`, { reason: "done" }, ifMatch(root.version))).status, 200);
+    await cancelRoot(id);
   });
 });

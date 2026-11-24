@@ -179,6 +179,8 @@ export class HiringService {
       const held = await this.appointments.heldBy(orbitId, employeeId);
       if (held !== null && held.data.role === "manager" && held.data.departmentId !== req.departmentId)
         throw conflictWith("appointed_manager", `${e.data.name} manages a department: replace or revoke the appointment before moving them -- a manager is a member of the department it manages.`, { appointmentId: held.id });
+      if (held !== null && held.data.role === "ceo" && req.departmentId !== null)
+        throw conflictWith("appointed_ceo", `${e.data.name} is the CEO, who belongs to no department: replace or revoke the appointment before moving them into one.`, { appointmentId: held.id });
       e.moveToDepartment(req.departmentId, new Date().toISOString());
       const v = await this.employees.save(e, expectedVersion);
       await this.outbox.append(actor.command, e.pullEvents().map((x) => ({ ...x, aggregateVersion: v })));

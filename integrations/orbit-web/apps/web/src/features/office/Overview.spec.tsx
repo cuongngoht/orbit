@@ -355,4 +355,82 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(accounting?.body).toEqual({ defaults: { claude: { model: "haiku" } } });
     expect(accounting?.headers["if-match"]).toBe('"1"');
   });
+
+  test("an appointed CEO sits in Director's Office -- never in a department room or Unassigned -- with profile, mission, assign and appointment controls", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () =>
+        roster({
+          ceo: appointmentSummary({ appointmentId: APPOINTMENT_ID, employeeId: EVE, name: "Eve", version: 3 }),
+          departments: [department({ members: 2 }), department({ id: DEPT_LEGAL, name: "Legal", position: 1 })],
+          employees: [
+            employeeCard(),
+            busyBao(),
+            employeeCard({
+              id: EVE,
+              name: "Eve",
+              title: "Director",
+              departmentId: DEPT_ACCOUNTING,
+              role: "ceo",
+              availability: "busy",
+              workLabel: "working",
+              holding: { assignmentId: "b1000000-0000-4000-8000-000000000010", missionId: "a1000000-0000-4000-8000-000000000010", title: "Annual plan", state: "RUNNING", since: "2026-11-21T07:00:00.000Z" },
+            }),
+          ],
+        }),
+      )
+      .on("POST", `/api/office/appointments/${APPOINTMENT_ID}/suspend`, () => appointmentView({ id: APPOINTMENT_ID, role: "ceo", departmentId: null, departmentName: null, employeeId: EVE, employeeName: "Eve", state: "suspended", version: 4 }));
+    const go = show();
+    const directorRoom = await screen.findByRole("region", { name: "Director's Office" });
+    expect(directorRoom).toHaveTextContent("CEO: Eve");
+    const eveCard = within(directorRoom).getByRole("article", { name: "Eve" });
+    expect(within(eveCard).getByText("Working")).toBeInTheDocument();
+    expect(eveCard.textContent).toContain("Annual plan");
+    const accountingRoom = screen.getByRole("region", { name: "Accounting" });
+    expect(accountingRoom).toHaveTextContent("(1 member)");
+    expect(within(accountingRoom).queryByRole("article", { name: "Eve" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Unassigned" })).toBeNull();
+
+    await userEvent.click(within(eveCard).getByRole("button", { name: "Annual plan" }));
+    expect(go).toHaveBeenCalledWith("mission", "a1000000-0000-4000-8000-000000000010");
+    await userEvent.click(within(eveCard).getByRole("button", { name: "Open Eve's profile" }));
+    expect(go).toHaveBeenLastCalledWith("employee", EVE);
+    await userEvent.click(within(eveCard).getByRole("button", { name: "Assign work to Eve" }));
+    expect(await screen.findByRole("dialog", { name: "Assign work" })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Assign work" })).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await userEvent.click(within(directorRoom).getByRole("button", { name: "Actions for Director's Office" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Replace", "Suspend", "Revoke"]);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Suspend" }));
+    const dialog = await screen.findByRole("dialog", { name: "Suspend the CEO" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Suspend" }));
+    await waitFor(() => expect(appointment(`/api/office/appointments/${APPOINTMENT_ID}/suspend`)(api)).toBeDefined());
+  });
+
+  test("with no departments and only a CEO, the floor still renders Director's Office; with no CEO, Director's Office says No CEO and offers Appoint", async () => {
+    let hasCeo = true;
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () =>
+        hasCeo
+          ? roster({
+              ceo: appointmentSummary({ appointmentId: APPOINTMENT_ID, employeeId: EVE, name: "Eve", version: 3 }),
+              departments: [],
+              employees: [employeeCard({ id: EVE, name: "Eve", title: "Director", departmentId: null, role: "ceo" })],
+            })
+          : roster({ ceo: null, departments: [], employees: [employeeCard({ id: EVE, name: "Eve", title: "Director", departmentId: null })] }),
+      );
+    show();
+    const directorRoom = await screen.findByRole("region", { name: "Director's Office" });
+    expect(within(directorRoom).getByRole("article", { name: "Eve" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Unassigned" })).toBeNull();
+    expect(screen.queryByText("No departments or employees yet")).toBeNull();
+
+    hasCeo = false;
+    pushApp("office.changed", { areas: ["roster"], missionId: null, version: 8 });
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Director's Office" })).getByText("No CEO")).toBeInTheDocument());
+    await userEvent.click(within(screen.getByRole("region", { name: "Director's Office" })).getByRole("button", { name: "Actions for Director's Office" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Appoint"]);
+  });
 });

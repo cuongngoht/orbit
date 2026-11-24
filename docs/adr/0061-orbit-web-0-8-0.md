@@ -554,7 +554,11 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   appointment per employee held by the database). A person may also GRANT an employee the right to give work to
   another employee or a department (`delegation_grants`). Nothing else grants authority: a title, instructions or the
   profile's switch give none. An appointee is not moved out of its department, archived, nor its department archived
-  from under it. Replacing a manager moves none of its open work: a person HANDS OVER open work explicitly (only before
+  from under it. THE CEO BELONGS TO NO DEPARTMENT (the owner's rule): it stands above them, so its work follows the
+  company's policy, room and defaults, never one department's. An employee appointed CEO from a department leaves it in
+  the appointment's own transaction (recorded; a running attempt that held the department's room is stopped, as after
+  any move), and while the appointment is held -- active or suspended -- nobody moves it into one (409 `appointed_ceo`);
+  the database refuses a CEO with a department at commit. Replacing a manager moves none of its open work: a person HANDS OVER open work explicitly (only before
   or between attempts; the fence moves, the old holder's late result is refused). The PERSONAL SANDBOX (`PROVISIONING → READY | FAILED`) is
   READY only once its desk, cache and toolbox areas exist with their labels, a write test passed in each and each
   area's enforcement is recorded; no container runs while the employee is idle.

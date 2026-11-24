@@ -26,11 +26,13 @@ import { OfficeGovernance, type Actor } from "../../shared/application/commands.
 import { conflictWith, missing, stale } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { Appointment, type AppointmentData, type AppointmentMove } from "../domain/appointment.js";
-import { WORKING } from "../domain/employee.js";
+import { WORKING, type Employee } from "../domain/employee.js";
 import { AppointmentRepository, grantView, type DelegationGrantRecord, type Slot } from "../infrastructure/appointments.repository.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository } from "../infrastructure/repositories.js";
 
 const ROLE_TEXT = { ceo: "CEO", manager: "manager" } as const;
+// What an audit record says of a department the new CEO left.
+const leftText = (left: string | null): string => (left === null ? "" : `; left ${left}: the CEO belongs to no department`);
 
 @Injectable()
 export class AppointmentsService {
@@ -75,13 +77,14 @@ export class AppointmentsService {
       await this.slotOpen(orbitId, slot);
       const holder = await this.appointments.incumbent(orbitId, slot);
       if (holder !== null) throw conflictWith("appointment_conflict", `This ${ROLE_TEXT[req.role]} slot has an incumbent already: replace it, or end it first.`, { appointmentId: holder.id });
-      await this.appointable(orbitId, req.employeeId, slot);
+      const e = await this.appointable(orbitId, req.employeeId, slot);
       const at = new Date().toISOString();
+      const left = slot.role === "ceo" ? await this.standsOutside(actor, e, at) : null;
       const a = Appointment.appoint({ id, orbitId, role: req.role, departmentId: req.departmentId, employeeId: req.employeeId, slotRevision: await this.appointments.nextSlotRevision(orbitId, slot), replaces: null, reason: req.reason, by: actor.command.actor, at });
       await this.appointments.insert(a);
       await this.outbox.append(actor.command, a.pullEvents());
       await this.outbox.touched(orbitId, ["roster"]);
-      await this.governance.recorded(actor, "appointment.appoint", "appointment", id, 1, `${ROLE_TEXT[req.role]}${req.departmentId ? ` of ${req.departmentId}` : ""}: ${req.employeeId} (slot revision ${a.data.slotRevision})`);
+      await this.governance.recorded(actor, "appointment.appoint", "appointment", id, 1, `${ROLE_TEXT[req.role]}${req.departmentId ? ` of ${req.departmentId}` : ""}: ${req.employeeId} (slot revision ${a.data.slotRevision})${leftText(left)}`);
       return a.data;
     });
     return (await this.views(orbitId, [saved]))[0] as AppointmentView;
@@ -100,15 +103,16 @@ export class AppointmentsService {
       await this.slotOpen(orbitId, slot);
       const old = await this.locked(orbitId, id, expectedVersion);
       if (old.data.employeeId === req.employeeId) throw conflictWith("same_appointee", "That employee holds this appointment already.");
-      await this.appointable(orbitId, req.employeeId, slot);
+      const e = await this.appointable(orbitId, req.employeeId, slot);
       const at = new Date().toISOString();
+      const left = slot.role === "ceo" ? await this.standsOutside(actor, e, at) : null;
       old.move("replace", actor.command.actor, req.reason, at);
       const oldVersion = await this.appointments.save(old, expectedVersion);
       const next = Appointment.appoint({ id: nextId, orbitId, role: slot.role, departmentId: slot.departmentId, employeeId: req.employeeId, slotRevision: await this.appointments.nextSlotRevision(orbitId, slot), replaces: old.id, reason: req.reason, by: actor.command.actor, at });
       await this.appointments.insert(next);
       await this.outbox.append(actor.command, [...old.pullEvents().map((e) => ({ ...e, aggregateVersion: oldVersion })), ...next.pullEvents()]);
       await this.outbox.touched(orbitId, ["roster"]);
-      await this.governance.recorded(actor, "appointment.replace", "appointment", nextId, 1, `${ROLE_TEXT[slot.role]}: ${old.data.employeeId} → ${req.employeeId} (slot revision ${next.data.slotRevision})`);
+      await this.governance.recorded(actor, "appointment.replace", "appointment", nextId, 1, `${ROLE_TEXT[slot.role]}: ${old.data.employeeId} → ${req.employeeId} (slot revision ${next.data.slotRevision})${leftText(left)}`);
       return next.data;
     });
     return (await this.views(orbitId, [saved]))[0] as AppointmentView;
@@ -190,14 +194,28 @@ export class AppointmentsService {
   }
 
   // An employee may take this appointment: it exists, works (on trial or active), holds no other appointment, and a
-  // manager is a member of its department.
-  private async appointable(orbitId: string, employeeId: string, slot: Slot): Promise<void> {
+  // manager is a member of its department. Returns the employee, its row held.
+  private async appointable(orbitId: string, employeeId: string, slot: Slot): Promise<Employee> {
     const e = await this.employees.get(orbitId, employeeId, true);
     if (e === null) throw missing("Employee");
     if (!WORKING.includes(e.data.employment)) throw conflictWith("employee_not_working", `${e.data.name} is ${e.data.employment}: only an employee on trial or active is appointed.`);
     if (slot.role === "manager" && e.data.departmentId !== slot.departmentId) throw conflictWith("manager_not_member", `A manager is a member of its department: move ${e.data.name} into it first.`);
     const other = await this.appointments.heldBy(orbitId, employeeId);
     if (other !== null) throw conflictWith("employee_appointed", `${e.data.name} holds another appointment (${ROLE_TEXT[other.data.role]}): end it first.`, { appointmentId: other.id });
+    return e;
+  }
+
+  // THE CEO BELONGS TO NO DEPARTMENT (the owner's rule): the CEO stands above the departments, so its work follows the
+  // company's policy, room and defaults -- never one department's. An employee appointed CEO from a department leaves it,
+  // in the appointment's own transaction (EmployeeDepartmentChanged: a running attempt that held the department's room
+  // is stopped by the access watch, as after any move). The department it left, or null when it had none.
+  private async standsOutside(actor: Actor, e: Employee, at: string): Promise<string | null> {
+    const from = e.data.departmentId;
+    if (from === null) return null;
+    e.moveToDepartment(null, at);
+    const v = await this.employees.save(e, e.data.version);
+    await this.outbox.append(actor.command, e.pullEvents().map((x) => ({ ...x, aggregateVersion: v })));
+    return from;
   }
 
   private async existing(orbitId: string, id: string): Promise<Appointment> {

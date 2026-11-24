@@ -1654,8 +1654,9 @@ CREATE TABLE workforce.deliveries (
 );
 
 -- An INCUMBENT appointment (active or suspended) stays true to its employee and its slot, checked at commit whatever
--- changed: its employee is in the office (not archived or deleted), and a manager is a member of its department, which is
--- not archived. A move, an archive or an appointment that would break it is refused whole.
+-- changed: its employee is in the office (not archived or deleted), a manager is a member of its department, which is
+-- not archived, and the CEO belongs to no department. A move, an archive or an appointment that would break it is
+-- refused whole.
 CREATE FUNCTION workforce.appointment_matches() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
   bad uuid;
@@ -1666,7 +1667,8 @@ BEGIN
   LEFT JOIN workforce.departments d ON d.account_id = a.account_id AND d.id = a.department_id
   WHERE a.account_id = NEW.account_id
     AND a.state IN ('active', 'suspended')
-    AND (e.employment IN ('archived', 'deleted') OR (a.role = 'manager' AND (e.department_id IS DISTINCT FROM a.department_id OR d.archived_at IS NOT NULL)))
+    AND (e.employment IN ('archived', 'deleted') OR (a.role = 'manager' AND (e.department_id IS DISTINCT FROM a.department_id OR d.archived_at IS NOT NULL))
+         OR (a.role = 'ceo' AND e.department_id IS NOT NULL))
   LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION 'appointment % no longer matches its employee or its department', bad USING ERRCODE = 'P0001';

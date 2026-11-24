@@ -63,7 +63,7 @@ function dedupePath(points: Point[]): Point[] {
 export function doorwayForZone(zone: FloorZone, deptKey: string, wps: WaypointMap): Point | null {
   if (zone === "director") return wps["director-door"] ?? null;
   if (zone === "pantry") return wps["pantry-door"] ?? null;
-  if (zone === "desk") return wps[`dept-door-${deptKey}`] ?? null;
+  if (zone === "desk") return deptKey === "director" ? (wps["director-door"] ?? null) : (wps[`dept-door-${deptKey}`] ?? null);
   return null;
 }
 
@@ -141,6 +141,9 @@ function desiredTargetFor(item: SimEmployee, routineStep: number, wps: WaypointM
     return { wp: `desk-${e.id}`, zone: "desk", activity: "typing", dwellMs: 12_000 };
   }
   if (kind === "waiting") {
+    if (item.deptKey === "director") {
+      return { wp: `desk-${e.id}`, zone: "desk", activity: "asking", dwellMs: 12_000 };
+    }
     const slotKey = wps[`director-visitor-${visitorSlot % 2}`] ? `director-visitor-${visitorSlot % 2}` : "director-visitor-0";
     return { wp: slotKey, zone: "director", activity: "asking", dwellMs: 12_000 };
   }

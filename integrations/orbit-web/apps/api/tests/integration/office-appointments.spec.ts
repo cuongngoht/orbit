@@ -248,4 +248,36 @@ describe("the company's authority: appointments, delegation grants, execution de
     assert.equal(handed.employeeId, ids.lan, "the new holder handed it in");
     assert.equal(code(await b.send("POST", `/api/assignments/${handed.id}/hand-over`, { employeeId: ids.binh }, ifMatch(handed.version))), "invalid_transition", "a hand-in awaiting review is reviewed, not handed over");
   });
+  test("the CEO belongs to no department: a member appointed CEO leaves it, the CEO is never moved into one, and the database holds it", async () => {
+    ids.quy = (await hire("Quy", ids.Finance as string)).id;
+    ids.vy = (await hire("Vy", ids.Research as string)).id;
+    // Replacing the CEO with a member of Finance takes Quy out of Finance, in the same command, recorded.
+    const current = (await appointments()).ceo as AppointmentView;
+    const replaced = await b.send("POST", `/api/office/appointments/${current.id}/replace`, { employeeId: ids.quy, reason: "a new CEO" }, ifMatch(current.version));
+    assert.equal(replaced.status, 200, JSON.stringify(replaced.body));
+    let quy = await employee(ids.quy as string);
+    assert.equal(quy.departmentId, null, "the CEO belongs to no department");
+    const moved = await h.sql("SELECT payload FROM workforce.events WHERE account_id = $1 AND type = 'EmployeeDepartmentChanged' AND aggregate_id = $2 ORDER BY seq DESC LIMIT 1", [h.accountId as string, ids.quy as string]);
+    assert.deepEqual(moved[0]?.payload, { from: ids.Finance, to: null });
+    const audit = await h.sql("SELECT data->>'detail' AS detail FROM audit_events WHERE account_id = $1 AND event_type = 'office.command' AND data->>'command' = 'appointment.replace' ORDER BY occurred_at DESC LIMIT 1", [h.accountId as string]);
+    assert.match(String(audit[0]?.detail), /left [0-9a-f-]{36}: the CEO belongs to no department/);
+    // While CEO, never moved into a department: refused by the API, and by the database whatever path writes it.
+    assert.equal(code(await b.send("POST", `/api/employees/${ids.quy}/department`, { departmentId: ids.Research }, ifMatch(quy.version))), "appointed_ceo");
+    assert.equal((await b.send("POST", `/api/employees/${ids.quy}/department`, { departmentId: null }, ifMatch(quy.version))).status, 200, "to no department: nothing to refuse");
+    await assert.rejects(h.sql("UPDATE workforce.employees SET department_id = $3 WHERE account_id = $1 AND id = $2", [h.accountId as string, ids.quy as string, ids.Research as string]), /no longer matches its employee or its department/);
+    // Suspended, the appointment is still held: still refused. Revoked, Quy is an employee like any other again.
+    let ceo = (await appointments()).ceo as AppointmentView;
+    assert.equal((await b.send("POST", `/api/office/appointments/${ceo.id}/suspend`, { reason: "on leave" }, ifMatch(ceo.version))).status, 200);
+    quy = await employee(ids.quy as string);
+    assert.equal(code(await b.send("POST", `/api/employees/${ids.quy}/department`, { departmentId: ids.Research }, ifMatch(quy.version))), "appointed_ceo");
+    ceo = (await appointments()).ceo as AppointmentView;
+    assert.equal((await b.send("POST", `/api/office/appointments/${ceo.id}/revoke`, { reason: "steps down" }, ifMatch(ceo.version))).status, 200);
+    quy = await employee(ids.quy as string);
+    assert.equal((await b.send("POST", `/api/employees/${ids.quy}/department`, { departmentId: ids.Research }, ifMatch(quy.version))).status, 200, "no longer the CEO: moved like anyone");
+    // A member appointed to an empty CEO slot leaves its department too; its work is now the company's (no department).
+    const appointed = await appoint({ role: "ceo", employeeId: ids.vy, reason: "acting CEO" });
+    assert.equal(appointed.status, 201, JSON.stringify(appointed.body));
+    const vy = await employee(ids.vy as string);
+    assert.deepEqual([vy.departmentId, vy.appointment?.role], [null, "ceo"]);
+  });
 });

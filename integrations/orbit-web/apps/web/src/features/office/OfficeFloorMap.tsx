@@ -4,7 +4,7 @@
 // revokes that manager -- the company's authority, as Leadership changes it -- beside renaming and archiving the room.
 import { Button, Link, MenuItem, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { ErrorCircle16Regular, Warning16Regular } from "@fluentui/react-icons";
-import type { AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
+import type { AppointmentSummary, AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBadge, OfficeIcon } from "../../components/SectionIcons";
 import { useI18n } from "../../i18n";
@@ -133,6 +133,7 @@ const useStyles = makeStyles({
     position: "relative",
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    alignItems: "stretch",
     gap: "14px",
     minWidth: 0,
     "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
@@ -142,6 +143,7 @@ const useStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+    height: "100%",
     paddingTop: "12px",
     paddingRight: "14px",
     paddingBottom: "14px",
@@ -154,29 +156,38 @@ const useStyles = makeStyles({
   },
   execCarpet: {
     display: "flex",
+    flexGrow: 1,
     alignItems: "flex-end",
     justifyContent: "space-between",
-    gap: "14px",
+    columnGap: "18px",
+    rowGap: "44px",
     flexWrap: "wrap",
-    paddingTop: "12px",
-    paddingRight: "12px",
-    paddingBottom: "10px",
-    paddingLeft: "12px",
+    paddingTop: "40px",
+    paddingRight: "14px",
+    paddingBottom: "14px",
+    paddingLeft: "14px",
     borderRadius: "12px",
     backgroundColor: "var(--orbit-rug-exec)",
     minHeight: "108px",
     minWidth: 0,
   },
+  directorRight: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    flexShrink: 0,
+  },
   pantryCarpet: {
     display: "flex",
+    flexGrow: 1,
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "space-around",
     gap: "12px",
     flexWrap: "wrap",
-    paddingTop: "10px",
-    paddingRight: "12px",
-    paddingBottom: "10px",
-    paddingLeft: "12px",
+    paddingTop: "32px",
+    paddingRight: "14px",
+    paddingBottom: "14px",
+    paddingLeft: "14px",
     borderRadius: "12px",
     backgroundColor: "var(--orbit-rug-pantry)",
     minHeight: "108px",
@@ -198,8 +209,9 @@ const useStyles = makeStyles({
     justifyContent: "space-around",
     gap: "12px",
     flexGrow: 1,
-    minWidth: "130px",
-    height: "74px",
+    minWidth: "136px",
+    minHeight: "88px",
+    paddingTop: "24px",
   },
   roomTitleBar: {
     display: "flex",
@@ -305,6 +317,9 @@ const useStyles = makeStyles({
     minWidth: 0,
     "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
   },
+  departmentsGridSingle: {
+    gridTemplateColumns: "1fr",
+  },
   deptRoom: {
     position: "relative",
     display: "flex",
@@ -343,26 +358,32 @@ const useStyles = makeStyles({
   },
   desksGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(128px, 150px))",
-    rowGap: "26px",
-    columnGap: "14px",
+    gridTemplateColumns: "repeat(auto-fill, minmax(164px, 210px))",
+    rowGap: "32px",
+    columnGap: "16px",
     justifyContent: "flex-start",
     minWidth: 0,
-    "@media (max-width: 480px)": { gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" },
+    "@media (max-width: 480px)": { gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))" },
   },
   deskArticle: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "4px",
-    paddingTop: "2px",
-    paddingRight: "2px",
-    paddingBottom: "2px",
-    paddingLeft: "2px",
-    borderRadius: "0",
-    backgroundColor: "transparent",
-    ...shorthands.border("0", "none", "transparent"),
+    gap: "6px",
+    paddingTop: "8px",
+    paddingRight: "10px",
+    paddingBottom: "8px",
+    paddingLeft: "10px",
+    borderRadius: "12px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
     minWidth: 0,
+  },
+  ceoArticle: {
+    minWidth: "172px",
+    maxWidth: "min(100%, 248px)",
+    ...shorthands.borderColor(tokens.colorBrandStroke2),
   },
   deskStage: {
     display: "flex",
@@ -428,7 +449,7 @@ const useStyles = makeStyles({
   chairAnchorWrap: {
     position: "relative",
     width: "100%",
-    height: "44px",
+    height: "56px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -525,8 +546,155 @@ const useStyles = makeStyles({
   muted: { color: tokens.colorNeutralForeground3 },
 });
 
+type RestoreProps = ReturnType<typeof useRestoreFocusTarget>;
+
+function EmployeeDeskCard({
+  employee: e,
+  walker: w,
+  measured,
+  executive = false,
+  onAssign,
+  onOpenEmployee,
+  onOpenMission,
+  restore,
+}: {
+  employee: EmployeeCard;
+  walker: WalkerState | undefined;
+  measured: boolean;
+  executive?: boolean;
+  onAssign: (employeeId: string) => void;
+  onOpenEmployee: (employeeId: string) => void;
+  onOpenMission: (missionId: string) => void;
+  restore: RestoreProps;
+}) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const o = useOfficeStyles();
+  const atDeskNow = !measured || (w ? w.zone === "desk" && w.path.length === 0 : true);
+  const awayReason = w?.walking
+    ? t("office.floor.walkingInOffice")
+    : w && w.path.length > 0
+      ? t("office.floor.inCorridor")
+      : w?.zone === "pantry"
+        ? t("office.floor.inPantryNote")
+        : w?.zone === "director"
+          ? t("office.floor.atDirectorNote")
+          : w?.zone === "hallway"
+            ? t("office.floor.inCorridor")
+            : null;
+  const deskArt = executive ? (
+    <PixelDirectorDeskSvg />
+  ) : (
+    <PixelModernDeskSvg workLabel={e.workLabel} occupied={atDeskNow} penSpinning={atDeskNow && e.workLabel === "ready"} />
+  );
+
+  return (
+    <article className={mergeClasses(s.deskArticle, executive && s.ceoArticle)} aria-label={e.name}>
+      {!measured ? (
+        <div className={s.deskStage}>
+          <div className={s.chairAnchorWrap}>
+            <span data-wp={`desk-${e.id}`} style={{ position: "absolute", left: "50%", bottom: "-4px", width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
+            <button
+              type="button"
+              className={s.staticAvatarBtn}
+              aria-label={t("office.floor.assignWorkTo", { name: e.name })}
+              disabled={e.employment === "archived"}
+              title={e.employment === "archived" ? t("office.floor.archivedTitle", { name: e.name }) : t("office.floor.assignWorkTo", { name: e.name })}
+              onClick={() => onAssign(e.id)}
+              {...restore}
+            >
+              <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
+              <div style={{ marginBottom: "-8px" }}>
+                <PixelChibiSvg
+                  name={e.name}
+                  workLabel={e.workLabel}
+                  activity={e.workLabel === "ready" ? "pen-spin" : e.workLabel === "working" ? "typing" : "asking"}
+                  executive={executive}
+                  size={38}
+                />
+              </div>
+            </button>
+          </div>
+          <button
+            type="button"
+            className={s.deskStageBtn}
+            aria-label={t("office.floor.openProfileAria", { name: e.name })}
+            title={t("office.floor.openProfileAria", { name: e.name })}
+            onClick={() => onOpenEmployee(e.id)}
+          >
+            {deskArt}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className={s.deskStageBtn}
+          aria-label={t("office.floor.openProfileAria", { name: e.name })}
+          title={t("office.floor.openProfileAria", { name: e.name })}
+          onClick={() => onOpenEmployee(e.id)}
+        >
+          <div className={s.chairAnchorWrap}>
+            <span data-wp={`desk-${e.id}`} style={{ position: "absolute", left: "50%", bottom: "-4px", width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
+            {!atDeskNow && awayReason && (
+              <span className={s.awayNote} aria-hidden>
+                {awayReason}
+              </span>
+            )}
+          </div>
+          {deskArt}
+        </button>
+      )}
+
+      <div className={o.between} style={{ gap: "6px", width: "100%", alignItems: "center" }}>
+        <Button className={s.empNameBtn} appearance="transparent" onClick={() => onOpenEmployee(e.id)}>
+          {e.name}
+        </Button>
+        <WorkLabelBadge label={e.workLabel} />
+      </div>
+
+      {e.kind === "assistant" && (
+        <Text size={100} className={mergeClasses(s.muted, o.wrap)}>
+          {t("office.floor.temporaryAssistant", { until: e.expiresAt ? t("office.floor.until", { when: when(e.expiresAt) }) : "" })}
+        </Text>
+      )}
+
+      {e.holding && (
+        <div className={s.holdingBox}>
+          <Text size={100} className={o.wrap}>
+            <Link as="button" onClick={() => onOpenMission(e.holding?.missionId ?? "")}>
+              {e.holding.title}
+            </Link>
+          </Text>
+          {e.queued > 0 && (
+            <Text size={100} className={s.muted}>
+              {t("office.floor.queuedBehind", { count: e.queued })}
+            </Text>
+          )}
+        </div>
+      )}
+      {!e.holding && e.queued > 0 && (
+        <Text size={100} className={s.muted}>
+          {t("office.floor.queuedBehind", { count: e.queued })}
+        </Text>
+      )}
+      {e.notReadyReason && (
+        <Callout tone="danger" icon={<ErrorCircle16Regular />}>
+          {t("office.floor.notReady", { reason: e.notReadyReason })}
+        </Callout>
+      )}
+      {e.connectionWarning && (
+        <Callout tone="warn" icon={<Warning16Regular />}>
+          {t("office.floor.connectionWarn", { reason: e.connectionWarning })}
+        </Callout>
+      )}
+    </article>
+  );
+}
+
 export function OfficeFloorMap({
   groups,
+  ceo = null,
+  ceoEmployee = null,
   filter,
   account,
   onAssign,
@@ -536,6 +704,8 @@ export function OfficeFloorMap({
   onAppointment,
 }: {
   groups: FloorGroup[];
+  ceo?: AppointmentSummary | null;
+  ceoEmployee?: EmployeeCard | null;
   filter: string;
   account: AuthAccount | null;
   onAssign: (employeeId: string) => void;
@@ -562,15 +732,19 @@ export function OfficeFloorMap({
   const simItems: SimEmployee[] = useMemo(() => {
     let slot = 0;
     const out: SimEmployee[] = [];
+    if (ceoEmployee !== null) {
+      out.push({ employee: ceoEmployee, deptKey: "director", visitorSlot: 0 });
+    }
     for (const g of groups) {
       const deptKey = g.department?.id ?? "unassigned";
       for (const e of g.employees) {
+        if (ceoEmployee !== null && e.id === ceoEmployee.id) continue;
         const isWaiting = presenceKindOf(e.workLabel) === "waiting";
         out.push({ employee: e, deptKey, visitorSlot: isWaiting ? slot++ : 0 });
       }
     }
     return out;
-  }, [groups]);
+  }, [groups, ceoEmployee]);
 
   const simItemsRef = useRef(simItems);
   const hoveredIdRef = useRef(hoveredId);
@@ -652,10 +826,10 @@ export function OfficeFloorMap({
   const walkingCount = measured ? walkers.filter((w) => w.walking).length : 0;
   const deskCount = measured
     ? walkers.filter((w) => w.zone === "desk" && !w.walking).length
-    : allEmployees.filter((e) => e.workLabel === "working").length;
+    : allEmployees.filter((e) => e.workLabel === "working" || (ceoEmployee !== null && e.id === ceoEmployee.id && presenceKindOf(e.workLabel) === "waiting")).length;
   const directorCount = measured
     ? walkers.filter((w) => w.zone === "director" && !w.walking).length
-    : allEmployees.filter((e) => presenceKindOf(e.workLabel) === "waiting").length;
+    : allEmployees.filter((e) => (ceoEmployee === null || e.id !== ceoEmployee.id) && presenceKindOf(e.workLabel) === "waiting").length;
 
   return (
     <div ref={buildingRef} className={s.building}>
@@ -691,26 +865,60 @@ export function OfficeFloorMap({
       <div className={s.topWing}>
         <span data-wp="hall-aisle" style={{ position: "absolute", left: "50%", top: 0, width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
 
-        <div className={s.execRoom} aria-label={t("office.floor.directorsOffice")}>
-          <div className={s.roomTitleBar} aria-hidden>
-            <span className={s.roomTag}>
-              <span className={s.dot} style={{ backgroundColor: "#3b82f6" }} />
-              <span>{t("office.floor.directorsOffice")}</span>
-            </span>
-            <Text size={100} className={s.muted}>
-              {directorCount > 0 ? t("office.floor.askingOpinion", { count: directorCount }) : t("office.floor.askOpinionReview")}
-            </Text>
+        <section className={s.execRoom} aria-label={t("office.floor.directorsOffice")}>
+          <div className={mergeClasses(s.roomTitleBar, s.deptTitleBar)}>
+            <div className={s.roomHead}>
+              <span className={s.roomTag}>
+                <span className={s.dot} style={{ backgroundColor: "#3b82f6" }} aria-hidden />
+                <Text as="h3" weight="semibold" size={200} className={o.wrap}>
+                  {t("office.floor.directorsOffice")}
+                </Text>
+              </span>
+              {ceo ? (
+                <AppointmentHolder who={ceo} prefix={`${t("office.leadership.ceo")}: `} onOpen={onOpenEmployee} />
+              ) : (
+                <Text size={200} className={s.muted}>
+                  {t("office.floor.noCeo")}
+                </Text>
+              )}
+            </div>
+            <div className={s.directorRight}>
+              <Text size={100} className={s.muted} aria-hidden>
+                {directorCount > 0 ? t("office.floor.askingOpinion", { count: directorCount }) : t("office.floor.askOpinionReview")}
+              </Text>
+              <AppointmentMenu slot={{ role: "ceo", incumbent: ceo }} label={t("office.floor.actionsForDirector")} onPick={pickAppointment} />
+            </div>
           </div>
           <div className={s.execCarpet}>
             <div className={s.execDeskCluster}>
               <PixelBookshelfSvg />
-              <div className={s.directorSeat}>
-                <div style={{ marginBottom: "-10px" }} aria-hidden>
-                  <PixelChibiSvg name={directorName} workLabel="ready" activity="director" size={38} />
+              {ceoEmployee !== null ? (
+                <EmployeeDeskCard
+                  employee={ceoEmployee}
+                  walker={walkerById.get(ceoEmployee.id)}
+                  measured={measured}
+                  executive
+                  onAssign={onAssign}
+                  onOpenEmployee={onOpenEmployee}
+                  onOpenMission={onOpenMission}
+                  restore={restore}
+                />
+              ) : ceo !== null ? (
+                <div className={s.directorSeat}>
+                  <PixelDirectorDeskSvg />
+                  <Text size={100} className={s.muted}>
+                    {t("office.floor.ceoFilteredOut", { name: ceo.name })}
+                  </Text>
                 </div>
-                <PixelDirectorDeskSvg />
-                <GatherNamePill name={directorName} dotColor="#3b82f6" suffix={t("office.floor.directorSuffix")} />
-              </div>
+              ) : (
+                <div className={s.directorSeat}>
+                  <div style={{ marginBottom: "-10px" }} aria-hidden>
+                    <PixelChibiSvg name={directorName} workLabel="ready" activity="director" size={38} />
+                  </div>
+                  <PixelDirectorDeskSvg />
+                  <GatherNamePill name={directorName} dotColor="#3b82f6" suffix={t("office.floor.directorSuffix")} />
+                </div>
+              )}
             </div>
             <div className={s.visitorsCluster}>
               <span data-wp="director-visitor-0" style={{ position: "relative", width: "2px", height: "44px" }} aria-hidden />
@@ -723,15 +931,17 @@ export function OfficeFloorMap({
             </div>
           </div>
           <span className={s.doorwayBottom} data-wp="director-door" aria-hidden />
-        </div>
+        </section>
 
-        <div className={s.execRoom} aria-label={t("office.floor.pantryAria")}>
-          <div className={s.roomTitleBar} aria-hidden>
+        <section className={s.execRoom} aria-label={t("office.floor.pantryTitle")}>
+          <div className={s.roomTitleBar}>
             <span className={s.roomTag}>
-              <span className={s.dot} style={{ backgroundColor: "#16a34a" }} />
-              <span>{t("office.floor.pantryTitle")}</span>
+              <span className={s.dot} style={{ backgroundColor: "#16a34a" }} aria-hidden />
+              <Text as="h3" weight="semibold" size={200} className={o.wrap}>
+                {t("office.floor.pantryTitle")}
+              </Text>
             </span>
-            <Text size={100} className={s.muted}>
+            <Text size={100} className={s.muted} aria-hidden>
               {pantryCount > 0 ? t("office.floor.restingCount", { count: pantryCount }) : t("office.floor.coffeeBreakArea")}
             </Text>
           </div>
@@ -749,7 +959,7 @@ export function OfficeFloorMap({
             </div>
           </div>
           <span className={s.doorwayBottom} data-wp="pantry-door" aria-hidden />
-        </div>
+        </section>
       </div>
 
       {/* Central Hardwood Hallway */}
@@ -759,198 +969,86 @@ export function OfficeFloorMap({
           <span>{t("office.floor.hallwayLeft")}</span>
         </span>
         <span data-wp="hall-center" className={s.anchorDot} />
-        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-          <span>{t("office.floor.hallwayRight")}</span>
-          <PixelPlantSvg variant="autumn" />
-        </span>
+        {groups.length > 0 && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <span>{t("office.floor.hallwayRight")}</span>
+            <PixelPlantSvg variant="autumn" />
+          </span>
+        )}
       </div>
 
       {/* Bottom Wing: Integrated Partitioned Department Rooms */}
-      <div className={s.departmentsGrid}>
-        {groups.map((g) => {
-          const deptKey = g.department?.id ?? "unassigned";
-          const roomName = g.department?.name ?? t("office.overview.unassigned");
-          const accent = roomAccentFor(roomName);
-          return (
-            <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
-              <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
-              <div className={mergeClasses(s.roomTitleBar, s.deptTitleBar)}>
-                <div className={s.roomHead}>
-                  <div className={o.row}>
-                    <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
-                    <Text as="h3" weight="semibold" size={300} className={o.wrap}>
-                      {roomName}
-                    </Text>
-                    <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
-                      {g.department
-                        ? t("office.floor.membersCount", { count: g.department.members, word: g.department.members === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
-                        : t("office.floor.shownCount", { count: g.employees.length })}
+      {groups.length > 0 && (
+        <div className={mergeClasses(s.departmentsGrid, groups.length === 1 && s.departmentsGridSingle)}>
+          {groups.map((g) => {
+            const deptKey = g.department?.id ?? "unassigned";
+            const roomName = g.department?.name ?? t("office.overview.unassigned");
+            const accent = roomAccentFor(roomName);
+            const deptMembers =
+              g.department && ceoEmployee !== null && ceoEmployee.departmentId === g.department.id
+                ? Math.max(0, g.department.members - 1)
+                : (g.department?.members ?? 0);
+            return (
+              <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
+                <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
+                <div className={mergeClasses(s.roomTitleBar, s.deptTitleBar)}>
+                  <div className={s.roomHead}>
+                    <div className={o.row}>
+                      <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
+                      <Text as="h3" weight="semibold" size={300} className={o.wrap}>
+                        {roomName}
+                      </Text>
+                      <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
+                        {g.department
+                          ? t("office.floor.membersCount", { count: deptMembers, word: deptMembers === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
+                          : t("office.floor.shownCount", { count: g.employees.length })}
+                      </Text>
+                    </div>
+                    {g.department &&
+                      (g.department.manager ? (
+                        <AppointmentHolder who={g.department.manager} prefix={`${t("office.leadership.managerLabel")} `} onOpen={onOpenEmployee} />
+                      ) : (
+                        <Text size={200} className={s.muted}>
+                          {t("office.leadership.noManager")}
+                        </Text>
+                      ))}
+                  </div>
+                  {g.department && (
+                    <AppointmentMenu slot={{ role: "manager", department: g.department, incumbent: g.department.manager ?? null }} label={t("office.floor.actionsForDept", { name: g.department.name })} onPick={pickAppointment}>
+                      <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
+                      <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
+                    </AppointmentMenu>
+                  )}
+                </div>
+
+                {g.employees.length === 0 ? (
+                  <div className={s.emptyFloor} style={{ backgroundColor: accent.tint }}>
+                    <PixelEmptyDeskClusterSvg />
+                    <Text size={200} className={s.muted}>
+                      {t("office.floor.noEmployeeHere", { suffix: filter === "all" ? t("office.floor.noEmployeeYet") : t("office.floor.noEmployeeMatches") })}
                     </Text>
                   </div>
-                  {g.department &&
-                    (g.department.manager ? (
-                      <AppointmentHolder who={g.department.manager} prefix={`${t("office.leadership.managerLabel")} `} onOpen={onOpenEmployee} />
-                    ) : (
-                      <Text size={200} className={s.muted}>
-                        {t("office.leadership.noManager")}
-                      </Text>
+                ) : (
+                  <div className={s.desksGrid} style={{ padding: "32px 14px 14px", borderRadius: "12px", backgroundColor: accent.tint }}>
+                    {g.employees.map((e) => (
+                      <EmployeeDeskCard
+                        key={e.id}
+                        employee={e}
+                        walker={walkerById.get(e.id)}
+                        measured={measured}
+                        onAssign={onAssign}
+                        onOpenEmployee={onOpenEmployee}
+                        onOpenMission={onOpenMission}
+                        restore={restore}
+                      />
                     ))}
-                </div>
-                {g.department && (
-                  <AppointmentMenu slot={{ role: "manager", department: g.department, incumbent: g.department.manager ?? null }} label={t("office.floor.actionsForDept", { name: g.department.name })} onPick={pickAppointment}>
-                    <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
-                    <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
-                  </AppointmentMenu>
+                  </div>
                 )}
-              </div>
-
-              {g.employees.length === 0 ? (
-                <div className={s.emptyFloor} style={{ backgroundColor: accent.tint }}>
-                  <PixelEmptyDeskClusterSvg />
-                  <Text size={200} className={s.muted}>
-                    {t("office.floor.noEmployeeHere", { suffix: filter === "all" ? t("office.floor.noEmployeeYet") : t("office.floor.noEmployeeMatches") })}
-                  </Text>
-                </div>
-              ) : (
-                <div className={s.desksGrid} style={{ padding: "8px", borderRadius: "12px", backgroundColor: accent.tint }}>
-                  {g.employees.map((e) => {
-                    const w = walkerById.get(e.id);
-                    const atDeskNow = !measured || (w ? w.zone === "desk" && w.path.length === 0 : true);
-                    const awayReason = w?.walking
-                      ? t("office.floor.walkingInOffice")
-                      : w && w.path.length > 0
-                        ? t("office.floor.inCorridor")
-                        : w?.zone === "pantry"
-                          ? t("office.floor.inPantryNote")
-                          : w?.zone === "director"
-                            ? t("office.floor.atDirectorNote")
-                            : w?.zone === "hallway"
-                              ? t("office.floor.inCorridor")
-                              : null;
-
-                    return (
-                      <article key={e.id} className={s.deskArticle} aria-label={e.name}>
-                        {!measured ? (
-                          <div className={s.deskStage}>
-                            <div className={s.chairAnchorWrap}>
-                              <span
-                                data-wp={`desk-${e.id}`}
-                                style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
-                                aria-hidden
-                              />
-                              <button
-                                type="button"
-                                className={s.staticAvatarBtn}
-                                aria-label={t("office.floor.assignWorkTo", { name: e.name })}
-                                disabled={e.employment === "archived"}
-                                title={e.employment === "archived" ? t("office.floor.archivedTitle", { name: e.name }) : t("office.floor.assignWorkTo", { name: e.name })}
-                                onClick={() => onAssign(e.id)}
-                                {...restore}
-                              >
-                                <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
-                                <div style={{ marginBottom: "-8px" }}>
-                                  <PixelChibiSvg
-                                    name={e.name}
-                                    workLabel={e.workLabel}
-                                    activity={e.workLabel === "ready" ? "pen-spin" : e.workLabel === "working" ? "typing" : "asking"}
-                                    size={38}
-                                  />
-                                </div>
-                              </button>
-                            </div>
-                            <button
-                              type="button"
-                              className={s.deskStageBtn}
-                              aria-label={t("office.floor.openProfileAria", { name: e.name })}
-                              title={t("office.floor.openProfileAria", { name: e.name })}
-                              onClick={() => onOpenEmployee(e.id)}
-                            >
-                              <PixelModernDeskSvg
-                                workLabel={e.workLabel}
-                                occupied={atDeskNow}
-                                penSpinning={atDeskNow && e.workLabel === "ready"}
-                              />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className={s.deskStageBtn}
-                            aria-label={t("office.floor.openProfileAria", { name: e.name })}
-                            title={t("office.floor.openProfileAria", { name: e.name })}
-                            onClick={() => onOpenEmployee(e.id)}
-                          >
-                            <div className={s.chairAnchorWrap}>
-                              <span
-                                data-wp={`desk-${e.id}`}
-                                style={{ position: "absolute", left: "50%", bottom: "4px", width: 0, height: 0, pointerEvents: "none" }}
-                                aria-hidden
-                              />
-                              {!atDeskNow && awayReason && (
-                                <span className={s.awayNote} aria-hidden>
-                                  {awayReason}
-                                </span>
-                              )}
-                            </div>
-                            <PixelModernDeskSvg
-                              workLabel={e.workLabel}
-                              occupied={atDeskNow}
-                              penSpinning={atDeskNow && e.workLabel === "ready"}
-                            />
-                          </button>
-                        )}
-
-                        <div className={o.between} style={{ gap: "4px", width: "100%" }}>
-                          <Button className={s.empNameBtn} appearance="transparent" onClick={() => onOpenEmployee(e.id)}>
-                            {e.name}
-                          </Button>
-                          <WorkLabelBadge label={e.workLabel} />
-                        </div>
-
-                        {e.kind === "assistant" && (
-                          <Text size={100} className={mergeClasses(s.muted, o.wrap)}>
-                            {t("office.floor.temporaryAssistant", { until: e.expiresAt ? t("office.floor.until", { when: when(e.expiresAt) }) : "" })}
-                          </Text>
-                        )}
-
-                        {e.holding && (
-                          <div className={s.holdingBox}>
-                            <Text size={100} className={o.wrap}>
-                              <Link as="button" onClick={() => onOpenMission(e.holding?.missionId ?? "")}>
-                                {e.holding.title}
-                              </Link>
-                            </Text>
-                            {e.queued > 0 && (
-                              <Text size={100} className={s.muted}>
-                                {t("office.floor.queuedBehind", { count: e.queued })}
-                              </Text>
-                            )}
-                          </div>
-                        )}
-                        {!e.holding && e.queued > 0 && (
-                          <Text size={100} className={s.muted}>
-                            {t("office.floor.queuedBehind", { count: e.queued })}
-                          </Text>
-                        )}
-                        {e.notReadyReason && (
-                          <Callout tone="danger" icon={<ErrorCircle16Regular />}>
-                            {t("office.floor.notReady", { reason: e.notReadyReason })}
-                          </Callout>
-                        )}
-                        {e.connectionWarning && (
-                          <Callout tone="warn" icon={<Warning16Regular />}>
-                            {t("office.floor.connectionWarn", { reason: e.connectionWarning })}
-                          </Callout>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          );
-        })}
-      </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
 
       {/* Single Live Physical Walkers Overlay (never clones employees!) */}
       {measured && walkers.length > 0 && (
@@ -958,6 +1056,8 @@ export function OfficeFloorMap({
           {walkers.map((w) => {
             const e = allEmployees.find((emp) => emp.id === w.id);
             if (!e) return null;
+            const isCeo = (ceoEmployee !== null && e.id === ceoEmployee.id) || e.role === "ceo";
+            const seatedAtDesk = w.zone === "desk" && !w.walking && w.path.length === 0;
             const isHovered = hoveredId === e.id;
             const iconText = w.walking
               ? "🚶"
@@ -965,9 +1065,7 @@ export function OfficeFloorMap({
                 ? "💬"
                 : w.zone === "pantry"
                   ? "☕"
-                  : e.workLabel === "ready" && w.zone === "desk"
-                    ? "✏️"
-                    : undefined;
+                  : undefined;
             return (
               <button
                 key={w.id}
@@ -975,13 +1073,17 @@ export function OfficeFloorMap({
                 className={s.walkerBtn}
                 aria-label={t("office.floor.assignWorkTo", { name: e.name })}
                 title={e.employment === "archived" ? t("office.floor.openProfileTitle", { name: e.name }) : t("office.floor.assignWorkTo", { name: e.name })}
-                style={{ transform: `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -76%)` }}
+                style={{
+                  transform: seatedAtDesk
+                    ? `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -100%)`
+                    : `translate3d(${Math.round(w.x)}px, ${Math.round(w.y)}px, 0) translate(-50%, -86%)`,
+                }}
                 onMouseEnter={() => setHoveredId(e.id)}
                 onMouseLeave={() => setHoveredId((cur) => (cur === e.id ? null : cur))}
                 onClick={() => (e.employment === "archived" ? onOpenEmployee(e.id) : onAssign(e.id))}
                 {...restore}
               >
-                <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />
+                {!w.walking && <PixelQuestBubble workLabel={e.workLabel} title={e.holding?.title ?? null} />}
                 <PixelChibiSvg
                   name={e.name}
                   workLabel={e.workLabel}
@@ -989,14 +1091,18 @@ export function OfficeFloorMap({
                   facing={w.facing}
                   walking={w.walking}
                   stride={w.stride}
+                  executive={isCeo}
                   size={38}
                 />
-                <GatherNamePill
-                  name={e.name}
-                  dotColor={dotColorOf(e.workLabel)}
-                  iconText={iconText}
-                  selected={isHovered}
-                />
+                {!seatedAtDesk && (
+                  <GatherNamePill
+                    name={e.name}
+                    dotColor={dotColorOf(e.workLabel)}
+                    suffix={isCeo ? t("office.leadership.ceo") : undefined}
+                    iconText={iconText}
+                    selected={isHovered}
+                  />
+                )}
               </button>
             );
           })}

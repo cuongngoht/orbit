@@ -26,6 +26,8 @@ down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.p
   (atomic), suspend, reinstate, revoke -- each numbered in its slot, versioned (If-Match), audited, kept as history; the
   database holds one incumbent per slot and one appointment per employee. A person may grant an employee the right to
   give work to an employee or a department. A title, instructions or the profile's "may delegate" switch grant nothing.
+  The CEO belongs to no department: appointed from one, it leaves it (recorded); while CEO it is never moved into one
+  (`appointed_ceo`), and its work follows the company's policy, room and defaults.
   Office → Overview has a *Leadership* card; an employee's page its role and appointment history, and its grants on
   *Access*.
 - **Execution defaults and a provider change that keeps the employee.** A department's and the company's default

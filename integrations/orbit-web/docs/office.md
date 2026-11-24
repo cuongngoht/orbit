@@ -50,6 +50,9 @@ flowchart LR
 - **Domain purity**: `contexts/*/domain/` imports no framework, database, file system or HTTP (`boundaries.spec.ts`).
 - **Ports**: `SANDBOX_PROVIDER` (container or development `process`), `CONNECTION_SECRETS` (the credential store),
   `RUN_OUTCOMES` (Execution → Work).
+- **The CEO belongs to no department**: an employee appointed CEO from a department leaves it in the same transaction
+  (`EmployeeDepartmentChanged`), a move of the CEO into one is refused (`appointed_ceo`), and the database's
+  `appointment_matches()` holds it at commit -- so the CEO's work is the company's: its policy, its room, its defaults.
 - **Pure rules of Work** (`contexts/work/domain/`): `authority.ts` (whom a lead may give work to: its appointment in force
   and its grants), `target.ts` (who a mission goes to), `team.ts` (a plan's rules, `leadNext`: review, answer or wait),
   `data-authorization.ts` (what one attempt may read), `assignment.ts` (the state machine). Workforce keeps

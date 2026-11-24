@@ -31,6 +31,7 @@ export function PixelChibiSvg({
   walking = false,
   stride = 0,
   size = 50,
+  executive = false,
 }: {
   name: string;
   workLabel: WorkLabel;
@@ -39,12 +40,13 @@ export function PixelChibiSvg({
   walking?: boolean;
   stride?: 0 | 1;
   size?: number;
+  executive?: boolean;
 }) {
   const p = personaFor(name);
   const hair = hairFor(name);
   const kind = presenceKindOf(workLabel);
 
-  const isDirector = activity === "director";
+  const isDirector = executive || activity === "director";
   const shirt = isDirector ? "#1e3a5f" : p.shirt;
   const shirtTrim = isDirector ? "#f8fafc" : p.shirtTrim;
   const shirtShade = isDirector ? "#132640" : p.shirtShade;
@@ -222,7 +224,7 @@ export function GatherNamePill({
         fontWeight: 600,
         lineHeight: 1.3,
         whiteSpace: "nowrap",
-        maxWidth: "136px",
+        maxWidth: "188px",
         boxShadow: selected ? "0 0 0 2px #6366f1, 0 2px 6px rgba(0, 0, 0, 0.28)" : "0 1px 3px rgba(0, 0, 0, 0.22)",
       }}
     >

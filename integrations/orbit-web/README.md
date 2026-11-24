@@ -88,7 +88,7 @@ public origin, no Secure cookie setting -- and names the condition that failed. 
 person can reach.
 
 **The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
-one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0-rc01` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0-rc02` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
 Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
 makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
 `docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
@@ -104,7 +104,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.0-rc01
+  ghcr.io/cuongngoht/orbit-web:0.8.0-rc02
 ```
 
 | what | command |
@@ -128,8 +128,10 @@ docker run -d --name orbit-web --hostname orbit-web \
 **A fresh start.** 0.8.0 is Orbit Web's initial schema, and it starts from an empty database: nothing of an earlier Orbit
 Web is imported -- not the SQLite files of an older one (`/data/app/orbit-web.db`, `/data/governance/governance.db` stay
 in the data volume until you remove them), and not the Claude CLI's sign-in in `/data/claude` (each account connects its
-own CLIs). A database a development build of 0.8.0 migrated is refused at start, with the command that empties it
-(`db.js reset`, above), or remove the volumes.
+own CLIs). A database a development build or release candidate of 0.8.0 migrated -- 0.8.0-rc01's included: rc02 changed
+the initial schema in place (appointments, department policies, data shares, questions) -- is refused at start, with the
+command that empties it (`db.js reset --confirm=<database name> --with-data`, above), or remove the volumes. Nothing is
+migrated from rc01.
 
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<commit>] [--ca-file=<pem>]` (from this
 directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the employees'
@@ -660,11 +662,19 @@ files; it is refused while one of its sessions is answering.
 ## The Office: AI employees
 
 **Office** in the sidebar is a virtual office: departments, the employees in them, the work they hold, what needs you
-(*Needs me*), and recurring work (*Schedule*). Looking at it needs no AI connection; hiring needs one connected CLI
-whose models were read from your account.
+(*Needs me*), and recurring work (*Schedule*). The company starts EMPTY: **Activate** it once one AI connection of your
+account is usable -- for Chat, for Research, or to run employees; each connection's card says which, and why not -- and
+nothing comes with it (no department, employee, mission or CEO). Losing the connection later only changes what can run.
+
+**Leadership** (Office → Overview): appoint a **CEO** and one **manager** per department (a member of it); replace,
+suspend, reinstate or revoke an appointment -- each numbered, versioned and kept as history. Authority comes from an
+appointment, or from a **grant** you make on an employee's *Access* tab (it may give work to that employee or
+department) -- never from a title or instructions. Replacing a manager moves none of its open work: **Hand over** moves
+work, by your act. A department and the company may set **execution defaults** (connection, model and effort per
+runtime): what a mission overrides beats the employee's own, which beats its department's, then the company's.
 
 **Hire** takes five steps: *Identity* (a name, optionally from a template) → *Department & role* (title, duties,
-instructions, skills, a handoff standard, and **Team lead** if it may give parts of its work to colleagues) → *AI
+instructions, skills, a handoff standard; a "team lead" switch grants no authority by itself) → *AI
 runtime, model & effort* (a connected connection, a model and an effort from that connection's own catalog, the
 runtime's own web search where it has one, the Orbit plugin where you granted it for employees) → *Personal sandbox &
 resources* (a preset, or your own CPU, memory, desk storage, scratch, cache, processes and minutes per attempt, beside
@@ -677,7 +687,10 @@ account's storage budget, and never because CPU or memory are busy right now: it
 optionally **research sources** -- sources of one research workspace, each pinned at the revision it is at -- and what
 to do if the employee is busy: *Start now* (a busy employee refuses it, and nothing is created) or *Queue it* behind its
 current work. An employee holds one piece of work at a time; queued work starts by itself when it is free. A request
-names itself once (`Idempotency-Key`), so sending it twice gives one mission.
+names itself once (`Idempotency-Key`), so sending it twice gives one mission. Give it to **an employee**, **a
+department** (its manager in office takes it) or **the CEO**: the dialog shows who is responsible before you send, and
+if that changes before it arrives the work is refused, saying who is responsible now (`target_changed`), rather than
+given to someone you did not see.
 
 Work may also bring **repositories** (at most five): only ones its employee may use on its *Access* tab -- any other is
 refused when the work is given. Every attempt gets a snapshot of each, at its default branch, as a git bundle in `/input`
@@ -691,8 +704,9 @@ takes (48 MiB for all of them), is not brought in, and the employee is told why.
 -- when it ends:
 
 - the **tool plane**, the employee's workstation: its desk copied in as `/work` (with its toolbox), `/output` for what it
-  hands in, `/input` read-only (the pinned research revisions and, for a team lead, its parts' accepted deliverables),
-  `/cache`, a small `/tmp`, and for a team the mission's `/team` room. Inside it the employee has an unrestricted shell:
+  hands in, `/input` read-only (only what this attempt may read: the mission's sources for the work you gave, what its
+  lead shared for a part, its own parts' hand-ins for a lead -- each listed with why), `/cache`, a small `/tmp`, and for
+  a team its department's `/team` room (another department's is never there). Inside it the employee has an unrestricted shell:
   it builds, tests, installs dependencies, and writes scripts and skills in its toolbox, which its next work finds
   again. It holds no credential, has no capability or privilege, a read-only root, and the employee's CPU, memory,
   process and time limits.
@@ -769,12 +783,17 @@ Pause, resume, cancel and retry are there too, each against the version you read
 employee runs on stops its running attempt and blocks the work, saying why; nothing switches to another provider by
 itself.
 
-**A team.** A team lead's assignment may be split: its plan gives up to eight parts to colleagues, each with a goal,
-deliverables and criteria of its own, and what it waits for -- a plan whose parts wait for each other in a circle is
-refused whole, and nothing of it is made. The parts share the mission's **team room** (`/team`), and every change to
-it is kept with whose attempt made it (the mission's *Team room* tab). A part starts once the parts it waits for are
-accepted; the lead reviews each part as it is handed in -- accepting it, or asking its colleague for a revision --,
-reads the accepted parts' deliverables under `/input`, and hands the integrated result in to you.
+**A team, by the tree.** The CEO gives work to the managers (a department goes to its manager), a manager to the
+members of its department, anyone to whom you granted it. A plan gives up to eight parts, each with a goal,
+deliverables and criteria, what it waits for, and what it is **shared**: a part reads only what its lead shares on
+purpose (sources the lead reads, a finished part's summary or its files) -- a plan naming someone out of reach, waiting in
+a circle or sharing what the lead does not read is refused whole. A part that cannot go on **asks its lead**, whose next
+attempt answers it (or moves it up, saying why); only the mission's own questions -- or ones moved up to you for what is
+yours to decide -- reach *Needs me*. Each department's members share its **team room** (`/team`), every change kept with
+whose attempt made it. A lead reviews each part by the revision it read and hands in once every part has ended; you
+review the mission's result, and every revision stays as it was handed in. An attempt that delegated, asked or answered
+ends at once, by design, so a lead and its part never hold one execution slot together. Taking back what a lead shared
+(*Revoke* on the mission), or moving an employee to another department, stops an attempt that held it.
 
 **Recurring work** (*Schedule*): daily, weekly, monthly or quarterly, at a local time in a time zone (a time a clock
 change skips or repeats is resolved by a stated rule), makes one mission per period whoever asks; what happens to the
@@ -1127,7 +1146,8 @@ For one person, on their own machine, by default:
 - **AI employees** ([above](#the-office-ai-employees)): each attempt is two containers of its own, made by the allocator
   from fixed images, a fixed mount list and the employee's limits -- none of them taken from a request. The tool plane
   (the employee's shell) holds no credential, has no capability or privilege, a read-only root and no Docker socket, and
-  sees only its own desk, scratch, inputs, cache and its mission's team room; the model plane holds one connection's
+  sees only its own desk, scratch, the inputs its attempt may read (refused and recorded otherwise), cache and its
+  department's team room; the model plane holds one connection's
   login, with every built-in tool of the CLI off, and acts only through Orbit Web's tool endpoint under the attempt's own
   token (which opens nothing else: not the agent gateway, not an owner's route). The CLI's first line is checked, and a
   tool, server or plugin it was not given stops the attempt. Each plane reaches the outside only through a proxy of Orbit
@@ -1191,7 +1211,7 @@ For one person, on their own machine, by default:
 | `too_many_attempts` (HTTP 429) | too many failed sign-ins for that username or from that address: wait the time the page says (it doubles with each failure) |
 | Every browser of a user was signed out | the password was changed, *Sign out everywhere* was used, or `owner revoke-sessions` ran: sign in again |
 | Orbit Web refuses to start: *ORBIT_WEB_TRIAL=1 refused: …* | trial mode runs only where nobody else can reach it: the message names what to remove (an allowed host, an access token, the governed deployment, a public origin or the Secure cookie setting) |
-| *This database was created by a development build of 0.8.0* | 0.8.0 starts from an empty database: `db.js reset --confirm=<database name>` (Orbit Web stopped), or remove the volumes |
+| *This database was created by a development build or release candidate of Orbit Web 0.8.0* | 0.8.0 starts from an empty database, and rc02 does not migrate rc01's: `db.js reset --confirm=<database name> --with-data` (Orbit Web stopped), or remove the volumes |
 | The chats and governance of an earlier Orbit Web are gone after upgrading | by design: 0.8.0 starts on an empty PostgreSQL database and imports nothing from the SQLite files, which stay in the data volume |
 | *Connect Claude Code (or another CLI) in Settings → AI Connections first* | a chat, a research question and an employee's work run on your account's own connection: add one, and sign it in (the card shows the terminal command for a subscription) |
 | A connection says *Authentication required* | its login ended, was signed out, or its CLI now names another identity: sign it in again (*Reconnect*); one identity is connected to one account at a time |

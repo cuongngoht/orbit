@@ -10,16 +10,19 @@
 // The account's connectors (GitHub, Azure DevOps) the employee was let use add their tools (CONNECTOR_TOOLS): Orbit Web
 // asks them with its own sign-in, never the sandbox.
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { isDeliverableName } from "@orbit-web/contracts";
+import { CLARIFICATION_KINDS, isDeliverableName } from "@orbit-web/contracts";
 import { createHash } from "node:crypto";
 import { conflictWith, invalid, refused } from "../../shared/domain.js";
-import { employeeActor, systemActor, type Actor } from "../../shared/application/commands.js";
+import { employeeActor, OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
+import { Db } from "../../../infra/db/db.js";
+import { DepartmentPoliciesService } from "../../../modules/governance/department-policies.service.js";
+import { RevisionsService } from "../../../modules/governance/revisions.service.js";
 import { ArtifactStore } from "../infrastructure/artifact-store.js";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import type { GovernanceContext } from "../../../modules/auth/principal.js";
 import { CONNECTOR_TOOLS, type ConnectorTools } from "./connector-tools.port.js";
 import { ResearchInputs, type ClaimInput } from "./research-inputs.js";
-import { RUN_OUTCOMES, type RunOutcomes, type StagedArtifact } from "./run-outcomes.port.js";
+import { RUN_OUTCOMES, type AttemptContext, type RunOutcomes, type StagedArtifact } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type SandboxProvider } from "./sandbox.port.js";
 
 export interface ToolSpec {
@@ -44,13 +47,19 @@ const TOOLS: ToolSpec[] = [
   { name: "edit_file", description: "Replace one exact occurrence of a text in a file.", inputSchema: obj({ path: str("The file"), old_text: str("Text that occurs exactly once"), new_text: str("Its replacement") }, ["path", "old_text", "new_text"]) },
   { name: "shell", description: "Run a shell command in your sandbox (bash), in /work or a directory under it. Install packages, write and run scripts, build, test.", inputSchema: obj({ command: str("The command line"), cwd: str("A directory under /work (default /work)"), timeout_seconds: { type: "integer", minimum: 1, maximum: 3600 } }, ["command"]) },
   { name: "submit_handoff", description: "Hand in your result once the deliverables are in /output: a short summary and the claims it rests on. Cite a source you were given by its label (S1, S2 ...) and quote the exact words of it the claim rests on: Orbit checks the quote against the source.", inputSchema: obj({ summary: str("What you did and how you checked it"), claims: { type: "array", items: obj({ text: str("A claim of your result"), sources: { type: "array", items: { type: "string" }, description: "Labels of the sources it rests on, e.g. S1" }, quote: str("The exact words of the cited source the claim rests on"), url: str("A web page it rests on, if any") }, ["text"]) } }, ["summary"]) },
-  { name: "ask_question", description: "Ask the person who gave you the work a question you cannot continue without. The work waits for the answer.", inputSchema: obj({ question: str("The question") }, ["question"]) },
 ];
+
+// Asked of its lead (a part) or of the person who gave the work (the root): the tool says which.
+const askOf = (lead: { name: string } | null): ToolSpec => ({
+  name: "ask_question",
+  description: `Ask ${lead === null ? "the person who gave you the work" : `your lead, ${lead.name},`} a question you cannot continue without. Your attempt ends there: you continue, once, with the answer.`,
+  inputSchema: obj({ question: str("The question") }, ["question"]),
+});
 
 // Offered only to an employee who may give work to colleagues, and only while it reviews its team's parts.
 const DELEGATE: ToolSpec = {
   name: "delegate",
-  description: "Give parts of your assignment to colleagues (you stay responsible). Each part: a short key, the colleague (their id or exact name), a title and goal, the files it must produce, its acceptance criteria, the keys of parts it must wait for, the sources it may read (share_sources) and what it receives of a part it waits for (receives: its summary, or in full). A part reads nothing you do not share. Your attempt ends: you are woken to review what they hand in. /team is shared only with the colleagues of your own department.",
+  description: "Give parts of your assignment to the employees or departments you may give work to (you stay responsible). Each part: a short key, an employee (id or exact name) OR a department (id or exact name: its manager takes it), a title and goal, the files it must produce, its acceptance criteria, the keys of parts it must wait for, the sources it may read (share_sources) and what it receives of a part it waits for (receives: its summary, or in full). A part reads nothing you do not share. Your attempt ends: you are woken to review what they hand in, or to answer what they ask. /team is shared only with the colleagues of your own department.",
   inputSchema: obj(
     {
       parts: {
@@ -58,7 +67,8 @@ const DELEGATE: ToolSpec = {
         items: obj(
           {
             key: str("A short key: lower-case letters, digits, dashes"),
-            employee: str("The colleague's id or exact name"),
+            employee: str("An employee you may give work to: id or exact name"),
+            department: str("Or a department you may give work to: id or exact name (its manager takes the part)"),
             title: str("A short title"),
             goal: str("What this part must achieve"),
             deliverables: { type: "array", items: { type: "string" } },
@@ -67,7 +77,7 @@ const DELEGATE: ToolSpec = {
             share_sources: { type: "array", items: { type: "string" }, description: "Labels of the sources you were given that this part may read (S1, S2 ...), or [\"all\"]. Nothing is shared unless you say." },
             receives: { type: "array", items: obj({ from: str("The key of a part this one waits for"), as: { type: "string", enum: ["summary", "full"] } }, ["from", "as"]), description: "The accepted hand-in of a part it waits for: its summary alone, or in full (its files too)." },
           },
-          ["key", "employee", "title", "goal"],
+          ["key", "title", "goal"],
         ),
       },
     },
@@ -76,8 +86,33 @@ const DELEGATE: ToolSpec = {
 };
 const REVIEW_UNIT: ToolSpec = {
   name: "review_unit",
-  description: "Decide on a part your team handed in: accept it, or ask for a revision saying what must change (its colleague works on it again). Their files are in /input as unit-<key>-<file>.",
-  inputSchema: obj({ part: str("The part's key"), decision: { type: "string", enum: ["accept", "revise"] }, criteria: str("What must change (for a revision), or a note") }, ["part", "decision"]),
+  description: "Decide on a part your team handed in: accept it, or ask for a revision saying what must change (its colleague works on it again). Name the digest of the revision you reviewed. Their files are in /input as unit-<key>-<file>.",
+  inputSchema: obj({ part: str("The part's key"), decision: { type: "string", enum: ["accept", "revise"] }, digest: str("The digest of the hand-in you reviewed"), criteria: str("What must change (for a revision), or a note") }, ["part", "decision"]),
+};
+const ANSWER_QUESTION: ToolSpec = {
+  name: "answer_question",
+  description: "Answer a question your team asked you (its [q:<id>]): the colleague who asked continues, once, with your answer.",
+  inputSchema: obj({ question_id: str("The question's id, as [q:<id>] shows it"), answer: str("Your answer") }, ["question_id", "answer"]),
+};
+const ESCALATE_QUESTION: ToolSpec = {
+  name: "escalate_question",
+  description: "Move a question your team asked you one level up, when it is not yours to answer: to your own lead, or -- if you lead the whole mission -- to the person who gave the work, which takes a reason that is theirs (human_decision, beyond_authority, deadline, unanswered).",
+  inputSchema: obj({ question_id: str("The question's id"), why: { type: "string", enum: ["information", "human_decision", "beyond_authority", "deadline", "unanswered"] }, note: str("Why you cannot answer it") }, ["question_id", "why"]),
+};
+
+// Offered only to an employee holding an appointment in force: a department's manager proposes for its department, the
+// CEO for the company or any department. A DRAFT only: the owner validates, simulates and publishes it (or not).
+const PROPOSE_POLICY: ToolSpec = {
+  name: "propose_policy",
+  description: "Propose a policy change for the owner to review: your department's policy (as its manager) or, as the CEO, the company's or any department's. Give the whole document you propose. It is only a draft: nothing changes until the owner publishes it.",
+  inputSchema: obj(
+    {
+      scope: { type: "string", enum: ["department", "company"] },
+      department: str("The department's id or exact name (a manager may name only its own)"),
+      document: { type: "object", description: "The whole policy document you propose: a DepartmentPolicy for a department, the account's policy for the company" },
+    },
+    ["scope", "document"],
+  ),
 };
 
 const MEDIA: Record<string, string> = { ".md": "text/markdown", ".txt": "text/plain", ".csv": "text/csv", ".json": "application/json", ".html": "text/html", ".pdf": "application/pdf", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".py": "text/x-python", ".png": "image/png", ".jpg": "image/jpeg" };
@@ -115,17 +150,22 @@ export class ToolsService {
     @Inject(RUN_OUTCOMES) private readonly outcomes: RunOutcomes,
     @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
+    @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
+    @Inject(RevisionsService) private readonly revisions: RevisionsService,
+    @Inject(DepartmentPoliciesService) private readonly departmentPolicies: DepartmentPoliciesService,
+    @Inject(Db) private readonly db: Db,
     @Optional() @Inject(CONNECTOR_TOOLS) private readonly connectors: ConnectorTools | null = null,
   ) {}
 
   // The tools of this run: everyone's, a team's where it applies, and the connectors' the employee was let use.
   async list(runId: string): Promise<ToolSpec[]> {
     const run = await this.runs.byId(runId);
-    if (run === null) return TOOLS;
+    if (run === null) return [...TOOLS, askOf(null)];
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
-    if (ctx === null) return TOOLS;
+    if (ctx === null) return [...TOOLS, askOf(null)];
     const connectors = this.connectors === null ? [] : await this.connectors.tools(run.orbitId, run.employeeId);
-    return [...TOOLS, ...(ctx.team.canDelegate ? [DELEGATE] : []), ...(ctx.team.units.length > 0 ? [REVIEW_UNIT] : []), ...connectors];
+    const team = ctx.team;
+    return [...TOOLS, askOf(team.lead), ...(team.canDelegate ? [DELEGATE] : []), ...(team.units.length > 0 ? [REVIEW_UNIT] : []), ...(team.questions.length > 0 ? [ANSWER_QUESTION, ESCALATE_QUESTION] : []), ...(ctx.employee.appointment?.active === true ? [PROPOSE_POLICY] : []), ...connectors];
   }
 
   // `governance`: the run's own context (its token's), which a connector's ask is decided as.
@@ -182,14 +222,30 @@ export class ToolsService {
         const decision = args.decision === "accept" || args.decision === "revise" ? args.decision : null;
         if (decision === null) throw invalid("bad_argument", "decision must be accept or revise.");
         const criteria = args.criteria === undefined ? "" : text(args.criteria, "criteria", 4000);
-        const said = await this.outcomes.reviewUnit(this.actorOf(run, governance), run.assignmentId, run.fence, part, decision, criteria);
+        const digest = typeof args.digest === "string" && /^[0-9a-f]{64}$/.test(args.digest.trim()) ? args.digest.trim() : null;
+        const said = await this.outcomes.reviewUnit(this.actorOf(run, governance), run.assignmentId, run.fence, part, decision, criteria, digest);
         return { text: said, isError: false };
       }
+      case "answer_question": {
+        const id = text(args.question_id, "question_id", 64).trim().replace(/^\[?q:/, "").replace(/\]$/, "");
+        const answer = text(args.answer, "answer", 4000).trim();
+        if (answer.length === 0) throw invalid("bad_argument", "answer must say something.");
+        return { text: await this.outcomes.answerQuestion(this.actorOf(run, governance), run.assignmentId, run.fence, id, answer), isError: false };
+      }
+      case "escalate_question": {
+        const id = text(args.question_id, "question_id", 64).trim().replace(/^\[?q:/, "").replace(/\]$/, "");
+        const why = CLARIFICATION_KINDS.find((k) => k === args.why);
+        if (why === undefined) throw invalid("bad_argument", `why must be one of ${CLARIFICATION_KINDS.join(", ")}.`);
+        const note = args.note === undefined ? "" : text(args.note, "note", 1000);
+        return { text: await this.outcomes.escalateQuestion(this.actorOf(run, governance), run.assignmentId, run.fence, id, why, note), isError: false };
+      }
+      case "propose_policy":
+        return this.proposePolicy(run, args, governance, cur.employee.appointment);
       case "ask_question": {
         const q = text(args.question, "question", 4000).trim();
         if (q.length === 0) throw invalid("bad_argument", "question must say something.");
         await this.outcomes.question(this.actorOf(run, governance), run.assignmentId, run.fence, q);
-        return { text: "Your question was sent. The work now waits for the answer: stop here.", isError: false };
+        return { text: `Your question was sent to ${cur.team.lead === null ? "the person who gave you the work" : cur.team.lead.name}. Your attempt ends here: you continue, once, with the answer. Stop here.`, isError: false };
       }
       default:
         throw invalid("unknown_tool", `There is no tool named ${name}.`);
@@ -204,20 +260,19 @@ export class ToolsService {
 
   private async delegate(run: RunRecord, args: Record<string, unknown>, actor: Actor): Promise<ToolAnswer> {
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
-    if (ctx === null || !ctx.team.canDelegate) return { text: "Your profile does not let you give work to others: do it yourself.", isError: true };
+    if (ctx === null || !ctx.team.canDelegate) return { text: "You hold no appointment or grant that lets you give work to others: do it yourself.", isError: true };
     if (!Array.isArray(args.parts)) throw invalid("bad_argument", "parts must be a list.");
-    const byName = new Map(ctx.team.colleagues.map((c) => [c.name.toLowerCase(), c.id]));
-    const ids = new Set(ctx.team.colleagues.map((c) => c.id));
     const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 300)) : []);
+    const name = (v: unknown): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, 120) : undefined);
     const units = args.parts.slice(0, 20).map((p) => {
       const x = (typeof p === "object" && p !== null ? p : {}) as Record<string, unknown>;
-      const who = String(x.employee ?? "").trim();
       return {
         key: String(x.key ?? "").trim(),
-        employeeId: ids.has(who) ? who : (byName.get(who.toLowerCase()) ?? who),
+        employee: name(x.employee),
+        department: name(x.department),
         title: String(x.title ?? "").slice(0, 120),
         goal: String(x.goal ?? "").slice(0, 8000),
-        deliverables: list(x.deliverables).filter((n) => isDeliverableName(n)).map((name) => ({ name, required: true })),
+        deliverables: list(x.deliverables).filter((n) => isDeliverableName(n)).map((n) => ({ name: n, required: true })),
         acceptanceCriteria: list(x.criteria),
         dependsOn: list(x.waits_for),
         shareSources: list(x.share_sources),
@@ -228,7 +283,33 @@ export class ToolsService {
       };
     });
     const r = await this.outcomes.delegate(actor, run.assignmentId, run.fence, units);
-    return { text: `Gave ${r.parts} part(s) to your team. Stop here: you are woken to review what they hand in.`, isError: false };
+    return { text: `Gave ${r.parts} part(s) to your team. Your attempt ends here: you are woken to review what they hand in, or to answer what they ask. Stop here.`, isError: false };
+  }
+
+  // An appointee's draft, decided as the employee (governance.policy.propose) and kept as a draft its owner decides on.
+  private async proposePolicy(run: RunRecord, args: Record<string, unknown>, governance: GovernanceContext | null, appointment: AttemptContext["employee"]["appointment"]): Promise<ToolAnswer> {
+    if (appointment === null || !appointment.active) return { text: "Only an appointee in force (the CEO, a department's manager) proposes a policy.", isError: true };
+    if (governance === null || governance.principal.kind !== "agent") throw refused("no_context", "A policy is proposed only through the tool door.");
+    if (typeof args.document !== "object" || args.document === null || Array.isArray(args.document)) throw invalid("bad_argument", "document must be the whole policy you propose.");
+    await this.governance.authorize(employeeActor(governance, run.id), "governance.policy.propose", run.orbitId, { account: run.orbitId });
+    if (args.scope === "company") {
+      if (appointment.role !== "ceo") return { text: "Only the CEO proposes a change to the company's policy: propose your department's.", isError: true };
+      const draft = await this.revisions.propose(governance, args.document);
+      return { text: `Proposed the company's policy as draft ${draft.id}: the owner reviews it; nothing changes until they publish it.`, isError: false };
+    }
+    if (args.scope !== "department") throw invalid("bad_argument", "scope must be department or company.");
+    const named = typeof args.department === "string" ? args.department.trim() : "";
+    const departmentId = appointment.role === "manager" ? appointment.departmentId : await this.departmentNamed(run.orbitId, named);
+    if (departmentId === null) return { text: `There is no department "${named}".`, isError: true };
+    if (appointment.role === "manager" && named !== "" && named !== departmentId && (await this.departmentNamed(run.orbitId, named)) !== departmentId) return { text: "A manager proposes only its own department's policy.", isError: true };
+    const draft = await this.departmentPolicies.propose(governance, departmentId, args.document);
+    return { text: `Proposed the department's policy as draft ${draft.id}: the owner reviews it; nothing changes until they publish it.`, isError: false };
+  }
+
+  private async departmentNamed(orbitId: string, named: string): Promise<string | null> {
+    if (named === "") return null;
+    const r = await this.db.one("SELECT id FROM workforce.departments WHERE account_id = $1 AND archived_at IS NULL AND (id::text = $2 OR lower(name) = lower($2))", [orbitId, named]);
+    return r === null ? null : String(r.id);
   }
 
   private async shell(run: RunRecord, h: AttemptHandle, args: Record<string, unknown>): Promise<ToolAnswer> {

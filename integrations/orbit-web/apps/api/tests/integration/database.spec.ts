@@ -79,9 +79,9 @@ describe("an empty PostgreSQL database becomes Orbit Web's", () => {
     assert.deepEqual(await db.query("SELECT version, checksum, applied_at FROM orbit.schema_migrations ORDER BY version"), before);
   });
 
-  test("a database a development build of 0.8.0 made is refused, with the fresh start to run -- and so is one a newer build migrated", async () => {
+  test("a database a development build or release candidate of 0.8.0 made (rc01 too) is refused, with the fresh start to run -- and so is one a newer build migrated", async () => {
     const changed = MIGRATIONS.map((m) => ({ ...m, sql: `${m.sql}\n-- edited` }));
-    await assert.rejects(migrate(db, changed), (err: unknown) => err instanceof SchemaError && /development build/.test(err.message) && /db\.js reset --confirm=/.test(err.message));
+    await assert.rejects(migrate(db, changed), (err: unknown) => err instanceof SchemaError && /development build or release candidate/.test(err.message) && /0\.8\.0-rcNN/.test(err.message) && /db\.js reset --confirm=<database name> --with-data/.test(err.message));
     await assert.rejects(migrate(db, []), (err: unknown) => err instanceof SchemaError || err instanceof RangeError || err instanceof Error);
   });
 

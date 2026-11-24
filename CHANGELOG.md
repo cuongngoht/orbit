@@ -11,6 +11,59 @@ audit record that shows (ADR 0061). 0.8.0 is Orbit Web's initial schema and star
 plugin it bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, `skills/`, `hooks/` or
 `agents/` changed.
 
+### 0.8.0-rc02: a company, its departments and an AI workforce that works as a tree
+
+rc02 starts from an empty database too: its initial schema changed in place, and a database 0.8.0-rc01 made is refused
+at start with the command that empties it (`db.js reset --confirm=<database name> --with-data`, or `docker compose
+down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.published.yaml` names `0.8.0-rc02`.
+
+- **An empty company, activated on a usable connection** (ADR 0061 §8). *Activate* needs one AI connection of the
+  account usable for Chat, Research or running employees -- each said apart, with why not, on the connection's card and
+  on the activation card -- and makes the company alone: no preselected department, employee, mission or CEO (a request
+  naming departments is refused, 422 `departments_not_accepted`; two tabs at once make one company). Losing the
+  connection later changes readiness only.
+- **Appointments, never titles** (ADR 0061 §8). One CEO, one manager per department (a member of it): appoint, replace
+  (atomic), suspend, reinstate, revoke -- each numbered in its slot, versioned (If-Match), audited, kept as history; the
+  database holds one incumbent per slot and one appointment per employee. A person may grant an employee the right to
+  give work to an employee or a department. A title, instructions or the profile's "may delegate" switch grant nothing.
+  Office → Overview has a *Leadership* card; an employee's page its role and appointment history, and its grants on
+  *Access*.
+- **Execution defaults and a provider change that keeps the employee.** A department's and the company's default
+  connection, model and effort per runtime; a mission's override beats the employee's, which beats its department's,
+  which beats the company's, and each attempt keeps where each field came from. Changing an employee's provider is a new
+  revision of the same employee (its id, desk, history, artifacts and appointment kept). *Hand over* moves open work to
+  another employee by a person's act; *Repin* moves blocked or paused work to the profile in effect now.
+- **Resources, one source of truth.** Reserved scratch is what attempts hold now; observed use (memory now and at peak,
+  CPU seconds, sampled when) is shown apart from quota, reservation and committed storage.
+- **Department policies, within what the company delegates** (ADR 0061 §6). The company marks its rules mandatory or a
+  default a department may replace, and delegates per action, network and models what departments may decide; a
+  department's policy has its own drafts, validation (422 `exceeds_delegation`), simulation by the same `evaluate()`
+  enforcement uses, publication against the company revision read (409 `stale_company_policy`), history and rollback,
+  and applies to its employees' assignment runs only -- Chat, Research and people decide as before. A manager or the CEO
+  may propose a draft (`propose_policy`); only the owner publishes. Governance → *Departments*. A model outside the
+  employees' allow-list is refused at hire and at dispatch, never switched.
+- **Every employee acts as itself.** Its decisions and records name `employee:<id>`, with its assignment, mission and
+  department at dispatch -- never a service standing in for it.
+- **Each attempt reads only what it may** (ADR 0061 §9). The root reads the mission's sources (and repositories); a part
+  only what its lead shared on purpose -- a source the lead reads, a predecessor's accepted hand-in as its summary or in
+  full; a lead its direct parts' hand-ins. Inputs are staged from that grant alone and written down per attempt before it
+  starts; the sandbox is served only what the attempt's manifest names and the grant still gives (anything else is
+  refused and recorded). Team rooms are per department. A share revoked or an employee moved to another department stops
+  the attempt holding it (`office.access.revoked`).
+- **Work given to a department or to the CEO** (ADR 0061 §8). *Give work* to an employee, a department (its manager in
+  office) or the CEO, shown who is responsible before sending; a slot that moved since is refused (409
+  `target_changed`) and nothing is made; `no_ceo`, `no_manager`, `appointment_suspended` say why.
+- **Questions go up the tree; review follows it** (ADR 0061 §8). A part asks its lead, who is woken to answer (or moves
+  it up, saying why); the asker resumes once. Only the root's questions, or ones moved up for what is a person's, reach
+  *Needs me*. A lead reviews its parts by the digest of the revision read and hands in only once they all ended; the
+  person reviews the mission's result only. Every revision is kept as handed in (v1 asked to revise beside v2 accepted).
+  Bounded: 5 revisions, 3 plans and 3 questions per assignment.
+- **An attempt that delegated, asked or answered ends by design** -- a success, its compute given back at once -- so a lead
+  and its part never hold one execution slot together; each attempt says why it started.
+- **CI's deterministic tier passes as it should.** The two tests that need the real `codex` binary and its sandbox moved,
+  unchanged, to a native tier of their own (`npm run test:native -w @orbit-web/api`); `scripts/ci.mjs` says it is not run
+  there.
+
 - **The Office** (ADR 0061). Departments, employees and their work: *Overview*, *Work*, *Needs me*, *Schedule*, and a page
   for each employee and mission. **Hire** in five steps (identity; department and role, a team lead or not; the AI
   runtime, a model and an effort from that connection's own catalog, the runtime's own web search, the Orbit plugin

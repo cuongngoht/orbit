@@ -1,5 +1,5 @@
 // What the API answers, for the web app's tests.
-import { defaultAccountPolicy, type AuditEvent, type Rule } from "@orbit-web/governance-core";
+import { composeEmployeeModels, composeEmployeeNetwork, defaultAccountPolicy, departmentTableOf, type AccountPolicy, type AuditEvent, type DepartmentPolicy, type Rule } from "@orbit-web/governance-core";
 import {
   ORBIT_WEB_VERSION,
   type ApprovalView,
@@ -9,6 +9,8 @@ import {
   type AuthUser,
   type AzureStatus,
   type ConnectionState,
+  type DepartmentPolicyOverview,
+  type DepartmentRevisionView,
   type GitHubStatus,
   type GovernanceOverview,
   type LoginSnapshot,
@@ -29,6 +31,7 @@ import {
   type SourcesStatus,
   type TrialMode,
 } from "@orbit-web/contracts";
+import { DEPT_ACCOUNTING } from "./officeFixtures";
 
 // GET /api/settings, as a fresh Orbit Web answers it.
 export function settings(over: Partial<Settings> = {}): Settings {
@@ -384,6 +387,67 @@ export function approval(over: Partial<ApprovalView> = {}): ApprovalView {
     consumedAt: null,
     outcome: null,
     change: { files: 1, insertions: 1, deletions: 1, commits: 1, diffstat: " sum.mjs | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n" },
+    ...over,
+  };
+}
+
+// ---- a department's policy (governance-core department.ts) ------------------------------------------------------------
+//
+// The company delegates to its departments: tool.web up to allowed (its own rule for it a default a department's answer
+// replaces), repository.push up to "you approve first" (its own rule for it mandatory), employee network access up to
+// Restricted within *.example.com, and two models. A department's rows, network access and models are worked out by
+// governance-core itself, as the API works them out.
+
+export const DEPARTMENT_ID = DEPT_ACCOUNTING;
+export const DEPARTMENT_DIGEST = "8".repeat(64);
+export const DEPARTMENT_DRAFT_DIGEST = "7".repeat(64);
+
+// The company's policy: the governed deployment's default, delegating to its departments.
+export function delegatingPolicy(): AccountPolicy {
+  const policy = defaultAccountPolicy(ACCOUNT_ID, "governed");
+  return {
+    ...policy,
+    delegation: { departments: { actions: { "tool.web": "allow", "repository.push": "require_approval" }, employeeNetwork: { mode: "RESTRICTED", allowWithin: ["*.example.com"] }, models: { allow: ["claude:sonnet", "claude:opus"] } } },
+    rules: policy.rules.map((r) => (r.id === "web-tools" ? { ...r, binding: "default" as const } : r)),
+  };
+}
+
+// The department's own document: by default it says nothing, and inherits everything.
+export function departmentDocument(over: Partial<DepartmentPolicy> = {}): DepartmentPolicy {
+  return { apiVersion: "orbit.governance/v2", kind: "DepartmentPolicy", metadata: { accountId: ACCOUNT_ID, departmentId: DEPARTMENT_ID, name: "Accounting policy" }, rules: [], ...over };
+}
+
+// A revision of the department's policy, as GET .../policy/revisions/:id says it: by default its revision 1, in effect.
+export function departmentRevisionView(over: Partial<DepartmentRevisionView> = {}): DepartmentRevisionView {
+  return {
+    ...revisionView({ id: "dpr-1", digest: DEPARTMENT_DIGEST, name: "Accounting policy", source: "owner", createdBy: OWNER, updatedAt: "2026-11-21T09:00:00.000Z", confirmedBy: OWNER, confirmedAt: "2026-11-21T09:00:00.000Z", publishedAt: "2026-11-21T09:00:00.000Z", publishedBy: OWNER, authors: [OWNER] }),
+    document: departmentDocument(),
+    departmentId: DEPARTMENT_ID,
+    companyBase: "rev-1",
+    ...over,
+  };
+}
+
+// A draft of the department's policy, compared with its revision in effect (`dpr-1`).
+export function departmentDraftView(over: Partial<DepartmentRevisionView> = {}): DepartmentRevisionView {
+  return departmentRevisionView({ id: "dpr-2", revision: null, state: "DRAFT", digest: DEPARTMENT_DRAFT_DIGEST, name: "Accounting next", source: "copy", basedOn: "dpr-1", updatedAt: "2026-11-21T10:00:00.000Z", confirmedBy: null, confirmedAt: null, publishedAt: null, publishedBy: null, base: "dpr-1", ...over });
+}
+
+// GET /api/governance/departments/:id/policy, under the delegating company policy (revision 1) and the department's
+// revision in effect (none: it inherits the company's).
+export function departmentPolicyOverview(effective: DepartmentRevisionView | null, revisions: RevisionSummary[] = effective === null ? [] : [revisionSummary(effective)], over: Partial<DepartmentPolicyOverview> = {}): DepartmentPolicyOverview {
+  const company = delegatingPolicy();
+  const dept = effective === null ? null : (effective.document as DepartmentPolicy);
+  return {
+    departmentId: DEPARTMENT_ID,
+    departmentName: "Accounting",
+    companyRevision: { id: "rev-1", revision: 1 },
+    effective,
+    revisions,
+    rows: departmentTableOf(company, dept, DEPARTMENT_ID),
+    network: composeEmployeeNetwork(company, dept),
+    models: composeEmployeeModels(company, dept),
+    delegation: company.delegation?.departments ?? null,
     ...over,
   };
 }

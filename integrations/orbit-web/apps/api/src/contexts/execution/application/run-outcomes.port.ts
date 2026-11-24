@@ -1,7 +1,7 @@
 // What Execution reports to Work about a run (synchronous port, in the worker's transaction). Execution says what HAPPENED
 // (the run started, a handoff was submitted, a question was asked, the run ended and how); Work decides what it MEANS
 // for the assignment. Work registers its implementation, so Execution imports nothing of Work.
-import type { EmployeeProfile, RunState } from "@orbit-web/contracts";
+import type { ClarificationKind, EmployeeProfile, RunState } from "@orbit-web/contracts";
 import type { Actor } from "../../shared/application/commands.js";
 import type { AttemptRepository } from "./repository-bundles.port.js";
 
@@ -27,7 +27,8 @@ export interface RunEnd {
   // Why, in words (masked).
   detail: string | null;
   // The run ended because Orbit stopped it for this reason (a pause, a cancel, a lost lease, a dispatch refusal).
-  stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | null;
+  // `handed_over`: its work ended by design (it delegated, asked, answered): a success, the assignment already moved on.
+  stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | "handed_over" | null;
   // When the attempt started running (null: it never did): what it could have been shown.
   startedAt?: string | null;
 }
@@ -94,9 +95,17 @@ export interface AttemptContext {
   // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
   // what each handed in, and the mission's team room (null: none).
   team: {
+    // Whether it may give parts of the work to anyone: its appointment in force or a person's grant (never a title).
     canDelegate: boolean;
-    colleagues: { id: string; name: string; title: string }[];
+    // Whom: employees (by appointment or grant) and departments (each to its manager in office).
+    scope: { employees: { id: string; name: string; title: string; departmentName: string | null; via: string }[]; departments: { id: string; name: string; managerName: string | null; via: string }[] };
     units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; digest: string; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
+    // The questions its team asked it, still open (each answered with answer_question, or moved up).
+    questions: { id: string; askerName: string; unitKey: string | null; question: string; askedAt: string }[];
+    // Its lead (null: it reports to the person who gave the work).
+    lead: { name: string } | null;
+    // Plans it gave already (WORKFORCE_LIMITS.replanLimit bounds them).
+    planCount: number;
     // The room of its data domain (its department's, else the company's) when the mission has a team: null otherwise.
     room: TeamRoom | null;
   };
@@ -107,6 +116,9 @@ export interface AttemptContext {
     departmentId: string | null;
     // The profile revision the assignment pinned when it was claimed.
     profile: EmployeeProfile | null;
+    // The appointment it holds now (CEO, a department's manager) and whether it is in force: what lets it propose a
+    // policy for its scope -- never its title or a profile switch.
+    appointment: { role: "ceo" | "manager"; departmentId: string | null; active: boolean } | null;
     // May it run now (employment, its Personal Sandbox, its connection): the dispatch check.
     eligible: boolean;
     reason: string | null;
@@ -124,8 +136,6 @@ export interface TeamRoom {
 export interface RunOutcomes {
   // The assignment as the run sees it: may this attempt still act (its fence is the current one, the assignment holds)?
   current(orbitId: string, assignmentId: string, fence: number): Promise<AttemptContext | null>;
-  // What the attempt may read now (null: the assignment is gone): the input reader and the access watch ask it again.
-  data(orbitId: string, assignmentId: string): Promise<AttemptData | null>;
   // The team room of an attempt's data domain (its department at dispatch, else the company's), opened when the mission
   // has a team and that domain has no room yet; null when the mission has no team.
   roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null>;
@@ -139,15 +149,20 @@ export interface RunOutcomes {
   recovering(actor: Actor, assignmentId: string, fence: number, reason: string): Promise<void>;
   // A manager's plan: parts of its assignment given to colleagues (refused whole, with why).
   delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }>;
-  // A manager's decision on one part it reviews.
-  reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string): Promise<string>;
+  // A lead's decision on one part it reviews, naming the digest of the hand-in it looked at.
+  reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string, digest?: string | null): Promise<string>;
+  // A lead answers its team's question, or moves it one level up saying why.
+  answerQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, answer: string): Promise<string>;
+  escalateQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, kind: ClarificationKind, note: string): Promise<string>;
   // The team room as an attempt left it.
   teamRoomChanged(orbitId: string, roomId: string, by: { runId: string; assignmentId: string; employeeId: string }, files: { path: string; sha256: string; size: number }[]): Promise<number>;
 }
 
 export interface DelegatedUnit {
   key: string;
-  employeeId: string;
+  // Who takes it: an employee or a department (by id or exact name) its lead's authority reaches.
+  employee?: string;
+  department?: string;
   title: string;
   goal: string;
   deliverables: { name: string; required: boolean }[];
@@ -160,3 +175,12 @@ export interface DelegatedUnit {
 }
 
 export const RUN_OUTCOMES = Symbol("RUN_OUTCOMES");
+
+// WHAT ONE ATTEMPT MAY READ, asked by the input reader and the access watch (Work answers it from its own records). A port
+// of its own, apart from RUN_OUTCOMES: the sandbox provider reads inputs through it, so it must reach nothing that needs
+// the sandbox provider.
+export interface AttemptDataPort {
+  of(orbitId: string, assignmentId: string): Promise<AttemptData | null>;
+}
+
+export const ATTEMPT_DATA = Symbol("ATTEMPT_DATA");

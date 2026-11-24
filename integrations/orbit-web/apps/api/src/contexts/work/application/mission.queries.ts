@@ -11,14 +11,18 @@ import {
   type AssignmentSummary,
   type AssignmentView,
   type ArtifactView,
+  type ClarificationView,
   type HandoffClaim,
   type HandoffView,
   type Inbox,
   type MissionDetail,
   type MissionList,
   type MissionSummary,
+  type ResponsibleNow,
   type TimelineEntry,
 } from "@orbit-web/contracts";
+import { ClarificationRepository } from "../infrastructure/clarifications.repository.js";
+import { TeamService } from "./team.service.js";
 import { Db, type Row } from "../../../infra/db/db.js";
 import { RunViews } from "../../execution/application/run-views.js";
 import { missing } from "../../shared/domain.js";
@@ -30,22 +34,29 @@ const PAGE = 50;
 const s = (v: unknown): string => String(v);
 const sn = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
-// What a person may do with an assignment in its state (the command decides again when asked).
-export function actionsOf(state: AssignmentState, waitingOn: string | null): AssignmentAction[] {
+// What a person may do with an assignment in its state (the command decides again when asked). A part's hand-in is its
+// lead's to review, never the person's; a question is the person's to answer only when it was asked of them (the root's,
+// or one moved up to them).
+export function actionsOf(state: AssignmentState, waitingOn: string | null, o: { root: boolean; question: "owner" | "lead" | null } = { root: true, question: waitingOn === "information" ? "owner" : null }): AssignmentAction[] {
   switch (state) {
     case "QUEUED":
-      return ["cancel"];
+      return ["hand_over", "cancel"];
     case "ASSIGNED":
+      return ["pause", "hand_over", "cancel"];
     case "RUNNING":
+    case "REVIEWING":
+    case "ANSWERING":
       return ["pause", "cancel"];
+    case "WAITING_FOR_SUBORDINATES":
+      return ["pause", "hand_over", "cancel"];
     case "AWAITING_ACCEPTANCE":
-      return ["accept", "request_revision", "pause", "cancel"];
+      return o.root ? ["accept", "request_revision", "pause", "cancel"] : ["pause", "cancel"];
     case "BLOCKED":
-      return [waitingOn === "information" ? "answer" : "retry", "pause", "cancel"];
+      return [...(o.question === "owner" ? (["answer"] as const) : o.question === "lead" ? [] : (["retry"] as const)), "pause", "hand_over", "repin", "cancel"];
     case "RECOVERING":
       return ["retry", "cancel"];
     case "PAUSED":
-      return ["resume", "cancel"];
+      return ["resume", "hand_over", "repin", "cancel"];
     default:
       return [];
   }
@@ -76,6 +87,12 @@ function nextActionOf(a: AssignmentSummary): string | null {
       return `${a.employeeName} is working on it.`;
     case "AWAITING_ACCEPTANCE":
       return "Review the result: accept it or request a revision.";
+    case "WAITING_FOR_SUBORDINATES":
+      return `${a.employeeName} waits for their team.`;
+    case "REVIEWING":
+      return `${a.employeeName} reviews their team's work.`;
+    case "ANSWERING":
+      return `${a.employeeName} answers their team's questions.`;
     case "BLOCKED":
       return a.waitingOn === "information" ? `Answer ${a.employeeName}'s question.` : "Look at why it is blocked, then retry or cancel.";
     case "PAUSED":
@@ -138,9 +155,49 @@ function sentenceOf(type: string, p: Record<string, unknown>): string {
       return p.published === true ? `Published to the employee's desk (${num("changed")} file(s) changed).` : `Not published to the employee's desk: ${str("reason")}`;
     case "StaleResultRejected":
       return "A result of a replaced attempt was kept as history, not acted on.";
+    case "AssignmentDelegated":
+      return `Gave ${num("units")} part(s) to its team.`;
+    case "MissionPlanRevised":
+      return `The plan was revised (${num("parts")} part(s) given).`;
+    case "AssignmentReviewing":
+      return "Woken to review its team's work.";
+    case "AssignmentAnswering":
+      return "Woken to answer its team's questions.";
+    case "ClarificationRequested":
+      return str("addressee") === "lead" ? "A question was asked of its lead." : "A question was asked of you.";
+    case "ClarificationAnswered":
+      return str("by") === "lead" ? "Its lead answered the question." : "You answered the question.";
+    case "ClarificationEscalated":
+      return str("addressee") === "owner" ? `A question was moved up to you (${str("kind").replace(/_/g, " ")}).` : "A question was moved up to the next lead.";
+    case "ClarificationWithdrawn":
+      return "A question was withdrawn: the one who asked ended.";
+    case "AssignmentHandedOver":
+      return "The work was handed over to another employee.";
     default:
       return type;
   }
+}
+
+// WHO HOLDS THE MISSION'S NEXT MOVE NOW, and why: the employees acting, the leads reviewing or asked a question, and the
+// person -- for what is theirs (the root's result, a question asked of them, a block, a pause).
+export function responsibleNow(assignments: readonly AssignmentView[], questions: readonly ClarificationView[], handoffs: readonly HandoffView[]): ResponsibleNow[] {
+  const out: ResponsibleNow[] = [];
+  const byId = new Map(assignments.map((a) => [a.id, a]));
+  const you = (a: AssignmentView, what: string, why: string) => out.push({ assignmentId: a.id, employeeId: null, name: "You", what, why });
+  for (const a of assignments) {
+    const q = questions.find((c) => c.askerAssignmentId === a.id && c.state === "open");
+    const latest = handoffs.find((h) => h.assignmentId === a.id && h.status === "submitted");
+    if (a.state === "RUNNING" || a.state === "ASSIGNED" || a.state === "RECOVERING") out.push({ assignmentId: a.id, employeeId: a.employeeId, name: a.employeeName, what: a.parentId === null ? "works on the mission" : `works on "${a.title}"`, why: a.lastRun?.wakeReason ?? "it was given the work" });
+    else if (a.state === "REVIEWING") out.push({ assignmentId: a.id, employeeId: a.employeeId, name: a.employeeName, what: "reviews its team's work", why: a.lastRun?.wakeReason ?? "its team handed in" });
+    else if (a.state === "ANSWERING") out.push({ assignmentId: a.id, employeeId: a.employeeId, name: a.employeeName, what: "answers its team's questions", why: a.lastRun?.wakeReason ?? "its team asked" });
+    else if (a.state === "AWAITING_ACCEPTANCE" && a.parentId === null) you(a, `review revision ${latest?.revision ?? a.handoffRevision}`, "the mission's result was handed in to you");
+    else if (a.state === "AWAITING_ACCEPTANCE") out.push({ assignmentId: a.id, employeeId: byId.get(a.parentId as string)?.employeeId ?? null, name: a.leadName ?? "its lead", what: `reviews "${a.title}" (revision ${latest?.revision ?? a.handoffRevision})`, why: `${a.employeeName} handed it in` });
+    else if (a.state === "BLOCKED" && q !== undefined && q.addressee === "lead") out.push({ assignmentId: a.id, employeeId: q.addresseeAssignmentId === null ? null : (byId.get(q.addresseeAssignmentId)?.employeeId ?? null), name: q.addresseeName ?? "its lead", what: `answers ${a.employeeName}`, why: q.question.slice(0, 300) });
+    else if (a.state === "BLOCKED" && q !== undefined) you(a, `answer ${a.employeeName}`, q.question.slice(0, 300));
+    else if (a.state === "BLOCKED") you(a, `decide on ${a.employeeName}'s blocked work`, a.reason ?? "it is blocked");
+    else if (a.state === "PAUSED") you(a, `resume ${a.employeeName}'s work`, a.reason ?? "it was paused");
+  }
+  return out;
 }
 
 @Injectable()
@@ -151,6 +208,8 @@ export class MissionQueries {
     @Inject(DecisionRepository) private readonly decisions: DecisionRepository,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(DeliveriesService) private readonly deliveries: DeliveriesService,
+    @Inject(ClarificationRepository) private readonly questions: ClarificationRepository,
+    @Inject(TeamService) private readonly team: TeamService,
     @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
@@ -226,15 +285,28 @@ export class MissionQueries {
       [orbitId, missionId],
     );
     const runs = await this.runViews.ofAssignments(orbitId, rows.map((r) => s(r.id)));
+    const clarifications = await this.questions.ofMission(orbitId, missionId);
+    const names = new Map(rows.map((r) => [s(r.id), s(r.employee_name ?? "")]));
+    const departments = new Map((await this.db.query("SELECT id, name FROM workforce.departments WHERE account_id = $1", [orbitId])).map((d) => [s(d.id), s(d.name)]));
     const assignments: AssignmentView[] = rows.map((r) => {
       const base = summaryOf(r);
       const run = runs.get(base.id);
       const brief = r.brief as { goal: string; deliverables: AssignmentView["brief"]["deliverables"]; acceptanceCriteria: string[]; dependsOn?: string[] };
       const pinned = (r.pinned ?? null) as { profileRevision?: number; departmentId?: string | null; departmentName?: string | null; execution?: AssignmentView["pinned"]["execution"] } | null;
+      const parentId = sn(r.parent_id);
+      const open = clarifications.find((c) => c.askerAssignmentId === base.id && c.state === "open") ?? null;
+      const targetDepartment = sn(r.target_department_id);
       return {
         ...base,
-        parentId: sn(r.parent_id),
+        // A part is named by its own title (the first line of its brief), the root by its mission's.
+        title: parentId === null ? base.title : (brief.goal.split("\n")[0] ?? base.title).slice(0, 120),
+        parentId,
         unitKey: sn(r.unit_key),
+        target: r.target_kind === null ? null : { kind: s(r.target_kind) as "employee" | "department" | "ceo", departmentId: targetDepartment, departmentName: targetDepartment === null ? null : (departments.get(targetDepartment) ?? null), appointmentId: sn(r.target_appointment_id), appointmentRevision: r.target_appointment_revision === null ? null : Number(r.target_appointment_revision) },
+        reviewedBy: parentId === null ? ("owner" as const) : ("lead" as const),
+        leadName: parentId === null ? null : (names.get(parentId) ?? null),
+        planCount: Number(r.plan_count ?? 0),
+        questionCount: Number(r.question_count ?? 0),
         brief: { goal: brief.goal, deliverables: brief.deliverables, acceptanceCriteria: brief.acceptanceCriteria, dependsOn: brief.dependsOn ?? [] },
         handoffRevision: Number(r.handoff_revision),
         reworkCount: Number(r.rework_count),
@@ -244,7 +316,7 @@ export class MissionQueries {
         claimedAt: sn(r.claimed_at),
         finishedAt: sn(r.finished_at),
         createdAt: s(r.created_at),
-        actions: actionsOf(base.state, base.waitingOn),
+        actions: actionsOf(base.state, base.waitingOn, { root: parentId === null, question: open === null ? null : open.addressee }),
       };
     });
     const root = assignments.find((a) => a.parentId === null) ?? assignments[0];
@@ -255,6 +327,10 @@ export class MissionQueries {
       title: s(m.title),
       goal: s(m.goal),
       state: s(m.state) as MissionDetail["state"],
+      target: root.target,
+      responsibleNow: responsibleNow(assignments, clarifications, handoffs),
+      clarifications,
+      dataShares: await this.team.missionShares(orbitId, missionId),
       assignment: root,
       deadline: sn(m.deadline),
       nextAction: nextActionOf(root),

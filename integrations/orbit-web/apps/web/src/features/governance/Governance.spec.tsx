@@ -63,12 +63,12 @@ describe("the account's governance", () => {
     expect(api.calls.map((c) => `${c.method} ${c.path}`)).toEqual(["GET /api/governance/overview"]);
   });
 
-  test("its pages are the account's own: policy, workspaces, research, employee desks, approvals, decisions, audit, findings, reports", async () => {
+  test("its pages are the account's own: policy, departments, workspaces, research, employee desks, approvals, decisions, audit, findings, reports", async () => {
     fakeApi().on("GET", "/api/governance/overview", () => governanceOverview());
     const go = vi.fn();
     renderLive(<GovernanceView page="overview" item={null} go={go} account={ACCOUNT} />);
     const nav = screen.getByRole("navigation", { name: "Governance" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Overview", "Policy", "Workspaces", "Research", "Employee desks", "Approvals", "Decisions", "Audit timeline", "Security findings", "Daily reports"]);
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Overview", "Policy", "Departments", "Workspaces", "Research", "Employee desks", "Approvals", "Decisions", "Audit timeline", "Security findings", "Daily reports"]);
     await userEvent.click(await screen.findByRole("button", { name: /Research workspaces/ }));
     expect(go).toHaveBeenCalledWith("research");
   });

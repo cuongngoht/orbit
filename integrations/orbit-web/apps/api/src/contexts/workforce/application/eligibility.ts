@@ -7,6 +7,7 @@ import type { EmployeeProfile, Employment, ExecutionProfile, ExecutionSources } 
 import { WORKING } from "../domain/employee.js";
 import { resolveExecution } from "../domain/execution-precedence.js";
 import { ConnectionsReader, employeeUse, type ConnectionFacts } from "../infrastructure/connections.reader.js";
+import { AppointmentRepository } from "../infrastructure/appointments.repository.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository, type SandboxRecord } from "../infrastructure/repositories.js";
 
 export interface Eligibility {
@@ -24,6 +25,8 @@ export interface Eligibility {
   sources: ExecutionSources;
   profile: EmployeeProfile;
   sandboxId: string | null;
+  // The appointment it holds and whether it is in force (a suspended one grants nothing): authority, never a title.
+  appointment: { id: string; role: "ceo" | "manager"; departmentId: string | null; active: boolean } | null;
 }
 
 @Injectable()
@@ -34,6 +37,7 @@ export class EmployeeEligibility {
     @Inject(DepartmentRepository) private readonly departments: DepartmentRepository,
     @Inject(ConnectionsReader) private readonly connections: ConnectionsReader,
     @Inject(OfficeRepository) private readonly offices: OfficeRepository,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
   ) {}
 
   // Null: no such employee in this account.
@@ -49,6 +53,7 @@ export class EmployeeEligibility {
     const connection = connectionId !== null ? await this.connections.get(orbitId, connectionId) : await this.connections.defaultFor(orbitId, profile.execution.runtime);
     const unresolved = resolved.unresolved.length > 0 ? `${d.name}'s profile leaves its ${resolved.unresolved.join(" and ")} to its department or company, and neither names one: set a default, or choose it on the profile.` : null;
     const reason = unresolved ?? this.reasonOf(d.name, d.employment, d.expiresAt, sandbox, connection);
+    const held = (await this.appointments.heldBy(orbitId, employeeId))?.data ?? null;
     return {
       eligible: reason === null,
       reason,
@@ -62,6 +67,7 @@ export class EmployeeEligibility {
       sources: resolved.sources,
       profile,
       sandboxId: sandbox?.id ?? null,
+      appointment: held === null ? null : { id: held.id, role: held.role, departmentId: held.departmentId, active: held.state === "active" },
     };
   }
 

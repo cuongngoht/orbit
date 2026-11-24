@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AssignmentView, type EmployeeDetail, type HandoffView, type Inbox, type MissionAccepted, type MissionDetail, type Office, type RuntimeConnection } from "@orbit-web/contracts";
-import { ResearchInputs } from "../../src/contexts/execution/application/research-inputs.js";
+import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";

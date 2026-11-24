@@ -45,8 +45,11 @@ describe("assigning work", () => {
     expect(screen.getByText(/It waits behind Bao's current work\. State: Queued\./)).toBeInTheDocument();
     const posts = api.calls.filter((c) => c.method === "POST" && c.path === "/api/missions");
     expect(posts).toHaveLength(2);
-    expect(posts[0]?.body).toMatchObject({ goal: "Review the NDA", targetEmployeeId: EMP_BAO, whenBusy: "reject", deliverables: [{ name: "nda-review.md", required: true }] });
-    expect(posts[1]?.body).toMatchObject({ goal: "Review the NDA", targetEmployeeId: EMP_BAO, whenBusy: "enqueue" });
+    expect(posts[0]?.body).toMatchObject({ goal: "Review the NDA", target: { kind: "employee", employeeId: EMP_BAO }, whenBusy: "reject", deliverables: [{ name: "nda-review.md", required: true }] });
+    expect(posts[1]?.body).toMatchObject({ goal: "Review the NDA", target: { kind: "employee", employeeId: EMP_BAO }, whenBusy: "enqueue" });
+    // An employee named by the person: no legacy field beside it, and nobody "expected" to check against.
+    expect(posts[0]?.body).not.toHaveProperty("targetEmployeeId");
+    expect(posts[0]?.body).not.toHaveProperty("expectedAssignee");
     const k1 = posts[0]?.headers["idempotency-key"];
     const k2 = posts[1]?.headers["idempotency-key"];
     expect(k1).toMatch(/^[A-Za-z0-9._:-]{8,128}$/);

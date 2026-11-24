@@ -113,7 +113,7 @@ export class ConnectorBroker implements ConnectorTools {
       const target = this.targetOf(name, args);
       if (!inScope(grant?.repositories ?? null, target)) refuse(`${this.said(target)} is not among the repositories you were let use on ${label}.`);
       const resource = connector === "github" ? `github:${target.owner}/${target.name ?? ""}` : `azure-devops:${target.owner}/${target.project ?? ""}`;
-      const decision = await this.policy.decide(ctx, { action: "tool.connector", resource, scope: "ACCOUNT_EMPLOYEE", params: { connector: resource } });
+      const decision = await this.policy.decide(ctx, { action: "tool.connector", resource, scope: "ACCOUNT_EMPLOYEE", params: { connector: resource }, grant: "held" });
       if (decision.verdict !== "allow") refuse(`The account's policy in effect does not let you use ${resource} (${decision.reasonCodes.join(", ") || decision.verdict}; decision ${decision.decisionId}).`);
       // A write passes every gate a read does first (above: the grant, its scope, the policy's word on this resource),
       // then its own: let write, the item its project's, and the write's own decision (connector-writes.ts).

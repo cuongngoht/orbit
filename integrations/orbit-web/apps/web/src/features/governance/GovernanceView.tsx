@@ -1,6 +1,6 @@
 // THE GOVERNANCE CONSOLE of the account this browser is signed in to: its policy and the overrides that narrow it, its
-// chats and research workspaces, what was decided, what waits for its owner, the audit record, findings and reports.
-// It opens with the sign-in itself -- there is no second sign-in, no operator and no role: the person whose browser
+// departments' policies, its chats and research workspaces, what was decided, what waits for its owner, the audit
+// record, findings and reports. It opens with the sign-in itself -- there is no second sign-in, no operator and no role: the person whose browser
 // finished the Claude sign-in owns the account and governs it, and nobody else's. Every page reads the API, which holds
 // every route to this browser's session whatever a page shows.
 import { Avatar, Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
@@ -18,6 +18,7 @@ import {
   PolicyIcon,
   ReportsIcon,
   ResearchIcon,
+  RosterIcon,
   WorkspacesIcon,
   toneColor,
   type IconTone,
@@ -28,6 +29,7 @@ import { useI18n, type MessageKey } from "../../i18n";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { AuditPage } from "./AuditPage";
 import { DecisionsPage } from "./DecisionsPage";
+import { DepartmentsPage } from "./DepartmentsPage";
 import { EmployeeDesksPage } from "./EmployeeDesksPage";
 import { FindingsPage } from "./FindingsPage";
 import { OverviewPage } from "./OverviewPage";
@@ -38,6 +40,7 @@ import { ResourcesPage } from "./ResourcesPage";
 const TITLE_KEYS: Record<GovernancePage, MessageKey> = {
   overview: "governance.nav.overview",
   policy: "governance.nav.policy",
+  departments: "governance.nav.departments",
   workspaces: "governance.nav.workspaces",
   research: "governance.nav.research",
   desks: "governance.nav.desks",
@@ -51,6 +54,7 @@ const TITLE_KEYS: Record<GovernancePage, MessageKey> = {
 const NAV_META: Record<GovernancePage, { tone: IconTone; icon: (active: boolean) => ReactElement }> = {
   overview: { tone: "brand", icon: (active) => <OverviewIcon size={16} active={active} /> },
   policy: { tone: "brand", icon: (active) => <PolicyIcon size={16} active={active} /> },
+  departments: { tone: "teal", icon: (active) => <RosterIcon size={16} active={active} /> },
   workspaces: { tone: "brand", icon: (active) => <WorkspacesIcon size={16} active={active} /> },
   research: { tone: "teal", icon: (active) => <ResearchIcon size={16} active={active} /> },
   desks: { tone: "neutral", icon: (active) => <DesksIcon size={16} active={active} /> },
@@ -188,6 +192,7 @@ const useStyles = makeStyles({
 
 function Page({ page, item, go }: { page: GovernancePage; item: string | null; go: (page: GovernancePage, item?: string | null) => void }): ReactNode {
   if (page === "policy") return <PolicyPage item={item} go={go} />;
+  if (page === "departments") return <DepartmentsPage item={item} go={go} />;
   if (page === "workspaces") return <ResourcesPage kind="workspace" item={item} go={go} />;
   if (page === "research") return <ResourcesPage kind="research_workspace" item={item} go={go} />;
   if (page === "desks") return <EmployeeDesksPage item={item} go={go} />;

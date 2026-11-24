@@ -45,14 +45,17 @@ export const isAllowEntry = (v: string): boolean => v.length <= 253 && HOST.test
 const MiB = 1024 * 1024;
 const GiB = 1024 * MiB;
 
-interface LimitSpec {
+export interface LimitSpec {
   key: keyof NetworkLimits;
   labelKey: MessageKey;
   // The unit a person types, and how many of the stored unit one of it is.
   factor: number;
 }
 
-const LIMITS: LimitSpec[] = [
+// A limit's value in the unit a person reads and types it in.
+export const inUnit = (spec: LimitSpec, value: number): string => String(Math.round((value / spec.factor) * 100) / 100);
+
+export const LIMITS: LimitSpec[] = [
   { key: "bandwidthMbpsPerRun", labelKey: "governance.network.limit.bandwidthMbpsPerRun", factor: 1 },
   { key: "downloadBytesPerRun", labelKey: "governance.network.limit.downloadBytesPerRun", factor: MiB },
   { key: "downloadBytesPerDay", labelKey: "governance.network.limit.downloadBytesPerDay", factor: GiB },
@@ -68,13 +71,14 @@ const useStyles = makeStyles({
   warn: { color: tokens.colorPaletteDarkOrangeForeground1 },
 });
 
-function LimitField({ spec, value, editable, onChange }: { spec: LimitSpec; value: number | undefined; editable: boolean; onChange: (v: number | undefined) => void }) {
+// One limit, typed in its unit; empty is no limit (or, where `hint` says so, what something else decides).
+export function LimitField({ spec, value, editable, onChange, hint }: { spec: LimitSpec; value: number | undefined; editable: boolean; onChange: (v: number | undefined) => void; hint?: string }) {
   const { t } = useI18n();
-  const shown = value === undefined ? "" : String(Math.round((value / spec.factor) * 100) / 100);
+  const shown = value === undefined ? "" : inUnit(spec, value);
   const [draft, setDraft] = useState<{ text: string; value: number | undefined } | null>(null);
   const text = draft !== null && draft.value === value ? draft.text : shown;
   return (
-    <Field label={t(spec.labelKey)} hint={t("governance.network.limitHint")}>
+    <Field label={t(spec.labelKey)} hint={hint ?? t("governance.network.limitHint")}>
       <Input
         type="number"
         min={0}

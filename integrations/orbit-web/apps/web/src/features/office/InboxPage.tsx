@@ -2,12 +2,16 @@
 // information, settle a run or a delivery, and work that cannot go on: BLOCKED (retry it, or cancel it) or UNSCHEDULABLE
 // (it can never start as configured: the numbers are said, and the ways out -- the employee's resources, the operator's
 // authorization, or cancelling it). A decision is pinned to the version it was shown with.
+//
+// A question says who asked it -- read from its mission -- and, when it came from a part of a team, that its lead moved
+// it up: what reaches the person from below is only what is theirs to decide. Its words are the server's, plain text.
 import { Badge, Button, Field, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Clock16Regular } from "@fluentui/react-icons";
 import { ShieldClearIcon } from "../../components/SectionIcons";
-import { INBOX_KIND_TEXT, type Inbox, type InboxItem } from "@orbit-web/contracts";
+import { INBOX_KIND_TEXT, type Inbox, type InboxItem, type MissionDetail } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
+import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
@@ -34,12 +38,36 @@ const useStyles = makeStyles({
   },
 });
 
+// What an open question's mission says of it: who asked, the lead who moved it up to the person (if one did), and the
+// names of the assignments it refers to (an item's `waiting` may name one: `assignment:<id>`).
+function useQuestion(item: InboxItem): { askedBy: string | null; movedUpBy: string | null; names: Map<string, string> } | null {
+  const asks = item.state === "open" && item.kind === "information" && item.assignmentId !== null;
+  const mission = useResource<MissionDetail>(asks ? () => office.mission(item.missionId) : null, [asks, item.missionId]);
+  const m = asks ? mission.data : null;
+  if (m === null) return null;
+  const asked = m.clarifications.filter((c) => c.askerAssignmentId === item.assignmentId);
+  const c = asked.find((q) => q.state === "open") ?? asked.at(-1) ?? null;
+  // The hop that brought it to the person, and the lead that had it just before.
+  const up = c === null ? -1 : c.route.findIndex((h) => h.addressee === "owner");
+  const lead = c !== null && up > 0 ? c.route[up - 1] : undefined;
+  return {
+    askedBy: c?.askerName ?? m.assignments.find((a) => a.id === item.assignmentId)?.employeeName ?? null,
+    movedUpBy: lead === undefined ? null : (lead.addresseeName ?? ""),
+    names: new Map(m.assignments.map((a) => [a.id, a.employeeName])),
+  };
+}
+
+const ASSIGNMENT_REF = "assignment:";
+
 function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const act = useAction();
   const [answer, setAnswer] = useState("");
+  const question = useQuestion(item);
+  // Who waits, by name: a reference to an assignment is said as its employee, or not at all.
+  const waiting = item.waiting?.startsWith(ASSIGNMENT_REF) ? (question?.names.get(item.waiting.slice(ASSIGNMENT_REF.length)) ?? null) : item.waiting;
   const version = item.pin.assignmentVersion;
   const command = (c: "cancel" | "retry" | "answer", body?: unknown) => {
     if (item.assignmentId === null || version === null) return;
@@ -72,12 +100,18 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
           {item.deadline ? t("office.inbox.decideBy", { at: when(item.deadline) }) : ""}
         </Text>
       </div>
-      <Text size={300} className={o.wrap}>
+      {question?.askedBy && (
+        <Text size={200} className={o.wrap}>
+          {t("office.inbox.askedBy", { name: question.askedBy })}
+          {question.movedUpBy !== null ? ` · ${question.movedUpBy === "" ? t("office.inbox.movedUpByItsLead") : t("office.inbox.movedUpBy", { lead: question.movedUpBy })}` : ""}
+        </Text>
+      )}
+      <Text size={300} className={o.wrap} style={{ whiteSpace: "pre-wrap" }}>
         {item.reason}
       </Text>
-      {item.waiting && (
+      {waiting && (
         <Callout tone="info" icon={<Clock16Regular />}>
-          {t("office.inbox.waiting", { what: item.waiting })}
+          {t("office.inbox.waiting", { what: waiting })}
         </Callout>
       )}
       {!open && (

@@ -113,3 +113,70 @@ test("pausing moves the fence (the running attempt's result is refused); resumin
   assert.equal(a.resume(AT), 3);
   assert.equal(a.state, "ASSIGNED");
 });
+
+test("a lead: delegating ends its attempt (it waits for its team, its tools closed), at most replanLimit plans; woken to review or to answer, then waiting again", () => {
+  const a = fresh();
+  a.claim(pinned, AT);
+  a.runStarted(1, AT);
+  assert.equal(a.acting(1), true);
+  a.delegated(1, 2, AT);
+  assert.equal(a.state, "WAITING_FOR_SUBORDINATES");
+  assert.equal(a.acting(1), false, "an attempt that delegated has ended its work");
+  const answering = a.answering(AT);
+  assert.equal(a.state, "ANSWERING");
+  assert.equal(a.acting(answering), true);
+  a.waitForTeam(AT);
+  a.reviewing(AT);
+  a.delegated(a.data.fence, 1, AT);
+  a.reviewing(AT);
+  a.delegated(a.data.fence, 1, AT);
+  assert.equal(a.data.planCount, 3);
+  a.reviewing(AT);
+  assert.throws(() => a.delegated(a.data.fence, 1, AT), refusedWith("replan_limit"));
+});
+
+test("a question blocks the asker (its attempt ends), at most questionLimit of them; the answer resumes it once, to the state it left", () => {
+  const a = fresh();
+  a.claim(pinned, AT);
+  a.runStarted(1, AT);
+  a.asked("Global or Southeast Asia?", "lead", 1, AT);
+  assert.equal(a.state, "BLOCKED");
+  assert.equal(a.acting(1), false);
+  assert.throws(() => a.asked("Again?", "lead", 1, AT), refusedWith("stale_fence"));
+  const fence = a.unblock(AT, { question: "Global or Southeast Asia?", answer: "Southeast Asia" });
+  assert.equal(a.state, "ASSIGNED");
+  assert.equal(a.data.brief.answers.length, 1);
+  assert.throws(() => a.unblock(AT, null), refusedWith("invalid_transition"), "resumed once");
+  a.runStarted(fence, AT);
+  a.asked("Q2?", "lead", fence, AT);
+  a.unblock(AT, { question: "Q2?", answer: "A2" });
+  a.runStarted(a.data.fence, AT);
+  a.asked("Q3?", "lead", a.data.fence, AT);
+  a.unblock(AT, { question: "Q3?", answer: "A3" });
+  a.runStarted(a.data.fence, AT);
+  assert.throws(() => a.asked("Q4?", "lead", a.data.fence, AT), refusedWith("question_limit"));
+});
+
+test("a pause returns to the state it left: a lead waiting for its team waits again, with nothing to run", () => {
+  const a = fresh();
+  a.claim(pinned, AT);
+  a.runStarted(1, AT);
+  a.delegated(1, 1, AT);
+  a.pause("a person looks", AT);
+  assert.equal(a.state, "PAUSED");
+  assert.equal(a.resume(AT), null);
+  assert.equal(a.state, "WAITING_FOR_SUBORDINATES");
+});
+
+test("rework is bounded: the sixth revision of one hand-in is refused", () => {
+  const a = fresh();
+  a.claim(pinned, AT);
+  for (let i = 1; i <= 5; i += 1) {
+    a.runStarted(a.data.fence, AT);
+    a.handoffSubmitted(i, `d${i}`, a.data.fence, AT);
+    a.requestRevision(`change ${i}`, "owner", AT);
+  }
+  a.runStarted(a.data.fence, AT);
+  a.handoffSubmitted(6, "d6", a.data.fence, AT);
+  assert.throws(() => a.requestRevision("again", "owner", AT), refusedWith("rework_limit"));
+});

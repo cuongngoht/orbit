@@ -2,14 +2,36 @@
 // files it must hand in, pinned research sources, and how busy desks are handled. "Start now" is the default: a busy
 // employee refuses it and NOTHING is created -- everything typed stays, the held work is shown, and you can queue it
 // behind that work (with a new idempotency key) or walk over to another colleague's desk.
-import { Badge, Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+//
+// Work may also be given to a DEPARTMENT (its manager in office) or to the CEO. Who is responsible is asked of the API
+// before sending and shown -- or why nobody is (no manager, no CEO, a suspended appointment), and then nothing can be
+// sent. The request names who the person saw (`expectedAssignee`): when the appointment moved since, nothing is created,
+// the page says who is responsible now, and sending again is a new request with a new key.
+import { Badge, Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular } from "@fluentui/react-icons";
-import { ASSIGNMENT_STATE_TEXT, WORK_LABEL_TEXT, checkCreateMission, type CreateMissionRequest, type Deliverable, type EmployeeBusyDetails, type EmployeeCard, type MissionAccepted, type WhenBusy, type MissionRepositoryRequest } from "@orbit-web/contracts";
-import { useRef, useState } from "react";
+import {
+  ASSIGNMENT_STATE_TEXT,
+  WORK_LABEL_TEXT,
+  checkCreateMission,
+  type CreateMissionRequest,
+  type Deliverable,
+  type Department,
+  type EmployeeBusyDetails,
+  type EmployeeCard,
+  type ExpectedAssignee,
+  type MissionAccepted,
+  type MissionRepositoryRequest,
+  type MissionTarget,
+  type MissionTargetPreview,
+  type Roster,
+  type WhenBusy,
+} from "@orbit-web/contracts";
+import { useEffect, useRef, useState } from "react";
 import { ConnectionRequired, isConnectionRequired } from "../../components/ApiErrorBar";
 import { DesksIcon, IconBadge, PolicyIcon, QueuedIcon, WorkMissionIcon } from "../../components/SectionIcons";
+import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
-import { useI18n } from "../../i18n";
+import { useI18n, type I18nContextValue } from "../../i18n";
 import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
 import { Disclosure, WorkLabelBadge, useOfficeStyles, when } from "./parts";
@@ -83,6 +105,8 @@ const useStyles = makeStyles({
     gap: "8px",
     minWidth: 0,
   },
+  // The three kinds of recipient side by side, wrapping on a narrow screen (never the page).
+  kindGroup: { flexWrap: "wrap", rowGap: "2px", minWidth: 0 },
   colleagueCard: {
     display: "flex",
     alignItems: "center",
@@ -96,6 +120,20 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     minWidth: 0,
     "@media (max-width: 520px)": { flexDirection: "column", alignItems: "flex-start" },
+  },
+  responsibleCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    paddingTop: "10px",
+    paddingRight: "14px",
+    paddingBottom: "10px",
+    paddingLeft: "14px",
+    borderRadius: "12px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    minWidth: 0,
+    overflowWrap: "anywhere",
   },
   portraitFrame: {
     display: "flex",
@@ -207,7 +245,57 @@ const useStyles = makeStyles({
   },
 });
 
-type Outcome = { kind: "done"; result: MissionAccepted } | { kind: "busy"; details: EmployeeBusyDetails | null; message: string } | { kind: "failed"; error: unknown } | null;
+type TargetKind = MissionTarget["kind"];
+type Responsible = NonNullable<MissionTargetPreview["responsible"]>;
+
+type Outcome =
+  | { kind: "done"; result: MissionAccepted }
+  | { kind: "busy"; details: EmployeeBusyDetails | null; message: string }
+  // Who is responsible moved since the person looked: nothing was created; this is who it is now.
+  | { kind: "changed"; responsible: Responsible }
+  | { kind: "failed"; error: unknown }
+  | null;
+
+// The refusals that say the slot is not what the preview showed: the preview is read again.
+const SLOT_REFUSALS: readonly string[] = ["no_ceo", "no_manager", "appointment_suspended", "not_working"];
+
+// The departments a mission may be given to: not archived, in the order the office shows them.
+const liveDepartments = (departments: readonly Department[]): Department[] => departments.filter((d) => !d.archived).sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+
+// Who is responsible, in words: "Ana (manager of Accounting)", "Eve (CEO)".
+function responsibleText(t: I18nContextValue["t"], r: Pick<Responsible, "employeeName" | "role" | "departmentName">): string {
+  if (r.role === "ceo") return t("office.assign.responsibleCeo", { name: r.employeeName });
+  if (r.role === "manager") return t("office.assign.responsibleManager", { name: r.employeeName, department: r.departmentName ?? t("office.assign.itsDepartment") });
+  return r.employeeName;
+}
+
+// Who a department or the CEO would give the work to now, as the API says it -- or why nobody would.
+function TargetResponsible({ preview, loading, error }: { preview: MissionTargetPreview | null; loading: boolean; error: unknown }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const o = useOfficeStyles();
+  if (error !== null)
+    return (
+      <MessageBar intent="error" layout="multiline">
+        <MessageBarBody>{errorText(error)}</MessageBarBody>
+      </MessageBar>
+    );
+  if (loading || preview === null) return <Spinner size="tiny" label={t("office.assign.checkingResponsible")} />;
+  if (preview.responsible === null)
+    return (
+      <MessageBar intent="warning" layout="multiline">
+        <MessageBarBody>{preview.reason ?? t("office.assign.nobodyResponsible")}</MessageBarBody>
+      </MessageBar>
+    );
+  return (
+    <div className={s.responsibleCard} role="status">
+      <Text weight="semibold">{t("office.assign.responsibleLine", { who: responsibleText(t, preview.responsible) })}</Text>
+      <Text size={200} className={o.muted}>
+        {t("office.assign.responsibleNote")}
+      </Text>
+    </div>
+  );
+}
 
 export function AssignDialog({ employees, employeeId = null, onClose, onOpenMission }: { employees: EmployeeCard[]; employeeId?: string | null; onClose: () => void; onOpenMission: (missionId: string) => void }) {
   const { t } = useI18n();
@@ -215,7 +303,9 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const o = useOfficeStyles();
   const { isMobile } = useViewport();
   const choices = employees.filter((e) => e.employment !== "archived");
+  const [kind, setKind] = useState<TargetKind>("employee");
   const [target, setTarget] = useState<string>(employeeId ?? choices[0]?.id ?? "");
+  const [departmentChoice, setDepartmentChoice] = useState("");
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [deliverables, setDeliverables] = useState<Deliverable[]>([]);
@@ -225,9 +315,8 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const [deadline, setDeadline] = useState("");
   const [whenBusy, setWhenBusy] = useState<WhenBusy>("reject");
   const [sources, setSources] = useState<PinnedSources>(NO_SOURCES);
-  // The repositories chosen, for the employee chosen (another employee may use others: a change of employee clears them).
+  // The repositories chosen, for the employee who takes it (another employee may use others: a change clears them).
   const [repositories, setRepositories] = useState<{ for: string; list: MissionRepositoryRequest[] }>({ for: "", list: [] });
-  const chosenRepositories = repositories.for === target ? repositories.list : [];
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -236,15 +325,62 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const sent = useRef<{ body: string; key: string } | null>(null);
   const employee = choices.find((e) => e.id === target) ?? null;
 
+  // The departments, read when the person chooses to give the work to one.
+  const roster = useResource<Roster>(kind === "department" ? () => office.roster({ department: null, q: "", status: null }) : null, [kind === "department"]);
+  const departments = liveDepartments(roster.data?.departments ?? []);
+  const departmentId = departments.some((d) => d.id === departmentChoice) ? departmentChoice : (departments[0]?.id ?? "");
+  const missionTarget: MissionTarget | null = kind === "ceo" ? { kind: "ceo" } : kind === "department" ? (departmentId === "" ? null : { kind: "department", departmentId }) : target === "" ? null : { kind: "employee", employeeId: target };
+
+  // Who a department or the CEO would give it to now (an employee is named by the person: nothing to ask).
+  const previewKey = missionTarget === null || missionTarget.kind === "employee" ? null : JSON.stringify(missionTarget);
+  const [preview, setPreview] = useState<{ key: string; value: MissionTargetPreview | null; error: unknown } | null>(null);
+  const [previewRound, setPreviewRound] = useState(0);
+  useEffect(() => {
+    if (previewKey === null) return undefined;
+    let current = true;
+    office
+      .targetPreview(JSON.parse(previewKey) as MissionTarget)
+      .then((value) => {
+        if (current) setPreview({ key: previewKey, value, error: null });
+      })
+      .catch((error: unknown) => {
+        if (current) setPreview({ key: previewKey, value: null, error });
+      });
+    return () => {
+      current = false;
+    };
+  }, [previewKey, previewRound]);
+  const shown = preview !== null && preview.key === previewKey ? preview : null;
+  const responsible = kind === "employee" ? null : (shown?.value?.responsible ?? null);
+  const expected: ExpectedAssignee | null = responsible === null ? null : { employeeId: responsible.employeeId, appointmentId: responsible.appointmentId, appointmentRevision: responsible.appointmentRevision };
+  // Who takes it: the employee chosen, or whoever the department or the CEO resolves to now.
+  const recipientId = kind === "employee" ? target : (responsible?.employeeId ?? "");
+  const recipientName = kind === "employee" ? (employee?.name ?? null) : (responsible?.employeeName ?? null);
+  const chosenRepositories = repositories.for === recipientId ? repositories.list : [];
+  const ready = missionTarget !== null && (kind === "employee" || expected !== null);
+
+  // A change of who takes it clears what was said about the one before.
+  const clearRecipientOutcome = () => {
+    if (outcome?.kind === "busy" || outcome?.kind === "changed") setOutcome(null);
+  };
   const chooseTarget = (nextId: string) => {
     setTarget(nextId);
-    if (outcome?.kind === "busy") setOutcome(null);
+    clearRecipientOutcome();
+  };
+  const chooseKind = (next: TargetKind) => {
+    setKind(next);
+    clearRecipientOutcome();
+  };
+  const chooseDepartment = (next: string) => {
+    setDepartmentChoice(next);
+    clearRecipientOutcome();
   };
 
-  const bodyOf = (mode: WhenBusy): CreateMissionRequest => ({
+  const bodyOf = (to: MissionTarget, mode: WhenBusy): CreateMissionRequest => ({
     goal: goal.trim(),
     ...(title.trim() ? { title: title.trim() } : {}),
-    targetEmployeeId: target,
+    target: to,
+    ...(to.kind !== "employee" && expected !== null ? { expectedAssignee: expected } : {}),
     whenBusy: mode,
     deliverables,
     acceptanceCriteria: criteria
@@ -256,8 +392,23 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
     ...(chosenRepositories.length > 0 ? { repositories: chosenRepositories } : {}),
   });
 
+  // Refused because who is responsible moved: nothing was created, and the refusal is kept under its key -- so the page
+  // takes who is responsible now as the one expected, and the next send is a new request with a new key.
+  const targetChanged = (err: ApiError, to: MissionTarget) => {
+    sent.current = null;
+    const current = (err.details as { current?: Responsible | null } | null)?.current ?? null;
+    if (current === null) {
+      setPreviewRound((n) => n + 1);
+      setOutcome({ kind: "failed", error: err });
+      return;
+    }
+    setPreview({ key: JSON.stringify(to), value: { target: to, responsible: current, code: null, reason: null }, error: null });
+    setOutcome({ kind: "changed", responsible: current });
+  };
+
   const submit = async (mode: WhenBusy) => {
-    const body = bodyOf(mode);
+    if (missionTarget === null || !ready) return;
+    const body = bodyOf(missionTarget, mode);
     const checked = checkCreateMission(body);
     if (!checked.ok) {
       setProblems(checked.errors);
@@ -273,7 +424,11 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
       setOutcome({ kind: "done", result: await office.createMission(body, key) });
     } catch (err) {
       if (err instanceof ApiError && err.code === "employee_busy") setOutcome({ kind: "busy", details: (err.details as EmployeeBusyDetails | null) ?? null, message: err.message });
-      else setOutcome({ kind: "failed", error: err });
+      else if (err instanceof ApiError && err.code === "target_changed") targetChanged(err, missionTarget);
+      else {
+        if (err instanceof ApiError && SLOT_REFUSALS.includes(err.code)) setPreviewRound((n) => n + 1);
+        setOutcome({ kind: "failed", error: err });
+      }
     } finally {
       setBusy(false);
     }
@@ -290,7 +445,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   if (outcome?.kind === "done") {
     const r = outcome.result;
     const recipient = choices.find((e) => e.id === r.employeeId);
-    const who = recipient?.name ?? t("office.assign.defaultRecipient");
+    const who = recipient?.name ?? (responsible?.employeeId === r.employeeId ? responsible.employeeName : null) ?? t("office.assign.defaultRecipient");
     const queued = r.state === "QUEUED";
     return (
       <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
@@ -354,7 +509,14 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     {t("office.assign.colleagueDesk")}
                   </Text>
                 </div>
-                {employee && (
+                <Field label={t("office.assign.giveToLabel")}>
+                  <RadioGroup className={s.kindGroup} layout="horizontal" value={kind} onChange={(_, d) => chooseKind(d.value as TargetKind)}>
+                    <Radio value="employee" label={t("office.assign.toEmployee")} />
+                    <Radio value="department" label={t("office.assign.toDepartment")} />
+                    <Radio value="ceo" label={t("office.assign.toCeo")} />
+                  </RadioGroup>
+                </Field>
+                {kind === "employee" && employee && (
                   <div className={s.colleagueCard}>
                     <div className={s.portraitFrame}>
                       <PixelChibiSvg name={employee.name} workLabel={employee.workLabel} size={50} />
@@ -385,7 +547,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     </div>
                   </div>
                 )}
-                {choices.length > 1 && choices.length <= 8 && (
+                {kind === "employee" && choices.length > 1 && choices.length <= 8 && (
                   <div className={s.seatStrip} role="group" aria-label={t("office.assign.quickDeskSwitch")}>
                     {choices.map((c) => {
                       const p = personaFor(c.name);
@@ -411,15 +573,42 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     })}
                   </div>
                 )}
-                <Field label={t("office.assign.employeeLabel")} required>
-                  <Select ref={select} value={target} onChange={(_, d) => chooseTarget(d.value)}>
-                    {choices.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name} — {e.title} ({WORK_LABEL_TEXT[e.workLabel]})
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
+                {kind === "employee" && (
+                  <Field label={t("office.assign.employeeLabel")} required>
+                    <Select ref={select} value={target} onChange={(_, d) => chooseTarget(d.value)}>
+                      {choices.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name} — {e.title} ({WORK_LABEL_TEXT[e.workLabel]})
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
+                {kind === "department" &&
+                  (roster.data === null ? (
+                    roster.error !== null ? (
+                      <MessageBar intent="error">
+                        <MessageBarBody>{roster.error}</MessageBarBody>
+                      </MessageBar>
+                    ) : (
+                      <Spinner size="tiny" label={t("office.assign.readingDepartments")} />
+                    )
+                  ) : departments.length === 0 ? (
+                    <Text size={200} className={o.muted}>
+                      {t("office.assign.noDepartment")}
+                    </Text>
+                  ) : (
+                    <Field label={t("office.assign.departmentLabel")} required hint={t("office.assign.departmentHint")}>
+                      <Select value={departmentId} onChange={(_, d) => chooseDepartment(d.value)}>
+                        {departments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ))}
+                {previewKey !== null && <TargetResponsible preview={shown?.value ?? null} loading={shown === null} error={shown?.error ?? null} />}
               </div>
 
               <div className={s.sectionCard}>
@@ -478,8 +667,12 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 </div>
                 <div className={o.divider} />
                 <SourcesPicker value={sources} onChange={setSources} />
-                <div className={o.divider} />
-                <RepositoriesPicker employeeId={target} employeeName={choices.find((c) => c.id === target)?.name ?? ""} value={chosenRepositories} onChange={(list) => setRepositories({ for: target, list })} />
+                {recipientId !== "" && (
+                  <>
+                    <div className={o.divider} />
+                    <RepositoriesPicker employeeId={recipientId} employeeName={recipientName ?? ""} value={chosenRepositories} onChange={(list) => setRepositories({ for: recipientId, list })} />
+                  </>
+                )}
               </div>
 
               <div className={s.sectionCard}>
@@ -511,10 +704,15 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                   <MessageBarBody>{problems.join("; ")}</MessageBarBody>
                 </MessageBar>
               )}
+              {outcome?.kind === "changed" && (
+                <MessageBar intent="warning" layout="multiline">
+                  <MessageBarBody>{t("office.assign.targetChanged", { who: responsibleText(t, outcome.responsible) })}</MessageBarBody>
+                </MessageBar>
+              )}
               {outcome?.kind === "busy" && (
                 <MessageBar intent="warning" layout="multiline">
                   <MessageBarBody>
-                    {t("office.assign.busyTitle", { name: employee?.name ?? t("office.assign.defaultRecipient") })}
+                    {t("office.assign.busyTitle", { name: recipientName ?? t("office.assign.defaultRecipient") })}
                     {holding ? t("office.assign.busyHolding", { title: holding.title, state: ASSIGNMENT_STATE_TEXT[holding.state], since: when(holding.since) }) : t("office.assign.busyOther")}
                   </MessageBarBody>
                   <MessageBarActions>
@@ -526,6 +724,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                       size="small"
                       onClick={() => {
                         setOutcome(null);
+                        setKind("employee");
                         select.current?.focus();
                       }}
                     >
@@ -547,7 +746,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
               <Button type="button" onClick={onClose}>
                 {t("office.assign.cancel")}
               </Button>
-              <Button appearance="primary" type="submit" disabled={busy || target === "" || goal.trim() === ""}>
+              <Button appearance="primary" type="submit" disabled={busy || !ready || goal.trim() === ""}>
                 {busy ? t("office.assign.assigning") : whenBusy === "enqueue" ? t("office.assign.assignOrQueue") : t("office.assign.startNow")}
               </Button>
             </DialogActions>

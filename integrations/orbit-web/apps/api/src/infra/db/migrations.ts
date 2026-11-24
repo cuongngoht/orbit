@@ -1126,13 +1126,25 @@ CREATE TABLE workforce.assignments (
   parent_id uuid,
   unit_key text,
   employee_id uuid NOT NULL,
-  state text NOT NULL CHECK (state IN ('QUEUED', 'ASSIGNED', 'RUNNING', 'DELEGATING', 'WAITING_FOR_SUBORDINATES', 'BLOCKED', 'PAUSED', 'RECOVERING', 'REVIEWING', 'AWAITING_ACCEPTANCE', 'CANCELLING', 'COMPLETED', 'CANCELLED', 'FAILED_FINAL')),
+  state text NOT NULL CHECK (state IN ('QUEUED', 'ASSIGNED', 'RUNNING', 'WAITING_FOR_SUBORDINATES', 'ANSWERING', 'BLOCKED', 'PAUSED', 'RECOVERING', 'REVIEWING', 'AWAITING_ACCEPTANCE', 'CANCELLING', 'COMPLETED', 'CANCELLED', 'FAILED_FINAL')),
   reason text,
   waiting_on text,
   brief jsonb NOT NULL,
   execution jsonb,
   handoff_revision integer NOT NULL DEFAULT 0,
   rework_count integer NOT NULL DEFAULT 0,
+  -- How many plans it gave and questions it asked (each bounded, ADR 0061 §8), and the state a pause or a block left, to
+  -- return to it (a lead paused while it waits for its team waits again when resumed).
+  plan_count integer NOT NULL DEFAULT 0 CONSTRAINT assignment_plan_count CHECK (plan_count >= 0),
+  question_count integer NOT NULL DEFAULT 0 CONSTRAINT assignment_question_count CHECK (question_count >= 0),
+  paused_from text,
+  blocked_from text,
+  -- What it was given to: an employee by name, a department (resolved to its manager) or the CEO, and the appointment
+  -- that resolved it -- kept as it was when the work was given.
+  target_kind text CONSTRAINT assignment_target_kind CHECK (target_kind IN ('employee', 'department', 'ceo')),
+  target_department_id uuid,
+  target_appointment_id uuid,
+  target_appointment_revision integer,
   pinned jsonb,
   priority integer NOT NULL DEFAULT 5,
   eligible_at timestamptz NOT NULL,
@@ -1146,11 +1158,14 @@ CREATE TABLE workforce.assignments (
   updated_at timestamptz NOT NULL,
   version integer NOT NULL DEFAULT 1,
   UNIQUE (account_id, id),
-  UNIQUE (account_id, mission_id, unit_key),
+  -- A part's key is its lead's to name: unique among the parts of one lead (and one root per mission).
+  CONSTRAINT unit_key_per_lead UNIQUE NULLS NOT DISTINCT (account_id, mission_id, parent_id, unit_key),
+  CONSTRAINT assignment_target_department CHECK ((target_kind = 'department') = (target_department_id IS NOT NULL)),
   FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
   FOREIGN KEY (account_id, parent_id) REFERENCES workforce.assignments (account_id, id),
   FOREIGN KEY (account_id, employee_id) REFERENCES workforce.employees (account_id, id)
 );
+CREATE UNIQUE INDEX one_root_per_mission ON workforce.assignments (account_id, mission_id) WHERE parent_id IS NULL;
 CREATE INDEX assignments_queue ON workforce.assignments (account_id, employee_id, priority DESC, eligible_at, id) WHERE state = 'QUEUED';
 CREATE INDEX assignments_by_mission ON workforce.assignments (account_id, mission_id);
 CREATE INDEX assignments_by_employee ON workforce.assignments (account_id, employee_id, updated_at DESC);
@@ -1266,6 +1281,9 @@ CREATE TABLE workforce.runs (
   waiting_since timestamptz,
   priority integer NOT NULL DEFAULT 5,
   stop_requested text,
+  -- Why this attempt was started: claimed, a revision, an answer, a question of its team to answer, its team to review,
+  -- a resume, a retry.
+  wake_reason text,
   started_at timestamptz,
   ended_at timestamptz,
   detail text,
@@ -1379,6 +1397,23 @@ CREATE TABLE workforce.handoffs (
   FOREIGN KEY (account_id, assignment_id) REFERENCES workforce.assignments (account_id, id)
 );
 CREATE UNIQUE INDEX one_acceptance ON workforce.handoffs (account_id, assignment_id) WHERE status = 'accepted';
+-- A hand-in is kept as it was handed in: its content never changes, and a reviewed one keeps its status (v1 asked to
+-- revise stays so beside v2 accepted).
+CREATE FUNCTION workforce.handoff_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.assignment_id <> OLD.assignment_id OR NEW.revision <> OLD.revision OR NEW.digest <> OLD.digest OR NEW.summary <> OLD.summary OR NEW.claims <> OLD.claims
+     OR NEW.missing <> OLD.missing OR NEW.run_id IS DISTINCT FROM OLD.run_id OR NEW.submission_key <> OLD.submission_key OR NEW.submitted_by <> OLD.submitted_by OR NEW.submitted_at <> OLD.submitted_at THEN
+    RAISE EXCEPTION 'hand-in % is kept as it was handed in', OLD.id USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.status <> OLD.status AND OLD.status <> 'submitted' THEN
+    RAISE EXCEPTION 'hand-in % was reviewed: its status stays %', OLD.id, OLD.status USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.review IS DISTINCT FROM OLD.review AND OLD.review IS NOT NULL THEN
+    RAISE EXCEPTION 'hand-in % keeps the review it was given', OLD.id USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER handoff_fixed BEFORE UPDATE ON workforce.handoffs FOR EACH ROW EXECUTE FUNCTION workforce.handoff_fixed();
 
 -- The bytes of artifacts, by content: counted once per account (never deduplicated across accounts).
 CREATE TABLE workforce.blobs (
@@ -1405,6 +1440,11 @@ CREATE TABLE workforce.artifacts (
   FOREIGN KEY (account_id, handoff_id) REFERENCES workforce.handoffs (account_id, id),
   FOREIGN KEY (account_id, sha256) REFERENCES workforce.blobs (account_id, sha256)
 );
+CREATE FUNCTION workforce.artifact_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'artifact % is part of a hand-in: it never changes', OLD.id USING ERRCODE = 'P0001';
+END $$;
+CREATE TRIGGER artifact_fixed BEFORE UPDATE ON workforce.artifacts FOR EACH ROW EXECUTE FUNCTION workforce.artifact_fixed();
 
 -- NEEDS ME: what waits for a person's decision, pinned to the version it was raised against.
 CREATE TABLE workforce.decisions (
@@ -1677,6 +1717,58 @@ CREATE TABLE workforce.attempt_inputs (
   CONSTRAINT attempt_input_run FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
 );
 CREATE INDEX attempt_inputs_by_path ON workforce.attempt_inputs (account_id, run_id, store_path);
+
+-- A QUESTION one assignment asked (ADR 0061 §8): a part asks its LEAD (the assignment it is a part of); the root asks the
+-- person who gave the work. A lead answers it, or moves it one level up saying why; the owner is asked only at the root,
+-- or for what is a person's (human_decision, beyond_authority, deadline, unanswered). One open question per asker; it is
+-- answered once (the asker resumes once), or withdrawn with its asker's end.
+CREATE TABLE workforce.clarifications (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  mission_id uuid NOT NULL,
+  asker_assignment_id uuid NOT NULL,
+  asker_fence bigint NOT NULL,
+  question text NOT NULL CONSTRAINT clarification_question CHECK (length(question) BETWEEN 1 AND 4000),
+  addressee text NOT NULL CONSTRAINT clarification_addressee CHECK (addressee IN ('lead', 'owner')),
+  addressee_assignment_id uuid,
+  kind text NOT NULL CONSTRAINT clarification_kind CHECK (kind IN ('information', 'human_decision', 'beyond_authority', 'deadline', 'unanswered')),
+  state text NOT NULL CONSTRAINT clarification_state CHECK (state IN ('open', 'answered', 'withdrawn')),
+  answer text,
+  answered_by text,
+  answered_at timestamptz,
+  -- How often its addressee now was woken for it without answering (WORKFORCE_LIMITS.answerWakes).
+  wakes integer NOT NULL DEFAULT 0 CONSTRAINT clarification_wakes CHECK (wakes >= 0),
+  due_at timestamptz,
+  asked_at timestamptz NOT NULL,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT clarification_account_id UNIQUE (account_id, id),
+  CONSTRAINT clarification_to_lead CHECK ((addressee = 'lead') = (addressee_assignment_id IS NOT NULL)),
+  CONSTRAINT clarification_answered CHECK ((state = 'answered') = (answer IS NOT NULL AND answered_at IS NOT NULL)),
+  CONSTRAINT clarification_mission FOREIGN KEY (account_id, mission_id) REFERENCES workforce.missions (account_id, id),
+  CONSTRAINT clarification_asker FOREIGN KEY (account_id, asker_assignment_id) REFERENCES workforce.assignments (account_id, id),
+  CONSTRAINT clarification_lead FOREIGN KEY (account_id, addressee_assignment_id) REFERENCES workforce.assignments (account_id, id)
+);
+CREATE UNIQUE INDEX one_open_clarification ON workforce.clarifications (account_id, asker_assignment_id) WHERE state = 'open';
+CREATE INDEX clarifications_to_lead ON workforce.clarifications (account_id, addressee_assignment_id) WHERE state = 'open';
+CREATE TRIGGER clarifications_account_fixed BEFORE UPDATE ON workforce.clarifications FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- Every hop of a question, appended (never changed): to whom it went, why and when.
+CREATE TABLE workforce.clarification_routes (
+  account_id uuid NOT NULL,
+  clarification_id uuid NOT NULL,
+  seq integer NOT NULL CONSTRAINT clarification_route_seq CHECK (seq >= 1),
+  addressee text NOT NULL CONSTRAINT clarification_route_addressee CHECK (addressee IN ('lead', 'owner')),
+  addressee_assignment_id uuid,
+  why text NOT NULL,
+  at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, clarification_id, seq),
+  CONSTRAINT clarification_route_of FOREIGN KEY (account_id, clarification_id) REFERENCES workforce.clarifications (account_id, id)
+);
+CREATE FUNCTION workforce.route_fixed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'a question''s route is appended, never changed' USING ERRCODE = 'P0001';
+END $$;
+CREATE TRIGGER clarification_route_fixed BEFORE UPDATE OR DELETE ON workforce.clarification_routes FOR EACH ROW EXECUTE FUNCTION workforce.route_fixed();
 
 -- A DEPARTMENT'S POLICY: what one department decides for its employees' work, inside what the company delegated to it
 -- (governance-core department.ts). Its revisions mirror the company's -- DRAFT, VALIDATED, PUBLISHED, SUPERSEDED or

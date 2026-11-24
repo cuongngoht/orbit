@@ -283,6 +283,13 @@ export const useParts = makeStyles({
 
 export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
+// `o` with `key` said as `v` -- or not said at all when `v` is undefined: how a page writes one part of a policy document
+// back, leaving every other part as it was.
+export function put<T extends object, K extends keyof T>(o: T, key: K, v: T[K] | undefined): T {
+  const { [key]: _was, ...rest } = o;
+  return (v === undefined ? rest : { ...rest, [key]: v }) as T;
+}
+
 export function Card({
   title,
   icon,
@@ -476,6 +483,12 @@ const TONES: Record<string, Tone> = {
   none: "subtle",
   overridden: "brand",
   deleted: "subtle",
+  // A company rule binds every department (mandatory), or is its default for an action it delegated.
+  mandatory: "brand",
+  default: "subtle",
+  // Employee network access: every public website, or only the hosts listed.
+  AUTONOMOUS: "warning",
+  RESTRICTED: "success",
 };
 
 const LABEL_KEYS: Record<string, MessageKey> = {

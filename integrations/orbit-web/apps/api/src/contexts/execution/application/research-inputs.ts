@@ -62,7 +62,10 @@ export class ResearchInputs {
     return sources.flatMap((s) => {
       const base = `${s.label}-${fileTitle(s.title)}`;
       const text = { name: `${base}.txt`, storePath: `research-text:${orbitId}/${s.revisionId}` };
-      return TEXT_TYPES.test(s.mediaType) ? [text] : [text, { name: `${base}.${extensionOf(s)}`, storePath: `research-object:${orbitId}/${s.revisionId}` }];
+      if (TEXT_TYPES.test(s.mediaType)) return [text];
+      // The original's own name, unless it would be the text's (a .txt file whose type is not text): one name, one file.
+      const original = `${base}.${extensionOf(s)}`;
+      return [text, { name: original === text.name ? `${base}.original.${extensionOf(s)}` : original, storePath: `research-object:${orbitId}/${s.revisionId}` }];
     });
   }
 

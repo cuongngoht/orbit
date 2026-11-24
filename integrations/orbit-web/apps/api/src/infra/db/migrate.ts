@@ -65,7 +65,7 @@ function refuseDrift(done: Map<number, string>, migrations: readonly Migration[]
   for (const [version, sum] of done) {
     const m = known.get(version);
     if (m === undefined) throw new SchemaError(`The database was migrated to version ${version}, which this build of Orbit Web does not know: it was written by a newer build. Run that build, or a database of this one.`);
-    if (checksum(m) !== sum && version === 1) throw new SchemaError(`This database was created by a development build of Orbit Web 0.8.0, whose initial schema differs from this build's. 0.8.0 starts from an empty database: run \`node dist/cli/db.js reset --confirm=<database name>\`, or remove the database volume (docker compose down -v).`);
+    if (checksum(m) !== sum && version === 1) throw new SchemaError(`This database was created by a development build or release candidate of Orbit Web 0.8.0 (0.8.0-rcNN), whose initial schema differs from this build's. 0.8.0 starts from an empty database and migrates nothing: run \`node dist/cli/db.js reset --confirm=<database name> --with-data\` (Orbit Web stopped), or remove the volumes (docker compose down -v).`);
     if (checksum(m) !== sum) throw new SchemaError(`Migration ${version} (${m.name}) applied to this database is not the one this build carries: its text changed after it was applied.`);
   }
 }

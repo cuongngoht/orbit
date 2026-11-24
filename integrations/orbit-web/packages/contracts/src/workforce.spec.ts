@@ -99,7 +99,7 @@ test("the office and its departments: names on one line; a member moves to a dep
   assert.deepEqual(checkCreateDepartment({ name: "  Finance " }), { ok: true, value: { name: "Finance" } });
   assert.deepEqual(errorsOf(checkCreateDepartment({ name: "a\u0007b" })), ["name must be 1-80 printable characters"]);
   assert.deepEqual(checkUpdateDepartment({ position: 0 }), { ok: true, value: { position: 0 } });
-  assert.deepEqual(errorsOf(checkUpdateDepartment({})), ["nothing to change: send name or position"]);
+  assert.deepEqual(errorsOf(checkUpdateDepartment({})), ["nothing to change: send name, position or defaults"]);
   assert.deepEqual(errorsOf(checkUpdateDepartment({ position: 1000 })), ["position must be 0-999"]);
   assert.deepEqual(checkArchiveDepartment(undefined), { ok: true, value: {} });
   assert.deepEqual(checkArchiveDepartment({ moveTo: null }), { ok: true, value: { moveTo: null } });
@@ -135,7 +135,7 @@ test("a change of an employee names what changes, and a restore the revision it 
 test("a mission: its goal and brief, a title from the goal's first line when none is given, and every default said", () => {
   assert.deepEqual(checkCreateMission({ goal: "Summarise Q3 sales\nwith sources", targetEmployeeId: id(4), deliverables: [{ name: "summary.md" }, { name: "data.csv", required: false }], acceptanceCriteria: [" cites every figure "], deadline: "2026-12-01T09:00:00+07:00" }), {
     ok: true,
-    value: { goal: "Summarise Q3 sales\nwith sources", title: "Summarise Q3 sales", targetEmployeeId: id(4), whenBusy: "reject", workspaceId: null, sourceRevisionIds: [], repositories: [], deliverables: [{ name: "summary.md", required: true }, { name: "data.csv", required: false }], acceptanceCriteria: ["cites every figure"], acceptanceMode: "owner_review", deadline: "2026-12-01T02:00:00.000Z", priority: 5 },
+    value: { goal: "Summarise Q3 sales\nwith sources", title: "Summarise Q3 sales", target: { kind: "employee", employeeId: id(4) }, targetEmployeeId: id(4), whenBusy: "reject", workspaceId: null, sourceRevisionIds: [], repositories: [], deliverables: [{ name: "summary.md", required: true }, { name: "data.csv", required: false }], acceptanceCriteria: ["cites every figure"], acceptanceMode: "owner_review", deadline: "2026-12-01T02:00:00.000Z", priority: 5 },
   });
   const full = checkCreateMission({ goal: "x", title: "X", targetEmployeeId: id(4), whenBusy: "enqueue", workspaceId: id(5), sourceRevisionIds: [id(6), id(6)], deliverables: [], acceptanceCriteria: [], acceptanceMode: "manager_review", deadline: null, priority: 9, execution: { model: "opus", effort: null } });
   assert.deepEqual(full.ok && [full.value.whenBusy, full.value.sourceRevisionIds, full.value.execution, full.value.priority, full.value.deadline], ["enqueue", [id(6)], { model: "opus", effort: null }, 9, null]);
@@ -144,6 +144,19 @@ test("a mission: its goal and brief, a title from the goal's first line when non
   assert.deepEqual(errorsOf(checkCreateMission({ goal: "g", targetEmployeeId: id(4), sourceRevisionIds: [id(6)] })), ["sourceRevisionIds needs the workspaceId they belong to"]);
   has(errorsOf(checkCreateMission({ goal: "g", targetEmployeeId: id(4), workspaceId: id(5), sourceRevisionIds: Array.from({ length: 41 }, (_, i) => id(100 + i)) })), "sourceRevisionIds must be at most 40 revision ids");
   assert.deepEqual(checkCreateMission("do it"), { ok: false, errors: ["the body must be a JSON object"] });
+});
+
+test("a mission names whom it goes to: an employee, a department or the CEO -- with what the person saw, and never two names", () => {
+  const dept = checkCreateMission({ goal: "g", target: { kind: "department", departmentId: id(7) }, expectedAssignee: { employeeId: id(4), appointmentId: id(8), appointmentRevision: 2 } });
+  assert.deepEqual(dept.ok && [dept.value.target, dept.value.targetEmployeeId, dept.value.expectedAssignee], [{ kind: "department", departmentId: id(7) }, "", { employeeId: id(4), appointmentId: id(8), appointmentRevision: 2 }]);
+  const ceo = checkCreateMission({ goal: "g", target: { kind: "ceo" } });
+  assert.deepEqual(ceo.ok && ceo.value.target, { kind: "ceo" });
+  assert.deepEqual(errorsOf(checkCreateMission({ goal: "g" })), ["target must name who the mission is given to: an employee, a department or the CEO"]);
+  has(errorsOf(checkCreateMission({ goal: "g", target: { kind: "team" } })), "target.kind must be one of employee, department, ceo");
+  has(errorsOf(checkCreateMission({ goal: "g", target: { kind: "ceo", departmentId: id(7) } })), "target of kind ceo names only kind");
+  has(errorsOf(checkCreateMission({ goal: "g", target: { kind: "department", departmentId: "research" } })), "target.departmentId must be a department's id");
+  has(errorsOf(checkCreateMission({ goal: "g", target: { kind: "employee", employeeId: id(4) }, targetEmployeeId: id(5) })), "target_conflict");
+  has(errorsOf(checkCreateMission({ goal: "g", target: { kind: "ceo" }, expectedAssignee: { employeeId: id(4) } })), "expectedAssignee must be");
 });
 
 test("a review names the digest of the handoff that was read; a cancel or a pause may say why; an answer says something", () => {

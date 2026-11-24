@@ -1,6 +1,6 @@
-// ONE ATTEMPT, as its records say it -- three records never merged: what was ASKED, what the backend RESOLVED (or the
-// container runtime APPLIED), and what the runtime or the container itself OBSERVED. "unknown" is said as unknown, and a
-// value nobody reported is "not reported": nothing is filled in from another column.
+// ONE ATTEMPT, as its records say it -- why it was started, and three records never merged: what was ASKED, what the
+// backend RESOLVED (or the container runtime APPLIED), and what the runtime or the container itself OBSERVED. "unknown"
+// is said as unknown, and a value nobody reported is "not reported": nothing is filled in from another column.
 import { Badge, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { ErrorCircle16Regular, ShieldCheckmark16Regular, Warning16Regular } from "@fluentui/react-icons";
 import { effortLabel, type RunView, type UsageView } from "@orbit-web/contracts";
@@ -135,6 +135,11 @@ export function RunDetails({ run }: { run: RunView }) {
           {run.endedAt ? t("office.run.ended", { at: when(run.endedAt) }) : ""}
         </Text>
       </div>
+      {run.wakeReason && (
+        <Text size={200} className={o.wrap}>
+          {t("office.run.wakeReason", { why: run.wakeReason })}
+        </Text>
+      )}
       {waiting && (
         <Callout tone={run.state === "unschedulable" ? "danger" : "warn"} icon={run.state === "unschedulable" ? <ErrorCircle16Regular /> : <Warning16Regular />}>
           {run.state === "unschedulable" ? t("office.run.unschedulablePrefix") : t("office.run.waitingPrefix")}: {run.waitingReason ?? t("office.run.noReasonGiven")}

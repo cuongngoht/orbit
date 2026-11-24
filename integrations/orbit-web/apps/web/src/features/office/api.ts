@@ -20,11 +20,14 @@ import type {
   EmploymentRequest,
   ExecutionDefaults,
   GrantDelegationRequest,
+  HandOverRequest,
   HireEmployeeRequest,
   Inbox,
   MissionAccepted,
   MissionDetail,
   MissionList,
+  MissionTarget,
+  MissionTargetPreview,
   OccurrenceView,
   Office,
   OfficeArea,
@@ -102,11 +105,21 @@ export const office = {
   updateResources: (e: EmployeeDetail, body: UpdateResourcesRequest) => send<EmployeeDetail>("PATCH", `/api/employees/${id(e.id)}/resources`, body, ifMatch(e.version)),
   moveEmployee: (e: EmployeeDetail, departmentId: string | null) => send<EmployeeDetail>("POST", `/api/employees/${id(e.id)}/department`, { departmentId }, ifMatch(e.version)),
   employment: (e: EmployeeDetail, body: EmploymentRequest) => send<EmployeeDetail>("POST", `/api/employees/${id(e.id)}/employment`, body, ifMatch(e.version)),
+  // Who a target would go to now -- an employee, a department's manager in office, the CEO -- or why nobody would: what a
+  // new mission then names as its `expectedAssignee`.
+  targetPreview: (target: MissionTarget) =>
+    get<MissionTargetPreview>(`/api/missions/target${query({ kind: target.kind, employeeId: target.kind === "employee" ? target.employeeId : null, departmentId: target.kind === "department" ? target.departmentId : null })}`),
   createMission: (body: CreateMissionRequest, key: string) => send<MissionAccepted>("POST", "/api/missions", body, idempotent(key)),
   missions: (state: "open" | "closed", cursor: string | null = null) => get<MissionList>(`/api/missions${query({ state, cursor })}`),
   mission: (missionId: string) => get<MissionDetail>(`/api/missions/${id(missionId)}`),
   teamRoom: (missionId: string) => get<TeamRoomChange[]>(`/api/missions/${id(missionId)}/team-room`),
   command: (assignmentId: string, version: number, command: AssignmentCommand, body?: unknown) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/${command}`, body ?? {}, ifMatch(version)),
+  // Open work handed to another employee, and blocked or paused work continued on its employee's profile in effect now --
+  // each against the version of the assignment read.
+  handOver: (assignmentId: string, version: number, body: HandOverRequest) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/hand-over`, body, ifMatch(version)),
+  repin: (assignmentId: string, version: number) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/repin`, {}, ifMatch(version)),
+  // What a lead shared with a part of its team, taken back: every attempt that holds it is stopped.
+  revokeShare: (shareId: string) => send<{ id: string; revokedAt: string }>("POST", `/api/data-shares/${id(shareId)}/revoke`, {}),
   inbox: (state: "open" | "history", cursor: string | null = null) => get<Inbox>(`/api/inbox${query({ state, cursor })}`),
   schedules: () => get<ScheduleView[]>("/api/schedules"),
   createSchedule: (body: CreateScheduleRequest) => send<ScheduleView>("POST", "/api/schedules", body),

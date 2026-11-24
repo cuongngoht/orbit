@@ -53,7 +53,7 @@ type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // Why Orbit stops an attempt it is running.
-type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "timeout" | "lost_lease" | "shutdown";
+type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" | "timeout" | "lost_lease" | "shutdown";
 
 export interface WorkerTimings {
   tickMs: number;
@@ -91,8 +91,10 @@ interface Active {
   runId: string;
   handle: AttemptHandle | null;
   child: ProcessHandle | null;
-  // The first reason Orbit asked it to stop (null: it was not asked).
+  // The first reason Orbit asked it to stop (null: it was not asked), and the stop request's own word when its work ended
+  // by design.
   stopFor: StopWhy | null;
+  byDesign: string | null;
   stopTimer: NodeJS.Timeout | null;
   done: Promise<void>;
 }
@@ -100,17 +102,32 @@ interface Active {
 // What a stop request written by the connections' hook asks for: its AI connection was disconnected or removed.
 export const CONNECTION_GONE = "disconnected";
 
+// What a stop request written by the access watch asks for: something the attempt was given to read is no longer its.
+export const ACCESS_REVOKED = "access_revoked";
+
+// What an attempt that ended its work BY DESIGN was asked to stop for (ADR 0061 §8): it gave its work to its team, asked a
+// question and waits for the answer, answered or moved up its team's questions, or waits for its team. Such an attempt
+// SUCCEEDED -- its compute goes back at once instead of when its CLI happens to exit -- and says why.
+const BY_DESIGN: Record<string, string> = {
+  delegated: "it gave its work to its team",
+  waiting_for_answer: "it asked a question and waits for the answer",
+  answered: "it answered its team",
+  escalated: "it moved its team's question one level up",
+  waiting_for_team: "it waits for its team",
+};
+
 // What a stop request written by Work (`stop_requested`) asks for.
-const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" => {
+const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" => {
   if (requested.startsWith("pause")) return "pause";
-  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE) return requested;
+  if (Object.hasOwn(BY_DESIGN, requested)) return "handed_over";
+  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE || requested === ACCESS_REVOKED) return requested;
   return "cancel";
 };
 
 // What Work is told about an attempt that never started because it was asked to stop first.
 const notWanted = (requested: string | null): RunEnd["stoppedFor"] => {
   const why = requested === null ? "cancel" : stopOf(requested);
-  return why === "pause" ? "pause" : "cancel";
+  return why === "pause" ? "pause" : why === "handed_over" ? "handed_over" : "cancel";
 };
 
 const NETWORK_TEXT = (n: EmployeeNetwork): string =>
@@ -221,7 +238,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
 
   private launch(orbitId: string, runId: string): void {
     if (this.active.has(runId)) return;
-    const entry: Active = { orbitId, runId, handle: null, child: null, stopFor: null, stopTimer: null, done: Promise.resolve() };
+    const entry: Active = { orbitId, runId, handle: null, child: null, stopFor: null, byDesign: null, stopTimer: null, done: Promise.resolve() };
     this.active.set(runId, entry);
     entry.done = this.attempt(entry)
       .catch((err: unknown) => this.logger.warn(`Attempt ${runId} ended in error: ${redactSecrets(err instanceof Error ? err.message : String(err))}`))
@@ -319,7 +336,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     if (prep.isolationRequired && attestation.state !== "attested") return this.settle(entry, run, actor, prep.plan, null, { state: "failed", detail: `The account's policy requires the agent to run isolated, and this attempt's sandbox was not attested: ${attestation.detail}`, stoppedFor: "refused" });
     if (attestation.shell && !prep.plan.execute) attestation = { ...attestation, shell: false, detail: "The account's policy does not allow running commands in the workspace (workspace.execute): file tools only." };
-    if (entry.stopFor !== null) return this.settle(entry, run, actor, prep.plan, null, this.stoppedEnd(entry.stopFor, profile));
+    if (entry.stopFor !== null) return this.settle(entry, run, actor, prep.plan, null, this.stoppedEnd(entry.stopFor, profile, entry.byDesign));
 
     const startedAt = new Date().toISOString();
     if (!(await this.runs.transition(run.orbitId, run.id, ["starting"], "running", { startedAt, resolved: resolved.profile, sandbox: attestation, resources: evidence }, run.fence, this.owner))) {
@@ -343,9 +360,23 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID(), modelFile });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: staged.filter((i) => i.origin !== "repository"), withheld: ctx.data.withheld, team: { canDelegate: ctx.team.canDelegate, colleagues: ctx.team.colleagues, units: ctx.team.units, room: room?.domain ?? null } }), resolved.profile.webSearch, profile.timeoutMinutes);
+    const watched = await this.watched(entry, run, () => this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: staged.filter((i) => i.origin !== "repository"), withheld: ctx.data.withheld, team: { ...ctx.team, room: room?.domain ?? null } }), resolved.profile.webSearch, profile.timeoutMinutes));
     if (room !== null) await this.roomAfter(handle, run, room.id);
     await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
+  }
+
+  // The CLI's end, and -- when its work ended by design (it delegated, asked, answered) while it still ran -- that reason,
+  // read from the run's own stop request: a CLI that exits on its own after "stop here" ended by design all the same.
+  private async watched<T>(entry: Active, run: RunRecord, watch: () => Promise<T>): Promise<T> {
+    const out = await watch();
+    if (entry.stopFor === null) {
+      const now = await this.runs.get(run.orbitId, run.id);
+      if (now?.stopRequested !== null && now?.stopRequested !== undefined && Object.hasOwn(BY_DESIGN, now.stopRequested)) {
+        entry.stopFor = "handed_over";
+        entry.byDesign = now.stopRequested;
+      }
+    }
+    return out;
   }
 
   // The team room as this attempt left it (read before its planes go): what differs from the room's last known state is
@@ -446,8 +477,11 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   // Orbit asks an attempt to stop: the CLI first (TERM, then KILL after the grace); the planes are removed when it settles.
-  private stop(entry: Active, why: StopWhy): void {
-    if (entry.stopFor === null) entry.stopFor = why;
+  private stop(entry: Active, why: StopWhy, requested: string | null = null): void {
+    if (entry.stopFor === null) {
+      entry.stopFor = why;
+      if (why === "handed_over") entry.byDesign = requested;
+    }
     const child = entry.child;
     if (child === null) return;
     child.kill("SIGTERM");
@@ -457,12 +491,14 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
   }
 
-  private stoppedEnd(why: StopWhy, profile: Omit<ResourceProfile, never>): RunEnd {
+  private stoppedEnd(why: StopWhy, profile: Omit<ResourceProfile, never>, byDesign: string | null = null): RunEnd {
+    if (why === "handed_over") return { state: "succeeded", detail: `Ended by design: ${BY_DESIGN[byDesign ?? ""] ?? "its work went on elsewhere"}.`, stoppedFor: "handed_over" };
     if (why === "pause") return { state: "cancelled", detail: "Stopped: the assignment was paused.", stoppedFor: "pause" };
     if (why === "cancel") return { state: "cancelled", detail: "Stopped: the assignment was cancelled.", stoppedFor: "cancel" };
     if (why === "accepted") return { state: "succeeded", detail: "Ended after its hand-in was accepted.", stoppedFor: "cancel" };
     if (why === "replaced") return { state: "cancelled", detail: "Stopped: a newer attempt of the assignment replaced it.", stoppedFor: "cancel" };
     if (why === "disconnected") return { state: "failed", detail: "Stopped: the AI connection it ran on was disconnected. Connect it again in Settings → AI Connections, then retry.", stoppedFor: null };
+    if (why === "access_revoked") return { state: "failed", detail: "Stopped: something it was given to read is no longer its to read (a share revoked, or its employee moved to another department). Nothing it did after is handed in; retry once access is settled.", stoppedFor: null };
     if (why === "timeout") return { state: "failed", detail: `It ran past its limit of ${profile.timeoutMinutes} minutes and was stopped.`, stoppedFor: "timeout" };
     if (why === "shutdown") return { state: "interrupted", detail: "Orbit Web was shut down while this attempt ran: it was stopped. Retry it when Orbit Web is back.", stoppedFor: null };
     return { state: "interrupted", detail: "This worker lost the attempt's lease: another worker reconciles it.", stoppedFor: "recover" };
@@ -471,7 +507,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   // How an attempt that ran ended, from what Orbit observed (never from what the agent said about itself).
   private endOf(entry: Active, w: { exit: ExitInfo; facts: StreamFacts; violation: string | null; stderr: string }, profile: ResourceProfile): RunEnd {
     if (w.violation !== null) return { state: "failed", detail: `${w.violation} (isolation not established)`, stoppedFor: "refused" };
-    if (entry.stopFor !== null) return this.stoppedEnd(entry.stopFor, profile);
+    if (entry.stopFor !== null) return this.stoppedEnd(entry.stopFor, profile, entry.byDesign);
     if (w.exit.spawnError !== null) return { state: "failed", detail: `The AI CLI could not be started in the model plane (${w.exit.spawnError}).`, stoppedFor: null };
     const r = w.facts.result;
     if (w.exit.code === 0 && r !== null && !r.isError) return { state: "succeeded", detail: null, stoppedFor: null };
@@ -504,7 +540,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       await this.runs.releaseLease(run.orbitId, run.id, this.owner);
       return;
     }
-    const entry: Active = { orbitId: run.orbitId, runId: run.id, handle: found?.handle ?? null, child: null, stopFor: null, stopTimer: null, done: Promise.resolve() };
+    const entry: Active = { orbitId: run.orbitId, runId: run.id, handle: found?.handle ?? null, child: null, stopFor: null, byDesign: null, stopTimer: null, done: Promise.resolve() };
     await this.settle(entry, run, actor, plan, null, { state: "failed", detail, stoppedFor: null });
   }
 
@@ -597,7 +633,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     if (this.active.size === 0) return;
     for (const r of await this.runs.withStopRequested()) {
       const entry = this.active.get(r.id);
-      if (entry !== undefined && r.stopRequested !== null) this.stop(entry, stopOf(r.stopRequested));
+      if (entry !== undefined && r.stopRequested !== null) this.stop(entry, stopOf(r.stopRequested), r.stopRequested);
     }
   }
 

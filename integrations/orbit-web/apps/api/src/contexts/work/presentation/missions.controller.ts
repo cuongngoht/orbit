@@ -4,6 +4,7 @@
 //
 //   GET  /api/missions?state=open|closed&employee=&cursor=     missions, newest change first
 //   POST /api/missions                                         give work: 201 claimed now · 202 queued · 409 busy
+//   GET  /api/missions/target?kind=employee|department|ceo&employeeId=&departmentId=   who is responsible now, or why nobody
 //   GET  /api/missions/:id                                     one mission in full (assignments, handoffs, timeline)
 //   POST /api/assignments/:id/accept                           { handoffDigest, note? }
 //   POST /api/assignments/:id/request-revision                 { handoffDigest, criteria }
@@ -12,8 +13,10 @@
 //   POST /api/assignments/:id/answer                           { answer }
 //   GET  /api/inbox?state=open|history&cursor=                 Needs me
 //   GET  /api/artifacts/:id/content                            an artifact's bytes (verified against its hash)
+//   GET  /api/missions/:id/data-shares                         what each lead shared with its parts (§9)
+//   POST /api/data-shares/:id/revoke                           take a share back: attempts holding it are stopped
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, Res, StreamableFile } from "@nestjs/common";
-import { isWorkforceId, type CommandResult, type Inbox, type MissionDetail, type MissionList } from "@orbit-web/contracts";
+import { isWorkforceId, type CommandResult, type Inbox, type MissionDetail, type MissionList, type MissionTarget, type MissionTargetPreview } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
 import { ApiError, notFound } from "../../../common/errors.js";
 import { ArtifactStore } from "../../execution/infrastructure/artifact-store.js";
@@ -56,6 +59,15 @@ export class MissionsController {
     return sendStored(res, answer);
   }
 
+  // Who a target would go to now (an employee, a department's manager in office, the CEO), as a person sees it before
+  // sending: what to name as `expectedAssignee`.
+  @Get("missions/target")
+  target(@Query("kind") kind?: string, @Query("employeeId") employeeId?: string, @Query("departmentId") departmentId?: string): Promise<MissionTargetPreview> {
+    const t: MissionTarget | null = kind === "ceo" ? { kind: "ceo" } : kind === "department" && isWorkforceId(departmentId) ? { kind: "department", departmentId } : kind === "employee" && isWorkforceId(employeeId) ? { kind: "employee", employeeId } : null;
+    if (t === null) throw new ApiError(HttpStatus.UNPROCESSABLE_ENTITY, "invalid_target", "Name a target: kind=ceo, kind=department&departmentId=..., or kind=employee&employeeId=...");
+    return this.missions.preview(ownerActor().command.orbitId, t);
+  }
+
   @Get("missions/:id")
   mission(@Param("id") id: string): Promise<MissionDetail> {
     return this.queries.detail(ownerActor().command.orbitId, id);
@@ -66,6 +78,19 @@ export class MissionsController {
   teamRoom(@Param("id") id: string) {
     if (!isWorkforceId(id)) throw notFound("The mission");
     return this.team.roomHistory(ownerActor().command.orbitId, id);
+  }
+
+  // What each lead of the mission shared with its parts, on purpose: what, to whom, from where, and whether it holds.
+  @Get("missions/:id/data-shares")
+  dataShares(@Param("id") id: string) {
+    if (!isWorkforceId(id)) throw notFound("The mission");
+    return this.team.missionShares(ownerActor().command.orbitId, id);
+  }
+
+  @Post("data-shares/:id/revoke")
+  @HttpCode(HttpStatus.OK)
+  revokeShare(@Param("id") id: string) {
+    return this.team.revokeShare(ownerActor(), id);
   }
 
   @Post("assignments/:id/accept")

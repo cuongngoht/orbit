@@ -1,11 +1,14 @@
 // GATHER-STYLE REAL-TIME COMPANY OFFICE FLOOR: one physical walker per employee moving smoothly with directional
 // facing & 2-frame walking stride along real doorway/hallway routes between their desk, Pantry lounge, and Director's Office.
-import { Button, Link, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { ErrorCircle16Regular, MoreHorizontal16Regular, Warning16Regular } from "@fluentui/react-icons";
+// Each department's room says who manages it (or that nobody does); its menu appoints, replaces, suspends, reinstates or
+// revokes that manager -- the company's authority, as Leadership changes it -- beside renaming and archiving the room.
+import { Button, Link, MenuItem, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
+import { ErrorCircle16Regular, Warning16Regular } from "@fluentui/react-icons";
 import type { AuthAccount, Department, EmployeeCard, WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBadge, OfficeIcon } from "../../components/SectionIcons";
 import { useI18n } from "../../i18n";
+import { AppointmentDialog, AppointmentHolder, AppointmentMenu, type AppointmentEdit } from "./AppointmentDialogs";
 import type { DepartmentEdit } from "./DepartmentDialogs";
 import { createWalker, resnapIdleWalkers, stepWalkers, type SimEmployee, type WalkerState, type WaypointMap } from "./officeSim";
 import { Callout, WorkLabelBadge, useOfficeStyles, when } from "./parts";
@@ -206,6 +209,8 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
     minWidth: 0,
   },
+  // A department room's name and who manages it, wrapping before the room's menu does.
+  roomHead: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, flexBasis: 0, minWidth: "min(100%, 160px)" },
   roomTag: {
     display: "inline-flex",
     alignItems: "center",
@@ -526,6 +531,7 @@ export function OfficeFloorMap({
   onOpenEmployee,
   onOpenMission,
   onEditDepartment,
+  onAppointment,
 }: {
   groups: FloorGroup[];
   filter: string;
@@ -534,11 +540,16 @@ export function OfficeFloorMap({
   onOpenEmployee: (employeeId: string) => void;
   onOpenMission: (missionId: string) => void;
   onEditDepartment: (edit: DepartmentEdit) => void;
+  // A change of a department's manager, when the page holds the dialog itself; without it the floor asks in its own
+  // (the change moves the roster, which the page reads again when the office says so).
+  onAppointment?: (edit: AppointmentEdit) => void;
 }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const restore = useRestoreFocusTarget();
+  const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
+  const pickAppointment = onAppointment ?? setAppointing;
   const buildingRef = useRef<HTMLDivElement>(null);
   const wpsRef = useRef<WaypointMap>({});
   const walkersRef = useRef<WalkerState[]>([]);
@@ -762,29 +773,32 @@ export function OfficeFloorMap({
             <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
               <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
               <div className={s.roomTitleBar}>
-                <div className={o.row}>
-                  <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
-                  <Text as="h3" weight="semibold" size={300}>
-                    {roomName}
-                  </Text>
-                  <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
-                    {g.department
-                      ? t("office.floor.membersCount", { count: g.department.members, word: g.department.members === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
-                      : t("office.floor.shownCount", { count: g.employees.length })}
-                  </Text>
+                <div className={s.roomHead}>
+                  <div className={o.row}>
+                    <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
+                    <Text as="h3" weight="semibold" size={300} className={o.wrap}>
+                      {roomName}
+                    </Text>
+                    <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
+                      {g.department
+                        ? t("office.floor.membersCount", { count: g.department.members, word: g.department.members === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
+                        : t("office.floor.shownCount", { count: g.employees.length })}
+                    </Text>
+                  </div>
+                  {g.department &&
+                    (g.department.manager ? (
+                      <AppointmentHolder who={g.department.manager} prefix={`${t("office.leadership.managerLabel")} `} onOpen={onOpenEmployee} />
+                    ) : (
+                      <Text size={200} className={s.muted}>
+                        {t("office.leadership.noManager")}
+                      </Text>
+                    ))}
                 </div>
                 {g.department && (
-                  <Menu>
-                    <MenuTrigger disableButtonEnhancement>
-                      <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} aria-label={t("office.floor.actionsForDept", { name: g.department.name })} />
-                    </MenuTrigger>
-                    <MenuPopover>
-                      <MenuList>
-                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
-                        <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
-                      </MenuList>
-                    </MenuPopover>
-                  </Menu>
+                  <AppointmentMenu slot={{ role: "manager", department: g.department, incumbent: g.department.manager ?? null }} label={t("office.floor.actionsForDept", { name: g.department.name })} onPick={pickAppointment}>
+                    <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
+                    <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
+                  </AppointmentMenu>
                 )}
               </div>
 
@@ -986,6 +1000,7 @@ export function OfficeFloorMap({
           })}
         </div>
       )}
+      {appointing && <AppointmentDialog edit={appointing} onClose={() => setAppointing(null)} onDone={() => setAppointing(null)} />}
     </div>
   );
 }

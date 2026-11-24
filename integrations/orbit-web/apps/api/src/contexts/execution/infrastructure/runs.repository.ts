@@ -31,6 +31,8 @@ export interface RunRecord {
   waitingSince: string | null;
   priority: number;
   stopRequested: string | null;
+  // Why this attempt was started (claimed, an answer, its team to review ...).
+  wakeReason: string | null;
   startedAt: string | null;
   endedAt: string | null;
   detail: string | null;
@@ -66,6 +68,7 @@ export const runOf = (r: Row): RunRecord => ({
   waitingSince: sn(r.waiting_since),
   priority: Number(r.priority),
   stopRequested: sn(r.stop_requested),
+  wakeReason: sn(r.wake_reason),
   startedAt: sn(r.started_at),
   endedAt: sn(r.ended_at),
   detail: sn(r.detail),
@@ -117,11 +120,11 @@ export class RunRepository {
     return Number((await this.db.one("SELECT COALESCE(MAX(attempt_no), 0) AS n FROM workforce.runs WHERE account_id = $1 AND assignment_id = $2", [orbitId, assignmentId]))?.n ?? 0);
   }
 
-  async insert(r: { id: string; orbitId: string; assignmentId: string; employeeId: string; attemptNo: number; fence: number; requested: RunRecord["requested"]; priority: number; at: string }): Promise<void> {
+  async insert(r: { id: string; orbitId: string; assignmentId: string; employeeId: string; attemptNo: number; fence: number; requested: RunRecord["requested"]; priority: number; at: string; wake?: string | null }): Promise<void> {
     await this.db.query(
-      `INSERT INTO workforce.runs (id, account_id, assignment_id, employee_id, attempt_no, state, dispatch_key, fence, requested, priority, waiting_since, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'requested', $6, $7, $8::jsonb, $9, $10, $10, $10)`,
-      [r.id, r.orbitId, r.assignmentId, r.employeeId, r.attemptNo, `${r.assignmentId}:${r.attemptNo}`, r.fence, jsonParam(r.requested), r.priority, r.at],
+      `INSERT INTO workforce.runs (id, account_id, assignment_id, employee_id, attempt_no, state, dispatch_key, fence, requested, priority, waiting_since, created_at, updated_at, wake_reason)
+       VALUES ($1, $2, $3, $4, $5, 'requested', $6, $7, $8::jsonb, $9, $10, $10, $10, $11)`,
+      [r.id, r.orbitId, r.assignmentId, r.employeeId, r.attemptNo, `${r.assignmentId}:${r.attemptNo}`, r.fence, jsonParam(r.requested), r.priority, r.at, r.wake?.slice(0, 200) ?? null],
     );
   }
 
@@ -203,6 +206,22 @@ export class RunRepository {
       [orbitId, connectionId, reason, new Date().toISOString()],
     );
     return rows.map((r) => String(r.id));
+  }
+
+  // One live attempt asked to stop (the first reason stays): whether it was.
+  async requestStopOf(orbitId: string, runId: string, reason: string): Promise<boolean> {
+    const r = await this.db.one("UPDATE workforce.runs SET stop_requested = $3, updated_at = $4 WHERE account_id = $1 AND id = $2 AND state IN ('starting', 'running') AND stop_requested IS NULL RETURNING id", [orbitId, runId, reason, new Date().toISOString()]);
+    return r !== null;
+  }
+
+  // The live attempts of an account (of one employee, when named) nobody asked to stop yet.
+  async liveOf(orbitId: string, employeeId: string | null): Promise<RunRecord[]> {
+    return (await this.db.query("SELECT * FROM workforce.runs WHERE account_id = $1 AND ($2::uuid IS NULL OR employee_id = $2) AND state IN ('starting', 'running') AND stop_requested IS NULL ORDER BY created_at", [orbitId, employeeId])).map(runOf);
+  }
+
+  // The accounts with live attempts (the access watch's heartbeat).
+  async accountsLive(): Promise<string[]> {
+    return (await this.db.query("SELECT DISTINCT account_id FROM workforce.runs WHERE state IN ('starting', 'running') AND stop_requested IS NULL")).map((r) => String(r.account_id));
   }
 
   async withStopRequested(): Promise<RunRecord[]> {

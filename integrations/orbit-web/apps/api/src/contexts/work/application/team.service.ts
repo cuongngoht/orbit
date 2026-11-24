@@ -1,5 +1,6 @@
-// TEAMS (Work context): a manager -- an employee whose profile may delegate -- gives PARTS of its assignment to its
-// colleagues, as a plan it hands in through its `delegate` tool:
+// TEAMS (Work context): a LEAD -- an employee whose appointment (CEO, a department's manager) or delegation grants let
+// it give work (domain/authority.ts; never a title or a profile switch) -- gives PARTS of its assignment, as a plan it
+// hands in through its `delegate` tool:
 //
 //   - the plan is a graph: each part has a stable key, an employee, a brief, and the parts it waits for. It is refused
 //     whole when a key repeats, an employee is not a working colleague of this account (or is the manager), a part waits
@@ -16,7 +17,7 @@
 //     REVIEWS them (`review_unit`: accept, or ask for a revision -- the part keeps its employee) and, once all are
 //     accepted, integrates and hands in its own result to the person who gave the work.
 import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
-import { WORKFORCE_LIMITS, type AssignmentState, type Deliverable, type TeamRoomChange } from "@orbit-web/contracts";
+import { isWorkforceId, WORKFORCE_LIMITS, type AssignmentState, type DataShareView, type Deliverable, type TeamRoomChange } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
@@ -26,25 +27,35 @@ import { EventDispatcher } from "../../shared/infrastructure/consumers.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
 import type { TeamRoom } from "../../execution/application/run-outcomes.port.js";
-import { Assignment } from "../domain/assignment.js";
+import { Assignment, type AssignmentTargetData } from "../domain/assignment.js";
+import { delegationScope, resolveTarget, scopeIsEmpty, type DelegationScope } from "../domain/authority.js";
+import { allEnded, DONE, leadNext, planProblems } from "../domain/team.js";
+import { ClarificationRepository } from "../infrastructure/clarifications.repository.js";
+import { OrgReader } from "../infrastructure/org.reader.js";
 import { sharedSourcesOf, type ShareMode } from "../domain/data-authorization.js";
+import { AccessHooks } from "../../../modules/governance/access-hooks.js";
 import { AttemptDataService } from "./attempt-data.service.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "../infrastructure/repositories.js";
 
+// A part as the lead's plan names it: to an employee or a department (by id or exact name), what it must do, what it waits
+// for, and what the lead shares with it (nothing unless it says): source labels it reads ("all": every one it reads), and
+// the accepted hand-in of a part this one waits for -- its summary, or in full.
 export interface UnitPlan {
   key: string;
-  employeeId: string;
+  employee?: string;
+  department?: string;
   title: string;
   goal: string;
   deliverables: Deliverable[];
   acceptanceCriteria: string[];
   dependsOn: string[];
-  // What the lead shares with the part (nothing unless it says): source labels it reads ("all": every one it reads), and
-  // the accepted hand-in of a part this one waits for -- its summary, or in full.
   shareSources?: string[];
   receives?: { from: string; as: ShareMode }[];
 }
+
+// A part once its authority resolved who takes it.
+type ResolvedPart = UnitPlan & { employeeId: string; target: AssignmentTargetData };
 
 export interface UnitView {
   key: string;
@@ -56,61 +67,14 @@ export interface UnitView {
   handoff: { revision: number; digest: string; summary: string; submittedAt: string; artifacts: { name: string; sha256: string }[] } | null;
 }
 
-const KEY = /^[a-z0-9][a-z0-9-]{0,39}$/;
 // Never: a part waiting for others is claimable only once they are accepted.
 const NOT_YET = "9999-12-31T00:00:00.000Z";
 // A team room's data domain: one department's, or the company's (the employees of no department).
 const roomKeyOf = (departmentId: string | null): string => (departmentId === null ? "company" : `department:${departmentId}`);
 const TEAM_ROOM_MIB = 1024;
-// A part blocked on a question is not settled: its person answers, and it goes on.
-const SETTLED: readonly AssignmentState[] = ["AWAITING_ACCEPTANCE", "COMPLETED", "CANCELLED", "FAILED_FINAL"];
-const DONE: readonly AssignmentState[] = ["COMPLETED", "CANCELLED", "FAILED_FINAL"];
 
-// Whether a manager waiting for its team has something to do now: a part's result waits for its decision, or every part
-// ended -- and no part is still being worked on. A part that waits for others it has not accepted yet is not "being
-// worked on": its manager's decisions are what it waits for.
-export function readyToReview(units: readonly Pick<UnitView, "key" | "state" | "dependsOn">[]): boolean {
-  if (units.length === 0) return false;
-  const done = new Set(units.filter((u) => u.state === "COMPLETED").map((u) => u.key));
-  const working = units.some((u) => (u.state === "QUEUED" ? u.dependsOn.every((d) => done.has(d)) : !SETTLED.includes(u.state) && u.state !== "BLOCKED"));
-  if (working) return false;
-  return units.some((u) => u.state === "AWAITING_ACCEPTANCE") || units.every((u) => DONE.includes(u.state));
-}
-
-// The waits of a plan, ordered (Kahn); null when they make a cycle.
-export function orderOf(units: readonly Pick<UnitPlan, "key" | "dependsOn">[]): string[] | null {
-  const waits = new Map(units.map((u) => [u.key, new Set(u.dependsOn)]));
-  const out: string[] = [];
-  const ready = units.filter((u) => u.dependsOn.length === 0).map((u) => u.key);
-  while (ready.length > 0) {
-    const k = ready.shift() as string;
-    out.push(k);
-    for (const [other, deps] of waits) {
-      if (deps.delete(k) && deps.size === 0 && !out.includes(other) && !ready.includes(other)) ready.push(other);
-    }
-  }
-  return out.length === units.length ? out : null;
-}
-
-// What is wrong with a plan, as the manager is told (empty: it can be given).
-export function planProblems(units: readonly UnitPlan[], managerId: string, colleagues: ReadonlySet<string>): string[] {
-  const problems: string[] = [];
-  if (units.length === 0) problems.push("A plan gives at least one part.");
-  if (units.length > 8) problems.push("A plan gives at most 8 parts at a time.");
-  const keys = new Set<string>();
-  for (const u of units) {
-    if (!KEY.test(u.key)) problems.push(`"${u.key}" is not a part's key (lower-case letters, digits and dashes).`);
-    if (keys.has(u.key)) problems.push(`The key "${u.key}" is given twice.`);
-    keys.add(u.key);
-    if (u.employeeId === managerId) problems.push(`"${u.key}" is given to yourself: give it to a colleague, or do it yourself.`);
-    else if (!colleagues.has(u.employeeId)) problems.push(`"${u.key}" names someone who is not a working colleague of this office.`);
-    if (u.goal.trim().length === 0) problems.push(`"${u.key}" has no goal.`);
-  }
-  for (const u of units) for (const d of u.dependsOn) if (!keys.has(d)) problems.push(`"${u.key}" waits for "${d}", which is not in the plan.`);
-  for (const u of units) for (const r of u.receives ?? []) if (!u.dependsOn.includes(r.from)) problems.push(`"${u.key}" receives the hand-in of "${r.from}", which it does not wait for: a part receives only what it waits for.`);
-  if (problems.length === 0 && orderOf(units) === null) problems.push("The parts wait for each other in a circle: nothing could start.");
-  return problems;
-}
+// The plan's rules and what a lead does next are pure (domain/team.ts); kept importable from here.
+export { orderOf, planProblems, readyToReview } from "../domain/team.js";
 
 @Injectable()
 export class TeamService implements OnModuleInit {
@@ -126,23 +90,37 @@ export class TeamService implements OnModuleInit {
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
     @Inject(AttemptDataService) private readonly data: AttemptDataService,
+    @Inject(AccessHooks) private readonly access: AccessHooks,
+    @Inject(OrgReader) private readonly org: OrgReader,
+    @Inject(ClarificationRepository) private readonly clarifications: ClarificationRepository,
   ) {}
 
   onModuleInit(): void {
-    // When a part hands in or ends, its manager may have everything it waited for.
-    this.dispatcher.register({ id: "work.team", types: ["HandoffSubmitted", "AssignmentCancelled", "AssignmentFailed"], handle: async (e) => this.maybeWake(e.accountId, e.aggregateId, e.correlationId, e.id) });
+    // When a part hands in or ends, its lead may have everything it waited for; when a part asks (or a question comes up
+    // a level), its lead is woken to answer. A wake is a compare-and-set on the lead's waiting state: a duplicate event,
+    // or a lead already awake, changes nothing.
+    this.dispatcher.register({
+      id: "work.team",
+      types: ["HandoffSubmitted", "AssignmentCancelled", "AssignmentFailed", "ClarificationRequested", "ClarificationEscalated"],
+      handle: async (e) => {
+        const lead = e.aggregateType === "clarification" ? (typeof e.payload.addresseeAssignmentId === "string" ? e.payload.addresseeAssignmentId : null) : await this.leadOf(e.accountId, e.aggregateId);
+        if (lead !== null) await this.wake(e.accountId, lead, e.correlationId, e.id);
+      },
+    });
   }
 
   // ---- what an attempt is told -------------------------------------------------------------------------------------
 
-  async colleagues(orbitId: string, employeeId: string): Promise<{ id: string; name: string; title: string }[]> {
-    const rows = await this.db.query(
-      `SELECT e.id, e.name, p.profile->>'title' AS title FROM workforce.employees e
-       JOIN workforce.employee_profiles p ON p.account_id = e.account_id AND p.employee_id = e.id AND p.revision = e.profile_revision
-       WHERE e.account_id = $1 AND e.id <> $2 AND e.employment IN ('probation', 'active') ORDER BY e.name, e.id LIMIT 50`,
-      [orbitId, employeeId],
-    );
-    return rows.map((r) => ({ id: String(r.id), name: String(r.name), title: String(r.title ?? "") }));
+  // Whom this assignment's employee may give work to now: its appointment in force and its grants, never itself nor a
+  // lead above it in this mission (domain/authority.ts). Empty: it does the work itself.
+  async scope(orbitId: string, a: Assignment): Promise<DelegationScope> {
+    const chain = await this.org.chainOf(orbitId, a.id);
+    return delegationScope(await this.org.authority(orbitId, a.data.employeeId, chain));
+  }
+
+  // The questions its team asked this lead, still open.
+  openQuestions(orbitId: string, leadAssignmentId: string) {
+    return this.clarifications.openTo(orbitId, leadAssignmentId);
   }
 
   async units(orbitId: string, managerAssignmentId: string): Promise<UnitView[]> {
@@ -190,23 +168,31 @@ export class TeamService implements OnModuleInit {
 
   // ---- the manager's plan ------------------------------------------------------------------------------------------
 
-  // Inside the manager's run transaction (its assignment locked by the caller): the parts made, queued, and the room.
-  async delegate(actor: Actor, manager: Assignment, fence: number, units: UnitPlan[], canDelegate: boolean): Promise<RaisedEvent[]> {
+  // Inside the lead's run transaction (its assignment locked by the caller): the plan held to its authority and its own
+  // rules (refused whole, with every problem), the parts made and queued, what it shares with each, and the room.
+  async delegate(actor: Actor, manager: Assignment, fence: number, units: UnitPlan[]): Promise<RaisedEvent[]> {
     const orbitId = manager.orbitId;
-    if (!canDelegate) throw refused("cannot_delegate", "Your profile does not let you give work to others: do it yourself.");
+    const scope = await this.scope(orbitId, manager);
+    if (scopeIsEmpty(scope)) throw refused("no_authority", "You hold no appointment or grant that lets you give work to others: do it yourself.");
     if ((await this.depth(orbitId, manager)) >= WORKFORCE_LIMITS.delegationDepth) throw refused("delegation_too_deep", `Work is already given down ${WORKFORCE_LIMITS.delegationDepth} levels: do this part yourself.`);
-    const colleagues = new Set((await this.colleagues(orbitId, manager.data.employeeId)).map((c) => c.id));
-    const existing = new Set((await this.units(orbitId, manager.id)).map((u) => u.key));
-    const problems = planProblems(units, manager.data.employeeId, colleagues);
-    for (const u of units) if (existing.has(u.key)) problems.push(`A part "${u.key}" was already given.`);
+    const problems: string[] = [];
+    const parts: ResolvedPart[] = [];
+    for (const u of units) {
+      const r = resolveTarget(scope, { employee: u.employee, department: u.department });
+      if ("problem" in r) problems.push(`"${u.key}": ${r.problem}`);
+      else parts.push({ ...u, employeeId: r.employeeId, target: r.target });
+    }
+    const taken = new Set((await this.units(orbitId, manager.id)).map((u) => u.key));
+    problems.push(...planProblems(parts, manager.data.employeeId, taken));
     if (problems.length > 0) throw invalid("plan_refused", `The plan was not given: ${problems.join(" ")}`, { problems });
-    const shared = await this.sharesOf(orbitId, manager, units);
-    for (const u of units) await this.governance.authorize(actor, "work.delegate", u.employeeId, { employee: u.employeeId, manager: manager.data.employeeId });
     const at = new Date().toISOString();
+    manager.delegated(fence, parts.length, at);
+    const shared = await this.sharesOf(orbitId, manager, parts);
+    for (const u of parts) await this.governance.authorize(actor, "work.delegate", u.employeeId, { employee: u.employeeId, manager: manager.data.employeeId });
     await this.openRoom(orbitId, manager.data.missionId, await this.departmentOf(orbitId, manager.data.employeeId), at);
     const events: RaisedEvent[] = [];
     const made = new Map<string, string>();
-    for (const u of units) {
+    for (const u of parts) {
       const part = Assignment.queued({
         id: randomUUID(),
         orbitId,
@@ -221,18 +207,20 @@ export class TeamService implements OnModuleInit {
         deadline: manager.data.deadline,
         createdBy: actor.command.actor,
         createdAt: at,
+        target: u.target,
       });
       await this.assignments.save(part);
       events.push(...part.pullEvents());
       made.set(u.key, part.id);
     }
-    await this.share(actor, manager, units, shared, made, at);
+    await this.share(actor, manager, parts, shared, made, at);
     const m = await this.missions.get(orbitId, manager.data.missionId, true);
     if (m !== null) {
       await this.db.query("UPDATE workforce.missions SET plan_revision = plan_revision + 1, updated_at = $3, version = version + 1 WHERE account_id = $1 AND id = $2", [orbitId, m.id, at]);
-      events.push({ type: "MissionPlanRevised", aggregateType: "mission", aggregateId: m.id, aggregateVersion: m.data.version + 1, missionId: m.id, payload: { parts: units.length, by: manager.data.employeeId } });
+      events.push({ type: "MissionPlanRevised", aggregateType: "mission", aggregateId: m.id, aggregateVersion: m.data.version + 1, missionId: m.id, payload: { parts: parts.length, by: manager.data.employeeId } });
     }
-    manager.delegated(fence, units.length, at);
+    // Its attempt ended here, by design: asked to stop, it ends as having handed its work to its team.
+    await this.runs.stop(orbitId, manager.id, "delegated");
     return events;
   }
 
@@ -270,7 +258,7 @@ export class TeamService implements OnModuleInit {
 
   // The source revisions each part is given, held to what the lead reads itself (a label it does not read refuses the
   // plan whole, with the others' problems).
-  private async sharesOf(orbitId: string, manager: Assignment, units: readonly UnitPlan[]): Promise<Map<string, string[]>> {
+  private async sharesOf(orbitId: string, manager: Assignment, units: readonly ResolvedPart[]): Promise<Map<string, string[]>> {
     const asked = units.filter((u) => (u.shareSources ?? []).length > 0);
     const out = new Map<string, string[]>();
     if (asked.length === 0) return out;
@@ -286,7 +274,7 @@ export class TeamService implements OnModuleInit {
   }
 
   // Each share recorded with what, to whom and from where (and audited): a source revision, or a predecessor's hand-in.
-  private async share(actor: Actor, manager: Assignment, units: readonly UnitPlan[], sources: ReadonlyMap<string, string[]>, made: ReadonlyMap<string, string>, at: string): Promise<void> {
+  private async share(actor: Actor, manager: Assignment, units: readonly ResolvedPart[], sources: ReadonlyMap<string, string[]>, made: ReadonlyMap<string, string>, at: string): Promise<void> {
     const orbitId = manager.orbitId;
     const write = async (recipient: string, kind: "source" | "handoff", ref: string, mode: ShareMode) => {
       const id = randomUUID();
@@ -303,35 +291,105 @@ export class TeamService implements OnModuleInit {
     }
   }
 
+  // The shares of a mission, as the owner reads them.
+  async missionShares(orbitId: string, missionId: string): Promise<DataShareView[]> {
+    if ((await this.db.one("SELECT 1 AS one FROM workforce.missions WHERE account_id = $1 AND id = $2", [orbitId, missionId])) === null) throw missing("Mission");
+    const rows = await this.db.query(
+      `SELECT s.id, s.kind, s.source_revision_id, s.mode, s.shared_by, s.created_at, s.revoked_by, s.revoked_at, s.recipient_assignment_id, s.lead_assignment_id,
+              r.unit_key AS recipient_key, re.name AS recipient_name, o.unit_key AS origin_key
+       FROM workforce.data_shares s
+       JOIN workforce.assignments r ON r.account_id = s.account_id AND r.id = s.recipient_assignment_id
+       JOIN workforce.employees re ON re.account_id = r.account_id AND re.id = r.employee_id
+       LEFT JOIN workforce.assignments o ON o.account_id = s.account_id AND o.id = s.origin_assignment_id
+       WHERE s.account_id = $1 AND s.mission_id = $2 ORDER BY s.created_at, s.id`,
+      [orbitId, missionId],
+    );
+    return rows.map((r) => ({
+      id: String(r.id),
+      kind: r.kind === "source" ? "source" : "handoff",
+      sourceRevisionId: r.source_revision_id === null ? null : String(r.source_revision_id),
+      fromUnit: r.origin_key === null ? null : String(r.origin_key),
+      mode: r.mode === "full" ? "full" : "summary",
+      recipientAssignmentId: String(r.recipient_assignment_id),
+      recipientUnit: String(r.recipient_key),
+      recipientName: String(r.recipient_name),
+      leadAssignmentId: String(r.lead_assignment_id),
+      sharedBy: String(r.shared_by),
+      sharedAt: new Date(String(r.created_at)).toISOString(),
+      revokedBy: r.revoked_by === null ? null : String(r.revoked_by),
+      revokedAt: r.revoked_at === null ? null : new Date(String(r.revoked_at)).toISOString(),
+    }));
+  }
+
+  // A person takes back what a lead shared: the share is revoked (recorded, audited) and, after commit, every live attempt
+  // that holds it is stopped by the access watch. Revoking a revoked share changes nothing.
+  async revokeShare(actor: Actor, shareId: string): Promise<{ id: string; revokedAt: string }> {
+    const orbitId = actor.command.orbitId;
+    if (!isWorkforceId(shareId)) throw missing("The share");
+    const out = await this.governance.command(actor, "data-share.revoke", shareId, async () => {
+      const r = await this.db.one("SELECT recipient_assignment_id, revoked_at FROM workforce.data_shares WHERE account_id = $1 AND id = $2 FOR UPDATE", [orbitId, shareId]);
+      if (r === null) throw missing("The share");
+      if (r.revoked_at !== null) return { id: shareId, revokedAt: new Date(String(r.revoked_at)).toISOString(), moved: false };
+      const recipient = await this.assignments.get(orbitId, String(r.recipient_assignment_id));
+      if (recipient === null) throw missing("The share");
+      await this.governance.authorize(actor, "work.assign", recipient.data.employeeId, { employee: recipient.data.employeeId });
+      const at = new Date().toISOString();
+      await this.db.query("UPDATE workforce.data_shares SET revoked_by = $3, revoked_at = $4 WHERE account_id = $1 AND id = $2", [orbitId, shareId, actor.command.actor, at]);
+      await this.governance.recorded(actor, "data-share.revoke", "data-share", shareId, 1, "revoked");
+      return { id: shareId, revokedAt: at, moved: true };
+    });
+    if (out.moved) this.access.changed(orbitId, { cause: "a share revoked" });
+    return { id: out.id, revokedAt: out.revokedAt };
+  }
+
   // ---- the manager wakes, and reviews ----------------------------------------------------------------------------------
 
-  // A part handed in or ended: when every part of its manager is settled, the manager reviews (a new attempt).
-  private async maybeWake(orbitId: string, childId: string, correlationId: string, causationId: string): Promise<void> {
-    const child = await this.db.one("SELECT parent_id FROM workforce.assignments WHERE account_id = $1 AND id = $2", [orbitId, childId]);
-    if (child === null || child.parent_id === null) return;
-    const manager = await this.assignments.get(orbitId, String(child.parent_id), true);
-    if (manager === null || manager.state !== "WAITING_FOR_SUBORDINATES") return;
-    const units = await this.units(orbitId, manager.id);
-    if (!readyToReview(units)) return;
-    const fence = manager.reviewing(new Date().toISOString());
-    const actor = systemActor(orbitId, "team", correlationId, causationId);
-    const run = await this.requestRun(manager, fence);
-    await this.assignments.save(manager);
-    await this.outbox.append(actor.command, [...manager.pullEvents(), run]);
-    await this.outbox.touched(orbitId, ["roster", "missions"], manager.data.missionId);
+  // The lead of a part (null: it is a mission's root).
+  private async leadOf(orbitId: string, assignmentId: string): Promise<string | null> {
+    const r = await this.db.one("SELECT parent_id FROM workforce.assignments WHERE account_id = $1 AND id = $2", [orbitId, assignmentId]);
+    return r === null || r.parent_id === null ? null : String(r.parent_id);
+  }
+
+  // A lead waiting for its team is woken when it has something to do (domain/team.ts leadNext): its parts' results to
+  // review (or every part ended: integrate), else its team's questions to answer. A compare-and-set on WAITING under the
+  // lead's lock: a lead already awake, or a duplicate event, changes nothing.
+  async wake(orbitId: string, leadId: string, correlationId: string, causationId: string | null): Promise<boolean> {
+    return this.db.tx(async () => {
+      const lead = await this.assignments.get(orbitId, leadId, true);
+      if (lead === null || lead.state !== "WAITING_FOR_SUBORDINATES") return false;
+      const events = await this.next(lead, new Date().toISOString());
+      if (events.length === 0) return false;
+      const actor = systemActor(orbitId, "team", correlationId, causationId);
+      await this.assignments.save(lead);
+      await this.outbox.append(actor.command, [...lead.pullEvents(), ...events]);
+      await this.outbox.touched(orbitId, ["roster", "missions"], lead.data.missionId);
+      return true;
+    });
+  }
+
+  // What a lead in WAITING does next, applied to it (the caller saves it): an attempt to review or to answer, or nothing.
+  async next(lead: Assignment, at: string): Promise<RaisedEvent[]> {
+    const units = await this.units(lead.orbitId, lead.id);
+    const open = (await this.clarifications.openTo(lead.orbitId, lead.id)).length;
+    const what = leadNext(units, open);
+    if (what === "wait") return [];
+    const fence = what === "review" ? lead.reviewing(at) : lead.answering(at);
+    return [await this.requestRun(lead, fence, what === "review" ? (allEnded(units) ? "its team finished: integrate and hand in" : "its team handed in: review") : "its team asked: answer")];
   }
 
   // The manager's decision on one part it reviews: accept it (it completes, its employee is free, the parts waiting for it
   // may start), or ask for a revision (the part keeps its employee; a new attempt).
-  async review(actor: Actor, manager: Assignment, unitKey: string, decision: "accept" | "revise", criteria: string): Promise<{ events: RaisedEvent[]; text: string }> {
+  async review(actor: Actor, manager: Assignment, unitKey: string, decision: "accept" | "revise", criteria: string, digest: string | null = null): Promise<{ events: RaisedEvent[]; text: string }> {
     const orbitId = manager.orbitId;
-    if (manager.state !== "REVIEWING") throw conflictWith("invalid_transition", "Reviewing your team's parts happens when they have all handed in.");
+    if (manager.state !== "REVIEWING" && manager.state !== "ANSWERING") throw conflictWith("invalid_transition", "Reviewing your team's parts happens when they have handed in.");
     const row = await this.db.one("SELECT id FROM workforce.assignments WHERE account_id = $1 AND parent_id = $2 AND unit_key = $3", [orbitId, manager.id, unitKey]);
     if (row === null) throw missing(`The part "${unitKey}"`);
     const part = (await this.assignments.get(orbitId, String(row.id), true)) as Assignment;
     if (part.state !== "AWAITING_ACCEPTANCE") throw conflictWith("invalid_transition", `The part "${unitKey}" is ${part.state.toLowerCase().replace(/_/g, " ")}: there is nothing of it to review now.`);
     const h = await this.handoffs.latest(orbitId, part.id);
     if (h === null || h.status !== "submitted") throw conflictWith("invalid_transition", `The part "${unitKey}" has no result waiting.`);
+    // The revision the lead looked at: a newer one (or none like it) refuses the decision.
+    if (digest !== null && digest !== h.digest) throw conflictWith("stale_handoff", `The part "${unitKey}" handed in revision ${h.revision} (digest ${h.digest.slice(0, 12)}): review that one.`, { current: h.digest });
     const at = new Date().toISOString();
     const events: RaisedEvent[] = [];
     let text: string;
@@ -345,7 +403,7 @@ export class TeamService implements OnModuleInit {
       if (criteria.trim().length === 0) throw invalid("criteria_required", "Say what has to change.");
       const fence = part.requestRevision(criteria, actor.command.actor, at);
       await this.handoffs.review(orbitId, part.id, h.revision, "revision_requested", { by: actor.command.actor, at, note: criteria });
-      events.push(await this.requestRun(part, fence));
+      events.push(await this.requestRun(part, fence, "its lead asked for a revision"));
       text = `Asked "${unitKey}" for a revision: its employee works on it again.`;
     }
     await this.assignments.save(part);
@@ -374,22 +432,23 @@ export class TeamService implements OnModuleInit {
     const awaiting = units.filter((u) => u.state === "AWAITING_ACCEPTANCE");
     const seen = (u: UnitView) => attemptStartedAt === null || (u.handoff !== null && Date.parse(u.handoff.submittedAt) <= Date.parse(attemptStartedAt));
     const undecided = awaiting.filter(seen).map((u) => u.key);
-    if (undecided.length > 0) return { kind: "blocked", why: `The manager ended its review without deciding on ${undecided.join(", ")}.` };
+    if (undecided.length > 0) return { kind: "blocked", why: `The lead ended its review without deciding on ${undecided.join(", ")}.` };
+    // Every part ended and nothing handed in: blocked while it is still the review that ended (a waiting lead has no
+    // attempt to block).
+    if (awaiting.length === 0 && units.every((u) => DONE.includes(u.state))) return { kind: "blocked", why: "The lead ended without handing in the integrated result." };
     manager.waitForTeam(at);
-    if (awaiting.length > 0) return { kind: "again" };
-    if (units.some((u) => !DONE.includes(u.state))) return { kind: "waiting" };
-    return { kind: "blocked", why: "The manager ended without handing in the integrated result." };
+    return awaiting.length > 0 ? { kind: "again" } : { kind: "waiting" };
   }
 
-  // The manager woken again at once (a result arrived while it reviewed).
+  // The lead woken again at once (a result arrived while it reviewed).
   async wakeAgain(manager: Assignment, at: string): Promise<RaisedEvent> {
-    return this.requestRun(manager, manager.reviewing(at));
+    return this.requestRun(manager, manager.reviewing(at), "a result arrived while it reviewed");
   }
 
-  private requestRun(a: Assignment, fence: number): Promise<RaisedEvent> {
+  private requestRun(a: Assignment, fence: number, wake: string): Promise<RaisedEvent> {
     const execution = a.data.pinned?.execution;
     if (execution === undefined) throw conflictWith("invalid_transition", "This assignment was never claimed.");
-    return this.runs.request({ orbitId: a.orbitId, assignmentId: a.id, missionId: a.data.missionId, employeeId: a.data.employeeId, fence, priority: a.data.priority, execution });
+    return this.runs.request({ orbitId: a.orbitId, assignmentId: a.id, missionId: a.data.missionId, employeeId: a.data.employeeId, fence, priority: a.data.priority, execution, wake });
   }
 
   // ---- the team room's history ------------------------------------------------------------------------------------------

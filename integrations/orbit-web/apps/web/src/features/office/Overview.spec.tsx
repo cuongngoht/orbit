@@ -287,6 +287,33 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/revoke`)(api)?.headers["if-match"]).toBe('"5"');
   });
 
+  test("each department's room on the floor says who manages it; its menu changes that appointment, against the version read, beside renaming and archiving the room", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () => roster({ departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1, manager: appointmentSummary({ appointmentId: LEGAL_APPOINTMENT, employeeId: EMP_BAO, name: "Bao", version: 5 }) })] }))
+      .on("POST", `/api/office/appointments/${LEGAL_APPOINTMENT}/suspend`, () => appointmentView({ id: LEGAL_APPOINTMENT, departmentId: DEPT_LEGAL, departmentName: "Legal", employeeId: EMP_BAO, employeeName: "Bao", state: "suspended", version: 6 }));
+    const go = show();
+    const legal = await screen.findByRole("region", { name: "Legal" });
+    expect(legal).toHaveTextContent("Manager: Bao");
+    expect(screen.getByRole("region", { name: "Accounting" })).toHaveTextContent("No manager");
+    // The manager's name opens the employee (the first "Bao" of the room is its header's; its desk comes after).
+    await userEvent.click(within(legal).getAllByRole("button", { name: "Bao" })[0] as HTMLElement);
+    expect(go).toHaveBeenCalledWith("employee", EMP_BAO);
+    await userEvent.click(within(legal).getByRole("button", { name: "Actions for Legal" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Replace", "Suspend", "Revoke", "Rename", "Archive"]);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Suspend" }));
+    const dialog = await screen.findByRole("dialog", { name: "Suspend the manager of Legal" });
+    expect(dialog.textContent).toContain("Bao is the manager of Legal now.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Suspend" }));
+    await waitFor(() => expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/suspend`)(api)).toBeDefined());
+    expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/suspend`)(api)?.body).toEqual({});
+    expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/suspend`)(api)?.headers["if-match"]).toBe('"5"');
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // An empty slot is appointed to from the same menu.
+    await userEvent.click(within(screen.getByRole("region", { name: "Accounting" })).getByRole("button", { name: "Actions for Accounting" }));
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Appoint", "Rename", "Archive"]);
+  });
+
   test("execution defaults, the company's and a department's: per runtime, only what is set is sent, against the version read -- and a field a department leaves unset says what the company has", async () => {
     const codex = connection({ id: CONN_CODEX, runtime: "codex", label: "ChatGPT", isDefault: true, plugins: null, catalog: { ...connection().catalog, models: [{ id: "gpt-6.1-sol", label: "GPT-6.1-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }], recommended: "gpt-6.1-sol" } });
     const api = fakeApi()

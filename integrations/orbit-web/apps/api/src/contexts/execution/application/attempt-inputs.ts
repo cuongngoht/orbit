@@ -13,7 +13,7 @@ import { AttemptManifest } from "../infrastructure/attempt-manifest.js";
 import { RunRepository } from "../infrastructure/runs.repository.js";
 import { REPO_BUNDLE_PREFIX, REPOSITORY_BUNDLES, type RepositoryBundles } from "./repository-bundles.port.js";
 import { ResearchInputs } from "./research-inputs.js";
-import { RUN_OUTCOMES, type AttemptData, type RunOutcomes } from "./run-outcomes.port.js";
+import { ATTEMPT_DATA, type AttemptData, type AttemptDataPort } from "./run-outcomes.port.js";
 
 // One file of an attempt's /input, why it is there, and what gave it.
 export interface StagedInput {
@@ -41,7 +41,7 @@ export class AttemptInputs {
     @Inject(ResearchInputs) private readonly research: ResearchInputs,
     @Inject(AttemptManifest) private readonly manifest: AttemptManifest,
     @Inject(RunRepository) private readonly runs: RunRepository,
-    @Inject(RUN_OUTCOMES) private readonly outcomes: RunOutcomes,
+    @Inject(ATTEMPT_DATA) private readonly data: AttemptDataPort,
     @Inject(AuditService) private readonly audit: AuditService,
     @Optional() @Inject(REPOSITORY_BUNDLES) private readonly bundles: RepositoryBundles | null = null,
   ) {}
@@ -65,7 +65,7 @@ export class AttemptInputs {
 
   // The first input of a manifest the attempt may no longer read (null: every one still may be).
   async withdrawn(orbitId: string, assignmentId: string, rows: readonly StagedInput[]): Promise<string | null> {
-    const data = await this.outcomes.data(orbitId, assignmentId);
+    const data = await this.data.of(orbitId, assignmentId);
     if (data === null) return rows[0]?.name ?? null;
     const now = new Set(this.stagedOf(orbitId, data).map((i) => `${i.name}\n${i.storePath}`));
     for (const r of rows) {

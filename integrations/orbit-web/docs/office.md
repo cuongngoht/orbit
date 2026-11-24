@@ -21,10 +21,10 @@ flowchart LR
     sources["sources · immutable revisions<br/>frozen passages"]
   end
   subgraph workforce["Workforce (contexts/workforce)"]
-    office["office · departments · employees<br/>profile & resource revisions · sandboxes"]
+    office["office · departments · employees<br/>profile & resource revisions · sandboxes<br/>appointments · delegation grants · defaults"]
   end
   subgraph work["Work (contexts/work)"]
-    missions["missions · assignments · reservations<br/>handoffs · decisions (Needs me)<br/>team rooms · schedules · deliveries"]
+    missions["missions · targets · assignments · reservations<br/>handoffs · decisions (Needs me) · questions<br/>data shares · team rooms · schedules · deliveries"]
   end
   subgraph execution["Execution (contexts/execution)"]
     runs["runs · admission · the worker<br/>artifacts · tool endpoint · desk publisher"]
@@ -36,10 +36,12 @@ flowchart LR
   conn -->|"ConnectionHooks: disconnected / removed"| runs
   policy -->|"decide · bind · egress"| runs
   policy -->|"decide office actions"| missions
+  policy -->|"AccessHooks: a policy published, an access changed"| runs
   sources -->|"pinned revisions (read-only)"| runs
   office -->|"eligibility (sync, in the claim's transaction)"| missions
+  office -->|"authority, slots (read: OrgReader)"| missions
   missions -->|"run intents · stop requests"| runs
-  runs -->|"RunOutcomes port: handoff · ended · delegate · review"| missions
+  runs -->|"RunOutcomes port: handoff · ended · delegate · review · question · answer · data · room"| missions
   runs -->|"SandboxProvider port (signed HTTP)"| allocator
 ```
 
@@ -48,6 +50,10 @@ flowchart LR
 - **Domain purity**: `contexts/*/domain/` imports no framework, database, file system or HTTP (`boundaries.spec.ts`).
 - **Ports**: `SANDBOX_PROVIDER` (container or development `process`), `CONNECTION_SECRETS` (the credential store),
   `RUN_OUTCOMES` (Execution → Work).
+- **Pure rules of Work** (`contexts/work/domain/`): `authority.ts` (whom a lead may give work to: its appointment in force
+  and its grants), `target.ts` (who a mission goes to), `team.ts` (a plan's rules, `leadNext`: review, answer or wait),
+  `data-authorization.ts` (what one attempt may read), `assignment.ts` (the state machine). Workforce keeps
+  `appointment.ts` and `execution-precedence.ts` (mission > employee > department > company).
 - **Synchronous edges** stay inside one transaction (eligibility at a claim, the reservation, the run intent);
   everything else crosses as a durable event or a stop request on the run row.
 
@@ -67,7 +73,11 @@ each event they handled in the inbox (`consumer_inbox`) in the transaction of th
 | `SandboxReady`, `SandboxFailed` | the sandbox provisioner | `work.scheduler` (on ready) |
 | `MissionCreated`, `MissionPlanRevised` | Work (a new mission, a team's plan) | the pages |
 | `AssignmentQueued`, `AssignmentClaimed` | Work (create, the queue) | `work.scheduler` (on queued) |
-| `AssignmentDelegated`, `AssignmentReviewing` | Work (a lead's plan, its review) | the pages |
+| `AssignmentDelegated`, `AssignmentReviewing`, `AssignmentAnswering` | Work (a lead's plan, its review, its team's questions) | the pages |
+| `ClarificationRequested`, `ClarificationEscalated` | Work (a question asked, moved up a level) | `work.team` (wakes the lead it is asked of) |
+| `ClarificationAnswered`, `ClarificationWithdrawn` | Work (answered once; withdrawn with its asker's end) | the pages |
+| `AppointmentChanged`, `DelegationGrantChanged` | Workforce (appointments, grants) | the pages |
+| `AssignmentHandedOver` | Work (a person's handover) | `work.scheduler`, `execution.workspace-cleanup` |
 | `RunRequested`, `RunStarted`, `RunFinished`, `StaleResultRejected` | Work / Execution | the worker (polls `requested`, woken by the outbox) |
 | `ResourcesReserved`, `RunWaitingForResources`, `RunUnschedulable`, `ResourcesReleased` | Execution (admission, release) | the admission pass; the mission's timeline |
 | `HandoffSubmitted` | Work (a hand-in) | `work.team` (wakes a waiting lead) |
@@ -75,7 +85,8 @@ each event they handled in the inbox (`consumer_inbox`) in the transaction of th
 | `AssignmentAccepted` | Work (a person's or a lead's acceptance) | `execution.desk` (publish to the desk), `work.delivery` (deliveries) |
 | `DeskPublished` | Execution (the desk publisher) | `execution.workspace-cleanup` |
 | `AssignmentBlocked`, `AssignmentPaused`, `AssignmentResumed` | Work | the pages; Needs me |
-| `AssignmentCancelling`, `AssignmentCancelled`, `AssignmentFailed` | Work | `work.team`, `execution.workspace-cleanup` |
+| `AssignmentCancelling`, `AssignmentCancelled`, `AssignmentFailed` | Work | `work.team`, `work.cascade` (a lead's open parts end with it; its question is withdrawn), `execution.workspace-cleanup` |
+| `EmployeeDepartmentChanged` | Workforce | `execution.access` (an attempt holding another department's room is stopped) |
 | `ReservationReleased` | Work (the employee is free) | `work.scheduler` (its next queued work) |
 | `DecisionRequested`, `DecisionResolved` | Work (Needs me) | the pages |
 | `OccurrenceCreated` | Work (a schedule's period) | the pages |
@@ -98,22 +109,27 @@ stateDiagram-v2
   REVIEWING --> AWAITING_ACCEPTANCE: handoff (integrated)
   AWAITING_ACCEPTANCE --> ASSIGNED: request revision
   AWAITING_ACCEPTANCE --> COMPLETED: accept
-  RUNNING --> WAITING_FOR_SUBORDINATES: delegate
+  RUNNING --> WAITING_FOR_SUBORDINATES: delegate (attempt ends by design)
   ASSIGNED --> WAITING_FOR_SUBORDINATES: delegate
-  REVIEWING --> WAITING_FOR_SUBORDINATES: delegate / wait for revisions
-  WAITING_FOR_SUBORDINATES --> REVIEWING: parts handed in
-  RUNNING --> BLOCKED: question · failure · isolation
+  REVIEWING --> WAITING_FOR_SUBORDINATES: delegate again / wait for revisions
+  ANSWERING --> WAITING_FOR_SUBORDINATES: answered · moved up (attempt ends by design)
+  WAITING_FOR_SUBORDINATES --> REVIEWING: parts handed in / all ended
+  WAITING_FOR_SUBORDINATES --> ANSWERING: a part asked
+  RUNNING --> BLOCKED: question (attempt ends by design) · failure · isolation · access revoked
   ASSIGNED --> BLOCKED
   REVIEWING --> BLOCKED
+  ANSWERING --> BLOCKED
   RECOVERING --> BLOCKED
-  BLOCKED --> ASSIGNED: answer · retry
+  BLOCKED --> ASSIGNED: answered once (by its lead or the person) · retry
+  BLOCKED --> REVIEWING: answered (a lead that asked while reviewing)
   RUNNING --> RECOVERING: worker lost
   ASSIGNED --> RECOVERING
   REVIEWING --> RECOVERING
   RECOVERING --> ASSIGNED: reconciled
   ASSIGNED --> PAUSED: pause
   RUNNING --> PAUSED: pause
-  PAUSED --> ASSIGNED: resume
+  PAUSED --> ASSIGNED: resume (it was acting)
+  PAUSED --> WAITING_FOR_SUBORDINATES: resume (it was waiting)
   RUNNING --> CANCELLING: cancel (attempt live)
   CANCELLING --> CANCELLED: attempt stopped
   ASSIGNED --> CANCELLED: cancel
@@ -126,8 +142,20 @@ stateDiagram-v2
 
 An employee holds one assignment at a time: a reservation row exists exactly while its assignment is in a holding state
 (a deferred constraint trigger checks it at commit). Every claim and every new attempt moves the **fence**; a result
-from an older fence is refused (`StaleResultRejected`). Commands name the version they were made against (If-Match →
-412); a review names the handoff digest it read (→ 409).
+from an older fence is refused (`StaleResultRejected`). An attempt ACTS only while its fence is current and its work is
+in ASSIGNED, RUNNING, REVIEWING, ANSWERING or RECOVERING: once it delegated, asked or handed in, its tools are closed
+and its run is stopped by design (a success, `Ended by design: ...`). Commands name the version they were made against
+(If-Match → 412); a review names the handoff digest it read (→ 409); the person reviews a mission's root only, a lead
+its parts. Bounds: 5 revisions of one hand-in (`rework_limit`), 3 plans (`replan_limit`), 3 questions
+(`question_limit`) per assignment; a lead is woken at most twice for one question before it moves up by itself.
+
+### A question (Work)
+
+A part asks its LEAD; the root asks the person who gave the work (Needs me). `open` → `answered` (a compare-and-set:
+two answers at once resume the asker exactly once) or `withdrawn` (its asker ended). A lead may move it one level up --
+to its own lead, or from the root to the person, only for `human_decision`, `beyond_authority`, `deadline` or
+`unanswered`; each hop is appended to its route (`workforce.clarification_routes`, never changed). The person's answer to
+a question asked of a lead is refused (409 `asked_of_lead`).
 
 ### A run, one attempt (Execution)
 

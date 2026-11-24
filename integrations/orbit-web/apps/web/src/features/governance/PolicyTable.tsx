@@ -1,16 +1,17 @@
 // THE ACCOUNT'S POLICY AS A TABLE (packages/governance-core/src/table.ts): the owner ticks what may happen instead of
 // writing JSON. One row per action, two boxes -- allowed, and you approve it first; neither ticked is denied. A row whose
-// action nobody may ever be granted (nothing carries it out, or it is nobody's at all) cannot be ticked. The hosts the
-// agent may reach are a list, the obligations and the default decision are boxes, and a rule the table cannot show is
-// listed and kept as written. Every change goes back into the document the page saves, which the server checks as it
-// checks any document.
+// action nobody may ever be granted (nothing carries it out, or it is nobody's at all) cannot be ticked. A row's rule
+// BINDS every department (mandatory, unless said otherwise) or is the company's default for an action it delegated, which
+// a department's own answer replaces. The hosts the agent may reach are a list, the obligations and the default decision
+// are boxes, and a rule the table cannot show is listed and kept as written. Every change goes back into the document the
+// page saves, which the server checks as it checks any document.
 import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Delete16Regular, LockClosed16Regular } from "@fluentui/react-icons";
-import { ACTIONS, CLAUDE_ACCOUNT_HOSTS, boxesOf, effectOf, egressHostOf, tableOf, withTable, type AccountPolicy, type ActionKind, type ActionRow, type ConstitutionTable as TableModel } from "@orbit-web/governance-core";
+import { ACTIONS, BINDINGS, CLAUDE_ACCOUNT_HOSTS, boxesOf, effectOf, egressHostOf, tableOf, withTable, type AccountPolicy, type ActionKind, type ActionRow, type Binding, type ConstitutionTable as TableModel } from "@orbit-web/governance-core";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
-import { t as tr, useI18n } from "../../i18n";
-import { Word, useParts } from "./parts";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
+import { CleanSelect, Word, put, useParts } from "./parts";
 
 const usePolicyTableStyles = makeStyles({
   wrap: { display: "flex", flexDirection: "column", gap: "18px" },
@@ -30,6 +31,9 @@ const usePolicyTableStyles = makeStyles({
   colHeld: { width: "108px", whiteSpace: "nowrap" },
   colAllowed: { width: "84px", textAlign: "center" },
   colApprove: { width: "148px", textAlign: "center" },
+  colBinding: { width: "136px", whiteSpace: "nowrap" },
+  bindingSelect: { minWidth: "124px" },
+  mobileBinding: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
   colNote: { minWidth: "180px" },
   readOnlyCheck: {
     "& .fui-Checkbox__label": { color: tokens.colorNeutralForeground2 },
@@ -87,6 +91,30 @@ const usePolicyTableStyles = makeStyles({
 
 const CLAUDE = new Set(CLAUDE_ACCOUNT_HOSTS.map((h) => `${h.host}:${h.port}`));
 
+const BINDING_KEYS: Record<Binding, MessageKey> = {
+  mandatory: "governance.policyTable.binding.mandatory",
+  default: "governance.policyTable.binding.default",
+};
+
+// Whether a row's rule binds every department or is the company's default for an action it delegated: chosen while the
+// row may change, said otherwise. A row no rule states follows the default decision, and binds nothing of its own.
+function BindingOf({ row, locked, onChange }: { row: ActionRow; locked: boolean; onChange: (row: ActionRow) => void }) {
+  const { t } = useI18n();
+  const s = usePolicyTableStyles();
+  if (!row.stated) return <Text className={s.note}>—</Text>;
+  const binding: Binding = row.binding ?? "mandatory";
+  if (locked) return <Word value={binding} />;
+  return (
+    <CleanSelect
+      className={s.bindingSelect}
+      ariaLabel={t("governance.policyTable.bindingAria", { action: row.action })}
+      value={binding}
+      options={BINDINGS.map((b) => ({ value: b, label: t(BINDING_KEYS[b]) }))}
+      onChange={(v) => onChange(put(row, "binding", v === "default" ? "default" : undefined))}
+    />
+  );
+}
+
 // Why a row cannot be ticked, or what its ticks mean for an agent: read from the action's own row of the vocabulary.
 export function limitOf(action: ActionKind): { fixed: boolean; note: string | null } {
   const spec = ACTIONS[action];
@@ -128,6 +156,9 @@ function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; o
       <TableCell className={s.colApprove}>
         <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={t("governance.policyTable.approveFirstAria", { action: row.action })} />
       </TableCell>
+      <TableCell className={s.colBinding}>
+        <BindingOf row={row} locked={locked} onChange={onChange} />
+      </TableCell>
       <TableCell className={s.colNote}>
         <Text size={200} className={s.note}>
           {limit.note ?? ""}
@@ -161,6 +192,14 @@ function MobileRow({ row, editable, onChange }: { row: ActionRow; editable: bool
         <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label={t("governance.policyTable.allowedLabel")} checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={t("governance.policyTable.allowedAria", { action: row.action })} />
         <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label={t("governance.policyTable.approveFirstLabel")} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={t("governance.policyTable.approveFirstAria", { action: row.action })} />
       </div>
+      {row.stated && (
+        <div className={s.mobileBinding}>
+          <Text size={200} className={s.note}>
+            {t("governance.policyTable.colBinding")}
+          </Text>
+          <BindingOf row={row} locked={locked} onChange={onChange} />
+        </div>
+      )}
       {limit.note && (
         <Text size={200} className={s.note}>
           {limit.note}
@@ -230,6 +269,9 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
     <div className={s.wrap}>
       <div className={s.section}>
         <Text weight="semibold">{t("governance.policyTable.whatMayHappen")}</Text>
+        <Text size={200} className={s.note}>
+          {t("governance.policyTable.bindingNote")}
+        </Text>
         {isMobile ? (
           <div className={s.mobileList} aria-label={t("governance.policyTable.whatMayHappen")}>
             {table.rows.map((row) => (
@@ -245,6 +287,7 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
                   <TableHeaderCell className={s.colHeld}>{t("governance.policyTable.colHeldBy")}</TableHeaderCell>
                   <TableHeaderCell className={s.colAllowed}>{t("governance.policyTable.colAllowed")}</TableHeaderCell>
                   <TableHeaderCell className={s.colApprove}>{t("governance.policyTable.colYouApprove")}</TableHeaderCell>
+                  <TableHeaderCell className={s.colBinding}>{t("governance.policyTable.colBinding")}</TableHeaderCell>
                   <TableHeaderCell className={s.colNote} />
                 </TableRow>
               </TableHeader>

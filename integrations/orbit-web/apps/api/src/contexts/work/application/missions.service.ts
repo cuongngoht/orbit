@@ -10,6 +10,10 @@
 // new fence; an acceptance completes the assignment and releases its reservation in the same transaction, after which
 // the scheduler gives the employee its next queued work.
 //
+// TARGETS (ADR 0061 §8): a mission goes to an employee by name, to a DEPARTMENT (its manager in office) or to the CEO --
+// resolved in the same transaction from the slot as it is then, and refused when it moved from what the person saw
+// (409 target_changed), when nobody holds it (no_ceo, no_manager) or its holder is suspended (appointment_suspended).
+//
 // RUN OUTCOMES (RunOutcomes, reported by Execution): Work decides what a run's end means for the assignment.
 import { Inject, Injectable, type OnModuleInit, Optional } from "@nestjs/common";
 import type { MissionRepositoryRequest } from "@orbit-web/contracts";
@@ -23,17 +27,28 @@ import {
   checkRequestRevision,
   isIdempotencyKey,
   isWorkforceId,
+  type ClarificationKind,
   type CommandResult,
   type EmployeeBusyDetails,
+  type ExpectedAssignee,
   type MissionAccepted,
+  type MissionTarget,
+  type MissionTargetPreview,
 } from "@orbit-web/contracts";
 import { createHash, randomUUID } from "node:crypto";
 import { accepted } from "../../../common/errors.js";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
-import type { AttemptContext, AttemptData, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
+import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
+import { scopeIsEmpty } from "../domain/authority.js";
+import { resolveMissionTarget, sameAssignee, type ResolvedMissionTarget } from "../domain/target.js";
+import { allEnded, DONE } from "../domain/team.js";
+import { OrgReader } from "../infrastructure/org.reader.js";
+import { ClarificationsService } from "./clarifications.service.js";
 import { OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
-import { conflictWith, DomainError, invalid, missing, stale, type RaisedEvent } from "../../shared/domain.js";
+import { conflictWith, DomainError, invalid, missing, stale, unprocessable, type RaisedEvent } from "../../shared/domain.js";
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 import { EventDispatcher } from "../../shared/infrastructure/consumers.js";
 import { Idempotency, type IdempotencyScope, type StoredAnswer } from "../../shared/infrastructure/idempotency.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
@@ -77,6 +92,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(EventDispatcher) private readonly dispatcher: EventDispatcher,
     @Inject(TeamService) private readonly team: TeamService,
     @Inject(AttemptDataService) private readonly attemptData: AttemptDataService,
+    @Inject(ClarificationsService) private readonly clarifications: ClarificationsService,
+    @Inject(OrgReader) private readonly org: OrgReader,
     @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
   ) {}
 
@@ -86,6 +103,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       pauseHeld: (actor, employeeId, reason) => this.onHeld(actor, employeeId, async (a) => this.pauseIn(actor, a, reason)),
       cancelHeld: (actor, employeeId, reason) => this.onHeld(actor, employeeId, async (a) => this.cancelIn(actor, a, reason)),
     });
+    // THE CASCADE: a lead that ends takes its open parts with it; an asker that ends withdraws its question.
+    this.dispatcher.register({ id: "work.cascade", types: ["AssignmentCancelled", "AssignmentFailed"], handle: async (e) => this.cascade(e.accountId, e.aggregateId, e.correlationId, e.id) });
     // THE SCHEDULER: when an employee lets go of an assignment, becomes able to work, or gets queued work, the next item
     // of its queue is claimed through the same claim as a person's "start now".
     this.dispatcher.register({
@@ -103,33 +122,42 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
 
   // `origin`: the schedule and occurrence that made this mission (the scheduler's), null for a person's.
   async create(actor: Actor, body: unknown, key: unknown, origin: { scheduleId: string; occurrenceId: string } | null = null): Promise<StoredAnswer> {
+    if (isRecord(body) && body.target !== undefined && body.targetEmployeeId !== undefined) {
+      const t = body.target as { kind?: unknown; employeeId?: unknown };
+      if (t?.kind !== "employee" || t.employeeId !== body.targetEmployeeId) throw unprocessable("target_conflict", "target and targetEmployeeId name different employees: send one of them.");
+    }
     const req = accepted(checkCreateMission(body));
     if (!isIdempotencyKey(key)) throw invalid("idempotency_key_required", "Send an Idempotency-Key header (8-128 letters, digits, dots, dashes, colons or underscores) with every new mission.");
     const orbitId = actor.command.orbitId;
     const scope: IdempotencyScope = { orbitId, actor: actor.command.actor, operation: "missions.create", key };
     try {
-      return await this.governance.command(actor, "mission.create", req.targetEmployeeId, async () => {
+      return await this.governance.command(actor, "mission.create", req.target.kind === "employee" ? req.target.employeeId : req.target.kind, async () => {
+        // A replay answers what the first request was answered, even after the slot moved.
         const prior = await this.idempotency.begin(scope, req);
         if (prior !== null) return prior;
-        await this.governance.authorize(actor, "work.assign", req.targetEmployeeId, { employee: req.targetEmployeeId });
-        const el = await this.eligibility.of(orbitId, req.targetEmployeeId, true);
+        const resolved = await this.resolveTarget(orbitId, req.target, req.expectedAssignee ?? null);
+        const employeeId = resolved.employeeId;
+        await this.governance.authorize(actor, "work.assign", employeeId, { employee: employeeId });
+        const el = await this.eligibility.of(orbitId, employeeId, true);
         if (el === null) throw missing("Employee");
         if (req.workspaceId !== null) await this.sources.check(orbitId, req.workspaceId, req.sourceRevisionIds);
-        const repositories = await this.repositoriesFor(orbitId, req.targetEmployeeId, req.repositories);
-        const execution = req.execution === undefined ? el.execution : await this.hiring.executionFor(orbitId, { ...el.execution, ...(req.execution.model !== undefined ? { model: req.execution.model } : {}), ...(req.execution.effort !== undefined ? { effort: req.execution.effort } : {}) });
-        const held = await this.assignments.heldBy(orbitId, req.targetEmployeeId);
-        if ((held !== null || !el.eligible) && req.whenBusy === "reject") throw await this.busy(orbitId, req.targetEmployeeId, held, el, actor.command.correlationId);
+        const repositories = await this.repositoriesFor(orbitId, employeeId, req.repositories);
+        const execution = req.execution === undefined ? el.execution : await this.hiring.executionFor(orbitId, { ...el.execution, ...(req.execution.model !== undefined ? { model: req.execution.model } : {}), ...(req.execution.effort !== undefined ? { effort: req.execution.effort } : {}) }, el.departmentId);
+        const held = await this.assignments.heldBy(orbitId, employeeId);
+        if ((held !== null || !el.eligible) && req.whenBusy === "reject") throw await this.busy(orbitId, employeeId, held, el, actor.command.correlationId);
         const at = new Date().toISOString();
         const mission = Mission.create({ id: randomUUID(), orbitId, title: req.title, goal: req.goal, createdBy: actor.command.actor, acceptanceMode: req.acceptanceMode, acceptanceCriteria: req.acceptanceCriteria, deliverables: req.deliverables, researchWorkspaceId: req.workspaceId, sourceRevisionIds: req.sourceRevisionIds, deadline: req.deadline, priority: req.priority, scheduleId: origin?.scheduleId ?? null, occurrenceId: origin?.occurrenceId ?? null, createdAt: at });
-        const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId: req.targetEmployeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at });
+        const target = { kind: req.target.kind, departmentId: req.target.kind === "department" ? req.target.departmentId : null, appointmentId: resolved.appointmentId, appointmentRevision: resolved.appointmentRevision };
+        const a = Assignment.queued({ id: randomUUID(), orbitId, missionId: mission.id, parentId: null, unitKey: "root", employeeId, brief: { goal: req.goal, deliverables: req.deliverables, acceptanceCriteria: req.acceptanceCriteria, revisions: [], answers: [] }, execution: req.execution ?? null, priority: req.priority, eligibleAt: at, deadline: req.deadline, createdBy: actor.command.actor, createdAt: at, target });
         await this.missions.insert(mission);
         if (repositories.length > 0) await this.repositories?.keep(orbitId, mission.id, repositories, actor.command.actor);
-        if (el.profile.canDelegate) await this.team.ensureRoom(orbitId, mission.id, el.employeeId);
+        // A mission given to someone who may give parts of it gets its room at once (its first attempt can prepare it).
+        if (!scopeIsEmpty(await this.team.scope(orbitId, a))) await this.team.ensureRoom(orbitId, mission.id, el.employeeId);
         const claimNow = held === null && el.eligible;
         if (claimNow) a.claim(this.pinOf(el, execution, req.execution ?? null), at);
         await this.assignments.save(a);
         const events: RaisedEvent[] = [...mission.pullEvents(), ...a.pullEvents()];
-        if (claimNow) events.push(await this.runs.request({ orbitId, assignmentId: a.id, missionId: mission.id, employeeId: a.data.employeeId, fence: a.data.fence, priority: a.data.priority, execution }));
+        if (claimNow) events.push(await this.runs.request({ orbitId, assignmentId: a.id, missionId: mission.id, employeeId: a.data.employeeId, fence: a.data.fence, priority: a.data.priority, execution, wake: "given the work" }));
         await this.outbox.append(actor.command, events);
         const resourceVersion = await this.outbox.touched(orbitId, ["roster", "missions"], mission.id);
         await this.governance.recorded(actor, "mission.create", "mission", mission.id, 1, `${claimNow ? "claimed" : "queued"} for ${el.name}`);
@@ -142,11 +170,35 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       });
     } catch (err) {
       // A refusal is the answer to this key too: the same request again gets the same answer, without running again.
-      if (err instanceof DomainError && (err.code === "employee_busy" || err.code === "employee_ineligible")) {
+      if (err instanceof DomainError && ["employee_busy", "employee_ineligible", "target_changed", "no_ceo", "no_manager", "appointment_suspended"].includes(err.code)) {
         await this.db.tx(() => this.idempotency.complete(scope, req, { status: 409, body: { error: { code: err.code, message: err.message, details: err.details } } })).catch(() => undefined);
       }
       throw err;
     }
+  }
+
+  // Who a target names NOW, its slot's row held: refused when nobody holds it, its holder is suspended, or it is not who
+  // the person saw before sending (`expected`).
+  private async resolveTarget(orbitId: string, target: MissionTarget, expected: ExpectedAssignee | null): Promise<ResolvedMissionTarget> {
+    const r = resolveMissionTarget(target, await this.org.slot(orbitId, target, true));
+    if ("code" in r) throw conflictWith(r.code, r.message, { target });
+    if (expected !== null && !sameAssignee(expected, r)) throw conflictWith("target_changed", "Who is responsible for this target changed since you looked: check, then send it again.", { current: await this.previewOf(orbitId, target, r) });
+    return r;
+  }
+
+  // GET /api/missions/target: who would be responsible for a target now (or why nobody is), as a person sees it.
+  async preview(orbitId: string, target: MissionTarget): Promise<MissionTargetPreview> {
+    const slot = await this.org.slot(orbitId, target, false);
+    const r = resolveMissionTarget(target, slot);
+    if ("code" in r) return { target, responsible: null, code: r.code, reason: r.message };
+    return { target, responsible: await this.previewOf(orbitId, target, r), code: null, reason: null };
+  }
+
+  private async previewOf(orbitId: string, target: MissionTarget, r: ResolvedMissionTarget): Promise<MissionTargetPreview["responsible"]> {
+    const e = await this.db.one("SELECT name FROM workforce.employees WHERE account_id = $1 AND id = $2", [orbitId, r.employeeId]);
+    if (e === null) throw missing("Employee");
+    const departmentName = target.kind === "department" ? await this.org.departmentName(orbitId, target.departmentId) : null;
+    return { employeeId: r.employeeId, appointmentId: r.appointmentId, appointmentRevision: r.appointmentRevision, employeeName: String(e.name), role: target.kind === "ceo" ? "ceo" : target.kind === "department" ? "manager" : null, departmentName };
   }
 
   private async busy(orbitId: string, employeeId: string, held: Assignment | null, el: Eligibility, correlationId: string): Promise<DomainError> {
@@ -168,7 +220,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       const execution = next.data.execution === null ? el.execution : { ...el.execution, ...(next.data.execution.model !== undefined ? { model: next.data.execution.model } : {}), ...(next.data.execution.effort !== undefined ? { effort: next.data.execution.effort } : {}) };
       next.claim(this.pinOf(el, execution, next.data.execution), new Date().toISOString());
       await this.assignments.save(next);
-      const events = [...next.pullEvents(), await this.runs.request({ orbitId, assignmentId: next.id, missionId: next.data.missionId, employeeId, fence: next.data.fence, priority: next.data.priority, execution })];
+      const events = [...next.pullEvents(), await this.runs.request({ orbitId, assignmentId: next.id, missionId: next.data.missionId, employeeId, fence: next.data.fence, priority: next.data.priority, execution, wake: next.data.parentId === null ? "its queued work came up" : "a part its lead gave it came up" })];
       await this.outbox.append(actor.command, events);
       await this.outbox.touched(orbitId, ["roster", "missions"], next.data.missionId);
       return next.id;
@@ -191,6 +243,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   async accept(actor: Actor, id: string, body: unknown, expectedVersion: number): Promise<CommandResult> {
     const req = accepted(checkAccept(body));
     return this.onAssignment(actor, id, expectedVersion, "assignment.accept", async (a) => {
+      this.reviewedByOwner(a);
       const h = await this.handoffs.latest(actor.command.orbitId, a.id);
       if (h === null || h.digest !== req.handoffDigest || h.status !== "submitted") throw conflictWith("stale_handoff", "The handoff you reviewed is no longer the one waiting for a decision: load the latest.", { current: h?.digest ?? null });
       const at = new Date().toISOString();
@@ -213,14 +266,20 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   async requestRevision(actor: Actor, id: string, body: unknown, expectedVersion: number): Promise<CommandResult> {
     const req = accepted(checkRequestRevision(body));
     return this.onAssignment(actor, id, expectedVersion, "assignment.request_revision", async (a) => {
+      this.reviewedByOwner(a);
       const h = await this.handoffs.latest(actor.command.orbitId, a.id);
       if (h === null || h.digest !== req.handoffDigest || h.status !== "submitted") throw conflictWith("stale_handoff", "The handoff you reviewed is no longer the one waiting for a decision: load the latest.", { current: h?.digest ?? null });
       const at = new Date().toISOString();
       const fence = a.requestRevision(req.criteria, actor.command.actor, at);
       await this.handoffs.review(actor.command.orbitId, a.id, h.revision, "revision_requested", { by: actor.command.actor, at, note: req.criteria });
       await this.decisions.close(actor.command.orbitId, `acceptance:${a.id}`, "resolved", "revision requested", actor.command.actor);
-      return [await this.requestRun(a, fence)];
+      return [await this.requestRun(a, fence, "the person who gave the work asked for a revision")];
     });
+  }
+
+  // A part's hand-in is its lead's to review, never the person's: the review follows the tree.
+  private reviewedByOwner(a: Assignment): void {
+    if (a.data.parentId !== null) throw conflictWith("reviewed_by_lead", "This is a part of a team's work: its lead reviews it. Review the mission's result when its lead hands it in.");
   }
 
   async cancel(actor: Actor, id: string, body: unknown, expectedVersion: number): Promise<CommandResult> {
@@ -233,16 +292,22 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     return this.onAssignment(actor, id, expectedVersion, "assignment.pause", async (a) => this.pauseIn(actor, a, req.reason));
   }
 
+  // A pause undone: work that waited (a lead for its team, a question for its answer) waits again; work that was acting
+  // gets a new attempt.
   async resume(actor: Actor, id: string, expectedVersion: number): Promise<CommandResult> {
-    return this.onAssignment(actor, id, expectedVersion, "assignment.resume", async (a) => [await this.requestRun(a, a.resume(new Date().toISOString()))]);
+    return this.onAssignment(actor, id, expectedVersion, "assignment.resume", async (a) => {
+      const fence = a.resume(new Date().toISOString());
+      return fence === null ? [] : [await this.requestRun(a, fence, "resumed by a person")];
+    });
   }
 
   // A blocked assignment tried again (after its reason was dealt with): a new attempt.
   async retry(actor: Actor, id: string, expectedVersion: number): Promise<CommandResult> {
     return this.onAssignment(actor, id, expectedVersion, "assignment.retry", async (a) => {
+      if (a.state === "BLOCKED" && (await this.clarifications.openQuestionOf(actor.command.orbitId, a.id)) !== null) throw conflictWith("waiting_for_answer", "It waits for the answer to its question: answer it (or have its lead answer it) instead of retrying.");
       const fence = a.state === "RECOVERING" ? a.recovered(new Date().toISOString()) : a.unblock(new Date().toISOString(), null);
       await this.decisions.closeAllFor(actor.command.orbitId, a.id, "retried");
-      return [await this.requestRun(a, fence)];
+      return [await this.requestRun(a, fence, "retried by a person")];
     });
   }
 
@@ -268,7 +333,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       const from = a.handOver({ employeeId: req.employeeId, pinned: a.holding ? this.pinOf(el, el.execution) : null }, at);
       const version = await this.assignments.handOver(a, from);
       const events = a.pullEvents();
-      if (a.state === "ASSIGNED") events.push(await this.requestRun(a, a.data.fence));
+      if (a.state === "ASSIGNED") events.push(await this.requestRun(a, a.data.fence, "handed over"));
       await this.outbox.append(actor.command, events);
       const resourceVersion = await this.outbox.touched(orbitId, ["roster", "missions", "inbox"], a.data.missionId);
       await this.governance.recorded(actor, "assignment.hand_over", "assignment", a.id, version, `${from} → ${req.employeeId}${req.reason ? `: ${req.reason}` : ""}`);
@@ -289,14 +354,11 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     });
   }
 
+  // A person's answer to a question asked of THEM (the root's, or one moved up to them); one asked of a lead is the
+  // lead's (409 asked_of_lead).
   async answer(actor: Actor, id: string, body: unknown, expectedVersion: number): Promise<CommandResult> {
     const req = accepted(checkAnswer(body));
-    return this.onAssignment(actor, id, expectedVersion, "assignment.answer", async (a) => {
-      if (a.data.waitingOn !== "information") throw conflictWith("invalid_transition", "This assignment is not waiting for information.");
-      const fence = a.unblock(new Date().toISOString(), { question: a.data.reason ?? "", answer: req.answer });
-      await this.decisions.close(actor.command.orbitId, `information:${a.id}`, "resolved", "answered", actor.command.actor);
-      return [await this.requestRun(a, fence)];
-    });
+    return this.onAssignment(actor, id, expectedVersion, "assignment.answer", async (a) => this.clarifications.answerByOwner(actor, a, req.answer));
   }
 
   private async pauseIn(actor: Actor, a: Assignment, reason: string): Promise<RaisedEvent[]> {
@@ -305,17 +367,18 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     return [];
   }
 
+  // A cancel ends the work, and with it -- in the same transaction -- the question it asked (and a person's item for it).
   private async cancelIn(actor: Actor, a: Assignment, reason: string): Promise<RaisedEvent[]> {
     const live = await this.runs.stop(actor.command.orbitId, a.id, "cancelled");
     a.cancel(live, reason, new Date().toISOString());
     if (a.state === "CANCELLED") await this.endedAssignment(actor, a);
-    return [];
+    return this.clarifications.withdrawFor(actor.command.orbitId, a.id);
   }
 
-  private async requestRun(a: Assignment, fence: number): Promise<RaisedEvent> {
+  private async requestRun(a: Assignment, fence: number, wake: string): Promise<RaisedEvent> {
     const execution = a.data.pinned?.execution;
     if (execution === undefined) throw conflictWith("invalid_transition", "This assignment was never claimed.");
-    return this.runs.request({ orbitId: a.orbitId, assignmentId: a.id, missionId: a.data.missionId, employeeId: a.data.employeeId, fence, priority: a.data.priority, execution });
+    return this.runs.request({ orbitId: a.orbitId, assignmentId: a.id, missionId: a.data.missionId, employeeId: a.data.employeeId, fence, priority: a.data.priority, execution, wake });
   }
 
   private async onHeld(actor: Actor, employeeId: string, work: (a: Assignment) => Promise<RaisedEvent[]>): Promise<void> {
@@ -356,8 +419,13 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     const b = a.data.brief;
     // What THIS attempt may read: the mission's sources for its root, what its lead shared for a part (§9).
     const data = await this.attemptData.of(orbitId, a.id);
+    const scope = await this.team.scope(orbitId, a);
+    const lead = a.data.parentId === null ? null : await this.assignments.get(orbitId, a.data.parentId);
+    const leadName = lead === null ? null : await this.employeeName(orbitId, lead.data.employeeId);
     return {
-      current: a.data.fence === fence && a.holding && a.state !== "CANCELLING" && a.state !== "PAUSED",
+      // Its attempt acts only while it is the current one AND the work is in a state that runs one: an attempt that
+      // delegated, asked or handed in has ended its work (its tools close), whatever its CLI still does.
+      current: a.acting(fence),
       missionId: a.data.missionId,
       createdBy: a.data.createdBy,
       missionTitle: m?.data.title ?? "",
@@ -368,17 +436,16 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
       repositories: data?.repositories === true && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
-        canDelegate: profile?.canDelegate === true,
-        colleagues: profile?.canDelegate === true ? await this.team.colleagues(orbitId, a.data.employeeId) : [],
+        canDelegate: !scopeIsEmpty(scope),
+        scope: { employees: scope.employees.map((e) => ({ id: e.id, name: e.name, title: e.title, departmentName: e.departmentName, via: e.via })), departments: scope.departments.map((d) => ({ id: d.id, name: d.name, managerName: d.manager?.name ?? null, via: d.via })) },
         units: await this.team.units(orbitId, a.id),
+        questions: (await this.team.openQuestions(orbitId, a.id)).map((q) => ({ id: q.id, askerName: q.askerName, unitKey: q.askerUnit, question: q.question, askedAt: q.askedAt })),
+        lead: leadName === null ? null : { name: leadName },
+        planCount: a.data.planCount,
         room: await this.team.room(orbitId, a.data.missionId, el?.departmentId ?? null),
       },
-      employee: { id: a.data.employeeId, name: el?.name ?? "", departmentId: el?.departmentId ?? null, profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
+      employee: { id: a.data.employeeId, name: el?.name ?? "", departmentId: el?.departmentId ?? null, appointment: el?.appointment ?? null, profile, eligible: el?.eligible ?? false, reason: el === null ? "The employee no longer exists." : el.reason, sandboxId: el?.sandboxId ?? null },
     };
-  }
-
-  data(orbitId: string, assignmentId: string): Promise<AttemptData | null> {
-    return this.attemptData.of(orbitId, assignmentId);
   }
 
   async roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null> {
@@ -405,6 +472,9 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     if (existing !== null) return { revision: existing.revision, digest: existing.digest, missing: existing.missing };
     let out = { revision: 0, digest: "", missing: [] as string[] };
     await this.onRun(actor, assignmentId, fence, async (a) => {
+      if (!a.acting(fence)) throw conflictWith("stale_fence", "This attempt has ended its work: its hand-in is not taken.");
+      const parts = await this.team.units(actor.command.orbitId, a.id);
+      if (!allEnded(parts)) throw conflictWith("parts_not_ended", `Your team's parts are not all ended (${parts.filter((u) => !DONE.includes(u.state)).map((u) => u.key).join(", ")}): review them before you hand in.`);
       const revision = a.data.handoffRevision + 1;
       const required = a.data.brief.deliverables.filter((d) => d.required).map((d) => d.name);
       const missingNames = required.filter((n) => !h.artifacts.some((x) => x.name === n));
@@ -449,11 +519,29 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     await this.governance.authorize(actor, "artifact.publish", assignmentId, { assignment: assignmentId, mission: a.data.missionId });
   }
 
+  // A question its attempt cannot go on without: to its lead (a part), or to the person who gave the work (the root).
   async question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void> {
+    await this.onRun(actor, assignmentId, fence, async (a) => this.clarifications.ask(actor, a, fence, question));
+  }
+
+  async answerQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, answer: string): Promise<string> {
+    let text = "";
     await this.onRun(actor, assignmentId, fence, async (a) => {
-      a.block(question, "information", new Date().toISOString());
-      await this.decisions.open({ orbitId: actor.command.orbitId, kind: "information", missionId: a.data.missionId, assignmentId, title: "The employee asks", reason: question, waiting: actor.command.actor, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `information:${assignmentId}` });
+      const r = await this.clarifications.answerByLead(actor, a, fence, clarificationId, answer);
+      text = r.text;
+      return r.events;
     });
+    return text;
+  }
+
+  async escalateQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, kind: ClarificationKind, note: string): Promise<string> {
+    let text = "";
+    await this.onRun(actor, assignmentId, fence, async (a) => {
+      const r = await this.clarifications.escalate(actor, a, fence, clarificationId, kind, note);
+      text = r.text;
+      return r.events;
+    });
+    return text;
   }
 
   // A run ended: what it means for the assignment is decided here. A late result of a replaced attempt changes nothing.
@@ -465,9 +553,14 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         await this.endedAssignment(actor, a);
         return [];
       }
-      if (a.state === "REVIEWING" && e.stoppedFor !== "recover" && e.stoppedFor !== "pause" && e.stoppedFor !== "cancel") {
+      // Its work ended by design (it delegated, asked, answered): the assignment moved on already.
+      if (e.stoppedFor === "handed_over") return [];
+      const interrupted = e.stoppedFor === "recover" || e.stoppedFor === "pause" || e.stoppedFor === "cancel";
+      // A lead's answering attempt that left its team's questions unanswered: counted, moved up after the last wake.
+      if (a.state === "ANSWERING" && !interrupted) return this.clarifications.answeringEnded(a, at);
+      if (a.state === "REVIEWING" && !interrupted) {
         const next = await this.team.reviewEnded(a, at, e.startedAt ?? null);
-        if (next.kind === "waiting") return [];
+        if (next.kind === "waiting") return this.team.next(a, at);
         if (next.kind === "again") return [await this.team.wakeAgain(a, at)];
         a.block(next.why, "owner", at);
         await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: next.why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
@@ -485,6 +578,29 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
       return [];
     }, true);
+  }
+
+  // A lead that ended (cancelled, failed): its open parts end with it, and the question it asked is withdrawn -- as is
+  // that of any part that ends.
+  private async cascade(orbitId: string, assignmentId: string, correlationId: string, causationId: string): Promise<void> {
+    const actor = systemActor(orbitId, "cascade", correlationId, causationId);
+    await this.db.tx(async () => {
+      const events = await this.clarifications.withdrawFor(orbitId, assignmentId);
+      const open = await this.db.query("SELECT id FROM workforce.assignments WHERE account_id = $1 AND parent_id = $2 AND state NOT IN ('COMPLETED', 'CANCELLED', 'FAILED_FINAL', 'CANCELLING') ORDER BY created_at, id", [orbitId, assignmentId]);
+      for (const row of open) {
+        const part = await this.assignments.get(orbitId, String(row.id), true);
+        if (part === null) continue;
+        events.push(...(await this.cancelIn(actor, part, "Its lead's work ended, and with it this part.")));
+        await this.assignments.save(part);
+        events.push(...part.pullEvents());
+      }
+      if (events.length > 0) await this.outbox.append(actor.command, events);
+    });
+  }
+
+  private async employeeName(orbitId: string, employeeId: string): Promise<string> {
+    const r = await this.db.one("SELECT name FROM workforce.employees WHERE account_id = $1 AND id = $2", [orbitId, employeeId]);
+    return r === null ? "" : String(r.name);
   }
 
   // When an assignment ends: open items about it close, and a root assignment's mission ends with it.
@@ -512,18 +628,18 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   async delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }> {
     let parts = 0;
     await this.onRun(actor, assignmentId, fence, async (a) => {
-      const profile = a.data.pinned === null ? null : await this.hiring.profileAt(actor.command.orbitId, a.data.employeeId, a.data.pinned.profileRevision);
-      const events = await this.team.delegate(actor, a, fence, units, profile?.canDelegate === true);
+      if (!a.acting(fence)) throw conflictWith("stale_fence", "This attempt has ended its work: its plan was not given.");
+      const events = await this.team.delegate(actor, a, fence, units);
       parts = units.length;
       return events;
     });
     return { parts };
   }
 
-  async reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string): Promise<string> {
+  async reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string, digest: string | null = null): Promise<string> {
     let text = "";
     await this.onRun(actor, assignmentId, fence, async (a) => {
-      const r = await this.team.review(actor, a, unitKey, decision, criteria);
+      const r = await this.team.review(actor, a, unitKey, decision, criteria, digest);
       text = r.text;
       return r.events;
     });

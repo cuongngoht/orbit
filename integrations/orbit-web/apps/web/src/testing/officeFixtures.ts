@@ -6,6 +6,8 @@ import {
   type AppointmentSummary,
   type AppointmentView,
   type AssignmentView,
+  type ClarificationView,
+  type DataShareView,
   type DelegationGrantView,
   type Department,
   type EmployeeCard,
@@ -17,6 +19,7 @@ import {
   type MissionDetail,
   type MissionList,
   type MissionSummary,
+  type MissionTargetPreview,
   type OccurrenceView,
   type Office,
   type ResourcePreset,
@@ -263,6 +266,7 @@ export function runView(over: Partial<RunView> = {}): RunView {
     startedAt: "2026-11-21T08:40:00.000Z",
     endedAt: null,
     detail: null,
+    wakeReason: "given the work",
     ...over,
   };
 }
@@ -338,6 +342,11 @@ export function assignmentView(over: Partial<AssignmentView> = {}): AssignmentVi
     updatedAt: "2026-11-21T08:50:00.000Z",
     parentId: null,
     unitKey: null,
+    target: { kind: "employee", departmentId: null, departmentName: null, appointmentId: null, appointmentRevision: null },
+    reviewedBy: "owner",
+    leadName: null,
+    planCount: 0,
+    questionCount: 0,
     brief: { goal: "Write the Q3 report.", deliverables: [{ name: "q3-report.pdf", required: true }], acceptanceCriteria: ["Totals match the ledger"], dependsOn: [] },
     handoffRevision: 2,
     reworkCount: 1,
@@ -366,6 +375,10 @@ export function missionDetail(over: Partial<MissionDetail> = {}): MissionDetail 
     createdAt: "2026-11-21T08:00:00.000Z",
     updatedAt: "2026-11-21T08:50:00.000Z",
     createdBy: "Ann Owner",
+    target: { kind: "employee", departmentId: null, departmentName: null, appointmentId: null, appointmentRevision: null },
+    responsibleNow: [{ assignmentId: a.id, employeeId: null, name: "You", what: "review revision 2", why: "the mission's result was handed in to you" }],
+    clarifications: [],
+    dataShares: [],
     acceptanceMode: "owner_review",
     acceptanceCriteria: ["Totals match the ledger"],
     deliverables: [{ name: "q3-report.pdf", required: true }],
@@ -483,3 +496,89 @@ export function delegationGrant(over: Partial<DelegationGrantView> = {}): Delega
 
 // The company itself, as the roster's `office` says it -- here with execution defaults of its own, when a test gives some.
 export const officeRecord = (over: Partial<Office> = {}): Office => ({ id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo office", version: 7, createdAt: "2026-11-20T00:00:00.000Z", defaults: {}, ...over });
+
+// ---- who work is given to, a team's parts, their questions and what a lead shared --------------------------------------
+
+export const PART_ID = "b1000000-0000-4000-8000-000000000002";
+export const CLARIFICATION_ID = "c2000000-0000-4000-8000-000000000001";
+export const SHARE_ID = "5a000000-0000-4000-8000-000000000001";
+export const SOURCE_REVISION_ID = "5e000000-0000-4000-8000-000000000001";
+
+// Who a target goes to now, as GET /api/missions/target says it: Accounting's manager, Ana, by its slot revision 3.
+export function targetPreview(over: Partial<MissionTargetPreview> = {}): MissionTargetPreview {
+  return {
+    target: { kind: "department", departmentId: DEPT_ACCOUNTING },
+    responsible: { employeeId: EMP_ANA, appointmentId: APPOINTMENT_ID, appointmentRevision: 3, employeeName: "Ana", role: "manager", departmentName: "Accounting" },
+    code: null,
+    reason: null,
+    ...over,
+  };
+}
+
+// A part of the mission's team: Bao researches what its lead Ana gave it, reviewed by Ana -- never by the person.
+export function partView(over: Partial<AssignmentView> = {}): AssignmentView {
+  return assignmentView({
+    id: PART_ID,
+    title: "Research the contracts",
+    employeeId: EMP_BAO,
+    employeeName: "Bao",
+    state: "RUNNING",
+    version: 4,
+    parentId: ASSIGNMENT_ID,
+    unitKey: "research",
+    target: null,
+    reviewedBy: "lead",
+    leadName: "Ana",
+    handoffRevision: 0,
+    reworkCount: 0,
+    pinned: { profileRevision: 1, departmentId: DEPT_LEGAL, departmentName: "Legal", execution: execution() },
+    lastRun: runView({ id: "71000000-0000-4000-8000-000000000002", wakeReason: "a part its lead gave it came up" }),
+    attempts: 1,
+    actions: ["pause", "cancel"],
+    ...over,
+  });
+}
+
+// The question Bao asked of its lead Ana, which Ana moved up to the person: a decision that is theirs.
+export function clarificationView(over: Partial<ClarificationView> = {}): ClarificationView {
+  return {
+    id: CLARIFICATION_ID,
+    askerAssignmentId: PART_ID,
+    askerName: "Bao",
+    question: "Which contracts count as renewed?",
+    addressee: "owner",
+    addresseeAssignmentId: null,
+    addresseeName: null,
+    kind: "human_decision",
+    state: "open",
+    answer: null,
+    answeredBy: null,
+    answeredAt: null,
+    askedAt: "2026-11-21T08:30:00.000Z",
+    route: [
+      { addressee: "lead", addresseeName: "Ana", why: "asked of its lead", at: "2026-11-21T08:30:00.000Z" },
+      { addressee: "owner", addresseeName: null, why: "the budget is the owner's to decide", at: "2026-11-21T08:40:00.000Z" },
+    ],
+    ...over,
+  };
+}
+
+// What Ana, the lead, shared with Bao's part on purpose: the accepted hand-in of part "intake", its summary.
+export function dataShareView(over: Partial<DataShareView> = {}): DataShareView {
+  return {
+    id: SHARE_ID,
+    kind: "handoff",
+    sourceRevisionId: null,
+    fromUnit: "intake",
+    mode: "summary",
+    recipientAssignmentId: PART_ID,
+    recipientUnit: "research",
+    recipientName: "Bao",
+    leadAssignmentId: ASSIGNMENT_ID,
+    sharedBy: "Ana",
+    sharedAt: "2026-11-21T08:20:00.000Z",
+    revokedBy: null,
+    revokedAt: null,
+    ...over,
+  };
+}

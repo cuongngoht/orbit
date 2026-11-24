@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { ASSIGNMENT_ID, EMP_ANA, MISSION_ID, SCHEDULE_ID, inbox, inboxItem, missionDetail, occurrence, roster, scheduleView } from "../../testing/officeFixtures";
+import { ASSIGNMENT_ID, EMP_ANA, MISSION_ID, PART_ID, SCHEDULE_ID, assignmentView, clarificationView, inbox, inboxItem, missionDetail, occurrence, partView, roster, scheduleView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { OfficeView } from "./OfficeView";
 
@@ -56,6 +56,41 @@ describe("Needs me", () => {
     await userEvent.type(within(question).getByRole("textbox", { name: /Your answer/ }), "The 2026 ledger");
     await userEvent.click(within(question).getByRole("button", { name: "Send the answer" }));
     await waitFor(() => expect(api.calls.find((c) => c.path.endsWith("/answer"))?.body).toEqual({ answer: "The 2026 ledger" }));
+  });
+
+  test("a question moved up from a team says who asked it and that its lead moved it up; the answer goes to the asker against the version shown, and asked_of_lead is said as the server said it", async () => {
+    let n = 0;
+    const item = inboxItem({
+      id: "1b000000-0000-4000-8000-000000000005",
+      kind: "information",
+      assignmentId: PART_ID,
+      title: "A question from the team",
+      reason: "Which contracts count as renewed?\n\n(human decision: the budget is the owner's to decide)",
+      waiting: `assignment:${ASSIGNMENT_ID}`,
+      pin: { assignmentVersion: 4, handoffDigest: null, deliveryId: null },
+    });
+    const api = fakeApi()
+      .on("GET", "/api/inbox", () => inbox([item]))
+      .on("GET", `/api/missions/${MISSION_ID}`, () => missionDetail({ assignments: [assignmentView({ state: "ANSWERING" }), partView({ state: "BLOCKED", actions: ["answer", "pause", "cancel"] })], clarifications: [clarificationView()] }))
+      .on("POST", `/api/assignments/${PART_ID}/answer`, () =>
+        ++n === 1 ? withStatus(409, { error: { code: "asked_of_lead", message: "This question was asked of its lead, who answers it (or moves it up to you)." } }) : done,
+      );
+    renderLive(<OfficeView page="inbox" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    const question = await screen.findByRole("listitem", { name: "A question from the team" });
+    expect(await within(question).findByText("Asked by Bao · moved up to you by Ana, its lead")).toBeInTheDocument();
+    // The server's words, as plain text: the question, then why it came up.
+    expect(within(question).getByText("Which contracts count as renewed? (human decision: the budget is the owner's to decide)")).toBeInTheDocument();
+    // Who waits is said by name, never as a reference.
+    expect(question.textContent).toContain("Waiting: Ana");
+    expect(question.textContent).not.toContain("assignment:");
+    await userEvent.type(within(question).getByRole("textbox", { name: /Your answer/ }), "Only the ones signed this year");
+    await userEvent.click(within(question).getByRole("button", { name: "Send the answer" }));
+    expect(await within(question).findByText("This question was asked of its lead, who answers it (or moves it up to you).")).toBeInTheDocument();
+    await userEvent.click(within(question).getByRole("button", { name: "Send the answer" }));
+    await waitFor(() => expect(api.calls.filter((c) => c.path === `/api/assignments/${PART_ID}/answer`)).toHaveLength(2));
+    const call = api.calls.find((c) => c.path === `/api/assignments/${PART_ID}/answer`);
+    expect(call?.body).toEqual({ answer: "Only the ones signed this year" });
+    expect(call?.headers["if-match"]).toBe('"4"');
   });
 
   test("the history is read on its own tab", async () => {

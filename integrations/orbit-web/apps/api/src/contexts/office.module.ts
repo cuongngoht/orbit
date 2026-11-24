@@ -17,6 +17,7 @@ import { RepositoryBundler } from "../modules/employee-access/repository-bundler
 import { EmployeeTools } from "../modules/employee-access/employee-tools.js";
 import { EmployeeAccessModule } from "../modules/employee-access/employee-access.module.js";
 import { GovernanceModule } from "../modules/governance/governance.module.js";
+import { AccessWatch } from "./execution/application/access-watch.js";
 import { AttemptInputs } from "./execution/application/attempt-inputs.js";
 import { AttemptManifest } from "./execution/infrastructure/attempt-manifest.js";
 import { CONNECTOR_TOOLS } from "./execution/application/connector-tools.port.js";
@@ -29,7 +30,7 @@ import { ConnectionWatch } from "./execution/application/connection-watch.js";
 import { ExecutionWorker } from "./execution/application/execution.worker.js";
 import { ResourcesService } from "./execution/application/resources.service.js";
 import { ResearchInputs } from "./execution/application/research-inputs.js";
-import { RUN_OUTCOMES } from "./execution/application/run-outcomes.port.js";
+import { ATTEMPT_DATA, RUN_OUTCOMES } from "./execution/application/run-outcomes.port.js";
 import { RunRequests } from "./execution/application/run-requests.js";
 import { RunViews } from "./execution/application/run-views.js";
 import { ToolsService } from "./execution/application/tools.service.js";
@@ -47,6 +48,9 @@ import { DeliveriesService } from "./work/application/deliveries.service.js";
 import { MissionQueries } from "./work/application/mission.queries.js";
 import { SchedulesService } from "./work/application/schedules.service.js";
 import { AttemptDataService } from "./work/application/attempt-data.service.js";
+import { ClarificationsService } from "./work/application/clarifications.service.js";
+import { ClarificationRepository } from "./work/infrastructure/clarifications.repository.js";
+import { OrgReader } from "./work/infrastructure/org.reader.js";
 import { TeamService } from "./work/application/team.service.js";
 import { MissionsService } from "./work/application/missions.service.js";
 import { DecisionRepository } from "./work/infrastructure/decisions.js";
@@ -100,6 +104,9 @@ const PROVIDERS: Provider[] = [
   DeliveriesService,
   TeamService,
   AttemptDataService,
+  OrgReader,
+  ClarificationRepository,
+  ClarificationsService,
   // execution
   RunRepository,
   RunRequests,
@@ -113,8 +120,10 @@ const PROVIDERS: Provider[] = [
   WorkspacePublisher,
   ExecutionWorker,
   ConnectionWatch,
+  AccessWatch,
   ModelPlaneEgress,
   { provide: RUN_OUTCOMES, useExisting: MissionsService },
+  { provide: ATTEMPT_DATA, useExisting: AttemptDataService },
 ];
 
 @Module({})

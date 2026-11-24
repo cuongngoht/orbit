@@ -1,5 +1,5 @@
-# Orbit Web 0.8.0-rc01 for a development machine -- ONE file, no repository, no build.
-# The published images (ghcr.io/cuongngoht/orbit-web*:0.8.0-rc01), for a machine without this repository: copy this
+# Orbit Web 0.8.0-rc02 for a development machine -- ONE file, no repository, no build.
+# The published images (ghcr.io/cuongngoht/orbit-web*:0.8.0-rc02), for a machine without this repository: copy this
 # file alone into an empty directory as compose.yaml (the repository's compose.yaml builds from source instead).
 #
 #   mkdir orbit-web && cd orbit-web          # put this file here as compose.yaml
@@ -14,8 +14,13 @@
 # or, on a machine nobody else can reach, give a standing one that the setup page fills in itself -- a `.env` beside
 # this file with:   ORBIT_WEB_SETUP_CODE=<8-64 characters>
 #
+# 0.8.0-rc02 STARTS FROM AN EMPTY DATABASE, like every 0.8.0 build: its initial schema is not rc01's (appointments,
+# department policies, data shares, questions up the tree), and a database rc01 made is refused at start with the
+# command that empties it. Nothing is migrated: before you pull rc02 over an rc01 installation, keep what you need, then
+#   docker compose down -v        # or: docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> --with-data
+#
 # Requirements: Docker with Compose 2.23 or newer (Docker Desktop on macOS or Windows, in its default Linux-containers
-# mode with WSL2 on Windows, or Docker Engine on Linux) and about 10 GB of disk for the images. 0.8.0-rc01 is published
+# mode with WSL2 on Windows, or Docker Engine on Linux) and about 10 GB of disk for the images. 0.8.0-rc02 is published
 # for linux/amd64 and linux/arm64: Docker pulls the one this machine needs.
 #
 # On Windows, if an AI employee's shell is refused because the storage quota cannot be enforced there, add
@@ -26,7 +31,7 @@
 #   ORBIT_WEB_PORT=3000                      the port on 127.0.0.1
 #   ORBIT_WEB_NAME=orbit-web                 the name of every container and volume this file makes (change it to run
 #                                            two installations on one machine)
-#   ORBIT_WEB_TAG=0.8.0-rc01                 the images' tag
+#   ORBIT_WEB_TAG=0.8.0-rc02                 the images' tag
 #   ORBIT_WEB_DB_PASSWORD / ORBIT_WEB_POSTGRES_PASSWORD   the database's passwords (set them BEFORE the first start;
 #                                            the database is never published, so the defaults are local-only)
 #   ORBIT_WEB_WORKFORCE_POOL_SIZE=20g        the disk the AI employees' storage may take
@@ -50,7 +55,7 @@ x-employees: &employees
 
 services:
   secret-init:
-    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc01}
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
     container_name: ${ORBIT_WEB_NAME:-orbit-web}-secret-init
     user: "0:0"
     entrypoint:
@@ -110,7 +115,7 @@ services:
     stop_grace_period: 30s
 
   orbit-web:
-    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc01}
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
     container_name: ${ORBIT_WEB_NAME:-orbit-web}
     hostname: ${ORBIT_WEB_NAME:-orbit-web}
     ports:
@@ -151,7 +156,7 @@ services:
     stop_grace_period: 20s
 
   orbit-allocator:
-    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc01}
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
     container_name: ${ORBIT_WEB_NAME:-orbit-web}-allocator
     command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/allocator/main.js"]
     user: "0:0"
@@ -159,10 +164,10 @@ services:
       <<: *employees
       ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
       ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
-      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ghcr.io/cuongngoht/orbit-web-workstation:${ORBIT_WEB_TAG:-0.8.0-rc01}
-      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ghcr.io/cuongngoht/orbit-web-model-plane:${ORBIT_WEB_TAG:-0.8.0-rc01}
-      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ghcr.io/cuongngoht/orbit-web-storage-helper:${ORBIT_WEB_TAG:-0.8.0-rc01}
-      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc01}
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ghcr.io/cuongngoht/orbit-web-workstation:${ORBIT_WEB_TAG:-0.8.0-rc02}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ghcr.io/cuongngoht/orbit-web-model-plane:${ORBIT_WEB_TAG:-0.8.0-rc02}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ghcr.io/cuongngoht/orbit-web-storage-helper:${ORBIT_WEB_TAG:-0.8.0-rc02}
+      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
       ORBIT_WEB_DATA_VOLUME: ${ORBIT_WEB_NAME:-orbit-web}_orbit-web-data
       ORBIT_WEB_CONTROL_CONTAINER: ${ORBIT_WEB_NAME:-orbit-web}
       ORBIT_WEB_ATTEMPT_SUBNETS: ${ORBIT_WEB_ATTEMPT_SUBNETS:-}

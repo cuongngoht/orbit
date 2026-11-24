@@ -214,7 +214,7 @@ export class RevisionsService {
     };
     await this.db.tx(async () => {
       await this.revisions.insert(record);
-      await this.audit.record(ctx, { type: "policy.draft.created", outcome: "draft", accountId, data: { revisionId: record.id, digest: record.digest, source } });
+      await this.audit.record(ctx, { type: "policy.draft.created", outcome: "draft", accountId, data: { revisionId: record.id, digest: record.digest, source, ...(source === "agent" ? { proposedBy: who } : {}) } });
     });
     this.changed(accountId, record.id);
     return this.viewOf(accountId, record);

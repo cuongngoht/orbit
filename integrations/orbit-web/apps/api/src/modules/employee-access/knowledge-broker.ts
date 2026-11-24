@@ -63,7 +63,7 @@ export class KnowledgeBroker implements ConnectorTools {
     if (!(await this.grants.liveKnowledge(orbitId, employeeId)).has(s.id)) return answer(`You were not let use the knowledge base "${s.name}": a person lets you on your Access page (Office → your page → Access).`, true);
     if (!s.allowed.includes(t.name)) return answer(`${t.name} is not among the tools of "${s.name}" the account lets employees use.`, true);
     const resource = `mcp:${s.slug}/${t.name}`;
-    const decision = await this.policy.decide(ctx, { action: "tool.connector", resource, scope: "ACCOUNT_EMPLOYEE", params: { connector: resource } });
+    const decision = await this.policy.decide(ctx, { action: "tool.connector", resource, scope: "ACCOUNT_EMPLOYEE", params: { connector: resource }, grant: "held" });
     if (decision.verdict !== "allow") return answer(`The account's policy in effect does not let you use ${resource} (${decision.reasonCodes.join(", ") || decision.verdict}; decision ${decision.decisionId}).`, true);
     try {
       const result = await this.registry.call(s, t.name, args);

@@ -112,8 +112,10 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   is refused at start. Nothing a development build made is upgraded: while 0.8.0 is unreleased a schema change edits
   the initial migration in place, and an installation of a development build starts afresh -- `db.js reset
   --confirm=<database> [--with-data]` (refused unless it names the database) or `docker compose down -v`, as Orbit Web
-  says when it refuses such a database. Nothing of an earlier Orbit Web is read, imported or deleted: neither its
-  SQLite files nor the Claude CLI's sign-in in `/data/claude`.
+  says when it refuses such a database. Release candidates are no exception: 0.8.0-rc02 edited the initial migration
+  in place, so an rc01 database is refused the same way and nothing of it is migrated (the owner's decision). Nothing of
+  an earlier Orbit Web is read, imported or deleted: neither its SQLite files nor the Claude CLI's sign-in in
+  `/data/claude`.
 - **pgvector is enabled, and nothing stores a vector yet** ("just enable pgvector; no need to integrate it yet"): the
   image's init script runs `CREATE EXTENSION vector` as the database's superuser, and every start checks it. Embeddings
   and semantic retrieval are a later step.
@@ -417,6 +419,20 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   second approver, on purpose: a confirmation is the owner's own, recorded as such, never shown as another person's
   approval. A published revision never changes -- the database refuses it too -- and a rollback is a copy published
   anew. *Simulate* asks a revision what it would decide and records nothing.
+- **A department may decide for its own employees, within what the company DELEGATES.** The company's policy names
+  what its departments may decide (`delegation.departments`: per action the loosest effect a department may give, a cap
+  on the employees' network mode and allow-list and limits, a cap on the employees' models) and marks each of its rules
+  MANDATORY (the default: it binds every department, strictest wins) or a DEFAULT a department's own rule may replace
+  within the cap. A department's policy (`kind: DepartmentPolicy`, its own revisions in `governance.department_policy_*`)
+  has the company's lifecycle -- draft, validate (422 `exceeds_delegation`), simulate, publish against the company
+  revision read (409 `stale_company_policy` when it moved), history, a rollback published anew -- and applies ONLY to its
+  employees' assignment runs: a chat, a research question and a person decide exactly as before. Each kind of rule keeps
+  its own meaning (an allow-list narrows or replaces within its cap, a numeric limit only lowers unless delegated, a deny
+  binds, an approval binds, a model list intersects downward; unset inherits, `[]` is none), and simulation answers with
+  the very `evaluate()` enforcement uses. A manager (its department) or the CEO (the company, any department) may
+  PROPOSE a draft through its tools; only the owner publishes. Every employee decides as ITS OWN principal
+  (`employee:<id>`, with its assignment, mission and department at dispatch on the run's binding), never as a service
+  standing in for it.
 - **A decision is an audit record written before it is acted on** (as `auditDecisions` says); an unknown action, no
   published policy, an unverified principal and another account are denied. Every run -- a chat's, a research
   session's and an employee's assignment, in both deployments -- is bound and decided under its account's policy in
@@ -516,10 +532,30 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   (`workforce.events`) is written in the command's transaction and each consumer records what it handled in the
   transaction of its effect (`consumer_inbox`): at least once, applied once; a mission's timeline is that journal.
   Pages read ONE snapshot (REPEATABLE READ, read-only) and refresh on `office.changed`, an invalidation with no content.
+- **An empty company, activated on a usable connection.** A company is activated (`POST /api/office/setup`, its name
+  the account's company name unless one is typed) only once the account holds at least one AI connection USABLE for an
+  interactive function or for running employees. Three states are told apart, each from one function
+  (`connections/uses.ts`): authenticated (the CLI's own status), usable for Chat, for Research, and eligible to run a
+  governed employee (Antigravity never is) -- each with why not. Nothing comes with the company: no department, employee,
+  mission or CEO; a request naming departments is refused (422 `departments_not_accepted`); activating twice, from two
+  tabs at once, makes one company. Losing the connection later changes readiness only: the company stays administrable.
 - **Hiring** needs a connection that is connected with a model catalog its CLI gave, and takes its model and effort,
-  the runtime's own web search where it has one, the Orbit plugin where granted, a department and role (a *team lead*
-  may give parts of its work to colleagues) and a Personal Sandbox's resources, beside the account's budget; an
-  employee starts on probation unless a reason is given. The PERSONAL SANDBOX (`PROVISIONING → READY | FAILED`) is
+  the runtime's own web search where it has one, the Orbit plugin where granted, a department and a profile (title,
+  instructions, a "may delegate" switch -- none of which grants authority) and a Personal Sandbox's resources, beside
+  the account's budget; an employee starts on probation unless a reason is given. A profile may leave its connection,
+  model and effort to its DEFAULTS: what a mission overrides beats the employee's own, which beats its department's
+  default, which beats the company's (`execution-precedence.ts`, each field's source kept with the attempt), and a default
+  of another runtime never applies. A model the policy's employee allow-list leaves out is refused at hire, never
+  switched. Changing an employee's provider is a new profile revision of the same employee -- its id, desk, history,
+  artifacts and appointment kept; work in flight keeps its pin until a person re-pins it.
+- **Authority is an appointment, never a title.** A company has at most one CEO and each department at most one
+  manager, a member of it: APPOINTMENTS (`workforce.appointments`: appoint, replace -- atomic --, suspend, reinstate,
+  revoke; each numbered in its slot, versioned, audited, kept as history, never deleted; one incumbent per slot and one
+  appointment per employee held by the database). A person may also GRANT an employee the right to give work to
+  another employee or a department (`delegation_grants`). Nothing else grants authority: a title, instructions or the
+  profile's switch give none. An appointee is not moved out of its department, archived, nor its department archived
+  from under it. Replacing a manager moves none of its open work: a person HANDS OVER open work explicitly (only before
+  or between attempts; the fence moves, the old holder's late result is refused). The PERSONAL SANDBOX (`PROVISIONING → READY | FAILED`) is
   READY only once its desk, cache and toolbox areas exist with their labels, a write test passed in each and each
   area's enforcement is recorded; no container runs while the employee is idle.
 - **An attempt is two containers**, made by a trusted ALLOCATOR -- the only holder of the Docker socket, on a private
@@ -558,9 +594,12 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   history, acted on never). A worker that loses a lease stops its attempt; whoever recovers it stops and removes what
   is left -- verified -- and says it was interrupted: never a second start on a guess.
 - **Review.** An employee hands in a summary, deliverables and claims; *Needs me* lists what waits for a person (a
-  result, a question, blocked or unschedulable work, a delivery). *Request revision* gives the work back to the same
-  employee; *Accept* names the revision read, publishes the work to its desk and frees it; pause, resume, cancel, retry
-  and an answer name the version read too. Hand-in files are staged into a content-addressed store per account (bytes,
+  result, a question asked of them, blocked or unschedulable work, a delivery). *Request revision* gives the work back to
+  the same employee; *Accept* names the revision read, publishes the work to its desk and frees it; pause, resume,
+  cancel, retry and an answer name the version read too. The person reviews a mission's ROOT only: a part's hand-in is
+  its lead's (409 `reviewed_by_lead`). Every revision is kept as handed in -- the database refuses a change of a hand-in's
+  content or of a reviewed one's status, and of an artifact -- so v1 asked to revise stays beside v2 accepted, and v1
+  can no longer be accepted once v2 is in. Hand-in files are staged into a content-addressed store per account (bytes,
   hash verified, then the row), served only verified and never as a page that could run script. A research mission's
   pinned revisions reach `/input` read-only under their labels (S1 …); a claim is SUPPORTED only when every label is a
   source the mission was given and its quote is found in that source's frozen text; one resting on a web page stays
@@ -571,11 +610,38 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   repository, its dependencies), while a publish's answer and the desk's version record cross bounded channels (the
   storage helper's 4 MiB, a storage worker's 16 MiB): each names at most the first 500 paths it changed, with how many
   there were, and a record read back cut short is refused, never taken as the whole.
-- **A team.** A lead's plan gives up to eight parts to colleagues, each with a goal, deliverables, criteria and what it
-  waits for (`work.delegate`); a plan whose parts wait for each other in a circle is refused whole. The parts share the
-  mission's team room (`/team`), each change kept with the attempt that made it; a part starts once those it waits for
-  are accepted; the lead reviews each (accept, or a revision), reads the accepted deliverables under `/input` and hands
-  the integrated result in. Temporary assistants (`employee.hire_assistant`) are a word of the vocabulary, not built.
+- **Work given to a department or to the CEO.** A mission names its TARGET: an employee by name, a department (which
+  goes to its manager in office) or the CEO, resolved inside the transaction that makes the mission with the slot's
+  row held, and kept on the work with the appointment and slot revision that resolved it. What the person saw may be
+  named (`expectedAssignee`, from `GET /api/missions/target`): a slot that moved since is refused (409 `target_changed`,
+  with who is responsible now) and nothing is made; an empty slot is `no_ceo` / `no_manager`, a suspended holder
+  `appointment_suspended`. A refusal and a success are the answer to their `Idempotency-Key`, replayed as they were.
+- **A team, by the tree.** Whom a lead may give work to is ONE function over its appointment and grants
+  (`work/domain/authority.ts`): the CEO gives work to the managers in office (a department goes to its manager), a
+  manager to the working members of its department, anyone to whom a person granted it -- never to itself or a lead
+  above it in the mission. The same function says what the attempt is told, whether its `delegate` tool exists, and
+  what its plan is held to. A plan gives up to eight parts, each with a key unique among its lead's parts, a goal,
+  deliverables, criteria, what it waits for and what it is SHARED (§9); a plan that names someone out of reach, waits in
+  a circle or shares what the lead does not read is refused whole (`work.delegate`, decided as the lead). A part starts
+  once those it waits for are accepted; its lead reviews each by the DIGEST of the revision it read (a newer one refuses
+  the decision), and hands its own result in only once every part has ended (`parts_not_ended`). Limits: five revisions
+  of one hand-in, three plans per assignment, three questions per assignment, delegation three levels deep. Temporary
+  assistants (`employee.hire_assistant`) are a word of the vocabulary, not built.
+- **Questions go up the tree.** An attempt that cannot go on asks ONE question and its work ends there: a part asks its
+  LEAD, the root the person who gave the work. The lead is woken (ANSWERING; a review it is already in answers too) and
+  answers -- the asker resumes ONCE with the answer in its brief: an answer is a compare-and-set on the open question,
+  so two at once (a lead and a person, two tabs) resume it exactly once -- or moves it one level up saying why. A
+  question reaches the person only from the root, or moved up for what is a person's: a human decision, something beyond
+  the lead's authority, a deadline, one nobody below answered; the person's answer to a question asked of a lead is
+  refused (409 `asked_of_lead`). A lead woken for a question it then leaves unanswered is woken again at most twice, then
+  the question moves up by itself; an overdue one moves up too; one whose asker ends is withdrawn, and a lead that ends
+  takes its open parts with it. Every hop is appended to the question's route.
+- **An attempt that delegated, asked or answered ENDED BY DESIGN.** Its assignment moved on in the same transaction
+  (WAITING_FOR_SUBORDINATES, BLOCKED on its question, waiting again), its tools close at once (an attempt acts only while
+  its fence is current AND its work is in a state that runs one), and its run is asked to stop and recorded as a SUCCESS
+  with why (`Ended by design: it gave its work to its team`) -- its compute goes back at once instead of when its CLI
+  happens to exit, so a lead and its part never hold one execution slot together. The first reason a run was asked to
+  stop is the one it keeps; each attempt says why it was started (`wake_reason`).
 - **Resources and admission.** Capacity (detected by the allocator, or `ORBIT_WEB_CAPACITY_*`) less the control
   plane's limits (`ORBIT_WEB_CONTROL_PLANE_LIMITS`) and a reserve (10 %) → the account's BUDGET (authorized by the
   operator; the owner may lower it, never raise it) → each employee's RESOURCE PROFILE (immutable revisions; an attempt
@@ -617,6 +683,30 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   channel); one that may or may not have arrived is settled by a person -- never "sent" on a guess.
 
 ### 9. What an employee may use of the account
+
+- **Each attempt reads only what its grant gives it, enforced where it is staged and where it is read.** The ROOT of a
+  mission reads the mission's sources and, when its employee may read them, its repositories; a PART reads only what its
+  lead SHARED with it on purpose (`workforce.data_shares`, each with what, to whom, from where, audited
+  `office.data.shared`): a source the lead reads itself, and the ACCEPTED hand-in of a part it waits for -- its summary,
+  or in full; a LEAD reads, by supervision, the latest submitted or accepted hand-in of each DIRECT part. Nothing else: a
+  sibling's work nobody shared, a part of a part, another department's room. ONE function decides it
+  (`work/domain/data-authorization.ts`); the attempt's inputs are staged from it alone, written down with why each
+  (`workforce.attempt_inputs`, audited `office.run.inputs`) BEFORE it starts, and the provider is given, for each file of
+  `/input`, a path naming the ATTEMPT -- served only when that name is in the run's manifest, the run is live and the
+  grant, worked out again, still gives it; a store's own path, a name not in the manifest or another account's attempt is
+  refused and recorded (`boundary.violation`, `input_not_authorized`).
+- **The working room is the department's.** A mission's team has one room per data domain: the members of one
+  department working on it share theirs (`/team`), the employees of no department the company's -- never another
+  department's. What crosses departments is a hand-in, shared on purpose.
+- **What is no longer an attempt's is taken from it while it runs.** A share revoked by a person
+  (`POST /api/data-shares/:id/revoke`), a lead's own grant narrowed, or the employee moved to another department (the
+  room it holds is not its department's now): the ACCESS WATCH -- on the governance's access hooks, an employee's
+  department change, and a heartbeat for what no hook says -- asks that attempt to stop (`office.access.revoked`, with
+  why) and Work blocks its work saying so; nothing runs it again by itself.
+- **Who reads what, said plainly.** The tool plane holds its own scratch and cache, its department's room and its
+  authorized `/input`, its mounts attested. The model plane sees what passes the tool endpoint, but its `/connection`
+  home is the AI connection's, shared by every employee on that connection: a connection is not a department boundary.
+  The coordinator (Orbit Web itself) is trusted and reads everything by design.
 
 - **The account's connectors, asked by Orbit Web.** An employee may use the GitHub and Azure DevOps sign-ins of
   Settings → Connectors -- the installation's, shared -- once a person lets it, on the employee's *Access* tab: each
@@ -721,8 +811,10 @@ the desk ... it can be refreshed when the data grows").
   and its accounts sign their connections in with nobody at a terminal of the server.
 - Nothing of an earlier Orbit Web is carried over: a 0.7.0 installation starts with empty records (its SQLite files,
   `/data/claude`, the workspaces on disk and the GitHub and Azure sign-ins stay where they were) and each account
-  connects its own AI CLIs; a development build of 0.8.0 starts afresh with `db.js reset`. The upgrade acceptance case
-  is not applicable, by the owner's decision.
+  connects its own AI CLIs; a development build or release candidate of 0.8.0 starts afresh with `db.js reset
+  --confirm=<database name> --with-data`. 0.8.0-rc02 changed the initial schema in place (appointments, department
+  policies, data shares, questions, targets) and migrates nothing from rc01, by the owner's decision: an rc01 database is
+  refused at start with that command. The upgrade acceptance cases are not applicable.
 - What was verified is reported per acceptance case (`integrations/orbit-web/docs/0.8.0-acceptance.md`, A01-A19):
   every native AI CLI row is BLOCKED -- no account was used for the tests, by the owner's decision -- and the logic is
   tested with scripted CLIs against the real endpoints on the same pinned PostgreSQL image (`scripts/test-db.mjs`, the

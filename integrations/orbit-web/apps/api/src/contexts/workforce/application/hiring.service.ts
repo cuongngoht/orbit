@@ -22,6 +22,8 @@ import {
 } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { accepted } from "../../../common/errors.js";
+import { modelAllowed } from "@orbit-web/governance-core";
+import { PolicyService } from "../../../modules/governance/policy.service.js";
 import { GovernedResources } from "../../../modules/governance/resources.service.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
 import { SANDBOX_PROVIDER, type SandboxProvider } from "../../execution/application/sandbox.port.js";
@@ -61,6 +63,7 @@ export class HiringService {
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
+    @Inject(PolicyService) private readonly policy: PolicyService,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     // What says whether an OpenAI Codex model is held to Orbit's tools on the binary installed (observed).
     @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
@@ -259,6 +262,10 @@ export class HiringService {
     }
     const model = modelOf({ source: "account", models: connection.catalog.models, recommended: connection.catalog.recommended ?? "", detail: null }, asked.model);
     if (model === null) throw unprocessable("model_not_offered", `${asked.model} is not a model this connection offers (it offers ${connection.catalog.models.map((m) => m.id).join(", ")}).`, { models: connection.catalog.models.map((m) => m.id) });
+    // The policy's model allow-list for employees (the company's, narrowed by the department's): a model it leaves out is
+    // refused here, at hire or change, never switched for another.
+    const allowed = await this.policy.employeeModels(orbitId, departmentId);
+    if (!modelAllowed(allowed, asked.runtime, model.id)) throw unprocessable("model_not_allowed", `The policy does not let ${departmentId === null ? "the company's" : "this department's"} employees run on ${asked.runtime}:${model.id} (it allows ${allowed?.join(", ") || "none"}): choose another model, or change the policy.`, { allowed });
     if (model.efforts.length === 0 && asked.effort !== null) throw unprocessable("effort_not_offered", `${model.label} takes no effort level.`);
     if (model.efforts.length > 0 && (asked.effort === null || !model.efforts.includes(asked.effort))) throw unprocessable("effort_not_offered", `${model.label} takes the effort levels ${model.efforts.join(", ")}.`, { efforts: model.efforts });
     if (asked.webSearch && connection.capabilities.webSearch !== "yes") throw unprocessable("search_not_offered", `The runtime's own search is not available on this connection (${connection.capabilities.webSearch}).`);

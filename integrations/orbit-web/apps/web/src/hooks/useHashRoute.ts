@@ -9,9 +9,10 @@ export const SETTINGS_SECTIONS = ["account", "appearance", "code", "ai-connectio
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 // The pages of the account's governance: `workspaces` (its chats) and `research` (its research workspaces) open one of
-// them as `#/governance/workspaces/<id>`, `policy` opens a revision as `#/governance/policy/<id>`, and `desks` opens one
-// employee's desk as `#/governance/desks/<employeeId>`.
-export const GOVERNANCE_PAGES = ["overview", "policy", "workspaces", "research", "desks", "approvals", "decisions", "audit", "findings", "reports"] as const;
+// them as `#/governance/workspaces/<id>`, `policy` opens a revision as `#/governance/policy/<id>`, `departments` opens
+// one department's policy as `#/governance/departments/<departmentId>`, and `desks` opens one employee's desk as
+// `#/governance/desks/<employeeId>`.
+export const GOVERNANCE_PAGES = ["overview", "policy", "departments", "workspaces", "research", "desks", "approvals", "decisions", "audit", "findings", "reports"] as const;
 
 export type GovernancePage = (typeof GOVERNANCE_PAGES)[number];
 

@@ -51,6 +51,14 @@ export const assignmentDataOf = (r: Row): AssignmentData => ({
   execution: (r.execution as AssignmentData["execution"]) ?? null,
   handoffRevision: Number(r.handoff_revision),
   reworkCount: Number(r.rework_count),
+  planCount: Number(r.plan_count ?? 0),
+  questionCount: Number(r.question_count ?? 0),
+  pausedFrom: (strOrNull(r.paused_from) as AssignmentState | null) ?? null,
+  blockedFrom: (strOrNull(r.blocked_from) as AssignmentState | null) ?? null,
+  target:
+    r.target_kind === null || r.target_kind === undefined
+      ? null
+      : { kind: str(r.target_kind) as "employee" | "department" | "ceo", departmentId: strOrNull(r.target_department_id), appointmentId: strOrNull(r.target_appointment_id), appointmentRevision: r.target_appointment_revision === null ? null : Number(r.target_appointment_revision) },
   pinned: (r.pinned as AssignmentData["pinned"]) ?? null,
   priority: Number(r.priority),
   eligibleAt: str(r.eligible_at),
@@ -120,9 +128,10 @@ export class AssignmentRepository {
   async insert(a: Assignment): Promise<void> {
     const d = a.data;
     await this.db.query(
-      `INSERT INTO workforce.assignments (id, account_id, mission_id, parent_id, unit_key, employee_id, state, reason, waiting_on, brief, execution, handoff_revision, rework_count, pinned, priority, eligible_at, deadline, fence, claimed_at, finished_at, created_by, created_at, updated_at, version)
-       VALUES ($1, $2, $3, $4, $5, $6, 'QUEUED', NULL, NULL, $7::jsonb, $8::jsonb, 0, 0, NULL, $9, $10, $11, 0, NULL, NULL, $12, $13, $13, 1)`,
-      [d.id, d.orbitId, d.missionId, d.parentId, d.unitKey, d.employeeId, jsonParam(d.brief), d.execution === null ? null : jsonParam(d.execution), d.priority, d.eligibleAt, d.deadline, d.createdBy, d.createdAt],
+      `INSERT INTO workforce.assignments (id, account_id, mission_id, parent_id, unit_key, employee_id, state, reason, waiting_on, brief, execution, handoff_revision, rework_count, pinned, priority, eligible_at, deadline, fence, claimed_at, finished_at, created_by, created_at, updated_at, version,
+         target_kind, target_department_id, target_appointment_id, target_appointment_revision)
+       VALUES ($1, $2, $3, $4, $5, $6, 'QUEUED', NULL, NULL, $7::jsonb, $8::jsonb, 0, 0, NULL, $9, $10, $11, 0, NULL, NULL, $12, $13, $13, 1, $14, $15, $16, $17)`,
+      [d.id, d.orbitId, d.missionId, d.parentId, d.unitKey, d.employeeId, jsonParam(d.brief), d.execution === null ? null : jsonParam(d.execution), d.priority, d.eligibleAt, d.deadline, d.createdBy, d.createdAt, d.target?.kind ?? null, d.target?.departmentId ?? null, d.target?.appointmentId ?? null, d.target?.appointmentRevision ?? null],
     );
   }
 
@@ -138,9 +147,9 @@ export class AssignmentRepository {
     if (isHolding(was) && !isHolding(d.state)) await this.db.query("DELETE FROM workforce.reservations WHERE account_id = $1 AND assignment_id = $2", [d.orbitId, d.id]);
     const row = await this.db.one(
       `UPDATE workforce.assignments SET state = $3, reason = $4, waiting_on = $5, brief = $6::jsonb, handoff_revision = $7, rework_count = $8, pinned = $9::jsonb, fence = $10,
-         claimed_at = $11, finished_at = $12, updated_at = $13, version = version + 1
+         claimed_at = $11, finished_at = $12, updated_at = $13, version = version + 1, plan_count = $15, question_count = $16, paused_from = $17, blocked_from = $18
        WHERE account_id = $1 AND id = $2 AND version = $14 RETURNING version`,
-      [d.orbitId, d.id, d.state, d.reason, d.waitingOn, jsonParam(d.brief), d.handoffRevision, d.reworkCount, d.pinned === null ? null : jsonParam(d.pinned), d.fence, d.claimedAt, d.finishedAt, d.updatedAt, expected],
+      [d.orbitId, d.id, d.state, d.reason, d.waitingOn, jsonParam(d.brief), d.handoffRevision, d.reworkCount, d.pinned === null ? null : jsonParam(d.pinned), d.fence, d.claimedAt, d.finishedAt, d.updatedAt, expected, d.planCount, d.questionCount, d.pausedFrom, d.blockedFrom],
     );
     if (row === null) throw stale("This assignment changed since it was read: read it again.", { assignmentId: d.id });
     return Number(row.version);

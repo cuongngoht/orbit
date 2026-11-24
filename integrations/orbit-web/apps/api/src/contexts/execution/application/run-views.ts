@@ -32,6 +32,7 @@ export function runView(r: RunRecord): RunView {
     startedAt: r.startedAt,
     endedAt: r.endedAt,
     detail: r.detail,
+    wakeReason: r.wakeReason,
   };
 }
 

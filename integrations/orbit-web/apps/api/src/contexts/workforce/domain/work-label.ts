@@ -25,7 +25,7 @@ export interface Label {
 const HELD_LABEL: Record<string, WorkLabel> = {
   ASSIGNED: "working",
   RUNNING: "working",
-  DELEGATING: "waiting_team",
+  ANSWERING: "working",
   WAITING_FOR_SUBORDINATES: "waiting_team",
   BLOCKED: "waiting_info",
   PAUSED: "paused",

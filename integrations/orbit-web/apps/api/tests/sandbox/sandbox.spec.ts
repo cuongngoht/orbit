@@ -7,7 +7,7 @@
 //
 //   npm run test:sandbox -w @orbit-web/api
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, describe, test, type TestContext } from "node:test";
 import { DEFAULT_PRESETS, type ResourceProfile } from "@orbit-web/contracts";
 import { Allocator } from "../../src/allocator/allocator.js";
@@ -262,6 +262,32 @@ print(len(pids), err)
     } finally {
       await new Promise<void>((r) => server.close(() => r()));
     }
+  });
+
+  // ADR 0061 §9: a mission's team has one room per department. The room an attempt is given is mounted at /team and
+  // no other: what one department's attempt left there is not in another's, and the next attempt of the same
+  // department finds it as it was left.
+  test("a team room reaches only the attempts given it: one department's room is not another's", async () => {
+    const research = { id: randomUUID(), quotaMiB: 64 };
+    const finance = { id: randomUUID(), quotaMiB: 64 };
+    const marker = `research-only-${randomBytes(6).toString("hex")}`;
+    await provider.prepareWorkspace(idsB(), "asg-room-r", 256);
+    const r = await timed("start (Research's room)", () => provider.startAttempt(spec(idsB(), "run-room-r:1", "asg-room-r", { teamRoom: research })));
+    const attested = await provider.attest(r, spec(idsB(), "run-room-r:1", "asg-room-r", { teamRoom: research }));
+    for (const name of ["tool_plane_mounts", "tool_plane_mount_roots", "model_plane_mounts"]) assert.ok(attested.attestation.checks.some((c) => c.name === name && c.ok), name);
+    await provider.writeFile(r, "/team/notes.md", Buffer.from(marker));
+    assert.equal((await provider.remove(r)).gone, true);
+    await provider.prepareWorkspace(idsB(), "asg-room-f", 256);
+    const f = await timed("start (Finance's room)", () => provider.startAttempt(spec(idsB(), "run-room-f:1", "asg-room-f", { teamRoom: finance })));
+    const seen = await run(lab, provider, f, `ls -A /team; grep -rl ${marker} /work /output /input /home /tmp /cache /team /data /mnt /var /run 2>/dev/null | head -3; echo end`);
+    assert.doesNotMatch(seen.stdout, /notes\.md|research-only/);
+    assert.equal(await provider.readFile(f, "/team/notes.md", 1000), null);
+    assert.equal((await provider.remove(f)).gone, true);
+    await provider.prepareWorkspace(idsB(), "asg-room-r2", 256);
+    const r2 = await provider.startAttempt(spec(idsB(), "run-room-r:2", "asg-room-r2", { teamRoom: research }));
+    assert.equal((await provider.readFile(r2, "/team/notes.md", 1000))?.toString(), marker);
+    assert.equal((await provider.remove(r2)).gone, true);
+    for (const a of ["asg-room-r", "asg-room-f", "asg-room-r2"]) await provider.removeWorkspace(idsB(), a);
   });
 
   test("two attempts cannot reach each other's ports or runners -- each plane has a network of its own -- yet both reach the proxy", async (t: TestContext) => {

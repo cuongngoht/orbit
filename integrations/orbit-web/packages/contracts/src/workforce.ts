@@ -58,6 +58,10 @@ export const WORKFORCE_LIMITS = {
   delegationDepth: 3,
   reworkLimit: 5,
   replanLimit: 3,
+  // Questions one assignment may ask (each ends its attempt), and how often a lead is woken for one question it has not
+  // answered before the question goes one level up by itself.
+  questionLimit: 3,
+  answerWakes: 2,
 } as const;
 
 // ---- headers and error codes ----------------------------------------------------------------------------------------
@@ -401,8 +405,8 @@ export const ASSIGNMENT_STATES = [
   "QUEUED",
   "ASSIGNED",
   "RUNNING",
-  "DELEGATING",
   "WAITING_FOR_SUBORDINATES",
+  "ANSWERING",
   "BLOCKED",
   "PAUSED",
   "RECOVERING",
@@ -426,8 +430,8 @@ export const ASSIGNMENT_STATE_TEXT: Record<AssignmentState, string> = {
   QUEUED: "Queued",
   ASSIGNED: "Assigned",
   RUNNING: "Working",
-  DELEGATING: "Delegating",
   WAITING_FOR_SUBORDINATES: "Waiting for teammates",
+  ANSWERING: "Answering its team",
   BLOCKED: "Blocked",
   PAUSED: "Paused",
   RECOVERING: "Reconciling",
@@ -454,10 +458,45 @@ export interface Deliverable {
 //   201  the employee was free: mission and assignment exist and the employee is reserved (state ASSIGNED)
 //   202  `whenBusy: "enqueue"` and the employee holds other work: the mission exists, its assignment is QUEUED
 //   409  employee_busy -- `whenBusy` absent or "reject" and the employee holds other work: NOTHING was created
+// WHO A MISSION IS GIVEN TO (ADR 0061 §8): an employee by name, a DEPARTMENT (its manager in office, resolved when the
+// mission is made) or the CEO. What a person saw as responsible before sending may be named (`expectedAssignee`): when the
+// appointment moved since, the mission is refused (409 target_changed, with who is responsible now) and nothing is made.
+export type MissionTarget = { kind: "employee"; employeeId: string } | { kind: "department"; departmentId: string } | { kind: "ceo" };
+export const MISSION_TARGET_KINDS = ["employee", "department", "ceo"] as const;
+
+export interface ExpectedAssignee {
+  employeeId: string;
+  // The appointment that made it responsible, and its slot revision (null for a mission given to an employee by name).
+  appointmentId: string | null;
+  appointmentRevision: number | null;
+}
+
+// Who is responsible for a target NOW (GET /api/missions/target), or why nobody is: the CEO slot is empty (no_ceo), the
+// department has no manager (no_manager), the incumbent is suspended (appointment_suspended).
+export interface MissionTargetPreview {
+  target: MissionTarget;
+  responsible: (ExpectedAssignee & { employeeName: string; role: "ceo" | "manager" | null; departmentName: string | null }) | null;
+  code: "no_ceo" | "no_manager" | "appointment_suspended" | "not_working" | null;
+  reason: string | null;
+}
+
+// What an assignment was given to, as kept on it: the target asked and the appointment that resolved it.
+export interface AssignmentTarget {
+  kind: "employee" | "department" | "ceo";
+  departmentId: string | null;
+  departmentName: string | null;
+  appointmentId: string | null;
+  appointmentRevision: number | null;
+}
+
 export interface CreateMissionRequest {
   goal: string;
   title?: string;
-  targetEmployeeId: string;
+  // Who it is given to: `target` (an employee, a department, the CEO), or -- as before -- `targetEmployeeId` alone. Both
+  // must name the same employee (422 target_conflict).
+  target?: MissionTarget;
+  expectedAssignee?: ExpectedAssignee;
+  targetEmployeeId?: string;
   whenBusy?: WhenBusy;
   // A research workspace whose sources the work may use, and the revisions it is pinned to.
   workspaceId?: string | null;
@@ -549,6 +588,8 @@ export interface RunView {
   endedAt: string | null;
   // How it ended, in words (a refusal, an exit status), masked.
   detail: string | null;
+  // Why this attempt was started (claimed, a revision, an answer, a question to answer, its team to review, a resume).
+  wakeReason: string | null;
 }
 
 // A run (an attempt) of an assignment. `waiting_for_resources`: it could be admitted as configured, but CPU, memory,
@@ -562,6 +603,14 @@ export type RunState = (typeof RUN_STATES)[number];
 export interface AssignmentView extends AssignmentSummary {
   parentId: string | null;
   unitKey: string | null;
+  // What it was given to (an employee, a department through its manager, the CEO) and by which appointment.
+  target: AssignmentTarget | null;
+  // Who reviews its hand-ins: the owner (a mission's root) or its lead (a part: the lead's own review, never the owner's).
+  reviewedBy: "owner" | "lead";
+  leadName: string | null;
+  // How many plans it gave, and questions it asked (each bounded: WORKFORCE_LIMITS.replanLimit, questionLimit).
+  planCount: number;
+  questionCount: number;
   // `dependsOn`: the keys of the parts of the same plan this part waits for (a part of a team's plan; [] otherwise).
   brief: { goal: string; deliverables: Deliverable[]; acceptanceCriteria: string[]; dependsOn: string[] };
   handoffRevision: number;
@@ -577,7 +626,7 @@ export interface AssignmentView extends AssignmentSummary {
   actions: AssignmentAction[];
 }
 
-export const ASSIGNMENT_ACTIONS = ["accept", "request_revision", "cancel", "pause", "resume", "answer", "retry"] as const;
+export const ASSIGNMENT_ACTIONS = ["accept", "request_revision", "cancel", "pause", "resume", "answer", "retry", "hand_over", "repin"] as const;
 export type AssignmentAction = (typeof ASSIGNMENT_ACTIONS)[number];
 
 export interface ArtifactView {
@@ -639,8 +688,48 @@ export interface MissionSummary {
   updatedAt: string;
 }
 
+// A QUESTION one assignment asked, and where it went (ADR 0061 §8): to its lead (a part's question), or to the person who
+// gave the work (the root's, or one a lead escalated with why). Answered once; the asker resumes once.
+export const CLARIFICATION_KINDS = ["information", "human_decision", "beyond_authority", "deadline", "unanswered"] as const;
+export type ClarificationKind = (typeof CLARIFICATION_KINDS)[number];
+export const CLARIFICATION_STATES = ["open", "answered", "withdrawn"] as const;
+export type ClarificationState = (typeof CLARIFICATION_STATES)[number];
+
+export interface ClarificationView {
+  id: string;
+  askerAssignmentId: string;
+  askerName: string;
+  question: string;
+  // Who it waits for now: its lead (an assignment) or the owner.
+  addressee: "lead" | "owner";
+  addresseeAssignmentId: string | null;
+  addresseeName: string | null;
+  kind: ClarificationKind;
+  state: ClarificationState;
+  answer: string | null;
+  answeredBy: string | null;
+  answeredAt: string | null;
+  askedAt: string;
+  // Every hop, oldest first: to whom, why, when.
+  route: { addressee: "lead" | "owner"; addresseeName: string | null; why: string; at: string }[];
+}
+
+// Who holds the mission's next move now, and why (a lead reviewing, a part working, a person deciding).
+export interface ResponsibleNow {
+  assignmentId: string;
+  employeeId: string | null;
+  name: string;
+  what: string;
+  why: string;
+}
+
 export interface MissionDetail extends MissionSummary {
   createdBy: string;
+  // Who it was given to (the root assignment's target).
+  target: AssignmentTarget | null;
+  responsibleNow: ResponsibleNow[];
+  clarifications: ClarificationView[];
+  dataShares: DataShareView[];
   acceptanceMode: AcceptanceMode;
   acceptanceCriteria: string[];
   deliverables: Deliverable[];
@@ -666,6 +755,27 @@ export interface TeamRoomChange {
   employeeName: string | null;
   assignmentId: string | null;
   at: string;
+}
+
+// WHAT A LEAD SHARED WITH A PART OF ITS TEAM, on purpose (ADR 0061 §9): a source revision it reads itself, or the accepted
+// hand-in of a part the recipient waits for -- its summary, or in full -- and whether the share still holds. A part reads
+// nothing else of its mission.
+export interface DataShareView {
+  id: string;
+  kind: "source" | "handoff";
+  // The source revision shared (a source share).
+  sourceRevisionId: string | null;
+  // The part whose hand-in is shared (a hand-in share), and how much of it.
+  fromUnit: string | null;
+  mode: "summary" | "full";
+  recipientAssignmentId: string;
+  recipientUnit: string;
+  recipientName: string;
+  leadAssignmentId: string;
+  sharedBy: string;
+  sharedAt: string;
+  revokedBy: string | null;
+  revokedAt: string | null;
 }
 
 export interface MissionList {
@@ -950,6 +1060,13 @@ export const INTEGRATION_EVENTS = {
   AppointmentChanged: 1,
   DelegationGrantChanged: 1,
   AssignmentHandedOver: 1,
+  // A question one assignment asked (to its lead, or to the owner), answered once, moved one level up, or withdrawn; a
+  // lead woken to answer its team.
+  ClarificationRequested: 1,
+  ClarificationAnswered: 1,
+  ClarificationEscalated: 1,
+  ClarificationWithdrawn: 1,
+  AssignmentAnswering: 1,
 } as const;
 
 export type IntegrationEventType = keyof typeof INTEGRATION_EVENTS;
@@ -961,7 +1078,7 @@ export interface IntegrationEvent {
   type: IntegrationEventType;
   schemaVersion: number;
   accountId: string;
-  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget" | "appointment" | "delegation";
+  aggregateType: "office" | "department" | "employee" | "sandbox" | "mission" | "assignment" | "run" | "schedule" | "delivery" | "connection" | "budget" | "appointment" | "delegation" | "clarification";
   aggregateId: string;
   aggregateVersion: number;
   // The order of events one save produced.
@@ -1218,9 +1335,39 @@ function repositoriesOf(v: unknown): MissionRepositoryRequest[] | null {
   return out;
 }
 
-export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateMissionRequest, "title" | "execution">> & Pick<CreateMissionRequest, "execution"> & { title: string }> {
+// The target a mission names: `target`, or the legacy `targetEmployeeId` (both: they must agree -- target_conflict).
+function targetOf(t: unknown, legacy: unknown, errors: string[]): MissionTarget | null {
+  if (t === undefined) {
+    if (legacy === undefined) errors.push("target must name who the mission is given to: an employee, a department or the CEO");
+    else if (!isWorkforceId(legacy)) errors.push("targetEmployeeId must be an employee's id");
+    return isWorkforceId(legacy) ? { kind: "employee", employeeId: legacy } : null;
+  }
+  if (!isRecord(t) || !(MISSION_TARGET_KINDS as readonly unknown[]).includes(t.kind)) {
+    errors.push(`target.kind must be one of ${MISSION_TARGET_KINDS.join(", ")}`);
+    return null;
+  }
+  const keys = t.kind === "employee" ? ["kind", "employeeId"] : t.kind === "department" ? ["kind", "departmentId"] : ["kind"];
+  if (Object.keys(t).some((k) => !keys.includes(k))) errors.push(`target of kind ${String(t.kind)} names only ${keys.join(", ")}`);
+  if (t.kind === "employee" && !isWorkforceId(t.employeeId)) errors.push("target.employeeId must be an employee's id");
+  if (t.kind === "department" && !isWorkforceId(t.departmentId)) errors.push("target.departmentId must be a department's id");
+  const target: MissionTarget = t.kind === "employee" ? { kind: "employee", employeeId: t.employeeId as string } : t.kind === "department" ? { kind: "department", departmentId: t.departmentId as string } : { kind: "ceo" };
+  if (legacy !== undefined && (target.kind !== "employee" || legacy !== target.employeeId)) errors.push("target_conflict: targetEmployeeId and target name different employees");
+  return target;
+}
+
+function expectedOf(v: unknown, errors: string[]): ExpectedAssignee | null {
+  if (!isRecord(v) || !isWorkforceId(v.employeeId) || !(v.appointmentId === null || isWorkforceId(v.appointmentId)) || !(v.appointmentRevision === null || (Number.isInteger(v.appointmentRevision) && (v.appointmentRevision as number) >= 1))) {
+    errors.push("expectedAssignee must be { employeeId, appointmentId (or null), appointmentRevision (or null) }");
+    return null;
+  }
+  return { employeeId: v.employeeId, appointmentId: v.appointmentId as string | null, appointmentRevision: v.appointmentRevision as number | null };
+}
+
+export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateMissionRequest, "title" | "execution" | "expectedAssignee">> & Pick<CreateMissionRequest, "execution" | "expectedAssignee"> & { title: string }> {
   if (!isRecord(body)) return NOT_OBJECT;
-  const errors = unknownFields(body, ["goal", "title", "targetEmployeeId", "whenBusy", "workspaceId", "sourceRevisionIds", "repositories", "deliverables", "acceptanceCriteria", "acceptanceMode", "deadline", "priority", "execution"]);
+  const errors = unknownFields(body, ["goal", "title", "target", "expectedAssignee", "targetEmployeeId", "whenBusy", "workspaceId", "sourceRevisionIds", "repositories", "deliverables", "acceptanceCriteria", "acceptanceMode", "deadline", "priority", "execution"]);
+  const target = targetOf(body.target, body.targetEmployeeId, errors);
+  const expected = body.expectedAssignee === undefined ? undefined : expectedOf(body.expectedAssignee, errors);
   const goal = text(body.goal, WORKFORCE_LIMITS.goalLength);
   const title = body.title === undefined ? null : line(body.title, WORKFORCE_LIMITS.titleLength);
   const criteria = lines(body.acceptanceCriteria ?? [], WORKFORCE_LIMITS.listItems, WORKFORCE_LIMITS.itemLength);
@@ -1231,7 +1378,7 @@ export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateM
   const execution = body.execution;
   if (goal === null) errors.push(`goal must be 1-${WORKFORCE_LIMITS.goalLength} characters`);
   if (body.title !== undefined && title === null) errors.push(`title must be 1-${WORKFORCE_LIMITS.titleLength} printable characters`);
-  if (!isWorkforceId(body.targetEmployeeId)) errors.push("targetEmployeeId must be an employee's id");
+
   if (body.whenBusy !== undefined && !(WHEN_BUSY as readonly unknown[]).includes(body.whenBusy)) errors.push(`whenBusy must be one of ${WHEN_BUSY.join(", ")}`);
   if (!optionalId(body.workspaceId)) errors.push("workspaceId must be a research workspace id or null");
   if (!Array.isArray(sources) || sources.length > WORKFORCE_LIMITS.sources || !sources.every(isWorkforceId)) errors.push(`sourceRevisionIds must be at most ${WORKFORCE_LIMITS.sources} revision ids`);
@@ -1250,7 +1397,9 @@ export function checkCreateMission(body: unknown): Checked<Required<Omit<CreateM
   return checked(errors, () => ({
     goal: goal as string,
     title: title ?? (goal as string).split("\n")[0]!.slice(0, WORKFORCE_LIMITS.titleLength),
-    targetEmployeeId: body.targetEmployeeId as string,
+    target: target as MissionTarget,
+    targetEmployeeId: (target as MissionTarget).kind === "employee" ? (target as { employeeId: string }).employeeId : "",
+    ...(expected !== undefined && expected !== null ? { expectedAssignee: expected } : {}),
     whenBusy: (body.whenBusy as WhenBusy | undefined) ?? "reject",
     workspaceId: (body.workspaceId as string | null | undefined) ?? null,
     sourceRevisionIds: [...new Set(sources as string[])],

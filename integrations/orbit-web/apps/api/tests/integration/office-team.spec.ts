@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AssignmentView, type EmployeeDetail, type Inbox, type MissionAccepted, type MissionDetail, type RuntimeConnection } from "@orbit-web/contracts";
-import { ResearchInputs } from "../../src/contexts/execution/application/research-inputs.js";
+import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
@@ -41,6 +41,11 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     return d;
   };
   const note = (who: string, what: string) => (said[who] ??= []).push(what);
+  // Authority to give work is a person's grant (or an appointment): never the profile's "team lead" switch alone.
+  const grant = async (lead: string, to: string) => {
+    const r = await b.send("POST", `/api/employees/${ids[lead]}/delegation-grants`, { target: { kind: "employee", employeeId: ids[to] }, note: "leads the team in this test" });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+  };
   const mission = async (id: string): Promise<MissionDetail> => (await b.get(`/api/missions/${id}`)).body as MissionDetail;
   const byKey = (m: MissionDetail, unit: string | null): AssignmentView => m.assignments.find((a) => (unit === null ? a.parentId === null : a.unitKey === unit)) as AssignmentView;
 
@@ -79,6 +84,21 @@ describe("a team: a manager delegates, reviews and integrates", () => {
           const revised = p.includes("Add the totals.");
           await t.call("write_file", { path: "/output/draft.md", content: revised ? "Draft v2 with totals: 2,000,000 VND.\n" : "Draft v1.\n" });
           await t.call("submit_handoff", { summary: revised ? "Added the totals." : "First draft." });
+          return;
+        }
+        // A lead that accepts its part and ends without handing in the integrated result.
+        if (p.includes("[noint]") && !p.includes("The parts you gave your team")) {
+          note("noint", (await t.call("delegate", { parts: [{ key: "piece", employee: "Oanh", title: "Piece", goal: "[part:piece] A piece.", deliverables: ["piece.md"] }] })).text);
+          return;
+        }
+        if (p.includes("[noint]")) {
+          const line = p.split("\n").find((l) => l.startsWith("- piece: ") && l.includes("awaiting acceptance"));
+          if (line !== undefined) note("noint", (await t.call("review_unit", { part: "piece", decision: "accept" })).text);
+          return;
+        }
+        if (p.includes("[part:piece]")) {
+          await t.call("write_file", { path: "/output/piece.md", content: "piece\n" });
+          await t.call("submit_handoff", { summary: "The piece." });
           return;
         }
         if (p.includes("[badplan]")) {
@@ -145,6 +165,8 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     await hire("Mai", true);
     await hire("Nam");
     await hire("Oanh");
+    await grant("Mai", "Nam");
+    await grant("Mai", "Oanh");
     const made = await b.send("POST", "/api/missions", { title: "Q3 team report", goal: "[team] The Q3 report, with your team.", targetEmployeeId: ids.Mai, whenBusy: "reject", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: ["Has the total"] }, key());
     assert.equal(made.status, 201, JSON.stringify(made.body));
     const id = (made.body as MissionAccepted).missionId;
@@ -210,6 +232,17 @@ describe("a team: a manager delegates, reviews and integrates", () => {
     const root = byKey(m, null);
     const ok = await b.send("POST", `/api/assignments/${root.id}/accept`, { handoffDigest: handed?.digest }, { "if-match": `"${root.version}"` });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  });
+
+  test("a lead that accepts every part and ends without handing in is blocked saying so -- never left waiting for nothing", async () => {
+    const made = await b.send("POST", "/api/missions", { title: "No integration", goal: "[noint] Do it with a part.", targetEmployeeId: ids.Mai, whenBusy: "reject", deliverables: [{ name: "report.md", required: true }], acceptanceCriteria: [] }, key());
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    const m = await eventually(() => mission(id), (x) => byKey(x, null)?.state === "BLOCKED", 30_000);
+    assert.equal(byKey(m, "piece").state, "COMPLETED");
+    assert.match(byKey(m, null).reason ?? "", /ended without handing in the integrated result/);
+    const root = byKey(m, null);
+    assert.equal((await b.send("POST", `/api/assignments/${root.id}/cancel`, { reason: "done" }, { "if-match": `"${root.version}"` })).status, 200);
   });
 
   test("an attempt of a mission without a team has no team room", async () => {

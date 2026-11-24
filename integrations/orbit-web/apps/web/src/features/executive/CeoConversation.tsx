@@ -179,8 +179,13 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
   const lastEnded = useMemo(() => [...view.turns].reverse().find((x) => ["failed", "interrupted", "cancelled"].includes(x.state)) ?? null, [view.turns]);
   const lastCompleted = useMemo(() => [...view.turns].reverse().find((x) => x.records.length > 0) ?? null, [view.turns]);
   const c = composerState(t, state);
-  useEffect(() => onRecords(lastCompleted?.records ?? []), [lastCompleted, onRecords]);
-  useEffect(() => bottom.current?.scrollIntoView?.({ block: "end" }), [view.messages.length, view.live?.text.length, open.length]);
+  useEffect(() => {
+    onRecords(lastCompleted?.records ?? []);
+  }, [lastCompleted, onRecords]);
+  // A block, returning nothing: scrollIntoView() answers a promise now, and an effect's return is its clean-up.
+  useEffect(() => {
+    void bottom.current?.scrollIntoView?.({ block: "end" });
+  }, [view.messages.length, view.live?.text.length, open.length]);
 
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true);

@@ -59,7 +59,9 @@ export function useAppEvent<T extends AppStreamEventType>(type: T, handler: (eve
   useEffect(() => {
     latest.current = handler;
   });
-  useEffect(() => on(type, (e) => latest.current(e as AppStreamEvent<T>)), [on, type]);
+  useEffect(() => {
+    return on(type, (e) => latest.current(e as AppStreamEvent<T>));
+  }, [on, type]);
 }
 
 export const useAppStream = (): { connected: boolean; generation: number } => {

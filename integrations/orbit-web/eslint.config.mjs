@@ -35,10 +35,24 @@ export default tseslint.config(
     },
   },
   {
+    // An effect returns its clean-up or nothing, and React calls whatever it returned when the effect runs again: a
+    // value that is no function throws there, and with no boundary the whole page comes down. A body that is an
+    // expression returns what the expression answers -- and the browser's own answers move (scrollIntoView() answers a
+    // promise now, a type that still says void) -- so an effect's body is a block, unless it is the clean-up itself.
+    // (An async effect, the other way to return a promise, is already the hooks rules' own warning.)
     files: ["apps/web/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
     plugins: { "react-hooks": reactHooks },
-    rules: { ...reactHooks.configs.recommended.rules },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.name=/^use(Layout|Insertion)?Effect$/] > ArrowFunctionExpression[expression=true][body.type!='ArrowFunctionExpression'][body.type!='FunctionExpression']",
+          message: "An effect returns its clean-up or nothing: write its body as a block ({ ... }), and `return` a clean-up explicitly. An expression body returns what the expression answers (scrollIntoView() answers a promise now), and React calls it as the clean-up.",
+        },
+      ],
+    },
   },
   {
     files: ["**/*.mjs", "scripts/**", "tests/**/*.mjs", "docker/**/*.mjs"],

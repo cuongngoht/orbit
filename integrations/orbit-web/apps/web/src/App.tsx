@@ -31,6 +31,7 @@ import { SignInPage } from "./pages/SignInPage";
 import { rememberSession } from "./services/account";
 import { get } from "./services/api";
 import { AppEventsProvider, useAppEvent } from "./services/events/AppEvents";
+import { isMobileShell, notifyMobileReady, runMobileAuthBridge } from "./services/mobileBridge";
 import { ModelCatalogProvider } from "./services/models/ModelCatalog";
 import { I18nProvider, useI18n } from "./i18n";
 import { isDark, themeOf, useSystemDark } from "./themes/theme";
@@ -298,7 +299,57 @@ function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resour
   const { reload: reloadAuth, set: setAuth } = auth;
   const reload = useCallback(() => void reloadAuth(), [reloadAuth]);
   const signOut = useSignOut(reload);
-  if (auth.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={reload} />;
+  const mobile = isMobileShell();
+  const [bridgeFailed, setBridgeFailed] = useState(false);
+  const needsMobileBridge = mobile && !auth.loading && (auth.errorCode === ACCESS_TOKEN_REQUIRED || auth.data?.state === "signed_out");
+
+  useEffect(() => {
+    if (!needsMobileBridge || bridgeFailed) return;
+    let cancelled = false;
+    void runMobileAuthBridge()
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.status?.state === "signed_in") {
+          rememberSession(res.status.session);
+          setAuth(res.status);
+          return;
+        }
+        if (res?.accessApplied) {
+          reload();
+          return;
+        }
+        setBridgeFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setBridgeFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsMobileBridge, bridgeFailed, setAuth, reload]);
+
+  useEffect(() => {
+    if (mobile && auth.data?.state === "signed_in") {
+      notifyMobileReady();
+    }
+  }, [mobile, auth.data?.state]);
+
+  if (needsMobileBridge && !bridgeFailed) {
+    return (
+      <div className={s.center}>
+        <Spinner label={t("common.app.checking")} />
+      </div>
+    );
+  }
+  const resetBridgeAndSetAuth = (next: AuthStatus) => {
+    setBridgeFailed(false);
+    setAuth(next);
+  };
+  const resetBridgeAndReload = () => {
+    setBridgeFailed(false);
+    reload();
+  };
+  if (auth.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={resetBridgeAndReload} />;
   if (auth.data === null) {
     if (auth.loading)
       return (
@@ -320,7 +371,7 @@ function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resour
   const status = auth.data;
   rememberSession(status.session);
   const user = status.user;
-  if (status.state !== "signed_in" || status.session === null || user === null) return <SignInPage status={status} onStatus={setAuth} onReload={reload} />;
+  if (status.state !== "signed_in" || status.session === null || user === null) return <SignInPage status={status} onStatus={resetBridgeAndSetAuth} onReload={resetBridgeAndReload} />;
   if (user.mustChangePassword) return <ChangePasswordPage status={status} onChanged={setAuth} signOut={signOut} />;
   // Keyed by the account and the user: another user signing in here starts everything afresh -- no stream, cache or
   // page state of the one before survives into the next one's.

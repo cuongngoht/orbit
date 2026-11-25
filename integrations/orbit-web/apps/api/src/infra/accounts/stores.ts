@@ -445,3 +445,128 @@ export class AccountSettingsStore {
     await this.db.query("DELETE FROM account_settings WHERE account_id = $1 AND key = $2", [accountId, key]);
   }
 }
+
+// ---- mobile auth (refresh tokens + short-lived WebView exchange codes) ------------------------------------------------
+
+export interface MobileRefreshTokenRecord {
+  id: string;
+  familyId: string;
+  accountId: string;
+  userId: string;
+  deviceId: string;
+  deviceName: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  rotatedAt: string | null;
+  replacedBy: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+}
+
+export interface MobileExchangeCodeRecord {
+  id: string;
+  accountId: string;
+  userId: string;
+  refreshTokenId: string;
+  createdAt: string;
+  expiresAt: string;
+  consumedAt: string | null;
+}
+
+const mobileRefreshOf = (r: Row): MobileRefreshTokenRecord => ({
+  id: str(r.id),
+  familyId: str(r.family_id),
+  accountId: str(r.account_id),
+  userId: str(r.user_id),
+  deviceId: str(r.device_id),
+  deviceName: strOrNull(r.device_name),
+  userAgent: strOrNull(r.user_agent),
+  createdAt: str(r.created_at),
+  lastUsedAt: str(r.last_used_at),
+  expiresAt: str(r.expires_at),
+  rotatedAt: strOrNull(r.rotated_at),
+  replacedBy: strOrNull(r.replaced_by),
+  revokedAt: strOrNull(r.revoked_at),
+  revokedReason: strOrNull(r.revoked_reason),
+});
+
+const mobileExchangeOf = (r: Row): MobileExchangeCodeRecord => ({
+  id: str(r.id),
+  accountId: str(r.account_id),
+  userId: str(r.user_id),
+  refreshTokenId: str(r.refresh_token_id),
+  createdAt: str(r.created_at),
+  expiresAt: str(r.expires_at),
+  consumedAt: strOrNull(r.consumed_at),
+});
+
+export class MobileAuthStore {
+  constructor(private readonly db: Db) {}
+
+  async insertRefreshToken(
+    r: Omit<MobileRefreshTokenRecord, "rotatedAt" | "replacedBy" | "revokedAt" | "revokedReason"> & { tokenHash: string },
+  ): Promise<void> {
+    await this.db.query(
+      "INSERT INTO mobile_refresh_tokens (id, family_id, token_hash, account_id, user_id, device_id, device_name, user_agent, created_at, last_used_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+      [r.id, r.familyId, r.tokenHash, r.accountId, r.userId, r.deviceId, r.deviceName, r.userAgent, r.createdAt, r.lastUsedAt, r.expiresAt],
+    );
+  }
+
+  async byRefreshTokenHash(tokenHash: string): Promise<MobileRefreshTokenRecord | null> {
+    const row = await this.db.one("SELECT * FROM mobile_refresh_tokens WHERE token_hash = $1", [tokenHash]);
+    return row === null ? null : mobileRefreshOf(row);
+  }
+
+  // Conditional update: only one concurrent refresh wins the right to rotate this token.
+  async rotateRefreshToken(oldId: string, replacementId: string, at: string): Promise<boolean> {
+    const count = await this.db.run(
+      "UPDATE mobile_refresh_tokens SET rotated_at = $2, replaced_by = $3, last_used_at = $2 WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL",
+      [oldId, at, replacementId],
+    );
+    return count > 0;
+  }
+
+  async revokeFamily(familyId: string, at: string, reason: string): Promise<void> {
+    await this.db.tx(async () => {
+      await this.db.query("UPDATE mobile_refresh_tokens SET revoked_at = $2, revoked_reason = $3 WHERE family_id = $1 AND revoked_at IS NULL", [familyId, at, reason]);
+      await this.db.query(
+        "UPDATE mobile_exchange_codes c SET consumed_at = $2 FROM mobile_refresh_tokens t WHERE c.refresh_token_id = t.id AND t.family_id = $1 AND c.consumed_at IS NULL",
+        [familyId, at],
+      );
+    });
+  }
+
+  async revokeUser(userId: string, at: string, reason: string): Promise<void> {
+    await this.db.tx(async () => {
+      await this.db.query("UPDATE mobile_refresh_tokens SET revoked_at = $2, revoked_reason = $3 WHERE user_id = $1 AND revoked_at IS NULL", [userId, at, reason]);
+      await this.db.query("UPDATE mobile_exchange_codes SET consumed_at = $2 WHERE user_id = $1 AND consumed_at IS NULL", [userId, at]);
+    });
+  }
+
+  async insertExchangeCode(c: Omit<MobileExchangeCodeRecord, "consumedAt"> & { codeHash: string }): Promise<void> {
+    await this.db.query(
+      "INSERT INTO mobile_exchange_codes (id, code_hash, account_id, user_id, refresh_token_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [c.id, c.codeHash, c.accountId, c.userId, c.refreshTokenId, c.createdAt, c.expiresAt],
+    );
+  }
+
+  // Atomic single-use exchange: only an unconsumed, unexpired code whose parent refresh token is still active succeeds.
+  async consumeExchangeCode(codeHash: string, now: string): Promise<MobileExchangeCodeRecord | null> {
+    const row = await this.db.one(
+      `UPDATE mobile_exchange_codes c
+       SET consumed_at = $2
+       FROM mobile_refresh_tokens t
+       WHERE c.code_hash = $1
+         AND c.consumed_at IS NULL
+         AND c.expires_at > $2
+         AND t.id = c.refresh_token_id
+         AND t.revoked_at IS NULL
+         AND t.expires_at > $2
+       RETURNING c.id, c.account_id, c.user_id, c.refresh_token_id, c.created_at, c.expires_at, c.consumed_at`,
+      [codeHash, now],
+    );
+    return row === null ? null : mobileExchangeOf(row);
+  }
+}

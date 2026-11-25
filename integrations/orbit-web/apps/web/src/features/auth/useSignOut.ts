@@ -4,6 +4,7 @@
 import { useCallback, useState } from "react";
 import { rememberSession } from "../../services/account";
 import { errorText, send } from "../../services/api";
+import { notifyMobileSignedOut } from "../../services/mobileBridge";
 
 export interface SignOut {
   // This browser only.
@@ -25,6 +26,7 @@ export function useSignOut(onSignedOut: () => void): SignOut {
       try {
         await send<void>("POST", path);
         rememberSession(null);
+        notifyMobileSignedOut(path === "/api/auth/logout-all");
         onSignedOut();
       } catch (err) {
         setError(errorText(err));

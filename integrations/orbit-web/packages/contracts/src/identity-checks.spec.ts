@@ -2,7 +2,7 @@
 // with which words.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkChangePassword, checkLogin, checkSetup, checkUpdateAccountProfile, checkUpdateProfile, IDENTITY_LIMITS, isTimeZoneName, normalizeUsername, passwordProblems } from "./identity.js";
+import { checkChangePassword, checkLogin, checkMobileExchange, checkMobileLogin, checkMobileLogout, checkMobileRefresh, checkSetup, checkUpdateAccountProfile, checkUpdateProfile, IDENTITY_LIMITS, isTimeZoneName, normalizeUsername, passwordProblems } from "./identity.js";
 import type { Checked } from "./validate.js";
 
 const errorsOf = <T>(c: Checked<T>): string[] => (c.ok ? [] : c.errors);
@@ -81,4 +81,30 @@ test("the account's profile: each field checked, only what is sent changes", () 
   const e = errorsOf(checkUpdateAccountProfile({ timezone: "Mars/Olympus", locale: "english", contactEmail: "nope", displayName: "x".repeat(121), owner: "me" }));
   for (const needle of ["owner is not a field of this request", "timezone must be an IANA time zone", "locale must look like en or en-US", "contactEmail must be an email address", "displayName must be at most 120 printable characters"]) has(e, needle);
   assert.deepEqual(checkUpdateAccountProfile([]), { ok: false, errors: ["the body must be a JSON object"] });
+});
+
+test("mobile login validates username/email, password, deviceId and optional deviceName", () => {
+  assert.deepEqual(checkMobileLogin({ username: "  Ada@Example.COM ", password: "pw", deviceId: "ios-dev_1:2.3", deviceName: "  iPhone  16  " }), {
+    ok: true,
+    value: { username: "ada@example.com", password: "pw", deviceId: "ios-dev_1:2.3", deviceName: "iPhone 16" },
+  });
+  assert.deepEqual(checkMobileLogin({ username: "admin", password: "pw", deviceId: "dev-1", deviceName: "   " }), {
+    ok: true,
+    value: { username: "admin", password: "pw", deviceId: "dev-1" },
+  });
+  assert.deepEqual(checkMobileLogin("not-json-obj"), { ok: false, errors: ["the body must be a JSON object"] });
+  const bad = errorsOf(checkMobileLogin({ username: " ", password: "", deviceId: "bad id!", deviceName: "x\u0007", extra: 1 }));
+  for (const needle of ["extra is not a field of this request", "username is required", "password is required", "deviceId must be 1-128", "deviceName must be at most"]) has(bad, needle);
+});
+
+test("mobile refresh, logout and exchange validate opaque secrets and deviceId", () => {
+  const token = "a".repeat(43);
+  const code = "b".repeat(43);
+  assert.deepEqual(checkMobileRefresh({ refreshToken: ` ${token} `, deviceId: " dev-1 " }), { ok: true, value: { refreshToken: token, deviceId: "dev-1" } });
+  assert.deepEqual(checkMobileLogout({ refreshToken: token, deviceId: "dev-1" }), { ok: true, value: { refreshToken: token, deviceId: "dev-1" } });
+  assert.deepEqual(checkMobileExchange({ code: ` ${code} ` }), { ok: true, value: { code } });
+  const badRefresh = errorsOf(checkMobileRefresh({ refreshToken: "short", deviceId: "", extra: true }));
+  for (const needle of ["extra is not a field of this request", "refreshToken is required", "deviceId must be 1-128"]) has(badRefresh, needle);
+  assert.deepEqual(errorsOf(checkMobileRefresh({ refreshToken: `${"a".repeat(20)} ${"b".repeat(20)}`, deviceId: "dev-1" })), ["refreshToken is required"]);
+  assert.deepEqual(errorsOf(checkMobileExchange({ code: "short", deviceId: "dev-1" })), ["deviceId is not a field of this request", "code is required"]);
 });

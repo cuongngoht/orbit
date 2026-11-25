@@ -36,6 +36,10 @@ export const STALE_VERSION = "stale_version";
 export const PRECONDITION_REQUIRED = "precondition_required";
 // A share named somebody who is not a user of this deployment, or an email that is no user's VERIFIED email (HTTP 400).
 export const SHARE_RECIPIENT_UNKNOWN = "share_recipient_unknown";
+// A mobile refresh token that is unknown, rotated, expired, revoked, or bound to another device (HTTP 401).
+export const MOBILE_REFRESH_INVALID = "mobile_refresh_invalid";
+// A mobile one-time WebView exchange code that is unknown, expired, already used, or revoked (HTTP 401).
+export const MOBILE_EXCHANGE_INVALID = "mobile_exchange_invalid";
 
 // Why a one-time setup code was printed (`cli/governance.js owner setup-code | reset-password`).
 export const SETUP_CODE_PURPOSES = ["first_admin", "new_account", "reset_password"] as const;
@@ -163,7 +167,38 @@ export interface SessionView {
   userAgent: string | null;
 }
 
+export interface MobileLoginRequest {
+  username: string;
+  password: string;
+  deviceId: string;
+  deviceName?: string;
+}
+
+export interface MobileRefreshRequest {
+  refreshToken: string;
+  deviceId: string;
+}
+
+export interface MobileLogoutRequest {
+  refreshToken: string;
+  deviceId: string;
+}
+
+export interface MobileExchangeRequest {
+  code: string;
+}
+
+export interface MobileTokenGrant {
+  refreshToken: string;
+  refreshExpiresAt: string;
+  exchangeCode: string;
+  exchangeExpiresAt: string;
+  user: AuthUser;
+  account: AuthAccount;
+}
+
 export const IDENTITY_LIMITS = { usernameLength: 32, passwordMin: 12, passwordMax: 256, nameLength: 120, codeLength: 64 } as const;
+export const MOBILE_AUTH_LIMITS = { deviceIdMax: 128, deviceNameMax: 120, tokenMin: 32, tokenMax: 256, codeMin: 32, codeMax: 256 } as const;
 
 const USERNAME = /^[a-z][a-z0-9._-]{1,31}$/;
 const EMAIL = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
@@ -349,4 +384,71 @@ export function checkUpdateAccountProfile(body: unknown): Checked<UpdateAccountP
     ...(body.timezone !== undefined ? { timezone: body.timezone as string } : {}),
     ...(body.locale !== undefined ? { locale: body.locale as string } : {}),
   }));
+}
+
+const MOBILE_DEVICE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+
+const opaqueSecretOf = (v: unknown, min: number, max: number): string | null => {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (trimmed.length < min || trimmed.length > max) return null;
+  if (CONTROL.test(trimmed) || /\s/.test(trimmed)) return null;
+  return trimmed;
+};
+
+const deviceIdOf = (v: unknown): string | null => {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed.length <= MOBILE_AUTH_LIMITS.deviceIdMax && MOBILE_DEVICE_ID.test(trimmed) ? trimmed : null;
+};
+
+export function checkMobileLogin(body: unknown): Checked<MobileLoginRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["username", "password", "deviceId", "deviceName"]);
+  if (typeof body.username !== "string" || body.username.trim().length === 0 || body.username.trim().length > 254 || CONTROL.test(body.username)) {
+    errors.push("username is required");
+  }
+  if (typeof body.password !== "string" || body.password.length === 0 || body.password.length > IDENTITY_LIMITS.passwordMax) {
+    errors.push("password is required");
+  }
+  const deviceId = deviceIdOf(body.deviceId);
+  if (deviceId === null) errors.push("deviceId must be 1-128 characters of letters, digits, dots, colons, dashes or underscores");
+  const rawDeviceName = body.deviceName;
+  let deviceName: string | undefined;
+  if (rawDeviceName !== undefined && rawDeviceName !== null) {
+    if (typeof rawDeviceName !== "string") errors.push(`deviceName must be at most ${MOBILE_AUTH_LIMITS.deviceNameMax} printable characters`);
+    else if (rawDeviceName.trim().length > 0) {
+      const parsed = nameOf(rawDeviceName, MOBILE_AUTH_LIMITS.deviceNameMax);
+      if (parsed === null) errors.push(`deviceName must be at most ${MOBILE_AUTH_LIMITS.deviceNameMax} printable characters`);
+      else deviceName = parsed;
+    }
+  }
+  return checked(errors, () => ({
+    username: (body.username as string).trim().toLowerCase(),
+    password: body.password as string,
+    deviceId: deviceId as string,
+    ...(deviceName !== undefined ? { deviceName } : {}),
+  }));
+}
+
+export function checkMobileRefresh(body: unknown): Checked<MobileRefreshRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["refreshToken", "deviceId"]);
+  const refreshToken = opaqueSecretOf(body.refreshToken, MOBILE_AUTH_LIMITS.tokenMin, MOBILE_AUTH_LIMITS.tokenMax);
+  if (refreshToken === null) errors.push("refreshToken is required");
+  const deviceId = deviceIdOf(body.deviceId);
+  if (deviceId === null) errors.push("deviceId must be 1-128 characters of letters, digits, dots, colons, dashes or underscores");
+  return checked(errors, () => ({ refreshToken: refreshToken as string, deviceId: deviceId as string }));
+}
+
+export function checkMobileLogout(body: unknown): Checked<MobileLogoutRequest> {
+  return checkMobileRefresh(body);
+}
+
+export function checkMobileExchange(body: unknown): Checked<MobileExchangeRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = unknownFields(body, ["code"]);
+  const code = opaqueSecretOf(body.code, MOBILE_AUTH_LIMITS.codeMin, MOBILE_AUTH_LIMITS.codeMax);
+  if (code === null) errors.push("code is required");
+  return checked(errors, () => ({ code: code as string }));
 }

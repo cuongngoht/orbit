@@ -1,7 +1,7 @@
 // A SHARED CHAT, as its link shows it (`#/share/<token>`): a read-only snapshot of one conversation, opened before --
 // and without -- the access token and the Claude sign-in. It asks the API for that one snapshot and nothing else, and
 // draws it with the chat's own timeline, so it reads as the chat did. No composer, no workspace, no other chat.
-import { MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Link, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
 import type { SharedChat } from "@orbit-web/contracts";
 import { useMemo } from "react";
 import { SourceMark } from "../components/SourceMark";
@@ -25,7 +25,8 @@ const useStyles = makeStyles({
     flexDirection: "column",
     gap: "18px",
   },
-  brand: { display: "flex", alignItems: "center", gap: "8px", color: tokens.colorNeutralForeground3 },
+  brand: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", color: tokens.colorNeutralForeground3 },
+  brandLeft: { display: "flex", alignItems: "center", gap: "8px" },
   logo: { width: "26px", height: "26px" },
   heading: { margin: 0, fontSize: "clamp(20px, 5vw, 26px)", lineHeight: "1.3", fontWeight: tokens.fontWeightSemibold },
   meta: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", color: tokens.colorNeutralForeground3 },
@@ -46,9 +47,12 @@ export function SharedChatPage({ token }: { token: string }) {
     <main className={s.page}>
       <div className={s.inner}>
         <div className={s.brand}>
-          <img src="/orbit.svg" alt="" className={s.logo} />
-          <Text weight="semibold">{t("common.sharedChat.brand")}</Text>
-          <Text size={200}>{t("common.sharedChat.subtitle")}</Text>
+          <div className={s.brandLeft}>
+            <img src="/orbit.svg" alt="" className={s.logo} />
+            <Text weight="semibold">{t("common.sharedChat.brand")}</Text>
+            <Text size={200}>{t("common.sharedChat.subtitle")}</Text>
+          </div>
+          <Link href="#/">{t("common.sharedChat.openOrbit")}</Link>
         </div>
         {chat.loading && chat.data === null && <Spinner label={t("common.sharedChat.loading")} />}
         {chat.error && chat.data === null && (

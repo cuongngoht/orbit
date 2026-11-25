@@ -156,6 +156,9 @@ function Row({ row, editable, onChange }: { row: ActionRow; editable: boolean; o
       <TableCell className={s.colApprove}>
         <Checkbox className={locked ? s.readOnlyCheck : undefined} checked={boxes.approval} disabled={locked} onChange={(_, d) => set(true, d.checked === true)} aria-label={t("governance.policyTable.approveFirstAria", { action: row.action })} />
       </TableCell>
+      <TableCell className={s.colHeld}>
+        <Word value={row.effect} />
+      </TableCell>
       <TableCell className={s.colBinding}>
         <BindingOf row={row} locked={locked} onChange={onChange} />
       </TableCell>
@@ -186,7 +189,10 @@ function MobileRow({ row, editable, onChange }: { row: ActionRow; editable: bool
             {row.stated ? "" : t("governance.policyTable.defaultDecisionSuffix")}
           </span>
         </div>
-        <Word value={spec.enforcement} />
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+          <Word value={row.effect} />
+          <Word value={spec.enforcement} />
+        </div>
       </div>
       <div className={s.mobileChecks}>
         <Checkbox className={mergeClasses(s.mobileCheck, locked && s.readOnlyCheck)} label={t("governance.policyTable.allowedLabel")} checked={boxes.allowed} disabled={locked} onChange={(_, d) => set(d.checked === true, false)} aria-label={t("governance.policyTable.allowedAria", { action: row.action })} />
@@ -287,6 +293,7 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
                   <TableHeaderCell className={s.colHeld}>{t("governance.policyTable.colHeldBy")}</TableHeaderCell>
                   <TableHeaderCell className={s.colAllowed}>{t("governance.policyTable.colAllowed")}</TableHeaderCell>
                   <TableHeaderCell className={s.colApprove}>{t("governance.policyTable.colYouApprove")}</TableHeaderCell>
+                  <TableHeaderCell className={s.colHeld}>{t("governance.policyTable.colDecision")}</TableHeaderCell>
                   <TableHeaderCell className={s.colBinding}>{t("governance.policyTable.colBinding")}</TableHeaderCell>
                   <TableHeaderCell className={s.colNote} />
                 </TableRow>

@@ -3,7 +3,7 @@
 // passages of which sources it was given), how a run that did not complete ended (and asking again), and the composer.
 // A conversation like a chat: the selected sources are references read with each question, and none is needed to ask.
 import { Badge, Button, MessageBar, MessageBarActions, MessageBarBody, Spinner, Text, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
-import { Add16Regular, ArrowClockwise16Regular, ArrowDown16Regular, BookOpen24Regular, Checkmark16Regular, Copy16Regular, Info16Regular, Lightbulb16Regular, NoteAdd16Regular, TextBulletListSquare16Regular } from "@fluentui/react-icons";
+import { Add16Regular, ArrowClockwise16Regular, ArrowDown16Regular, BookOpen24Regular, Checkmark16Regular, Copy16Regular, Dismiss16Regular, Edit16Regular, Info16Regular, Lightbulb16Regular, NoteAdd16Regular, TextBulletListSquare16Regular } from "@fluentui/react-icons";
 import type { ResearchCitation, ResearchMessage } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
@@ -266,7 +266,7 @@ export interface ResearchChatProps {
   totalSources?: number;
   draftQuestion: string | null;
   busy: boolean;
-  onAsk: (text: string) => void;
+  onAsk: (text: string) => void | boolean | Promise<boolean | void>;
   onStop: () => void;
   onShowCitations: (messageId: string) => void;
   onCite: (messageId: string, label: string) => void;
@@ -281,13 +281,36 @@ export interface ResearchChatProps {
 
 const toLive = (m: ResearchMessage): LiveMessage => ({ id: m.id, role: m.role, text: m.text, streaming: false, partial: m.partial, runId: m.runId });
 
+function copyText(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(text).catch(() => undefined);
+    return;
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    document.body.removeChild(area);
+  } catch {
+    // ignore
+  }
+}
+
 export function ResearchChat(p: ResearchChatProps) {
   const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
   const scroller = useRef<HTMLDivElement>(null);
+  const pinnedToBottom = useRef(true);
   const [away, setAway] = useState(false);
+  const [editedDraft, setEditedDraft] = useState<string | null>(null);
+  const [composerKey, setComposerKey] = useState(0);
+  const [dismissedDraft, setDismissedDraft] = useState(false);
   const messages = useMemo(() => (p.stream.lastSeq >= p.savedSeq && p.stream.lastSeq > 0 ? p.stream.messages : p.saved.map(toLive)), [p.stream, p.saved, p.savedSeq]);
   const running = p.stream.status === "running" || p.stream.run !== null;
   const lastQuestion = [...messages].reverse().find((m) => m.role === "user")?.text ?? null;
@@ -297,10 +320,16 @@ export function ResearchChat(p: ResearchChatProps) {
 
   useEffect(() => {
     const el = scroller.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 240) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (pinnedToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      setAway(false);
+    } else {
+      setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
+    }
   }, [messages]);
 
-  const copy = (text: string) => void navigator.clipboard?.writeText(text).catch(() => undefined);
+  const copy = (text: string) => copyText(text);
   const sourceTrigger = p.onOpenSources ?? p.onAddSources;
   const sourceWord = t(p.usable === 1 ? "research.newSession.sourceOne" : "research.newSession.sourceMany");
   const sourceStatusLabel =
@@ -326,7 +355,12 @@ export function ResearchChat(p: ResearchChatProps) {
         <div
           className={mergeClasses(s.scroll, isMobile && s.scrollMobile)}
           ref={scroller}
-          onScroll={(e) => setAway(e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight > 280)}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            pinnedToBottom.current = dist < 48;
+            setAway(dist > 120);
+          }}
         >
           <div className={mergeClasses(s.inner, messages.length === 0 && !running && !p.stream.ended && !p.stream.notice && s.innerEmpty)}>
             {messages.length === 0 && (
@@ -427,7 +461,11 @@ export function ResearchChat(p: ResearchChatProps) {
             appearance="secondary"
             size="small"
             icon={<ArrowDown16Regular />}
-            onClick={() => scroller.current && (scroller.current.scrollTop = scroller.current.scrollHeight)}
+            onClick={() => {
+              if (scroller.current) scroller.current.scrollTop = scroller.current.scrollHeight;
+              pinnedToBottom.current = true;
+              setAway(false);
+            }}
           >
             {t("research.chat.latest")}
           </Button>
@@ -436,6 +474,8 @@ export function ResearchChat(p: ResearchChatProps) {
       </div>
       <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
         <Composer
+          key={composerKey}
+          defaultValue={editedDraft ?? undefined}
           autoFocus={!touch && p.usable > 0}
           placeholder={t(p.usable > 0 ? "research.chat.placeholderReady" : p.selected > 0 ? "research.chat.placeholderPreparing" : "research.chat.placeholderEmpty")}
           canSend={!running && !p.busy}
@@ -446,7 +486,7 @@ export function ResearchChat(p: ResearchChatProps) {
           above={
             <>
               <ApiErrorBar error={p.error} />
-              {p.draftQuestion && messages.length === 0 && (
+              {p.draftQuestion && !dismissedDraft && messages.length === 0 && (
                 <div className={s.draftCard}>
                   <div className={s.draftBody}>
                     <Info16Regular className={s.draftIcon} aria-hidden />
@@ -457,15 +497,39 @@ export function ResearchChat(p: ResearchChatProps) {
                       })}
                     </Text>
                   </div>
-                  <Button
-                    className={mergeClasses(s.draftBtn, touch && s.draftBtnTouch)}
-                    size="small"
-                    appearance={p.usable > 0 ? "primary" : "secondary"}
-                    disabled={running}
-                    onClick={() => p.onAsk(p.draftQuestion as string)}
-                  >
-                    {t("research.chat.askItNow")}
-                  </Button>
+                  <div className={s.actions}>
+                    <Button
+                      className={mergeClasses(s.draftBtn, touch && s.draftBtnTouch)}
+                      size="small"
+                      appearance="subtle"
+                      icon={<Edit16Regular />}
+                      disabled={running}
+                      onClick={() => {
+                        setEditedDraft(p.draftQuestion);
+                        setComposerKey((k) => k + 1);
+                        setDismissedDraft(true);
+                      }}
+                    >
+                      {t("research.chat.editDraft")}
+                    </Button>
+                    <Button
+                      className={mergeClasses(s.draftBtn, touch && s.draftBtnTouch)}
+                      size="small"
+                      appearance={p.usable > 0 ? "primary" : "secondary"}
+                      disabled={running}
+                      onClick={() => void p.onAsk(p.draftQuestion as string)}
+                    >
+                      {t("research.chat.askItNow")}
+                    </Button>
+                    <Button
+                      className={mergeClasses(s.actionBtn, touch && s.actionBtnTouch)}
+                      size="small"
+                      appearance="subtle"
+                      icon={<Dismiss16Regular />}
+                      aria-label={t("research.chat.dismissDraftAria")}
+                      onClick={() => setDismissedDraft(true)}
+                    />
+                  </div>
                 </div>
               )}
             </>

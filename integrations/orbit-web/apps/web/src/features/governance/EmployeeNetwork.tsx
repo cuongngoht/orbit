@@ -67,7 +67,7 @@ const useStyles = makeStyles({
   hosts: { display: "flex", flexDirection: "column", gap: "4px", listStyleType: "none", margin: 0, paddingLeft: 0 },
   host: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 },
   add: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "8px", alignItems: "end" },
-  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px" },
+  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px", alignItems: "start" },
   warn: { color: tokens.colorPaletteDarkOrangeForeground1 },
 });
 
@@ -85,10 +85,19 @@ export function LimitField({ spec, value, editable, onChange, hint }: { spec: Li
         disabled={!editable}
         value={text}
         onChange={(_, d) => {
+          if (d.value.trim() === "") {
+            setDraft(null);
+            onChange(undefined);
+            return;
+          }
           const n = Number(d.value);
-          const next = d.value.trim() === "" ? undefined : Number.isFinite(n) && n > 0 ? Math.round(n * spec.factor) : value;
-          setDraft({ text: d.value, value: next });
-          onChange(next);
+          if (Number.isFinite(n) && n > 0) {
+            const next = Math.round(n * spec.factor);
+            setDraft({ text: d.value, value: next });
+            onChange(next);
+          } else {
+            setDraft({ text: d.value, value });
+          }
         }}
       />
     </Field>

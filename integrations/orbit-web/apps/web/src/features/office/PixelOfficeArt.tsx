@@ -1,5 +1,5 @@
 // GATHER-STYLE 2.5D PIXEL OFFICE ART: crisp pixel-grid employees (director suit, typing, asking at director's desk,
-// sipping coffee in Pantry, spinning a pen), modern company desks, executive suite, Pantry lounge, and bookshelves.
+// sipping coffee in Pantry, spinning a pen), modern studio desks, executive suite, Pantry lounge, and bookshelves.
 import type { WorkLabel } from "@orbit-web/contracts";
 import type { CSSProperties, ReactNode } from "react";
 import { personaFor, presenceKindOf } from "./VirtualDesk";
@@ -216,22 +216,26 @@ export function GatherNamePill({
         display: "inline-flex",
         alignItems: "center",
         gap: "5px",
-        padding: "2px 7px",
-        borderRadius: "6px",
-        backgroundColor: "rgba(24, 24, 31, 0.88)",
+        padding: "2px 8px",
+        borderRadius: "9999px",
+        backgroundColor: "rgba(20, 22, 30, 0.88)",
+        border: selected ? "1px solid rgba(129, 140, 248, 0.9)" : "1px solid rgba(255, 255, 255, 0.14)",
         color: "#ffffff",
-        fontSize: "10.5px",
+        fontSize: "10px",
         fontWeight: 600,
         lineHeight: 1.3,
         whiteSpace: "nowrap",
-        maxWidth: "188px",
-        boxShadow: selected ? "0 0 0 2px #6366f1, 0 2px 6px rgba(0, 0, 0, 0.28)" : "0 1px 3px rgba(0, 0, 0, 0.22)",
+        maxWidth: "184px",
+        pointerEvents: "none",
+        boxShadow: selected
+          ? "0 0 0 2px rgba(99, 102, 241, 0.45), 0 4px 12px rgba(15, 23, 42, 0.28)"
+          : "0 2px 6px rgba(15, 23, 42, 0.22)",
       }}
     >
       <span style={{ width: "6px", height: "6px", borderRadius: "9999px", backgroundColor: dotColor, flexShrink: 0 }} />
       <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
       {suffix && (
-        <span style={{ padding: "0 4px", borderRadius: "4px", backgroundColor: "rgba(255,255,255,0.16)", fontSize: "9.5px", fontWeight: 700 }}>
+        <span style={{ padding: "0 4px", borderRadius: "9999px", backgroundColor: "rgba(255,255,255,0.16)", fontSize: "9px", fontWeight: 700, letterSpacing: "0.02em" }}>
           {suffix}
         </span>
       )}
@@ -280,7 +284,7 @@ function ThoughtCloud({
           borderRadius: "14px",
           backgroundColor: "#ffffff",
           border: `1.5px solid ${borderColor}`,
-          boxShadow: "0 2px 6px rgba(15, 23, 42, 0.1)",
+          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.1)",
           maxWidth,
         }}
       >
@@ -447,70 +451,124 @@ export function PixelQuestBubble({
 
 export function PixelDirectorDeskSvg() {
   return (
-    <svg width="116" height="46" viewBox="0 0 58 23" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
-      {/* Executive high-back chair top behind desk */}
-      <rect x="24" y="0" width="10" height="5" fill="#1e3a5f" />
-      <rect x="25" y="1" width="8" height="3" fill="#2d5282" />
-      {/* Drop shadow */}
-      <rect x="3" y="18" width="52" height="3" fill="#1e293b" opacity="0.14" />
-      {/* Curved executive light desk */}
-      <rect x="4" y="6" width="50" height="10" fill="#cbd5e1" />
-      <rect x="3" y="4" width="52" height="5" fill="#f1f5f9" />
-      <rect x="5" y="10" width="48" height="6" fill="#94a3b8" />
-      <rect x="6" y="11" width="46" height="4" fill="#e2e8f0" />
-      {/* Dual wide monitors */}
-      <rect x="17" y="1" width="11" height="6" fill="#1e293b" />
-      <rect x="18" y="2" width="9" height="4" fill="#38bdf8" opacity="0.85" />
-      <rect x="30" y="1" width="11" height="6" fill="#1e293b" />
-      <rect x="31" y="2" width="9" height="4" fill="#818cf8" opacity="0.85" />
-      {/* Lamp & Coffee cup on desk */}
-      <rect x="7" y="2" width="4" height="4" fill="#f59e0b" />
-      <rect x="8" y="6" width="2" height="1" fill="#475569" />
-      <rect x="47" y="5" width="3" height="3" fill="#0f766e" />
-      {/* Gold/Dark Nameplate */}
-      <rect x="23" y="12" width="12" height="2" fill="#1e293b" />
-      {/* Guest chair in front */}
-      <rect x="42" y="18" width="8" height="4" fill="#3b82f6" />
-      <rect x="43" y="19" width="6" height="2" fill="#60a5fa" />
+    <svg width="126" height="50" viewBox="0 0 63 25" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
+      {/* Executive high-back leather chair peeking behind */}
+      <rect x="26" y="0" width="11" height="5" fill="#1e293b" />
+      <rect x="27" y="1" width="9" height="3" fill="#334155" />
+      {/* Soft ambient drop shadow */}
+      <rect x="3" y="19" width="57" height="3" fill="#1e293b" opacity="0.14" />
+      {/* Warm architectural walnut & slate executive desk */}
+      <rect x="4" y="6" width="55" height="12" fill="#8b6240" />
+      <rect x="3" y="4" width="57" height="5" fill="#d8b892" />
+      <rect x="4" y="5" width="55" height="3" fill="#e9d2b5" />
+      <rect x="5" y="10" width="53" height="7" fill="#6f4c30" />
+      <rect x="7" y="11" width="49" height="5" fill="#9c704a" />
+      {/* Dark leather desk pad */}
+      <rect x="19" y="6" width="25" height="3" fill="#1e293b" opacity="0.72" />
+      {/* Dual wide studio displays with dashboard accents */}
+      <rect x="18" y="1" width="12" height="6" fill="#0f172a" />
+      <rect x="19" y="2" width="10" height="4" fill="#1e3a5f" />
+      <rect x="20" y="3" width="5" height="1" fill="#38bdf8" />
+      <rect x="20" y="4.5" width="8" height="1" fill="#7dd3fc" opacity="0.75" />
+      <rect x="33" y="1" width="12" height="6" fill="#0f172a" />
+      <rect x="34" y="2" width="10" height="4" fill="#1e1b4b" />
+      <rect x="35" y="3" width="6" height="1" fill="#a5b4fc" />
+      <rect x="35" y="4.5" width="4" height="1" fill="#34d399" />
+      {/* Warm brass desk lamp + glow */}
+      <rect x="6" y="2" width="5" height="2" fill="#fbbf24" />
+      <rect x="7" y="4" width="3" height="1" fill="#fef3c7" opacity="0.8" />
+      <rect x="8" y="4" width="1" height="3" fill="#475569" />
+      <rect x="7" y="7" width="3" height="1" fill="#334155" />
+      {/* Ceramic espresso cup + desk mini plant */}
+      <rect x="50" y="5" width="3" height="3" fill="#f8fafc" />
+      <rect x="50.5" y="5" width="2" height="1" fill="#78350f" />
+      <rect x="54" y="5" width="3" height="3" fill="#b45309" />
+      <rect x="53.5" y="3" width="4" height="2.5" fill="#16a34a" />
+      {/* Executive brass nameplate */}
+      <rect x="25" y="12.5" width="13" height="2.5" fill="#1e293b" />
+      <rect x="26" y="13.2" width="11" height="1" fill="#fbbf24" opacity="0.85" />
+      {/* Visitor chair tucked in front */}
+      <rect x="45" y="20" width="9" height="4" fill="#4f46e5" />
+      <rect x="46" y="21" width="7" height="2" fill="#818cf8" />
     </svg>
   );
 }
 
 export function PixelPantryLoungeSvg() {
   return (
-    <svg width="212" height="60" viewBox="0 0 106 30" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, maxWidth: "100%" }}>
-      {/* Counter & Espresso machine (top-left) */}
-      <rect x="2" y="4" width="30" height="8" fill="#d6b48a" />
-      <rect x="2" y="2" width="30" height="4" fill="#edd3b1" />
-      <rect x="5" y="0" width="8" height="4" fill="#334155" />
-      <rect x="6" y="1" width="4" height="2" fill="#94a3b8" />
-      <rect x="16" y="2" width="3" height="2" fill="#f8fafc" />
-      <rect x="20" y="2" width="3" height="2" fill="#fb7185" />
+    <svg
+      width="320"
+      height="86"
+      viewBox="0 0 160 43"
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+      style={{ display: "block", width: "100%", maxWidth: "336px", height: "auto", flexShrink: 0 }}
+    >
+      {/* Left Zone: Timber Espresso Bar + Pastry Dome + Water Cooler */}
+      <rect x="2" y="13" width="38" height="3" fill="#1e1b18" opacity="0.08" />
+      <rect x="2" y="5" width="38" height="9" fill="#c79f72" />
+      <rect x="2" y="3" width="38" height="4" fill="#ead3b5" />
+      <rect x="3" y="9" width="36" height="4" fill="#a87f54" />
+      {/* Matte espresso machine + warm steam */}
+      <rect x="5" y="0" width="10" height="5" fill="#1e293b" />
+      <rect x="6" y="1" width="5" height="2" fill="#94a3b8" />
+      <rect x="12" y="1" width="2" height="1" fill="#34d399" />
+      <rect
+        x="8"
+        y="-1"
+        width="1"
+        height="1.5"
+        fill="#cbd5e1"
+        style={{ animationName: "orbit-steam", animationDuration: "1.8s", animationIterationCount: "infinite" }}
+      />
+      {/* Ceramic mugs & pastry dome */}
+      <rect x="18" y="3" width="3" height="2.5" fill="#f8fafc" />
+      <rect x="22" y="3" width="3" height="2.5" fill="#fb7185" />
+      <rect x="28" y="1.5" width="8" height="4" fill="#e0f2fe" opacity="0.7" />
+      <rect x="29" y="3.5" width="6" height="2" fill="#d97706" />
       {/* Classic blue Water Cooler */}
-      <rect x="34" y="4" width="6" height="9" fill="#e2e8f0" />
-      <rect x="35" y="0" width="4" height="4" fill="#38bdf8" />
-      <rect x="36" y="6" width="2" height="2" fill="#0284c7" />
+      <rect x="43" y="5" width="7" height="10" fill="#e2e8f0" />
+      <rect x="44" y="1" width="5" height="4" fill="#38bdf8" />
+      <rect x="45" y="7" width="3" height="2" fill="#0284c7" />
+      <rect x="43" y="15" width="7" height="1.5" fill="#1e293b" opacity="0.12" />
 
-      {/* Warm Cozy Sofa + Armchair + Round Coffee Table (center) */}
-      <rect x="48" y="12" width="24" height="8" fill="#d97742" />
-      <rect x="50" y="13" width="20" height="5" fill="#f59e6c" />
-      <rect x="48" y="12" width="3" height="8" fill="#b45324" />
-      <rect x="69" y="12" width="3" height="8" fill="#b45324" />
-      {/* Round table & snacks */}
-      <rect x="54" y="22" width="12" height="6" fill="#9a6b42" />
-      <rect x="55" y="21" width="10" height="2" fill="#c99361" />
-      <rect x="58" y="21" width="4" height="1.5" fill="#f8fafc" />
+      {/* Center Zone: Woven Lounge Rug + Cozy Terracotta Sofa + Coffee Table */}
+      <rect x="56" y="15" width="48" height="24" fill="#e9dcc8" opacity="0.65" />
+      <rect x="58" y="17" width="44" height="20" fill="#f2e7d6" opacity="0.75" />
+      {/* Warm Cozy Sofa with accent pillows */}
+      <rect x="64" y="13" width="32" height="10" fill="#c25e32" />
+      <rect x="67" y="14" width="26" height="7" fill="#e07a4b" />
+      <rect x="64" y="13" width="4" height="10" fill="#9f4721" />
+      <rect x="92" y="13" width="4" height="10" fill="#9f4721" />
+      {/* Accent throw cushions */}
+      <rect x="69" y="15" width="4" height="4" fill="#fde68a" />
+      <rect x="87" y="15" width="4" height="4" fill="#99f6e4" />
+      {/* Oak Coffee Table + snacks & book */}
+      <rect x="72" y="27" width="16" height="7" fill="#8b5e38" />
+      <rect x="73" y="26" width="14" height="2.5" fill="#c79563" />
+      <rect x="75" y="26.5" width="4" height="1.5" fill="#f8fafc" />
+      <rect x="81" y="26.5" width="4" height="1.5" fill="#818cf8" />
+      <rect x="72" y="34" width="16" height="2" fill="#1e1b18" opacity="0.1" />
 
-      {/* Mini Green Ping-Pong / Break Table (right) */}
-      <rect x="80" y="7" width="22" height="12" fill="#15803d" />
-      <rect x="81" y="8" width="20" height="10" fill="#22c55e" />
-      <rect x="80" y="12" width="22" height="1.5" fill="#f8fafc" />
-      <rect x="81" y="19" width="3" height="3" fill="#334155" />
-      <rect x="98" y="19" width="3" height="3" fill="#334155" />
-      {/* Potted bamboo / indoor plant */}
-      <rect x="96" y="23" width="6" height="5" fill="#8b552c" />
-      <rect x="95" y="19" width="8" height="5" fill="#16a34a" />
-      <rect x="97" y="17" width="4" height="3" fill="#4ade80" />
+      {/* Right Zone: Emerald Ping-Pong Table + Warm Floor Lamp + Lush Monstera */}
+      <rect x="114" y="9" width="30" height="16" fill="#15803d" />
+      <rect x="115" y="10" width="28" height="14" fill="#22c55e" />
+      <rect x="114" y="16" width="30" height="1.5" fill="#f8fafc" />
+      <rect x="120" y="12" width="3" height="2" fill="#ef4444" />
+      <rect x="136" y="19" width="3" height="2" fill="#3b82f6" />
+      <rect x="116" y="25" width="3" height="4" fill="#334155" />
+      <rect x="139" y="25" width="3" height="4" fill="#334155" />
+      {/* Warm Standing Floor Lamp */}
+      <rect x="148" y="4" width="6" height="4" fill="#fde68a" />
+      <rect x="149" y="5" width="4" height="2" fill="#fbbf24" />
+      <rect x="150.5" y="8" width="1" height="11" fill="#475569" />
+      <rect x="149" y="19" width="4" height="1.5" fill="#334155" />
+      {/* Lush potted studio plant */}
+      <rect x="145" y="31" width="8" height="7" fill="#9a5c32" />
+      <rect x="144" y="30" width="10" height="2" fill="#c7834e" />
+      <rect x="143" y="24" width="12" height="7" fill="#15803d" />
+      <rect x="145" y="21" width="8" height="5" fill="#22c55e" />
+      <rect x="147" y="19" width="4" height="3" fill="#86efac" />
     </svg>
   );
 }
@@ -545,107 +603,132 @@ export function PixelModernDeskSvg({
           : "#a1a1aa";
 
   return (
-    <svg width="74" height="30" viewBox="0 0 44 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
+    <svg width="84" height="34" viewBox="0 0 48 20" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
       {/* Ergonomic dark swivel chair peeking */}
-      <rect x="17" y="1" width="10" height="4" fill="#334155" />
-      <rect x="18" y="2" width="8" height="2" fill="#475569" />
+      <rect x="19" y="1" width="10" height="4" fill="#334155" />
+      <rect x="20" y="2" width="8" height="2" fill="#475569" />
 
-      {/* Drop shadow */}
-      <rect x="2" y="15" width="40" height="2" fill="#1e293b" opacity="0.14" />
+      {/* Soft ground shadow */}
+      <rect x="3" y="16" width="42" height="2.5" fill="#1e293b" opacity="0.12" />
 
-      {/* Clean Gather-style light oak/white tabletop */}
-      <rect x="2" y="7" width="40" height="8" fill="#cbd5e1" />
-      <rect x="1" y="5" width="42" height="4" fill="#f8fafc" />
-      <rect x="2" y="9" width="40" height="6" fill="#94a3b8" />
-      <rect x="3" y="10" width="38" height="4" fill="#e2e8f0" />
+      {/* Warm Nordic oak & matte-white workstation tabletop */}
+      <rect x="2" y="8" width="44" height="8" fill="#d6c6b2" />
+      <rect x="1" y="6" width="46" height="4" fill="#fbf9f5" />
+      <rect x="2" y="10" width="44" height="6" fill="#b8a389" />
+      <rect x="4" y="11" width="40" height="4" fill="#efeae1" />
 
-      {/* Keyboard & pad */}
-      <rect x="16" y="7" width="12" height="2" fill="#475569" />
-      <rect x="6" y="5" width="4" height="3" fill="#fef3c7" />
-      <rect x="35" y="5" width="3" height="3" fill="#0d9488" />
+      {/* Dark desk mat + keyboard + mouse */}
+      <rect x="15" y="7" width="18" height="3" fill="#334155" opacity="0.85" />
+      <rect x="17" y="7.5" width="12" height="1.8" fill="#64748b" />
+      <rect x="30.5" y="7.8" width="1.8" height="1.4" fill="#cbd5e1" />
+
+      {/* Warm notepad (left) + ceramic mug (right) */}
+      <rect x="6" y="6.5" width="4.5" height="3" fill="#fef3c7" />
+      <rect x="7" y="7.5" width="2.5" height="0.8" fill="#d97706" opacity="0.6" />
+      <rect x="38" y="6" width="3.5" height="3" fill="#0d9488" />
+      <rect x="38.5" y="6" width="2.5" height="0.9" fill="#f8fafc" />
 
       {/* Spinning pen on tabletop if penSpinning */}
       {penSpinning && (
-        <g style={{ transformOrigin: "31.5px 7.5px", animationName: "orbit-pen-spin", animationDuration: "1.1s", animationIterationCount: "infinite", animationTimingFunction: "linear" }}>
-          <rect x="29" y="7" width="5" height="1" fill="#4f46e5" />
-          <rect x="33" y="7" width="1.2" height="1" fill="#f59e0b" />
+        <g style={{ transformOrigin: "34.5px 8px", animationName: "orbit-pen-spin", animationDuration: "1.1s", animationIterationCount: "infinite", animationTimingFunction: "linear" }}>
+          <rect x="32" y="7.5" width="5" height="1" fill="#4f46e5" />
+          <rect x="36.2" y="7.5" width="1.2" height="1" fill="#f59e0b" />
         </g>
       )}
 
-      {/* Sleek monitor */}
-      <rect x="16" y="1" width="12" height="6" fill="#1e293b" />
-      <rect x="17" y="2" width="10" height="4" fill={screenBg} />
+      {/* Sleek studio monitor */}
+      <rect x="17" y="1" width="14" height="6.5" fill="#0f172a" />
+      <rect x="18" y="2" width="12" height="4.5" fill={screenBg} />
       {occupied && kind === "working" ? (
         <>
-          <rect x="18" y="3" width="6" height="1" fill={screenAccent} />
+          <rect x="19" y="3" width="7" height="1" fill={screenAccent} />
           <rect
-            x="18"
-            y="4.5"
-            width="4"
+            x="19"
+            y="4.6"
+            width="5"
             height="1"
             fill="#c7d2fe"
             style={{ animationName: "orbit-load-bar", animationDuration: "1.2s", animationIterationCount: "infinite" }}
           />
         </>
       ) : (
-        <rect x="19" y="3.5" width="6" height="1" fill={screenAccent} opacity="0.85" />
+        <rect x="20" y="3.6" width="8" height="1.1" fill={screenAccent} opacity="0.9" />
       )}
-      <rect x="20" y="7" width="4" height="1" fill="#475569" />
+      <rect x="22" y="7.5" width="4" height="1" fill="#475569" />
     </svg>
   );
 }
 
 export function PixelEmptyDeskClusterSvg() {
   return (
-    <svg width="146" height="46" viewBox="0 0 73 23" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <svg width="154" height="48" viewBox="0 0 77 24" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
       {/* Desk 1 */}
-      <rect x="4" y="4" width="8" height="3" fill="#475569" />
-      <rect x="1" y="7" width="26" height="8" fill="#cbd5e1" />
-      <rect x="0" y="6" width="28" height="3" fill="#f1f5f9" />
-      <rect x="9" y="3" width="10" height="5" fill="#1e293b" />
-      <rect x="10" y="4" width="8" height="3" fill="#334155" />
+      <rect x="5" y="4" width="8" height="3" fill="#475569" />
+      <rect x="1" y="7" width="28" height="8" fill="#d6c6b2" />
+      <rect x="0" y="6" width="30" height="3" fill="#fbf9f5" />
+      <rect x="10" y="3" width="10" height="5" fill="#1e293b" />
+      <rect x="11" y="4" width="8" height="3" fill="#334155" />
       {/* Partition divider strip */}
-      <rect x="30" y="4" width="2" height="12" fill="#94a3b8" />
+      <rect x="32" y="4" width="2" height="12" fill="#cbd5e1" />
       {/* Desk 2 */}
-      <rect x="38" y="4" width="8" height="3" fill="#475569" />
-      <rect x="35" y="7" width="26" height="8" fill="#cbd5e1" />
-      <rect x="34" y="6" width="28" height="3" fill="#f1f5f9" />
-      <rect x="43" y="3" width="10" height="5" fill="#1e293b" />
-      <rect x="44" y="4" width="8" height="3" fill="#334155" />
+      <rect x="41" y="4" width="8" height="3" fill="#475569" />
+      <rect x="37" y="7" width="28" height="8" fill="#d6c6b2" />
+      <rect x="36" y="6" width="30" height="3" fill="#fbf9f5" />
+      <rect x="46" y="3" width="10" height="5" fill="#1e293b" />
+      <rect x="47" y="4" width="8" height="3" fill="#334155" />
       {/* Small plant */}
-      <rect x="64" y="10" width="6" height="5" fill="#8b552c" />
-      <rect x="63" y="6" width="8" height="5" fill="#22c55e" />
+      <rect x="68" y="11" width="6" height="5" fill="#9a5c32" />
+      <rect x="67" y="7" width="8" height="5" fill="#22c55e" />
+      <rect x="69" y="5" width="4" height="3" fill="#86efac" />
     </svg>
   );
 }
 
 export function PixelBookshelfSvg() {
   return (
-    <svg width="34" height="36" viewBox="0 0 17 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-      <rect x="1" y="2" width="15" height="15" fill="#6b3e1d" />
-      <rect x="2" y="3" width="13" height="5" fill="#3e2210" />
-      <rect x="2" y="10" width="13" height="5" fill="#3e2210" />
-      <rect x="3" y="4" width="2" height="4" fill="#ef4444" />
-      <rect x="5" y="5" width="2" height="3" fill="#3b82f6" />
-      <rect x="8" y="4" width="2" height="4" fill="#10b981" />
-      <rect x="11" y="5" width="3" height="3" fill="#f59e0b" />
-      <rect x="3" y="11" width="3" height="4" fill="#8b5cf6" />
-      <rect x="7" y="12" width="2" height="3" fill="#ec4899" />
-      <rect x="10" y="11" width="4" height="4" fill="#14b8a6" />
-      <rect x="12" y="0" width="3" height="2" fill="#38bdf8" />
-      <rect x="3" y="0" width="3" height="2" fill="#22c55e" />
+    <svg width="42" height="44" viewBox="0 0 21 22" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+      {/* Ground shadow */}
+      <rect x="1" y="19" width="19" height="2" fill="#1e1b18" opacity="0.14" />
+      {/* Modern walnut credenza */}
+      <rect x="1" y="3" width="19" height="17" fill="#7c5333" />
+      <rect x="1" y="3" width="19" height="1.5" fill="#a8764c" />
+      <rect x="2.5" y="5" width="16" height="5.5" fill="#3e2716" />
+      <rect x="2.5" y="12" width="16" height="6" fill="#3e2716" />
+      {/* Curated books top shelf */}
+      <rect x="3.5" y="6" width="2" height="4.5" fill="#ef4444" />
+      <rect x="6" y="7" width="2" height="3.5" fill="#3b82f6" />
+      <rect x="8.5" y="6" width="2.5" height="4.5" fill="#10b981" />
+      <rect x="12" y="7" width="3" height="3.5" fill="#f59e0b" />
+      <rect x="15.5" y="6.5" width="2" height="4" fill="#e2e8f0" />
+      {/* Bottom shelf books + folder box */}
+      <rect x="3.5" y="13" width="3" height="5" fill="#8b5cf6" />
+      <rect x="7" y="14" width="2" height="4" fill="#ec4899" />
+      <rect x="10" y="13.5" width="3.5" height="4.5" fill="#14b8a6" />
+      <rect x="14.5" y="14" width="3" height="4" fill="#cbd5e1" />
+      {/* Succulent + mini globe on top */}
+      <rect x="3" y="1" width="3.5" height="2" fill="#b45309" />
+      <rect x="2.5" y="0" width="4.5" height="1.5" fill="#22c55e" />
+      <rect x="14" y="0" width="3" height="2" fill="#38bdf8" />
+      <rect x="15" y="2" width="1" height="1" fill="#f59e0b" />
     </svg>
   );
 }
 
-export function PixelPlantSvg({ variant = "autumn" }: { variant?: "autumn" | "green" }) {
+export function PixelPlantSvg({ variant = "autumn", size = 26 }: { variant?: "autumn" | "green"; size?: number }) {
   const leafDark = variant === "autumn" ? "#c2410c" : "#15803d";
   const leafMid = variant === "autumn" ? "#ea580c" : "#22c55e";
   const leafBright = variant === "autumn" ? "#fb923c" : "#86efac";
 
   return (
-    <svg width="26" height="30" viewBox="0 0 14 16" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
-      <rect x="3" y="13" width="8" height="2" fill="#2d1b10" opacity="0.2" />
+    <svg
+      width={size}
+      height={Math.round(size * 1.15)}
+      viewBox="0 0 14 16"
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+      style={{ display: "block", flexShrink: 0 }}
+    >
+      <rect x="3" y="13" width="8" height="2" fill="#2d1b10" opacity="0.18" />
       <rect x="4" y="11" width="6" height="4" fill="#8b552c" />
       <rect x="3" y="10" width="8" height="2" fill="#c9874f" />
       <rect x="6" y="8" width="2" height="3" fill="#6b3e1d" />

@@ -88,4 +88,16 @@ describe("adding sources", () => {
     await userEvent.click(screen.getByRole("button", { name: "Use in this session" }));
     expect(onSelect).toHaveBeenCalledWith([SOURCE_A, "other"]);
   });
+
+  test("switching tabs preserves uploaded file status in Upload", async () => {
+    vi.stubGlobal("XMLHttpRequest", FakeXhr);
+    fakeApi();
+    show();
+    await userEvent.upload(screen.getByLabelText("Choose files to upload"), [new File(["# Notes"], "notes.md", { type: "text/markdown" })], { applyAccept: false });
+    expect(await screen.findByText("notes.md")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: "Website" }));
+    expect(screen.getByRole("textbox", { name: /Website URL/ })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "Upload" }));
+    expect(screen.getByText("notes.md")).toBeInTheDocument();
+  });
 });

@@ -49,17 +49,38 @@ const useStyles = makeStyles({
   },
 });
 
+function fallbackCopy(text: string): boolean {
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(area);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export function CodeBlock({ code, language }: { code: string; language?: string | null }) {
   const { t } = useI18n();
   const s = useStyles();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
+    let ok: boolean;
     try {
       await navigator.clipboard.writeText(code);
+      ok = true;
+    } catch {
+      ok = fallbackCopy(code);
+    }
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
     }
   };
   return (
@@ -73,7 +94,7 @@ export function CodeBlock({ code, language }: { code: string; language?: string 
           size="small"
           appearance="subtle"
           icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
-          aria-label={t("common.codeBlock.copyAria")}
+          aria-label={copied ? t("common.codeBlock.copied") : t("common.codeBlock.copyAria")}
           onClick={() => void copy()}
         >
           {copied ? t("common.codeBlock.copied") : t("common.codeBlock.copy")}

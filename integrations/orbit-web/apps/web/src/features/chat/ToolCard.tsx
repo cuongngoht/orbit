@@ -2,7 +2,7 @@
 // holds what its subagent did, linked by the CLI's own parent id.
 import { Button, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { CheckmarkCircle16Regular, ChevronDown16Regular, ChevronRight16Regular, ErrorCircle16Regular, Warning16Regular } from "@fluentui/react-icons";
-import { useState, type ReactNode } from "react";
+import { Children, useState, type ReactNode } from "react";
 import { CodeBlock } from "../../components/CodeBlock";
 import { useI18n } from "../../i18n";
 import type { ToolItem } from "./chatReducer";
@@ -57,6 +57,8 @@ export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactN
   const { t } = useI18n();
   const s = useStyles();
   const [open, setOpen] = useState(false);
+  const [childrenOpen, setChildrenOpen] = useState(true);
+  const childCount = Children.count(children);
   // A call always has an input; none at all is a shared chat's tool, said by its title only: nothing to show.
   const detailed = tool.input !== "";
   return (
@@ -79,7 +81,22 @@ export function ToolCard({ tool, children }: { tool: ToolItem; children?: ReactN
         <StateIcon tool={tool} />
         <Text className={s.title}>{tool.title}</Text>
       </div>
-      {children && <div className={s.children}>{children}</div>}
+      {childCount > 0 && (
+        <>
+          <div>
+            <Button
+              appearance="transparent"
+              size="small"
+              icon={childrenOpen ? <ChevronDown16Regular /> : <ChevronRight16Regular />}
+              aria-expanded={childrenOpen}
+              onClick={() => setChildrenOpen((o) => !o)}
+            >
+              {childrenOpen ? t("chat.tool.hideSubagent", { count: childCount }) : t("chat.tool.showSubagent", { count: childCount })}
+            </Button>
+          </div>
+          {childrenOpen && <div className={s.children}>{children}</div>}
+        </>
+      )}
       {open && detailed && (
         <>
           <Text size={200} className={s.label}>

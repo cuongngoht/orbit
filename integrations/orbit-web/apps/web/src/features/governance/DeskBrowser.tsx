@@ -3,8 +3,8 @@
 // text here) -- and a file that is not text is only named and sized. Every look is the account policy's to decide and is
 // recorded in the audit. The desk is cleaned up -- chosen paths, everything but the toolbox, the dependency cache --
 // only when its employee holds no work, and only at the version the person chose at: each clean is said in full first.
-import { Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text } from "@fluentui/react-components";
-import { ArrowLeft16Regular, ChevronRight12Regular, Delete16Regular, Document16Regular, Folder16Regular, Link16Regular } from "@fluentui/react-icons";
+import { Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, tokens } from "@fluentui/react-components";
+import { ArrowLeft16Regular, ChevronRight12Regular, Delete16Regular, Dismiss20Regular, Document16Regular, Folder16Regular, Link16Regular } from "@fluentui/react-icons";
 import { DESK_TOOLBOX_DIRS, type DeskCleanRequest, type DeskCleanResult, type DeskEntry, type DeskFile, type DeskTree } from "@orbit-web/contracts";
 import { useState } from "react";
 import { CodeBlock } from "../../components/CodeBlock";
@@ -39,13 +39,19 @@ const resultText = (r: DeskCleanResult): string => {
   return `${removed}${r.cacheEmptied ? tr("governance.desk.result.cacheEmptied") : ""}${r.missing.length > 0 ? tr("governance.desk.result.missing", { missing: r.missing.join(", ") }) : ""}`;
 };
 
-function FileView({ base, path }: { base: string; path: string }) {
+function FileView({ base, path, onClose }: { base: string; path: string; onClose: () => void }) {
   const { t } = useI18n();
   const s = useParts();
   const file = useResource<DeskFile>(() => get(`${base}/file?path=${encodeURIComponent(path)}`), [base, path]);
   const f = file.data;
   return (
-    <Card title={path} icon={<Document16Regular />} tone="neutral" description={f === null ? undefined : t("governance.desk.fileMeta", { bytes: bytesText(f.bytes), at: when(f.modifiedAt) })}>
+    <Card
+      title={path}
+      icon={<Document16Regular />}
+      tone="neutral"
+      description={f === null ? undefined : t("governance.desk.fileMeta", { bytes: bytesText(f.bytes), at: when(f.modifiedAt) })}
+      actions={<Button appearance="subtle" size="small" icon={<Dismiss20Regular />} aria-label={t("governance.desk.closeFileAria")} onClick={onClose} />}
+    >
       {f === null ? (
         file.error ? <ErrorBar text={file.error} /> : <Spinner size="tiny" label={t("governance.desk.readingFile")} />
       ) : f.text === null ? (
@@ -179,42 +185,51 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
             truncated: desk.truncated ? t("governance.desk.biggestShown", { count: desk.entries.length }) : "",
           })}
         </Text>
-        <Table size="small" aria-label={t("governance.desk.holdsAria")}>
-          <TableHeader>
-            <TableRow>
-              <TableHeaderCell>{t("governance.desk.colName")}</TableHeaderCell>
-              <TableHeaderCell>{t("governance.desk.colSize")}</TableHeaderCell>
-              <TableHeaderCell>{t("governance.desk.colFiles")}</TableHeaderCell>
-              <TableHeaderCell>{t("governance.desk.colChanged")}</TableHeaderCell>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {desk.entries.map((e) => (
-              <TableRow key={e.path ?? `?${e.name}`}>
-                <TableCell>
-                  <span className={s.row}>
-                    {choosing && e.path !== null && !kept(e) && <Checkbox aria-label={t("governance.desk.chooseAria", { name: e.name })} checked={chosen.includes(e.path)} onChange={(_, d) => toggle(e.path as string, d.checked === true)} />}
-                    {e.type === "dir" ? <Folder16Regular aria-hidden /> : e.type === "link" ? <Link16Regular aria-hidden /> : <Document16Regular aria-hidden />}
-                    {e.path === null || e.type === "link" || e.type === "other" ? (
-                      <Text>{e.type === "link" ? `${e.name} → ${e.target ?? ""}` : e.name}</Text>
-                    ) : (
-                      <Button size="small" appearance="transparent" onClick={() => (e.type === "dir" ? into(e.path as string) : setOpen(e.path))}>
-                        {e.name}
-                      </Button>
-                    )}
-                  </span>
-                </TableCell>
-                <TableCell>{e.type === "link" ? "—" : bytesText(e.bytes)}</TableCell>
-                <TableCell>{e.type === "dir" ? e.files : ""}</TableCell>
-                <TableCell>{when(e.modifiedAt)}</TableCell>
+        <div className={s.tableWrap}>
+          <Table size="small" aria-label={t("governance.desk.holdsAria")}>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>{t("governance.desk.colName")}</TableHeaderCell>
+                <TableHeaderCell>{t("governance.desk.colSize")}</TableHeaderCell>
+                <TableHeaderCell>{t("governance.desk.colFiles")}</TableHeaderCell>
+                <TableHeaderCell>{t("governance.desk.colChanged")}</TableHeaderCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {desk.entries.map((e) => (
+                <TableRow key={e.path ?? `?${e.name}`}>
+                  <TableCell>
+                    <span className={s.row}>
+                      {choosing && e.path !== null && !kept(e) && <Checkbox aria-label={t("governance.desk.chooseAria", { name: e.name })} checked={chosen.includes(e.path)} onChange={(_, d) => toggle(e.path as string, d.checked === true)} />}
+                      {e.type === "dir" ? <Folder16Regular aria-hidden /> : e.type === "link" ? <Link16Regular aria-hidden /> : <Document16Regular aria-hidden />}
+                      {e.path === null || e.type === "link" || e.type === "other" ? (
+                        <Text>{e.type === "link" ? `${e.name} → ${e.target ?? ""}` : e.name}</Text>
+                      ) : (
+                        <Button size="small" appearance="transparent" onClick={() => (e.type === "dir" ? into(e.path as string) : setOpen(e.path))}>
+                          {e.name}
+                        </Button>
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell>{e.type === "link" ? "—" : bytesText(e.bytes)}</TableCell>
+                  <TableCell>{e.type === "dir" ? e.files : ""}</TableCell>
+                  <TableCell>{when(e.modifiedAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
         {desk.entries.length === 0 && <Text className={s.muted}>{t("governance.desk.emptyFolder")}</Text>}
         {choosing && (
           <div className={s.row}>
-            <Button size="small" appearance="primary" icon={<Delete16Regular />} disabled={chosen.length === 0 || !can} onClick={() => setAsk({ kind: "remove", paths: chosen })}>
+            <Button
+              size="small"
+              appearance="primary"
+              style={chosen.length > 0 && can ? { backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand } : undefined}
+              icon={<Delete16Regular />}
+              disabled={chosen.length === 0 || !can}
+              onClick={() => setAsk({ kind: "remove", paths: chosen })}
+            >
               {t("governance.desk.removeCount", { count: chosen.length })}
             </Button>
             <Text size={200} className={s.muted}>
@@ -223,7 +238,7 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
           </div>
         )}
       </Card>
-      {open !== null && <FileView key={open} base={base} path={open} />}
+      {open !== null && <FileView key={open} base={base} path={open} onClose={() => setOpen(null)} />}
       {ask !== null && (
         <Dialog open onOpenChange={(_, v) => !v.open && setAsk(null)}>
           <DialogSurface className="orbit-touch">
@@ -248,7 +263,11 @@ export function DeskBrowser({ employeeId, go }: { employeeId: string; go: (page:
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setAsk(null)}>{t("governance.approval.cancel")}</Button>
-                <Button appearance="primary" onClick={() => void clean(ask)}>
+                <Button
+                  appearance="primary"
+                  style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+                  onClick={() => void clean(ask)}
+                >
                   {t(ASK_KEYS[ask.kind].actKey)}
                 </Button>
               </DialogActions>

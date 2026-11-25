@@ -166,6 +166,7 @@ const useStyles = makeStyles({
     paddingBottom: "6px",
     paddingLeft: 0,
     paddingRight: 0,
+    "&:disabled": { cursor: "default" },
     "@media (pointer: coarse)": { minHeight: "44px" },
   },
   openMuted: { opacity: 0.78 },
@@ -173,6 +174,8 @@ const useStyles = makeStyles({
   titleRow: { fontSize: tokens.fontSizeBase300, fontWeight: tokens.fontWeightMedium, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   muted: { color: tokens.colorNeutralForeground3 },
+  reason: { color: tokens.colorPaletteRedForeground1, overflowWrap: "anywhere" },
+  staleReason: { color: tokens.colorPaletteDarkOrangeForeground1, overflowWrap: "anywhere" },
   loadingWrap: {
     flexGrow: 1,
     display: "flex",
@@ -299,8 +302,9 @@ export function SourcesPanel(p: SourcesPanelProps) {
     return q === "" ? sources : sources.filter((x) => x.title.toLowerCase().includes(q) || (x.origin ?? "").toLowerCase().includes(q));
   }, [sources, query]);
   const selected = new Set(p.selection);
-  const all = sources.length > 0 && sources.every((x) => selected.has(x.id));
-  const some = sources.some((x) => selected.has(x.id));
+  const selectable = sources.filter((x) => x.state !== "failed");
+  const all = selectable.length > 0 && selectable.every((x) => selected.has(x.id));
+  const some = selectable.some((x) => selected.has(x.id));
   const inUse = p.selection.filter((id) => sources.some((x) => x.id === id && searchable(x))).length;
   const act = async (work: () => Promise<unknown>) => {
     setError(null);
@@ -355,7 +359,7 @@ export function SourcesPanel(p: SourcesPanelProps) {
             <div className={s.selectAll}>
               <Checkbox
                 checked={all ? true : some ? "mixed" : false}
-                onChange={(_, d) => p.onSelect(d.checked === true ? sources.map((x) => x.id) : [])}
+                onChange={(_, d) => p.onSelect(d.checked === true ? selectable.map((x) => x.id) : [])}
                 label={t(all ? "research.sources.deselectAll" : "research.sources.selectAll")}
                 disabled={p.disabled}
               />
@@ -412,9 +416,25 @@ export function SourcesPanel(p: SourcesPanelProps) {
                       {x.revision?.pages ? t("research.sources.pagesPrefix", { pages: x.revision.pages }) : ""}
                       {x.revision?.fetchedAt ? t("research.sources.snapshotAt", { at: when(x.revision.fetchedAt) }) : t("research.sources.addedAt", { at: when(x.createdAt) })}
                     </Text>
+                    {(x.state === "failed" || x.state === "stale") && x.stateReason && (
+                      <Text size={100} className={x.state === "failed" ? s.reason : s.staleReason}>
+                        {x.stateReason}
+                      </Text>
+                    )}
                   </span>
                   <SourceState source={x} />
                 </button>
+                {x.state === "failed" && (
+                  <Button
+                    appearance="subtle"
+                    size="small"
+                    icon={<ArrowClockwise16Regular />}
+                    aria-label={t("research.sources.tryAgain")}
+                    onClick={() => void act(() => research.retrySource(x.id))}
+                  >
+                    {!isMobile && t("research.sources.tryAgain")}
+                  </Button>
+                )}
                 <Menu>
                   <MenuTrigger disableButtonEnhancement>
                     <Button data-row-actions="" className={mergeClasses(s.iconBtn, touch && s.touch)} appearance="transparent" size="small" icon={<MoreHorizontal16Regular />} aria-label={t("research.sources.actionsAria", { title: x.title })} />
@@ -463,14 +483,20 @@ function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onCl
   const { t } = useI18n();
   const s = useStyles();
   const [title, setTitle] = useState(source.title);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={s.dialogSurface}>
+    <Dialog open onOpenChange={(_, d) => !d.open && !busy && onClose()}>
+      <DialogSurface className={mergeClasses(s.dialogSurface, "orbit-touch")}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            research.renameSource(source.id, title).then(onClose, (err: unknown) => setError(errorText(err)));
+            setBusy(true);
+            setError(null);
+            research
+              .renameSource(source.id, title)
+              .then(onClose, (err: unknown) => setError(errorText(err)))
+              .finally(() => setBusy(false));
           }}
         >
           <DialogBody>
@@ -489,8 +515,8 @@ function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onCl
               </Field>
             </DialogContent>
             <DialogActions>
-              <Button onClick={onClose}>{t("research.evidence.cancel")}</Button>
-              <Button appearance="primary" type="submit" disabled={title.trim() === ""}>
+              <Button disabled={busy} onClick={onClose}>{t("research.evidence.cancel")}</Button>
+              <Button appearance="primary" type="submit" disabled={busy || title.trim() === ""}>
                 {t("research.sources.save")}
               </Button>
             </DialogActions>
@@ -504,10 +530,11 @@ function RenameSource({ source, onClose }: { source: ResearchSourceSummary; onCl
 function DeleteSource({ source, onClose }: { source: ResearchSourceSummary; onClose: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
-    <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={s.dialogSurface}>
+    <Dialog open onOpenChange={(_, d) => !d.open && !busy && onClose()}>
+      <DialogSurface className={mergeClasses(s.dialogSurface, "orbit-touch")}>
         <DialogBody>
           <DialogTitle
             action={
@@ -527,8 +554,20 @@ function DeleteSource({ source, onClose }: { source: ResearchSourceSummary; onCl
             )}
           </DialogContent>
           <DialogActions>
-            <Button onClick={onClose}>{t("research.evidence.cancel")}</Button>
-            <Button appearance="primary" onClick={() => research.deleteSource(source.id).then(onClose, (err: unknown) => setError(errorText(err)))}>
+            <Button disabled={busy} onClick={onClose}>{t("research.evidence.cancel")}</Button>
+            <Button
+              appearance="primary"
+              disabled={busy}
+              style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                void research
+                  .deleteSource(source.id)
+                  .then(onClose, (err: unknown) => setError(errorText(err)))
+                  .finally(() => setBusy(false));
+              }}
+            >
               {t("research.sources.delete")}
             </Button>
           </DialogActions>

@@ -3,9 +3,9 @@
 // where whoever asks is already in (the access gate and the Claude sign-in stand in front of it), and never shown on the
 // sign-in page: the link is the token. On this machine alone there is none, and the card says why.
 import { Button, Field, Input, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
-import { Copy16Regular, Open16Regular } from "@fluentui/react-icons";
+import { Copy16Regular, Eye16Regular, EyeOff16Regular, Open16Regular } from "@fluentui/react-icons";
 import type { AccessLink } from "@orbit-web/contracts";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { get } from "../../services/api";
@@ -24,16 +24,19 @@ export function AccessLinkCard() {
   const s = useStyles();
   const access = useResource<AccessLink>(() => get("/api/access/link"), []);
   const [copied, setCopied] = useState(false);
+  const [shown, setShown] = useState(false);
   const token = access.data?.token ?? null;
   const link = token === null ? null : accessLinkOf(token);
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
   };
+  const maskedStyle = !shown ? ({ WebkitTextSecurity: "disc" } as CSSProperties) : undefined;
   return (
     <section className={s.root} aria-label={t("settings.accessLink.title")}>
       <Text weight="semibold">{t("settings.accessLink.title")}</Text>
@@ -46,7 +49,21 @@ export function AccessLinkCard() {
       {link !== null && (
         <>
           <Field label={t("settings.accessLink.title")}>
-            <Input readOnly value={link} onFocus={(e) => e.target.select()} />
+            <Input
+              readOnly
+              value={link}
+              input={{ style: maskedStyle }}
+              onFocus={(e) => e.target.select()}
+              contentAfter={
+                <Button
+                  appearance="transparent"
+                  size="small"
+                  icon={shown ? <EyeOff16Regular /> : <Eye16Regular />}
+                  aria-label={shown ? t("settings.accessLink.hide") : t("settings.accessLink.show")}
+                  onClick={() => setShown((v) => !v)}
+                />
+              }
+            />
           </Field>
           <div className={s.actions}>
             <Button className={s.actionBtn} icon={<Copy16Regular />} onClick={() => void copy(link)}>

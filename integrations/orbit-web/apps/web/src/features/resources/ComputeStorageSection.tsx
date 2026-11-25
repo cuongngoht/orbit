@@ -4,7 +4,7 @@
 // promised and really used per category with how each limit is enforced, and how much work runs, waits, or can never
 // start as configured. The owner may lower the budget; raising it above the authorization is the operator's, in a
 // terminal of the server, and the API refuses it whatever a page sends.
-import { Badge, Button, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Badge, Button, Field, Input, MessageBar, MessageBarActions, MessageBarBody, ProgressBar, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import type { AccountResourceBudget, PerEmployeeCeiling, ResourceSummary, StorageCategory, UpdateBudgetRequest } from "@orbit-web/contracts";
 import { STORAGE_CATEGORIES } from "@orbit-web/contracts";
 import { ArrowSync16Regular } from "@fluentui/react-icons";
@@ -26,6 +26,9 @@ const useStyles = makeStyles({
   value: { fontSize: tokens.fontSizeBase500, fontWeight: tokens.fontWeightSemibold, fontVariantNumeric: "tabular-nums" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "10px" },
   button: { alignSelf: "flex-start", "@media (max-width: 639px), (pointer: coarse)": { alignSelf: "stretch", minHeight: "44px" } },
+  meters: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" },
+  meter: { display: "flex", flexDirection: "column", gap: "4px" },
+  meterHead: { display: "flex", justifyContent: "space-between", gap: "8px", fontSize: tokens.fontSizeBase200 },
   code: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, wordBreak: "break-all" },
 });
 
@@ -152,6 +155,7 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
   // rounded GiB shown with the MiB kept made a field nobody touched look changed (18374 MiB shown 17.94, sent 18371).
   const [opened] = useState<Draft>(() => draftOf(budget));
   const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<{ text: string; stale: boolean } | null>(null);
   const values = LIMITS.map((l) => ({ l, value: l.toApi(Number(draft[l.key])), typed: draft[l.key] }));
   const invalid = values.filter((v) => v.typed.trim() === "" || !Number.isFinite(Number(v.typed)) || v.value < 0);
@@ -175,14 +179,27 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
   const save = async () => {
     setBusy(true);
     setError(null);
+    setSaved(false);
     try {
       onSaved(await send<ResourceSummary>("PATCH", "/api/office/resources/budget", change, ifMatch(budget.version)));
+      setSaved(true);
     } catch (err) {
       setError({ text: isStale(err) ? t("settings.resources.budget.stale") : errorText(err), stale: isStale(err) });
     } finally {
       setBusy(false);
     }
   };
+  const renderField = (l: Limit) => {
+    const typed = draft[l.key];
+    const bad = invalid.some((v) => v.l === l) ? t("settings.resources.budget.invalid") : above.some((v) => v.l === l) ? t("settings.resources.budget.above", { max: shown(l, l.authorized(budget)) }) : undefined;
+    return (
+      <Field key={l.key} label={t("settings.resources.budget.fieldLabel", { label: t(l.labelKey), unit: t(l.unitKey) })} validationState={bad ? "error" : "none"} validationMessage={bad} hint={t("settings.resources.budget.authorizedHint", { value: shown(l, l.authorized(budget)) })}>
+        <Input type="number" inputMode="decimal" min={0} step={l.step} max={isCpu(l) ? toVcpu(l.authorized(budget)) : isCount(l) ? l.authorized(budget) : toGiB(l.authorized(budget))} value={typed} onChange={(_, d) => setDraft((x) => ({ ...x, [l.key]: d.value }))} />
+      </Field>
+    );
+  };
+  const accountLimits = LIMITS.filter((l) => !l.key.startsWith("per"));
+  const perEmployeeLimits = LIMITS.filter((l) => l.key.startsWith("per"));
   return (
     <form
       className={s.block}
@@ -199,17 +216,14 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
       <Text size={200} className={s.muted}>
         {t("settings.resources.budget.formHint")}
       </Text>
-      <div className={s.grid}>
-        {LIMITS.map((l) => {
-          const typed = draft[l.key];
-          const bad = invalid.some((v) => v.l === l) ? t("settings.resources.budget.invalid") : above.some((v) => v.l === l) ? t("settings.resources.budget.above", { max: shown(l, l.authorized(budget)) }) : undefined;
-          return (
-            <Field key={l.key} label={t("settings.resources.budget.fieldLabel", { label: t(l.labelKey), unit: t(l.unitKey) })} validationState={bad ? "error" : "none"} validationMessage={bad} hint={t("settings.resources.budget.authorizedHint", { value: shown(l, l.authorized(budget)) })}>
-              <Input type="number" inputMode="decimal" min={0} step={l.step} max={isCpu(l) ? toVcpu(l.authorized(budget)) : isCount(l) ? l.authorized(budget) : toGiB(l.authorized(budget))} value={typed} onChange={(_, d) => setDraft((x) => ({ ...x, [l.key]: d.value }))} />
-            </Field>
-          );
-        })}
-      </div>
+      <Text size={200} weight="semibold">
+        {t("settings.resources.budget.accountGroup")}
+      </Text>
+      <div className={s.grid}>{accountLimits.map(renderField)}</div>
+      <Text size={200} weight="semibold">
+        {t("settings.resources.budget.perEmployeeGroup")}
+      </Text>
+      <div className={s.grid}>{perEmployeeLimits.map(renderField)}</div>
       {error && (
         <MessageBar intent={error.stale ? "warning" : "error"}>
           <MessageBarBody>{error.text}</MessageBarBody>
@@ -222,9 +236,21 @@ function BudgetForm({ budget, onSaved, onLoadLatest }: { budget: AccountResource
           )}
         </MessageBar>
       )}
-      <Button className={s.button} appearance="primary" type="submit" disabled={busy || !changed || invalid.length > 0 || above.length > 0}>
-        {busy ? t("settings.resources.budget.saving") : t("settings.resources.budget.save")}
-      </Button>
+      {saved && !changed && (
+        <Text size={200} className={s.muted} role="status">
+          {t("settings.resources.budget.saved")}
+        </Text>
+      )}
+      <div className={s.row}>
+        <Button className={s.button} appearance="primary" type="submit" disabled={busy || !changed || invalid.length > 0 || above.length > 0}>
+          {busy ? t("settings.resources.budget.saving") : t("settings.resources.budget.save")}
+        </Button>
+        {changed && (
+          <Button className={s.button} type="button" disabled={busy} onClick={() => setDraft(opened)}>
+            {t("settings.resources.budget.reset")}
+          </Button>
+        )}
+      </div>
       <Text size={200} className={s.muted}>
         {t("settings.resources.budget.operatorPrefix")} <span className={s.code}>node dist/cli/governance.js budget set</span> {t("settings.resources.budget.operatorSuffix")}
       </Text>
@@ -369,6 +395,26 @@ export function ComputeStorageSection() {
             <MessageBarBody>{t("settings.resources.now.overBudget")}</MessageBarBody>
           </MessageBar>
         )}
+        <div className={s.meters}>
+          <div className={s.meter}>
+            <div className={s.meterHead}>
+              <Text size={200}>{t("settings.resources.row.cpu")}</Text>
+              <Text size={200} className={s.muted}>
+                {cpuText(r.reserved.cpuMillis)} / {cpuText(b.cpuMillis)}
+              </Text>
+            </div>
+            <ProgressBar value={b.cpuMillis > 0 ? Math.min(1, r.reserved.cpuMillis / b.cpuMillis) : 0} color={r.reserved.cpuMillis > b.cpuMillis ? "warning" : "brand"} />
+          </div>
+          <div className={s.meter}>
+            <div className={s.meterHead}>
+              <Text size={200}>{t("settings.resources.row.memory")}</Text>
+              <Text size={200} className={s.muted}>
+                {sizeText(r.reserved.memoryMiB)} / {sizeText(b.memoryMiB)}
+              </Text>
+            </div>
+            <ProgressBar value={b.memoryMiB > 0 ? Math.min(1, r.reserved.memoryMiB / b.memoryMiB) : 0} color={r.reserved.memoryMiB > b.memoryMiB ? "warning" : "brand"} />
+          </div>
+        </div>
         <div className={s.stats}>
           <Stat label={t("settings.resources.now.cpuReserved")} value={cpuText(r.reserved.cpuMillis)} />
           <Stat label={t("settings.resources.now.cpuAvailable")} value={cpuText(r.available.cpuMillis)} />
@@ -399,6 +445,10 @@ export function ComputeStorageSection() {
         <Text size={200}>
           {t("settings.resources.storage.summary", { committed: sizeText(r.storage.committedMiB), used: sizeText(r.storage.usedMiB), budget: sizeText(r.storage.budgetMiB), when: when(r.storage.measuredAt) })}
         </Text>
+        <ProgressBar
+          value={r.storage.budgetMiB > 0 ? Math.min(1, r.storage.committedMiB / r.storage.budgetMiB) : 0}
+          color={r.storage.budgetMiB > 0 && r.storage.committedMiB / r.storage.budgetMiB >= 0.9 ? "warning" : "brand"}
+        />
         <div className={s.table}>
           <Table size="small" aria-label={t("settings.resources.storage.tableAria")}>
             <TableHeader>

@@ -104,6 +104,7 @@ const useStyles = makeStyles({
   },
   steps: { display: "flex", gap: "6px", flexWrap: "wrap", listStyleType: "none", margin: 0, paddingLeft: 0 },
   step: { display: "inline-flex", alignItems: "center", gap: "6px", paddingTop: "4px", paddingRight: "10px", paddingBottom: "4px", paddingLeft: "6px", borderRadius: "9999px", backgroundColor: tokens.colorNeutralBackground2, color: tokens.colorNeutralForeground2, fontSize: tokens.fontSizeBase200 },
+  stepBtn: { border: "none", fontFamily: "inherit", cursor: "pointer", ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover }, ":focus-visible": { outline: `2px solid ${tokens.colorStrokeFocus2}`, outlineOffset: "2px" } },
   stepOn: { backgroundColor: tokens.colorBrandBackground2, color: tokens.colorBrandForeground1, fontWeight: tokens.fontWeightSemibold },
   dot: { width: "20px", height: "20px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", backgroundColor: tokens.colorNeutralBackground5, fontSize: tokens.fontSizeBase100 },
   body: {
@@ -269,17 +270,28 @@ function reasonsOf(err: unknown): string[] {
   return [];
 }
 
-function Steps({ at }: { at: number }) {
+function Steps({ at, onSelect }: { at: number; onSelect: (step: number) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   return (
     <ol className={s.steps} aria-label={t("office.hire.stepsAria")}>
       {HIRE_STEPS.map((label, i) => (
-        <li key={label} className={mergeClasses(s.step, i === at && s.stepOn)} aria-current={i === at ? "step" : undefined}>
-          <span className={s.dot} aria-hidden>
-            {i + 1}
-          </span>
-          {label}
+        <li key={label} aria-current={i === at ? "step" : undefined}>
+          {i < at ? (
+            <button type="button" className={mergeClasses(s.step, s.stepBtn)} onClick={() => onSelect(i)}>
+              <span className={s.dot} aria-hidden>
+                {i + 1}
+              </span>
+              {label}
+            </button>
+          ) : (
+            <span className={mergeClasses(s.step, i === at && s.stepOn)}>
+              <span className={s.dot} aria-hidden>
+                {i + 1}
+              </span>
+              {label}
+            </span>
+          )}
         </li>
       ))}
     </ol>
@@ -393,7 +405,7 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
         <DialogBody className={s.dialogBody}>
           <DialogTitle>{t("office.hire.title")}</DialogTitle>
           <DialogContent className={s.body}>
-            <Steps at={at} />
+            <Steps at={at} onSelect={setAt} />
             <Text weight="semibold" size={400} as="h3">
               {t("office.hire.stepHeading", { step: at + 1, total: HIRE_STEPS.length, label: HIRE_STEPS[at] })}
             </Text>

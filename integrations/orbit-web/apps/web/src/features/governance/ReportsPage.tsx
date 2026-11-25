@@ -18,24 +18,28 @@ export function ReportsPage({ item, go }: { item: string | null; go: (page: Gove
   const s = useParts();
   const list = useResource<ReportList>(() => get("/api/governance/reports"), []);
   const report = useResource<ReportView>(item ? () => get(`/api/governance/reports/${encodeURIComponent(item)}`) : null, [item]);
-  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  const [day, setDay] = useState(today);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useAppEvent("governance.changed", (e) => e.data.area === "reports" && void list.reload());
   const generate = () => {
+    setBusy(true);
     setError(null);
     void send<ReportView>("POST", "/api/governance/reports", { day })
       .then((r) => go("reports", r.id))
-      .catch((err: unknown) => setError(errorText(err)));
+      .catch((err: unknown) => setError(errorText(err)))
+      .finally(() => setBusy(false));
   };
   return (
     <div className={s.page}>
       <Card title={t("governance.reports.generateTitle")} icon={<ReportsIcon size={18} />} tone="teal" description={t("governance.reports.generateDesc")}>
         <div className={s.row} style={{ alignItems: "flex-end" }}>
           <Field label={t("governance.reports.utcDay")}>
-            <Input type="date" value={day} onChange={(_, d) => setDay(d.value)} />
+            <Input type="date" max={today} value={day} onChange={(_, d) => setDay(d.value)} />
           </Field>
-          <Button appearance="primary" onClick={generate}>
-            {t("governance.reports.generate")}
+          <Button appearance="primary" disabled={busy || day === ""} onClick={generate}>
+            {busy ? t("governance.reports.generating") : t("governance.reports.generate")}
           </Button>
         </div>
         <ErrorBar text={error} />

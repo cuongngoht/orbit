@@ -2,7 +2,7 @@
 // mode -- or, with no AI signed in, the way to sign one in), what a repository
 // brings to its chats (its skills, as instructions; its plugins, which run code) and the tools Claude is offered. Each
 // change is saved at once (`PATCH /api/settings`) and the answer is the settings as they are now.
-import { Field, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Switch, Text, makeStyles, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
+import { Field, Link, MessageBar, MessageBarBody, Radio, RadioGroup, Switch, Text, makeStyles, mergeClasses, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
 import { ChevronDown20Regular } from "@fluentui/react-icons";
 import {
   EFFORT_CHOICES,
@@ -57,6 +57,10 @@ const useStyles = makeStyles({
       outlineColor: tokens.colorCompoundBrandStroke,
     },
   },
+  selectWrapDisabled: {
+    opacity: 0.65,
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
   selectFace: {
     display: "flex",
     alignItems: "center",
@@ -95,23 +99,25 @@ function SingleCaretSelect({
   fieldProps,
   value,
   displayText,
+  disabled = false,
   onChange,
   children,
 }: {
   fieldProps: FieldControlProps;
   value: string;
   displayText: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
   children: ReactNode;
 }) {
   const s = useStyles();
   return (
-    <div className={s.selectWrap}>
+    <div className={mergeClasses(s.selectWrap, disabled && s.selectWrapDisabled)}>
       <div className={s.selectFace} aria-hidden>
         <span className={s.selectValue}>{displayText}</span>
-        <ChevronDown20Regular className={s.selectCaret} />
+        {!disabled && <ChevronDown20Regular className={s.selectCaret} />}
       </div>
-      <select {...fieldProps} className={s.selectOverlay} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select {...fieldProps} className={s.selectOverlay} disabled={disabled} style={disabled ? { cursor: "default" } : undefined} value={value} onChange={(e) => onChange(e.target.value)}>
         {children}
       </select>
     </div>
@@ -126,15 +132,19 @@ interface SectionProps {
 // One preference changed at a time and saved at once; a refusal is said, and nothing else changes.
 function useSave(onSettings: (s: Settings) => void) {
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const save = async (change: UpdateSettingsRequest) => {
     setError(null);
+    setSaved(false);
     try {
       onSettings(await send<Settings>("PATCH", "/api/settings", change));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
     } catch (err) {
       setError(errorText(err));
     }
   };
-  return { error, save };
+  return { error, saved, save };
 }
 
 function SaveError({ error }: { error: string | null }) {
@@ -159,7 +169,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 export function AppearanceSection({ settings, onSettings }: SectionProps) {
   const { t } = useI18n();
   const s = useStyles();
-  const { error, save } = useSave(onSettings);
+  const { error, saved, save } = useSave(onSettings);
   return (
     <div className={s.root}>
       <Field label={t("settings.prefs.theme")}>
@@ -169,6 +179,11 @@ export function AppearanceSection({ settings, onSettings }: SectionProps) {
           <Radio value="dark" label={t("settings.prefs.theme.dark")} />
         </RadioGroup>
       </Field>
+      {saved && (
+        <Text size={200} className={s.muted} role="status">
+          {t("settings.account.profile.saved")}
+        </Text>
+      )}
       <SaveError error={error} />
     </div>
   );
@@ -230,7 +245,7 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
       </Field>
       <Field label={t("settings.prefs.defaultEffort")} hint={t("settings.prefs.defaultEffortHint")}>
         {(fieldProps) => (
-          <SingleCaretSelect fieldProps={fieldProps} value={effort} displayText={efforts.length === 0 ? t("settings.prefs.noEffortLevel") : effortText(effort)} onChange={(value) => run({ defaultEffort: value as EffortChoice })}>
+          <SingleCaretSelect fieldProps={fieldProps} value={effort} disabled={efforts.length === 0} displayText={efforts.length === 0 ? t("settings.prefs.noEffortLevel") : effortText(effort)} onChange={(value) => run({ defaultEffort: value as EffortChoice })}>
             {efforts.map((e) => (
               <option key={e} value={e}>
                 {effortText(e)}
@@ -253,10 +268,15 @@ function AiDefaults({ settings, chat, ai, save }: { settings: Settings; chat: Ch
 export function CodeSection({ settings, onSettings }: SectionProps) {
   const { t } = useI18n();
   const s = useStyles();
-  const { error, save } = useSave(onSettings);
+  const { error, saved, save } = useSave(onSettings);
   const connections = useConnections();
   return (
     <div className={s.root}>
+      {saved && (
+        <Text size={200} className={s.muted} role="status">
+          {t("settings.account.profile.saved")}
+        </Text>
+      )}
       <Group title={t("settings.prefs.group.newChat")}>
         <Text size={200} className={s.muted}>
           {t("settings.prefs.group.newChatHint")}

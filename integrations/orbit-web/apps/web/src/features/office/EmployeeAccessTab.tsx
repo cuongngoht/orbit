@@ -14,7 +14,7 @@ import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { office, wholeRoster } from "./api";
-import { Callout, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
+import { Callout, ProblemBar, humanizeActor, useAction, useOfficeStyles, when } from "./parts";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 },
@@ -371,8 +371,8 @@ function DelegationCard({ employee, onChanged }: { employee: EmployeeDetail; onC
                   </div>
                   {g.note !== "" && <Text size={200}>{g.note}</Text>}
                   <Text size={200} className={o.muted}>
-                    {t("office.delegation.granted", { at: when(g.grantedAt), by: g.grantedBy })}
-                    {g.revokedAt ? t("office.delegation.revokedMeta", { at: when(g.revokedAt), by: g.revokedBy ?? "" }) : ""}
+                    {t("office.delegation.granted", { at: when(g.grantedAt), by: humanizeActor(g.grantedBy, [{ employeeId: employee.id, employeeName: employee.name }], t).label })}
+                    {g.revokedAt ? t("office.delegation.revokedMeta", { at: when(g.revokedAt), by: humanizeActor(g.revokedBy, [{ employeeId: employee.id, employeeName: employee.name }], t).label }) : ""}
                   </Text>
                 </div>
                 {g.state === "active" && (

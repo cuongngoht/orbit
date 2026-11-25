@@ -43,6 +43,7 @@ import {
   Code16Regular,
   Delete16Regular,
   Dismiss20Regular,
+  History20Regular,
   MoreHorizontal16Regular,
   PanelLeftContract20Regular,
   PanelLeftExpand20Regular,
@@ -55,7 +56,7 @@ import {
   SignOut20Regular,
 } from "@fluentui/react-icons";
 import type { AuthAccount, AuthUser, ResearchSessionSummary, SessionSummary } from "@orbit-web/contracts";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GovernanceIcon, OfficeIcon } from "../components/SectionIcons";
 import { SourceMark } from "../components/SourceMark";
 import { useI18n } from "../i18n";
@@ -99,15 +100,20 @@ const useStyles = makeStyles({
     },
   },
   itemButton: { flexGrow: 1, minWidth: 0, maxWidth: "100%", overflow: "hidden", display: "flex", alignItems: "center", gap: "8px", border: "none", backgroundColor: "transparent", paddingTop: "7px", paddingRight: "0", paddingBottom: "7px", paddingLeft: "0", textAlign: "left", cursor: "pointer", color: tokens.colorNeutralForeground1, "@media (pointer: coarse)": { minHeight: "44px", paddingTop: "10px", paddingBottom: "10px" } },
-  itemTitle: { flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: tokens.fontSizeBase300 },
+  itemText: { flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "1px", overflow: "hidden" },
+  itemTitle: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: tokens.fontSizeBase300 },
+  itemSub: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "11px", color: tokens.colorNeutralForeground3 },
   touchBtn: { "@media (pointer: coarse)": { minWidth: "44px", minHeight: "44px" } },
   dot: { width: "7px", height: "7px", borderRadius: "50%", flexShrink: 0 },
+  recentsBtnWrap: { position: "relative", display: "inline-flex" },
+  recentsBadgeDot: { position: "absolute", top: "6px", right: "6px", width: "7px", height: "7px", borderRadius: "50%", pointerEvents: "none" },
   running: { backgroundColor: tokens.colorPaletteMarigoldBackground3 },
   failed: { backgroundColor: tokens.colorPaletteRedBackground3 },
-  foot: { borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "8px", paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px" },
-  footCollapsed: { paddingTop: "8px", paddingRight: "0", paddingBottom: "8px", paddingLeft: "0", display: "flex", justifyContent: "center", width: "100%" },
-  account: { width: "100%", justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, "@media (pointer: coarse)": { minHeight: "44px" } },
+  foot: { borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "8px", paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px", display: "flex", alignItems: "center", gap: "4px" },
+  footCollapsed: { paddingTop: "8px", paddingRight: "0", paddingBottom: "8px", paddingLeft: "0", display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", width: "100%" },
+  account: { flexGrow: 1, minWidth: 0, justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, "@media (pointer: coarse)": { minHeight: "44px" } },
   accountCollapsed: { width: "40px", minWidth: "40px", height: "40px", paddingTop: "0", paddingRight: "0", paddingBottom: "0", paddingLeft: "0", justifyContent: "center" },
+  dangerBtn: { backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand, ":hover": { backgroundColor: tokens.colorPaletteRedBorderActive, color: tokens.colorNeutralForegroundOnBrand } },
   accountText: { display: "flex", alignItems: "baseline", gap: "6px", minWidth: 0, flexGrow: 1, overflow: "hidden" },
   email: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   muted: { color: tokens.colorNeutralForeground3 },
@@ -226,51 +232,123 @@ export function Sidebar(p: SidebarProps) {
   const [deleting, setDeleting] = useState<RecentEntry | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const hasResearch = (p.research?.length ?? 0) > 0;
-  const shown = useMemo(() => {
+  const activeFilter: Filter = hasResearch ? filter : "all";
+  const isNewSession = p.selected === null && !p.governance && !p.office && !p.ceo;
+  const { collapsed, onToggle } = p;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (collapsed) onToggle();
+        setSearching(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [collapsed, onToggle]);
+  const allEntries = useMemo(() => {
     const entries: RecentEntry[] = [...p.sessions.map((session) => ({ kind: "coding" as const, session })), ...(p.research ?? []).map((session) => ({ kind: "research" as const, session }))];
     entries.sort((a, b) => b.session.updatedAt.localeCompare(a.session.updatedAt) || b.session.createdAt.localeCompare(a.session.createdAt));
+    return entries;
+  }, [p.sessions, p.research]);
+  const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return entries.filter((e) => (filter === "all" || e.kind === filter) && (q === "" || e.session.title.toLowerCase().includes(q) || (subtitleOf(e) ?? "").toLowerCase().includes(q)));
-  }, [p.sessions, p.research, query, filter]);
+    return allEntries.filter((e) => (activeFilter === "all" || e.kind === activeFilter) && (q === "" || e.session.title.toLowerCase().includes(q) || (subtitleOf(e) ?? "").toLowerCase().includes(q)));
+  }, [allEntries, query, activeFilter]);
+  const anyFailed = allEntries.some(isFailed);
+  const anyWorking = allEntries.some(isWorking);
 
   if (p.collapsed)
     return (
       <nav className={mergeClasses(s.root, s.collapsed)} aria-label={t("common.sidebar.navLabel")}>
         <div className={mergeClasses(s.head, s.headCollapsed)}>
           <Tooltip content={t("common.sidebar.open")} relationship="label">
-            <Button appearance="subtle" icon={<PanelLeftExpand20Regular />} onClick={p.onToggle} />
+            <Button appearance="subtle" className={s.accountCollapsed} icon={<PanelLeftExpand20Regular />} onClick={p.onToggle} />
           </Tooltip>
         </div>
         <div className={mergeClasses(s.nav, s.navCollapsed)}>
           <Tooltip content={t("common.sidebar.newSession")} relationship="label">
-            <Button appearance="subtle" icon={<Add20Regular />} onClick={p.onNew} />
+            <Button appearance="subtle" className={mergeClasses(s.accountCollapsed, isNewSession && s.navSelected)} icon={<Add20Regular />} aria-current={isNewSession ? "page" : undefined} onClick={p.onNew} />
           </Tooltip>
+          <Tooltip content={t("common.sidebar.searchShortcut")} relationship="label">
+            <Button
+              appearance="subtle"
+              className={s.accountCollapsed}
+              icon={<Search20Regular />}
+              aria-label={t("common.sidebar.search")}
+              onClick={() => {
+                p.onToggle();
+                setSearching(true);
+              }}
+            />
+          </Tooltip>
+          <Menu positioning="after-top">
+            <MenuTrigger disableButtonEnhancement>
+              <span className={s.recentsBtnWrap}>
+                <Tooltip content={t("common.sidebar.recents")} relationship="label">
+                  <Button appearance="subtle" className={s.accountCollapsed} icon={<History20Regular />} aria-label={t("common.sidebar.recents")} />
+                </Tooltip>
+                {(anyFailed || anyWorking) && <span className={mergeClasses(s.recentsBadgeDot, anyFailed ? s.failed : s.running)} aria-hidden />}
+              </span>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
+                <MenuGroup>
+                  <MenuGroupHeader>{t("common.sidebar.recents")}</MenuGroupHeader>
+                  {allEntries.length === 0 ? (
+                    <MenuItem disabled>{t("common.sidebar.emptyChats")}</MenuItem>
+                  ) : (
+                    allEntries.slice(0, 20).map((e) => (
+                      <MenuItem
+                        key={e.session.id}
+                        icon={e.kind === "research" ? <BookOpen16Regular /> : <Code16Regular />}
+                        onClick={() => p.onOpen(e.session.id)}
+                      >
+                        {e.session.title}
+                      </MenuItem>
+                    ))
+                  )}
+                </MenuGroup>
+              </MenuList>
+            </MenuPopover>
+          </Menu>
           <Tooltip content={t("common.sidebar.customize")} relationship="label">
-            <Button appearance="subtle" icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
+            <Button appearance="subtle" className={s.accountCollapsed} icon={<PuzzlePiece20Regular />} onClick={p.onCustomize} />
           </Tooltip>
           {p.company && p.onCeo && (
             <Tooltip content={t("executive.nav.ceoChat")} relationship="label">
-              <Button appearance="subtle" icon={<ChatSparkle20Regular />} aria-current={p.ceo ? "page" : undefined} onClick={p.onCeo} />
+              <Button appearance="subtle" className={mergeClasses(s.accountCollapsed, p.ceo && s.navSelected)} icon={<ChatSparkle20Regular />} aria-current={p.ceo ? "page" : undefined} onClick={p.onCeo} />
             </Tooltip>
           )}
           {p.onOffice && (
             <Tooltip content={p.company === null ? t("executive.nav.createCompany") : t("common.sidebar.office")} relationship="label">
-              <Button appearance="subtle" icon={<OfficeIcon size={18} active={p.office} />} aria-current={p.office ? "page" : undefined} onClick={p.onOffice} />
+              <Button
+                appearance="subtle"
+                className={mergeClasses(s.accountCollapsed, p.office && s.navSelected)}
+                icon={p.company === null ? <Building20Regular /> : <OfficeIcon size={18} active={p.office} />}
+                aria-current={p.office ? "page" : undefined}
+                onClick={p.onOffice}
+              />
             </Tooltip>
           )}
           {p.onGovernance && (
             <Tooltip content={t("common.sidebar.governance")} relationship="label">
-              <Button appearance="subtle" icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
+              <Button appearance="subtle" className={mergeClasses(s.accountCollapsed, p.governance && s.navSelected)} icon={<GovernanceIcon size={18} active={p.governance} />} aria-current={p.governance ? "page" : undefined} onClick={p.onGovernance} />
             </Tooltip>
           )}
           {p.company && p.onResources && (
             <Tooltip content={t("executive.nav.resources")} relationship="label">
-              <Button appearance="subtle" icon={<Server20Regular />} onClick={p.onResources} />
+              <Button appearance="subtle" className={s.accountCollapsed} icon={<Server20Regular />} onClick={p.onResources} />
             </Tooltip>
           )}
         </div>
         <div style={{ flexGrow: 1 }} />
         <div className={mergeClasses(s.foot, s.footCollapsed)}>
+          <Tooltip content={t("common.sidebar.settings")} relationship="label">
+            <Button appearance="subtle" className={s.accountCollapsed} icon={<Settings20Regular />} aria-label={t("common.sidebar.settings")} onClick={p.onSettings} />
+          </Tooltip>
           <AccountMenu user={p.user} account={p.account ?? null} collapsed busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
         </div>
       </nav>
@@ -352,7 +430,7 @@ export function Sidebar(p: SidebarProps) {
       </div>
       {hasResearch && (
         <div className={s.filter}>
-          <TabList size="small" selectedValue={filter} onTabSelect={(_, d) => setFilter(d.value as Filter)} aria-label={t("common.sidebar.filterLabel")}>
+          <TabList size="small" selectedValue={activeFilter} onTabSelect={(_, d) => setFilter(d.value as Filter)} aria-label={t("common.sidebar.filterLabel")}>
             <Tab value="all">{t("common.sidebar.filterAll")}</Tab>
             <Tab value="coding">{t("common.sidebar.filterChat")}</Tab>
             <Tab value="research">{t("common.sidebar.filterResearch")}</Tab>
@@ -361,7 +439,7 @@ export function Sidebar(p: SidebarProps) {
       )}
       <ul className={s.recents} aria-label={t("common.sidebar.chatsLabel")}>
         {p.loading && <Spinner size="tiny" />}
-        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? t("common.sidebar.emptyMatch") : filter === "research" ? t("common.sidebar.emptyResearch") : t("common.sidebar.emptyChats")}</li>}
+        {!p.loading && shown.length === 0 && <li className={s.empty}>{query ? t("common.sidebar.emptyMatch") : activeFilter === "research" ? t("common.sidebar.emptyResearch") : t("common.sidebar.emptyChats")}</li>}
         {shown.map((e) => {
           const x = e.session;
           const subtitle = subtitleOf(e);
@@ -369,8 +447,17 @@ export function Sidebar(p: SidebarProps) {
             <li key={x.id} className={mergeClasses(s.item, p.selected === x.id && s.itemSelected)}>
               <button type="button" className={s.itemButton} onClick={() => p.onOpen(x.id)} aria-current={p.selected === x.id ? "page" : undefined} title={subtitle ? `${x.title} — ${subtitle}` : x.title}>
                 {e.kind === "research" ? <BookOpen16Regular className={s.kindIcon} aria-hidden /> : <Code16Regular className={s.kindIcon} aria-hidden />}
-                <span className={s.itemTitle}>{x.title}</span>
-                {e.kind === "research" && <span className={s.srOnly}>{t("common.sidebar.researchSuffix")}</span>}
+                <span className={s.itemText}>
+                  <span className={s.itemTitle}>
+                    {x.title}
+                    {e.kind === "research" && <span className={s.srOnly}>{t("common.sidebar.researchSuffix")}</span>}
+                  </span>
+                  {subtitle && (
+                    <span className={s.itemSub} aria-hidden="true">
+                      {subtitle}
+                    </span>
+                  )}
+                </span>
                 {isWorking(e) && <span role="img" className={mergeClasses(s.dot, s.running)} aria-label={x.status === "running" ? t("common.sidebar.statusWorking") : t("common.sidebar.statusPreparing")} />}
                 {isFailed(e) && <span role="img" className={mergeClasses(s.dot, s.failed)} aria-label={t("common.sidebar.statusFailed")} />}
                 {x.access === "shared" && <People16Regular className={s.shared} role="img" aria-label={t("common.sidebar.sharedWithYou", { owner: x.owner ?? t("common.sidebar.itsOwner") })} />}
@@ -385,9 +472,11 @@ export function Sidebar(p: SidebarProps) {
                     <MenuItem icon={<Rename16Regular />} onClick={() => setRenaming(e)}>
                       {t("common.sidebar.rename")}
                     </MenuItem>
-                    <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(e)}>
-                      {t("common.sidebar.delete")}
-                    </MenuItem>
+                    {x.access !== "shared" && (
+                      <MenuItem icon={<Delete16Regular />} onClick={() => setDeleting(e)}>
+                        {t("common.sidebar.delete")}
+                      </MenuItem>
+                    )}
                   </MenuList>
                 </MenuPopover>
               </Menu>
@@ -397,6 +486,9 @@ export function Sidebar(p: SidebarProps) {
       </ul>
       <div className={s.foot}>
         <AccountMenu user={p.user} account={p.account ?? null} collapsed={false} busy={p.signingOut} onSettings={p.onSettings} onSignOut={p.onSignOut} />
+        <Tooltip content={t("common.sidebar.settings")} relationship="label">
+          <Button className={s.touchBtn} appearance="subtle" icon={<Settings20Regular />} aria-label={t("common.sidebar.settings")} onClick={p.onSettings} />
+        </Tooltip>
       </div>
       {renaming && (
         <RenameDialog
@@ -414,18 +506,23 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
   const { t } = useI18n();
   const session = entry.session;
   const [title, setTitle] = useState(session.title);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
+    setBusy(true);
+    setError(null);
     try {
       if (entry.kind === "research") onDone({ kind: "research", session: await send<ResearchSessionSummary>("PATCH", `/api/research/sessions/${session.id}`, { title }) });
       else onDone({ kind: "coding", session: await send<SessionSummary>("PATCH", `/api/sessions/${session.id}`, { title }) });
       onClose();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setBusy(false);
     }
   };
   return (
-    <Dialog open onOpenChange={(_, d) => (!d.open ? onClose() : undefined)}>
+    <Dialog open onOpenChange={(_, d) => (!d.open && !busy ? onClose() : undefined)}>
       <DialogSurface>
         <form
           onSubmit={(e) => {
@@ -437,7 +534,7 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
             <DialogTitle>{entry.kind === "research" ? t("common.sidebar.renameResearchTitle") : t("common.sidebar.renameChatTitle")}</DialogTitle>
             <DialogContent>
               <Field label={t("common.sidebar.titleField")}>
-                <Input value={title} onChange={(_, d) => setTitle(d.value)} maxLength={120} autoFocus />
+                <Input value={title} disabled={busy} onChange={(_, d) => setTitle(d.value)} maxLength={120} autoFocus />
               </Field>
               {error && (
                 <MessageBar intent="error">
@@ -446,10 +543,10 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
               )}
             </DialogContent>
             <DialogActions>
-              <Button appearance="secondary" onClick={onClose}>
+              <Button appearance="secondary" disabled={busy} onClick={onClose}>
                 {t("common.sidebar.cancel")}
               </Button>
-              <Button appearance="primary" type="submit" disabled={title.trim().length === 0}>
+              <Button appearance="primary" type="submit" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy || title.trim().length === 0}>
                 {t("common.sidebar.save")}
               </Button>
             </DialogActions>
@@ -462,19 +559,25 @@ function RenameDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
 
 function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose: () => void; onDone: () => void }) {
   const { t } = useI18n();
+  const s = useStyles();
   const session = entry.session;
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const remove = async () => {
+    setBusy(true);
+    setError(null);
     try {
       await send("DELETE", entry.kind === "research" ? `/api/research/sessions/${session.id}` : `/api/sessions/${session.id}`);
       onDone();
       onClose();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setBusy(false);
     }
   };
   return (
-    <Dialog open onOpenChange={(_, d) => (!d.open ? onClose() : undefined)}>
+    <Dialog open onOpenChange={(_, d) => (!d.open && !busy ? onClose() : undefined)}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>{t("common.sidebar.deleteTitle", { title: session.title })}</DialogTitle>
@@ -489,10 +592,10 @@ function DeleteDialog({ entry, onClose, onDone }: { entry: RecentEntry; onClose:
             )}
           </DialogContent>
           <DialogActions>
-            <Button appearance="secondary" onClick={onClose}>
+            <Button appearance="secondary" disabled={busy} onClick={onClose}>
               {t("common.sidebar.cancel")}
             </Button>
-            <Button appearance="primary" onClick={() => void remove()}>
+            <Button className={s.dangerBtn} appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy} onClick={() => void remove()}>
               {t("common.sidebar.delete")}
             </Button>
           </DialogActions>

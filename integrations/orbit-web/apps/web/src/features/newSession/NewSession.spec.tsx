@@ -248,7 +248,9 @@ describe("a new session: the composer always at the bottom, and the draft in its
   test("a refused creation is said above the composer, and the message can be sent again", async () => {
     api().on("POST", "/api/sessions", () => withStatus(409, { error: { code: "source_not_connected", message: "Connect GitHub first." } }));
     show();
-    await userEvent.type(screen.getByRole("textbox", { name: "Message" }), "Go{Enter}");
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(box, "Go{Enter}");
     expect(await screen.findByText("Connect GitHub first.")).toBeInTheDocument();
+    expect(box).toHaveValue("Go");
   });
 });

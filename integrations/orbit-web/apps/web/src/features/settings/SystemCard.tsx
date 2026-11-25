@@ -2,8 +2,8 @@
 // built with -- and, under Updates, whether each one's publisher has a newer release (asked when a person checks, and
 // daily) and how it reaches this installation without waiting for a new Orbit Web. The database is said as PostgreSQL answers about itself -- reachable, the schema applied, pgvector enabled --
 // and never by its address, its user or a connection string.
-import { Badge, Button, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, tokens } from "@fluentui/react-components";
-import { ArrowSync16Regular, CheckmarkCircle16Filled, DismissCircle16Filled } from "@fluentui/react-icons";
+import { Badge, Button, Spinner, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { ArrowSync16Regular, Checkmark16Regular, CheckmarkCircle16Filled, Copy16Regular, DismissCircle16Filled } from "@fluentui/react-icons";
 import { UPDATE_LABELS, type ComponentCheck, type ComponentUpdate, type DatabaseCheck, type SetupStatus, type SystemUpdates } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
@@ -12,7 +12,7 @@ import { errorText, get, send } from "../../services/api";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "14px" },
-  table: { display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", columnGap: "16px", rowGap: "6px", alignItems: "center", "@media (max-width: 639px)": { gridTemplateColumns: "1fr", rowGap: "4px" } },
+  table: { display: "grid", gridTemplateColumns: "max-content minmax(0, 1fr)", columnGap: "16px", rowGap: "6px", alignItems: "center", "@media (max-width: 639px)": { gridTemplateColumns: "1fr", rowGap: "2px", "& > :nth-child(odd)": { marginTop: "8px", fontWeight: tokens.fontWeightSemibold } } },
   ok: { color: tokens.colorPaletteGreenForeground1, verticalAlign: "middle" },
   bad: { color: tokens.colorPaletteRedForeground1, verticalAlign: "middle" },
   muted: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
@@ -20,7 +20,8 @@ const useStyles = makeStyles({
   updates: { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 },
   head: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
   updatesTable: { width: "100%", overflowX: "auto" },
-  how: { display: "flex", flexDirection: "column", gap: "4px", paddingTop: "8px", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "12px", borderRadius: "10px", backgroundColor: tokens.colorNeutralBackground2 },
+  how: { display: "flex", flexDirection: "column", gap: "6px", paddingTop: "8px", paddingRight: "12px", paddingBottom: "8px", paddingLeft: "12px", borderRadius: "10px", backgroundColor: tokens.colorNeutralBackground2 },
+  howHead: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" },
 });
 
 function Check({ label, check }: { label: string; check: ComponentCheck }) {
@@ -97,6 +98,7 @@ function Updates() {
   const read = useResource<SystemUpdates>(() => get("/api/system/updates"), []);
   const [checked, setChecked] = useState<SystemUpdates | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const u = checked ?? read.data;
   const check = async () => {
@@ -149,9 +151,24 @@ function Updates() {
             </Table>
           </div>
           <div className={s.how}>
-            <Text size={200} className={s.muted}>
-              {t("settings.system.updates.how")}
-            </Text>
+            <div className={s.howHead}>
+              <Text size={200} className={s.muted} style={{ flexGrow: 1, minWidth: 0 }}>
+                {t("settings.system.updates.how")}
+              </Text>
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+                onClick={() => {
+                  void navigator.clipboard?.writeText(u.howToUpdate.join("\n")).then(() => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  });
+                }}
+              >
+                {copied ? t("common.codeBlock.copied") : t("common.codeBlock.copy")}
+              </Button>
+            </div>
             {u.howToUpdate.map((line) => (
               <Text key={line} size={200} className={s.mono}>
                 {line}
@@ -167,7 +184,7 @@ function Updates() {
 export function SystemCard({ status }: { status: SetupStatus | null }) {
   const { t } = useI18n();
   const s = useStyles();
-  if (status === null) return null;
+  if (status === null) return <Spinner size="tiny" label={t("settings.dialog.loading")} />;
   const v = status.versions;
   return (
     <section className={s.root} aria-label={t("settings.system.aria")}>

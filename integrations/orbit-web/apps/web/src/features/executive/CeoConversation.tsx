@@ -4,7 +4,7 @@
 // and notices -- the answer as it is written, where an answer stands (queued, waiting and why, answering, cut off, not
 // answered) with Stop and Ask again, and the missions given from it, followed live.
 import { Avatar, Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
-import { ArrowClockwise16Regular } from "@fluentui/react-icons";
+import { ArrowClockwise16Regular, ArrowDown16Regular } from "@fluentui/react-icons";
 import type { ExecutiveConversationList, ExecutiveMessage, ExecutiveReportKind, ExecutiveState, ExecutiveTurn } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "../../components/Markdown";
@@ -29,7 +29,9 @@ const useStyles = makeStyles({
   recent: { display: "flex", flexDirection: "column", gap: "4px" },
   recentItem: { justifyContent: "flex-start", width: "100%" },
   muted: { color: tokens.colorNeutralForeground3 },
+  timelineWrap: { position: "relative", flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" },
   timeline: { flexGrow: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: "14px", minHeight: 0 },
+  jump: { position: "absolute", left: "50%", transform: "translateX(-50%)", bottom: "10px", zIndex: 5 },
   timelineInner: { width: "100%", maxWidth: "820px", marginLeft: "auto", marginRight: "auto", display: "flex", flexDirection: "column", gap: "14px" },
   owner: { alignSelf: "flex-end", maxWidth: "80%", padding: "8px 12px", borderRadius: "14px", backgroundColor: tokens.colorBrandBackground2, whiteSpace: "pre-wrap", wordBreak: "break-word" },
   ceo: { display: "flex", gap: "10px", alignItems: "flex-start", maxWidth: "100%" },
@@ -58,13 +60,15 @@ export function CeoHome({ state, go }: { state: ExecutiveState; go: (conversatio
   useAppEvent("executive.conversation.created", () => setChanged((n) => n + 1));
   const list = useResource<ExecutiveConversationList>(() => executive.conversations(), [changed]);
   const c = composerState(t, state);
-  const run = async (work: () => Promise<{ conversationId: string }>) => {
+  const run = async (work: () => Promise<{ conversationId: string }>): Promise<boolean> => {
     setBusy(true);
     setProblem(null);
     try {
       go((await work()).conversationId);
+      return true;
     } catch (err) {
       setProblem(errorText(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -82,9 +86,9 @@ export function CeoHome({ state, go }: { state: ExecutiveState; go: (conversatio
           </Text>
         )}
         {assigning ? (
-          <AssignWorkCard onCancel={() => setAssigning(false)} onGive={(body, key) => run(() => executive.startWithMission(body, key))} />
+          <AssignWorkCard onCancel={() => setAssigning(false)} onGive={async (body, key) => { await run(() => executive.startWithMission(body, key)); }} />
         ) : (
-          <Composer placeholder={t("executive.home.placeholder")} canSend={c.canSend && !busy} running={false} busy={busy} autoFocus onSend={(text) => void run(() => executive.start(text, newIdempotencyKey()))} above={problem !== null ? <Text className={s.muted}>{problem}</Text> : undefined} />
+          <Composer placeholder={t("executive.home.placeholder")} canSend={c.canSend && !busy} running={false} busy={busy} autoFocus onSend={(text) => run(() => executive.start(text, newIdempotencyKey()))} above={problem !== null ? <MessageBar intent="error"><MessageBarBody>{problem}</MessageBarBody></MessageBar> : undefined} />
         )}
         <QuickActions onReport={(kind: ExecutiveReportKind) => void run(() => executive.startWithReport(kind, newIdempotencyKey()))} onAssign={() => setAssigning(true)} canAssign={state.assign.ok} busy={busy} onRecruit={() => setRecruiting(true)} canRecruit={state.recruit.ok} />
         {recruiting && (
@@ -99,7 +103,11 @@ export function CeoHome({ state, go }: { state: ExecutiveState; go: (conversatio
         )}
         <div className={s.recent}>
           <Text weight="semibold">{t("executive.home.recent")}</Text>
-          {list.data === null ? (
+          {list.error !== null ? (
+            <MessageBar intent="error">
+              <MessageBarBody>{list.error}</MessageBarBody>
+            </MessageBar>
+          ) : list.data === null ? (
             <Spinner size="tiny" />
           ) : list.data.conversations.length === 0 ? (
             <Text size={200} className={s.muted}>
@@ -185,6 +193,8 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [away, setAway] = useState(false);
+  const stickToBottom = useRef(true);
   const bottom = useRef<HTMLDivElement>(null);
   const open = openTurns(view);
   const running = open.find((x) => x.state === "running") ?? null;
@@ -196,16 +206,19 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
   }, [lastCompleted, onRecords]);
   // A block, returning nothing: scrollIntoView() answers a promise now, and an effect's return is its clean-up.
   useEffect(() => {
+    if (!stickToBottom.current) return;
     void bottom.current?.scrollIntoView?.({ block: "end" });
   }, [view.messages.length, view.live?.text.length, open.length]);
 
-  const act = async (work: () => Promise<unknown>) => {
+  const act = async (work: () => Promise<unknown>): Promise<boolean> => {
     setBusy(true);
     setProblem(null);
     try {
       await work();
+      return true;
     } catch (err) {
       setProblem(errorText(err));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -222,53 +235,79 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
     );
   return (
     <>
-      <div className={s.timeline}>
-        <div className={s.timelineInner}>
-          {error !== null && (
-            <MessageBar intent="error">
-              <MessageBarBody>{error}</MessageBarBody>
-            </MessageBar>
-          )}
-          {view.hasOlder && (
-            <Button appearance="subtle" onClick={() => void act(loadOlder)}>
-              {t("executive.message.olders")}
-            </Button>
-          )}
-          {view.messages.map((m) => (
-            <OneMessage key={m.id} m={m} conversationId={conversationId} canAssign={state.assign.ok} links={view.links} />
-          ))}
-          {view.live !== null && (
-            <div className={s.ceo} aria-live="polite">
-              <Avatar name={view.live.authorName} color="colorful" size={28} />
-              <div className={s.ceoBody}>
-                <Text weight="semibold">{t("executive.message.ceo", { name: view.live.authorName })}</Text>
-                {view.live.text === "" ? <Spinner size="tiny" /> : <Markdown text={view.live.text} />}
-              </div>
-            </div>
-          )}
-          {open
-            .filter((x) => x.state !== "running" || view.live === null)
-            .map((x) => (
-              <div key={x.id} className={s.status} role="status">
-                <Spinner size="extra-tiny" />
-                <Text size={200}>{turnLine(t, x)}</Text>
-              </div>
-            ))}
-          {retryable && lastEnded !== null && (
-            <div className={s.status} role="status">
-              <Text size={200}>{turnLine(t, lastEnded)}</Text>
-              <Button size="small" icon={<ArrowClockwise16Regular />} disabled={busy || !c.canSend} onClick={() => void act(() => executive.retry(conversationId, lastEnded.id))}>
-                {t("executive.turn.retry")}
+      <div className={s.timelineWrap}>
+        <div
+          className={s.timeline}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+            stickToBottom.current = dist < 64;
+            setAway(dist > 140);
+          }}
+        >
+          <div className={s.timelineInner}>
+            {error !== null && (
+              <MessageBar intent="error">
+                <MessageBarBody>{error}</MessageBarBody>
+              </MessageBar>
+            )}
+            {view.hasOlder && (
+              <Button appearance="subtle" onClick={() => void act(loadOlder)}>
+                {t("executive.message.olders")}
               </Button>
-            </div>
-          )}
-          {!connected && !loading && (
-            <Text size={200} className={s.muted}>
-              {t("executive.page.reconnecting")}
-            </Text>
-          )}
-          <div ref={bottom} />
+            )}
+            {view.messages.map((m) => (
+              <OneMessage key={m.id} m={m} conversationId={conversationId} canAssign={state.assign.ok} links={view.links} />
+            ))}
+            {view.live !== null && (
+              <div className={s.ceo} aria-live="polite">
+                <Avatar name={view.live.authorName} color="colorful" size={28} />
+                <div className={s.ceoBody}>
+                  <Text weight="semibold">{t("executive.message.ceo", { name: view.live.authorName })}</Text>
+                  {view.live.text === "" ? <Spinner size="tiny" /> : <Markdown text={view.live.text} />}
+                </div>
+              </div>
+            )}
+            {open
+              .filter((x) => x.state !== "running" || view.live === null)
+              .map((x) => (
+                <div key={x.id} className={s.status} role="status">
+                  <Spinner size="extra-tiny" />
+                  <Text size={200}>{turnLine(t, x)}</Text>
+                </div>
+              ))}
+            {retryable && lastEnded !== null && (
+              <div className={s.status} role="status">
+                <Text size={200}>{turnLine(t, lastEnded)}</Text>
+                <Button size="small" icon={<ArrowClockwise16Regular />} disabled={busy || !c.canSend} onClick={() => void act(() => executive.retry(conversationId, lastEnded.id))}>
+                  {t("executive.turn.retry")}
+                </Button>
+              </div>
+            )}
+            {!connected && !loading && (
+              <Text size={200} className={s.muted}>
+                {t("executive.page.reconnecting")}
+              </Text>
+            )}
+            <div ref={bottom} />
+          </div>
         </div>
+        {away && (
+          <Button
+            className={s.jump}
+            shape="circular"
+            appearance="secondary"
+            size="small"
+            icon={<ArrowDown16Regular />}
+            onClick={() => {
+              stickToBottom.current = true;
+              setAway(false);
+              void bottom.current?.scrollIntoView?.({ block: "end" });
+            }}
+          >
+            {t("executive.conversation.jumpLatest")}
+          </Button>
+        )}
       </div>
       <div className={mergeClasses(s.foot, isMobile && s.footMobile)}>
         {c.notice !== null && <Callout tone="warn">{c.notice}</Callout>}
@@ -285,7 +324,7 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
             canSend={c.canSend && !busy}
             running={running !== null}
             busy={busy}
-            onSend={(text) => void act(() => executive.send(conversationId, text, newIdempotencyKey()))}
+            onSend={(text) => act(() => executive.send(conversationId, text, newIdempotencyKey()))}
             onStop={running !== null ? () => void act(() => executive.stop(conversationId, running.id)) : undefined}
           />
         )}

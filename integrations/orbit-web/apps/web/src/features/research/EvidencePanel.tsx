@@ -4,9 +4,16 @@
 import {
   Badge,
   Button,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
   Field,
   Input,
   MessageBar,
+  MessageBarActions,
   MessageBarBody,
   Spinner,
   Tab,
@@ -216,6 +223,8 @@ export interface EvidencePanelProps {
   onTab: (tab: EvidenceTab) => void;
   // The citations of the answer chosen (null: no answer has any yet).
   citations: ResearchCitation[] | null;
+  showingEarlier?: boolean;
+  onShowLatest?: () => void;
   notes: ResearchNote[] | null;
   findings: ResearchFinding[] | null;
   preview: PreviewTarget | null;
@@ -262,9 +271,9 @@ export function EvidencePanel(p: EvidencePanelProps) {
       </div>
       <div className={s.body}>
         {p.preview !== null ? (
-          <SourcePreview target={p.preview} onBack={() => p.onPreview(null)} />
+          <SourcePreview key={`${p.preview.sourceId}-${p.preview.revisionId ?? ""}-${p.preview.chunkOrdinal ?? ""}`} target={p.preview} onBack={() => p.onPreview(null)} />
         ) : p.tab === "citations" ? (
-          <Citations citations={p.citations} onOpen={(c) => p.onPreview(previewOf(c))} />
+          <Citations citations={p.citations} showingEarlier={p.showingEarlier} onShowLatest={p.onShowLatest} onOpen={(c) => p.onPreview(previewOf(c))} />
         ) : p.tab === "notes" ? (
           <Notes {...p} />
         ) : (
@@ -289,7 +298,7 @@ function EmptyState({ icon, message }: { icon: ReactNode; message: string }) {
   );
 }
 
-function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null; onOpen: (c: ResearchCitation) => void }) {
+function Citations({ citations, showingEarlier, onShowLatest, onOpen }: { citations: ResearchCitation[] | null; showingEarlier?: boolean; onShowLatest?: () => void; onOpen: (c: ResearchCitation) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   if (citations === null || citations.length === 0)
@@ -301,6 +310,16 @@ function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null
     );
   return (
     <>
+      {showingEarlier && onShowLatest && (
+        <MessageBar intent="info">
+          <MessageBarBody>{t("research.evidence.showingEarlierCitations")}</MessageBarBody>
+          <MessageBarActions>
+            <Button size="small" onClick={onShowLatest}>
+              {t("research.evidence.showLatestCitations")}
+            </Button>
+          </MessageBarActions>
+        </MessageBar>
+      )}
       {citations.map((c) => (
         <button key={c.id} type="button" className={mergeClasses(s.card, s.cardButton)} onClick={() => onOpen(c)} aria-label={t("research.evidence.openCitationAria", { label: c.label, title: c.sourceTitle })}>
           <span className={s.line}>
@@ -334,11 +353,76 @@ function Citations({ citations, onOpen }: { citations: ResearchCitation[] | null
   );
 }
 
+function DeleteEvidenceDialog({
+  title,
+  body,
+  busy,
+  error,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  busy: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <Dialog open onOpenChange={(_, d) => !d.open && !busy && onCancel()}>
+      <DialogSurface className="orbit-touch" style={{ width: "min(440px, 92vw)", maxWidth: "min(440px, 92vw)" }}>
+        <DialogBody>
+          <DialogTitle
+            action={<Button appearance="subtle" size="small" aria-label={t("research.addSources.closeAria")} icon={<Dismiss20Regular />} onClick={onCancel} />}
+          >
+            {title}
+          </DialogTitle>
+          <DialogContent>
+            <Text>{body}</Text>
+            {error && (
+              <MessageBar intent="error" style={{ marginTop: "8px" }}>
+                <MessageBarBody>{error}</MessageBarBody>
+              </MessageBar>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button disabled={busy} onClick={onCancel}>
+              {t("research.evidence.cancel")}
+            </Button>
+            <Button appearance="primary" disabled={busy} style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }} onClick={onConfirm}>
+              {t("research.sources.delete")}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
 function Notes(p: EvidencePanelProps) {
   const { t } = useI18n();
   const s = useStyles();
   const [editing, setEditing] = useState<ResearchNote | null>(null);
+  const [deleting, setDeleting] = useState<ResearchNote | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const draft = p.noteDraft;
+  const confirmDelete = () => {
+    if (deleting === null) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    void research
+      .deleteNote(deleting.id)
+      .then(
+        () => {
+          setDeleting(null);
+          p.onChanged();
+        },
+        (err: unknown) => setDeleteError(errorText(err)),
+      )
+      .finally(() => setDeleteBusy(false));
+  };
   return (
     <>
       {p.onNewNote && draft === null && editing === null && (
@@ -372,7 +456,16 @@ function Notes(p: EvidencePanelProps) {
                 {n.title}
               </Text>
               <Button appearance="subtle" size="small" icon={<Edit16Regular />} aria-label={t("research.evidence.editAria", { title: n.title })} onClick={() => setEditing(n)} />
-              <Button appearance="subtle" size="small" icon={<Delete16Regular />} aria-label={t("research.evidence.deleteAria", { title: n.title })} onClick={() => void research.deleteNote(n.id).then(p.onChanged)} />
+              <Button
+                appearance="subtle"
+                size="small"
+                icon={<Delete16Regular />}
+                aria-label={t("research.evidence.deleteAria", { title: n.title })}
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleting(n);
+                }}
+              />
             </div>
             <Markdown text={n.body} />
             {n.citation && (
@@ -386,6 +479,16 @@ function Notes(p: EvidencePanelProps) {
           </article>
         ))
       )}
+      {deleting && (
+        <DeleteEvidenceDialog
+          title={t("research.evidence.confirmDeleteNoteTitle", { title: deleting.title })}
+          body={t("research.evidence.confirmDeleteNoteBody")}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
     </>
   );
 }
@@ -395,14 +498,19 @@ function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId
   const s = useStyles();
   const [title, setTitle] = useState(note?.title ?? draft?.title ?? "");
   const [body, setBody] = useState(note?.body ?? draft?.body ?? "");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
+    setBusy(true);
+    setError(null);
     try {
       if (note !== null) await research.updateNote(note.id, { title, body });
       else await research.createNote(workspaceId, { title, body, sessionId, ...(draft?.citationId ? { citationId: draft.citationId } : {}), ...(draft?.sourceId ? { sourceId: draft.sourceId } : {}) });
       onDone();
     } catch (err) {
       setError(errorText(err));
+    } finally {
+      setBusy(false);
     }
   };
   return (
@@ -426,10 +534,10 @@ function NoteForm({ workspaceId, sessionId, note, draft, onDone }: { workspaceId
         </MessageBar>
       )}
       <div className={s.actions}>
-        <Button appearance="primary" type="submit" disabled={title.trim() === "" || body.trim() === ""}>
-          {t("research.evidence.saveNote")}
+        <Button appearance="primary" type="submit" disabled={busy || title.trim() === "" || body.trim() === ""}>
+          {busy ? t("research.evidence.saving") : t("research.evidence.saveNote")}
         </Button>
-        <Button onClick={onDone}>{t("research.evidence.cancel")}</Button>
+        <Button disabled={busy} onClick={onDone}>{t("research.evidence.cancel")}</Button>
       </div>
     </form>
   );
@@ -448,6 +556,11 @@ function Findings(p: EvidencePanelProps) {
   const { t } = useI18n();
   const s = useStyles();
   const [error, setError] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
+  const [editing, setEditing] = useState<ResearchFinding | null>(null);
+  const [deleting, setDeleting] = useState<ResearchFinding | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const move = async (f: ResearchFinding, status: FindingStatus) => {
     setError(null);
     try {
@@ -457,6 +570,22 @@ function Findings(p: EvidencePanelProps) {
       setError(errorText(err));
     }
   };
+  const confirmDelete = () => {
+    if (deleting === null) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    void research
+      .deleteFinding(deleting.id)
+      .then(
+        () => {
+          setDeleting(null);
+          p.onChanged();
+        },
+        (err: unknown) => setDeleteError(errorText(err)),
+      )
+      .finally(() => setDeleteBusy(false));
+  };
+  const showingForm = p.findingDraft !== null || writing || editing !== null;
   return (
     <>
       <div className={s.noticeBox}>
@@ -464,7 +593,26 @@ function Findings(p: EvidencePanelProps) {
           {t("research.evidence.findingDisclaimer")}
         </Text>
       </div>
-      {p.findingDraft !== null && <FindingForm workspaceId={p.workspaceId} sessionId={p.sessionId} draft={p.findingDraft} onDone={() => (p.onDrafted(), p.onChanged())} />}
+      {!showingForm && (
+        <Button className={s.topAction} appearance="secondary" size="small" icon={<Lightbulb20Regular />} onClick={() => setWriting(true)}>
+          {t("research.evidence.writeFinding")}
+        </Button>
+      )}
+      {showingForm && (
+        <FindingForm
+          key={editing?.id ?? (p.findingDraft ? "draft" : "blank")}
+          workspaceId={p.workspaceId}
+          sessionId={p.sessionId}
+          finding={editing}
+          draft={p.findingDraft ?? { title: "", statement: "", citations: [] }}
+          onDone={() => {
+            setWriting(false);
+            setEditing(null);
+            p.onDrafted();
+            p.onChanged();
+          }}
+        />
+      )}
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
@@ -472,7 +620,7 @@ function Findings(p: EvidencePanelProps) {
       )}
       {p.findings === null ? (
         <Spinner size="tiny" />
-      ) : p.findings.length === 0 && p.findingDraft === null ? (
+      ) : p.findings.length === 0 && !showingForm ? (
         <EmptyState icon={<Lightbulb20Regular />} message={t("research.evidence.findingsEmpty")} />
       ) : (
         p.findings.map((f) => (
@@ -504,7 +652,19 @@ function Findings(p: EvidencePanelProps) {
                   {t(MOVE_LABEL_KEYS[to])}
                 </Button>
               ))}
-              <Button size="small" appearance="subtle" icon={<Delete16Regular />} aria-label={t("research.evidence.deleteAria", { title: f.code })} onClick={() => void research.deleteFinding(f.id).then(p.onChanged, (err: unknown) => setError(errorText(err)))} />
+              {f.status === "draft" && (
+                <Button size="small" appearance="subtle" icon={<Edit16Regular />} aria-label={t("research.evidence.editFindingAria")} onClick={() => setEditing(f)} />
+              )}
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={<Delete16Regular />}
+                aria-label={t("research.evidence.deleteAria", { title: f.code })}
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeleting(f);
+                }}
+              />
             </div>
             <Text size={100} className={s.muted}>
               {f.reviewedBy
@@ -518,23 +678,47 @@ function Findings(p: EvidencePanelProps) {
           </article>
         ))
       )}
+      {deleting && (
+        <DeleteEvidenceDialog
+          title={t("research.evidence.confirmDeleteFindingTitle", { code: deleting.code })}
+          body={t("research.evidence.confirmDeleteFindingBody")}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
     </>
   );
 }
 
-function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: string; sessionId: string; draft: FindingDraft; onDone: () => void }) {
+function FindingForm({ workspaceId, sessionId, finding, draft, onDone }: { workspaceId: string; sessionId: string; finding: ResearchFinding | null; draft: FindingDraft; onDone: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
-  const [title, setTitle] = useState(draft.title);
-  const [statement, setStatement] = useState(draft.statement);
+  const [title, setTitle] = useState(finding?.title ?? draft.title);
+  const [statement, setStatement] = useState(finding?.statement ?? draft.statement);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (finding !== null) await research.updateFinding(finding.id, { title, statement });
+      else await research.createFinding(workspaceId, { title, statement, sessionId, citations: draft.citations });
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <form
       className={mergeClasses(s.card, s.form)}
       aria-label={t("research.evidence.newFindingAria")}
       onSubmit={(e) => {
         e.preventDefault();
-        research.createFinding(workspaceId, { title, statement, sessionId, citations: draft.citations }).then(onDone, (err: unknown) => setError(errorText(err)));
+        void save();
       }}
     >
       <Field className={s.field} label={t("research.evidence.findingLabel")}>
@@ -544,9 +728,11 @@ function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: s
         className={s.field}
         label={t("research.evidence.statementLabel")}
         hint={
-          draft.citations.length > 0
-            ? t("research.evidence.restsOnCitations", { count: draft.citations.length, plural: draft.citations.length === 1 ? "" : "s" })
-            : t("research.evidence.restsOnNothing")
+          finding !== null
+            ? undefined
+            : draft.citations.length > 0
+              ? t("research.evidence.restsOnCitations", { count: draft.citations.length, plural: draft.citations.length === 1 ? "" : "s" })
+              : t("research.evidence.restsOnNothing")
         }
       >
         <Textarea className={s.input} value={statement} onChange={(_, d) => setStatement(d.value)} rows={5} resize="vertical" maxLength={RESEARCH_LIMITS.findingStatementLength} />
@@ -557,10 +743,10 @@ function FindingForm({ workspaceId, sessionId, draft, onDone }: { workspaceId: s
         </MessageBar>
       )}
       <div className={s.actions}>
-        <Button appearance="primary" type="submit" disabled={title.trim() === "" || statement.trim() === ""}>
-          {t("research.evidence.saveAsDraft")}
+        <Button appearance="primary" type="submit" disabled={busy || title.trim() === "" || statement.trim() === ""}>
+          {busy ? t("research.evidence.saving") : finding !== null ? t("research.evidence.saveFinding") : t("research.evidence.saveAsDraft")}
         </Button>
-        <Button onClick={onDone}>{t("research.evidence.cancel")}</Button>
+        <Button disabled={busy} onClick={onDone}>{t("research.evidence.cancel")}</Button>
       </div>
     </form>
   );

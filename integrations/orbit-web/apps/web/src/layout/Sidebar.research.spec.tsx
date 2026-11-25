@@ -1,6 +1,8 @@
+import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
+import { I18nProvider } from "../i18n";
 import { fakeApi } from "../testing/fakeApi";
 import { authAccount, authUser, sessionSummary } from "../testing/fixtures";
 import { renderUi } from "../testing/render";
@@ -31,8 +33,18 @@ function show(over: Partial<SidebarProps> = {}) {
     onResearchDeleted: vi.fn(),
     ...over,
   };
-  renderUi(<Sidebar {...p} />);
-  return p;
+  const view = renderUi(<Sidebar {...p} />);
+  return {
+    ...p,
+    rerender: (next: Partial<SidebarProps>) =>
+      view.rerender(
+        <I18nProvider locale="en">
+          <FluentProvider theme={webLightTheme}>
+            <Sidebar {...p} {...next} />
+          </FluentProvider>
+        </I18nProvider>,
+      ),
+  };
 }
 
 describe("research sessions in the sidebar", () => {
@@ -77,5 +89,15 @@ describe("research sessions in the sidebar", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(p.onResearchDeleted).toHaveBeenCalledWith(RESEARCH_ID));
     expect(p.onDeleted).not.toHaveBeenCalled();
+  });
+
+  test("falls back to showing coding chats when the last research session is removed while filtering by Research", async () => {
+    fakeApi();
+    const p = show();
+    await userEvent.click(screen.getByRole("tab", { name: "Research" }));
+    const list = screen.getByRole("list", { name: "Chats" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    p.rerender({ research: [] });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
   });
 });

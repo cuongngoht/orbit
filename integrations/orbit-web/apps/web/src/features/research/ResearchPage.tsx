@@ -69,6 +69,8 @@ const useStyles = makeStyles({
   chat: { flexGrow: 1, minWidth: 0, minHeight: 0 },
   evidence: { width: "372px", flexShrink: 0, minHeight: 0, ...shorthands.borderLeft("1px", "solid", tokens.colorNeutralStroke2) },
   drawer: {
+    top: "56px",
+    height: "calc(var(--orbit-app-height, 100dvh) - 56px)",
     width: "min(440px, 92vw)",
     maxWidth: "100%",
     paddingTop: 0,
@@ -160,6 +162,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   const [drawer, setDrawer] = useState(false);
   const [tab, setTab] = useState<EvidenceTab>("citations");
   const [preview, setPreview] = useState<PreviewTarget | null>(null);
+  const [previewFromChat, setPreviewFromChat] = useState(false);
   const [chosen, setChosen] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<NoteDraft | null>(null);
   const [findingDraft, setFindingDraft] = useState<FindingDraft | null>(null);
@@ -233,13 +236,16 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       setError(err);
     }
   };
-  const ask = async (text: string) => {
+  const ask = async (text: string): Promise<boolean> => {
     setBusy(true);
     setError(null);
+    setChosen(null);
     try {
       await research.ask(sessionId, text);
+      return true;
     } catch (err) {
       setError(err);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -268,6 +274,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
     const c = citationsOf(messageId).find((x) => x.label === label);
     if (!c) return;
     setChosen(messageId);
+    setPreviewFromChat(isMobile);
     openEvidence("citations", previewOf(c));
   };
 
@@ -302,10 +309,18 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       tab={tab}
       onTab={setTab}
       citations={shownMessage === null ? null : citationsOf(shownMessage)}
+      showingEarlier={chosen !== null && lastAnswer !== null && chosen !== lastAnswer}
+      onShowLatest={() => setChosen(null)}
       notes={notes.data}
       findings={findings.data}
       preview={preview}
-      onPreview={setPreview}
+      onPreview={(nextPreview) => {
+        setPreview(nextPreview);
+        if (nextPreview === null && isMobile && previewFromChat) {
+          setPreviewFromChat(false);
+          setMobilePanel("chat");
+        }
+      }}
       noteDraft={noteDraft}
       findingDraft={findingDraft}
       onDrafted={() => {
@@ -332,7 +347,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       draftQuestion={session.draftQuestion}
       busy={busy}
       error={error}
-      onAsk={(text) => void ask(text)}
+      onAsk={ask}
       onStop={() => void research.stop(sessionId).catch((err: unknown) => setError(err))}
       onShowCitations={(id) => {
         setChosen(id);
@@ -437,7 +452,7 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
         </div>
       )}
       {!isMobile && !isWide && (
-        <OverlayDrawer open={drawer} onOpenChange={(_, d) => setDrawer(d.open)} position="end" className={s.drawer} aria-label={t("research.evidence.aria")}>
+        <OverlayDrawer modalType="non-modal" open={drawer} onOpenChange={(_, d) => setDrawer(d.open)} position="end" className={s.drawer} aria-label={t("research.evidence.aria")}>
           {drawer && evidencePanel}
         </OverlayDrawer>
       )}
@@ -468,7 +483,7 @@ function WorkspaceShare({ workspaceId, name, compact, touch }: { workspaceId: st
           {!compact && t("research.page.shareBtn")}
         </Button>
       </DialogTrigger>
-      <DialogSurface className={s.shareSurface}>
+      <DialogSurface className={mergeClasses(s.shareSurface, "orbit-touch")}>
         <DialogBody>
           <DialogTitle
             action={

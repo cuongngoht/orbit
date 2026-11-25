@@ -2,11 +2,12 @@
 // claude.ai, and the servers of the plugins installed for it -- each with where it may be used: chats, research. The list
 // is the account's own Claude CLI's answer (Read again asks it anew); the choices are this account's, and a connector
 // nobody chose for is checked for both. More columns can join as Orbit Web gains places to use a connector.
-import { Badge, Button, Checkbox, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Badge, Button, Checkbox, Link, MessageBar, MessageBarBody, Spinner, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowClockwise16Regular } from "@fluentui/react-icons";
 import { CONNECTOR_USES, type Connector, type ConnectorList, type ConnectorUse } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
+import { useViewport } from "../../hooks/useViewport";
 import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 
@@ -20,6 +21,9 @@ const useStyles = makeStyles({
   td: { paddingTop: "8px", paddingBottom: "8px", borderBottom: `1px solid ${tokens.colorNeutralStroke3}`, verticalAlign: "middle" },
   tdUse: { textAlign: "center" },
   name: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+  cardList: { display: "flex", flexDirection: "column", gap: "8px" },
+  card: { display: "flex", flexDirection: "column", gap: "8px", padding: "12px", borderRadius: tokens.borderRadiusLarge, ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2), backgroundColor: tokens.colorNeutralBackground1 },
+  cardChecks: { display: "flex", gap: "12px", flexWrap: "wrap" },
 });
 
 const USE_KEYS: Record<keyof ConnectorUse, MessageKey> = {
@@ -39,27 +43,44 @@ const statusOf = (status: string, t: (k: MessageKey) => string): { label: string
 export function ClaudeConnectorsSection() {
   const { t } = useI18n();
   const s = useStyles();
+  const { isMobile } = useViewport();
   const list = useResource<ConnectorList>(() => get<ConnectorList>("/api/claude/connectors"), []);
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const act = async (work: () => Promise<ConnectorList>) => {
-    setBusy(true);
+  const act = async (key: string, work: () => Promise<ConnectorList>) => {
+    setBusyKey(key);
     setError(null);
     try {
       list.set(await work());
     } catch (err) {
       setError(errorText(err));
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   };
-  const choose = (c: Connector, use: keyof ConnectorUse, value: boolean) => void act(() => send<ConnectorList>("PUT", "/api/claude/connectors", { connectors: { [c.name]: { [use]: value } } }));
-  const readAgain = () => void act(() => send<ConnectorList>("POST", "/api/claude/connectors/refresh"));
+  const choose = (c: Connector, use: keyof ConnectorUse, value: boolean) => void act(c.name, () => send<ConnectorList>("PUT", "/api/claude/connectors", { connectors: { [c.name]: { [use]: value } } }));
+  const readAgain = () => void act("refresh", () => send<ConnectorList>("POST", "/api/claude/connectors/refresh"));
 
   const data = list.data;
+  const refreshing = busyKey === "refresh";
+  const statusPill = (c: Connector) => {
+    const status = statusOf(c.status, t);
+    const badge = (
+      <Badge appearance="tint" size="small" color={status.color}>
+        {status.label}
+      </Badge>
+    );
+    return c.status === "needs-auth" ? (
+      <Link href="https://claude.ai" target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
+        {badge}
+      </Link>
+    ) : (
+      badge
+    );
+  };
   return (
-    <section className={s.root} aria-label={t("settings.claudeConnectors.aria")}>
+    <section className={`${s.root} orbit-touch`} aria-label={t("settings.claudeConnectors.aria")}>
       <Text className={s.muted}>
         {t("settings.claudeConnectors.intro")}
       </Text>
@@ -67,7 +88,7 @@ export function ClaudeConnectorsSection() {
         <Text size={200} className={s.muted}>
           {data?.readAt ? t("settings.claudeConnectors.readAt", { when: new Date(data.readAt).toLocaleString() }) : data?.source === "unavailable" ? t("settings.claudeConnectors.notRead") : ""}
         </Text>
-        <Button size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={readAgain} disabled={busy}>
+        <Button size="small" icon={refreshing ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={readAgain} disabled={busyKey !== null}>
           {t("settings.claudeConnectors.readAgain")}
         </Button>
       </div>
@@ -88,7 +109,34 @@ export function ClaudeConnectorsSection() {
       )}
       {data === null && list.error === null && <Spinner size="tiny" label={t("settings.claudeConnectors.loading")} />}
       {data !== null && data.connectors.length === 0 && <Text className={s.muted}>{t("settings.claudeConnectors.empty")}</Text>}
-      {data !== null && data.connectors.length > 0 && (
+      {data !== null && data.connectors.length > 0 && isMobile && (
+        <div className={s.cardList}>
+          {data.connectors.map((c) => (
+            <div key={c.name} className={s.card}>
+              <span className={s.name}>
+                <Text weight="semibold">{c.label}</Text>
+                <Badge appearance="outline" size="small">
+                  {c.kind === "claude.ai" ? t("settings.claudeConnectors.kind.claudeAi") : c.kind === "plugin" ? t("settings.claudeConnectors.kind.plugin") : t("settings.claudeConnectors.kind.server")}
+                </Badge>
+                {statusPill(c)}
+              </span>
+              <div className={s.cardChecks}>
+                {CONNECTOR_USES.map((use) => (
+                  <Checkbox
+                    key={use}
+                    label={t(USE_KEYS[use])}
+                    aria-label={t("settings.claudeConnectors.checkboxAria", { label: c.label, use: t(USE_KEYS[use]).toLowerCase() })}
+                    checked={c[use]}
+                    disabled={refreshing || busyKey === c.name}
+                    onChange={(_, d) => choose(c, use, d.checked === true)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {data !== null && data.connectors.length > 0 && !isMobile && (
         <table className={s.table}>
           <thead>
             <tr>
@@ -103,29 +151,24 @@ export function ClaudeConnectorsSection() {
             </tr>
           </thead>
           <tbody>
-            {data.connectors.map((c) => {
-              const status = statusOf(c.status, t);
-              return (
-                <tr key={c.name}>
-                  <td className={s.td}>
-                    <span className={s.name}>
-                      <Text weight="semibold">{c.label}</Text>
-                      <Badge appearance="outline" size="small">
-                        {c.kind === "claude.ai" ? t("settings.claudeConnectors.kind.claudeAi") : c.kind === "plugin" ? t("settings.claudeConnectors.kind.plugin") : t("settings.claudeConnectors.kind.server")}
-                      </Badge>
-                      <Badge appearance="tint" size="small" color={status.color}>
-                        {status.label}
-                      </Badge>
-                    </span>
+            {data.connectors.map((c) => (
+              <tr key={c.name}>
+                <td className={s.td}>
+                  <span className={s.name}>
+                    <Text weight="semibold">{c.label}</Text>
+                    <Badge appearance="outline" size="small">
+                      {c.kind === "claude.ai" ? t("settings.claudeConnectors.kind.claudeAi") : c.kind === "plugin" ? t("settings.claudeConnectors.kind.plugin") : t("settings.claudeConnectors.kind.server")}
+                    </Badge>
+                    {statusPill(c)}
+                  </span>
+                </td>
+                {CONNECTOR_USES.map((use) => (
+                  <td key={use} className={`${s.td} ${s.tdUse}`}>
+                    <Checkbox aria-label={t("settings.claudeConnectors.checkboxAria", { label: c.label, use: t(USE_KEYS[use]).toLowerCase() })} checked={c[use]} disabled={refreshing || busyKey === c.name} onChange={(_, d) => choose(c, use, d.checked === true)} />
                   </td>
-                  {CONNECTOR_USES.map((use) => (
-                    <td key={use} className={`${s.td} ${s.tdUse}`}>
-                      <Checkbox aria-label={t("settings.claudeConnectors.checkboxAria", { label: c.label, use: t(USE_KEYS[use]).toLowerCase() })} checked={c[use]} disabled={busy} onChange={(_, d) => choose(c, use, d.checked === true)} />
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
+                ))}
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

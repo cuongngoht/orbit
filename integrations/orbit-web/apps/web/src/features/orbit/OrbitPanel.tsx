@@ -185,6 +185,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
             {t("chat.orbit.approvalsWaiting", {
               approvals: panel.approvals.map((a) => `${a.title ?? a.id}${a.boundary ? ` (${a.boundary})` : ""}`).join(", "),
             })}
+            {panel.approvals.some((a) => a.boundary === "GIT_PUSH") && ` ${t("chat.orbit.gitPushHint")}`}
           </MessageBarBody>
         </MessageBar>
       )}

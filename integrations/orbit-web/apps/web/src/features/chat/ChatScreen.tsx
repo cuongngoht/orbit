@@ -151,6 +151,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
   const [error, setError] = useState<unknown>(null);
   const [sending, setSending] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
+  const pinnedToBottom = useRef(true);
   const scroller = useRef<HTMLDivElement>(null);
   const status = state.status ?? detail.data?.status ?? "preparing";
   const running = status === "running";
@@ -173,18 +174,26 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
 
   useEffect(() => {
     const el = scroller.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 240) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (pinnedToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+      setAwayFromBottom(false);
+    } else {
+      setAwayFromBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 120);
+    }
   }, [state.items]);
 
   // The changes panel reads git again after each tool and each run end.
   const version = useMemo(() => state.items.filter((i) => (i.kind === "tool" && i.state !== "running") || i.kind === "run-end" || i.kind === "workspace" || i.kind === "branch").length, [state.items]);
 
-  const attempt = async (work: () => Promise<unknown>) => {
+  const attempt = async (work: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     try {
       await work();
+      return true;
     } catch (err) {
       setError(err);
+      return false;
     }
   };
   const update = async (change: UpdateSessionRequest) => {
@@ -192,10 +201,11 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
     if (detail.data) detail.set({ ...detail.data, ...summary });
     onUpdated(summary);
   };
-  const say = async (text: string, images: string[] = []) => {
+  const say = async (text: string, images: string[] = []): Promise<boolean> => {
     setSending(true);
-    await attempt(() => send("POST", `/api/sessions/${sessionId}/messages`, { text, ...(images.length > 0 ? { images } : {}) }));
+    const ok = await attempt(() => send("POST", `/api/sessions/${sessionId}/messages`, { text, ...(images.length > 0 ? { images } : {}) }));
     setSending(false);
+    return ok;
   };
 
   if (detail.error && detail.data === null)
@@ -233,7 +243,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
           {onOpenNav && <Button className={s.touchBtn} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("chat.screen.openNavAria")} onClick={onOpenNav} />}
           {isMobile ? (
             <div className={s.titleStack}>
-              <Text weight="semibold" className={mergeClasses(s.title, s.titleMobile)}>
+              <Text weight="semibold" className={mergeClasses(s.title, s.titleMobile)} title={session.title}>
                 {session.title}
               </Text>
               <div className={s.statusRow}>
@@ -247,7 +257,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             </div>
           ) : (
             <>
-              <Text weight="semibold" className={s.title}>
+              <Text weight="semibold" className={s.title} title={session.title}>
                 {session.title}
               </Text>
               <SessionStatusBadge status={status} />
@@ -285,6 +295,19 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
                 onClick={() => setPanel(panel === "orbit" ? null : "orbit")}
               >
                 {!isMobile && t("chat.screen.tabOrbit")}
+                {(state.orbit?.approvals.length ?? 0) > 0 && (
+                  <span
+                    aria-hidden
+                    style={{
+                      display: "inline-block",
+                      width: "7px",
+                      height: "7px",
+                      borderRadius: "50%",
+                      backgroundColor: tokens.colorPaletteDarkOrangeForeground1,
+                      marginLeft: isMobile ? "2px" : "6px",
+                    }}
+                  />
+                )}
               </ToggleButton>
             </Tooltip>
           </div>
@@ -295,7 +318,9 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
             ref={scroller}
             onScroll={(e) => {
               const el = e.currentTarget;
-              setAwayFromBottom(el.scrollHeight - el.scrollTop - el.clientHeight > 280);
+              const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+              pinnedToBottom.current = dist < 48;
+              setAwayFromBottom(dist > 120);
             }}
           >
             <div className={s.inner}>
@@ -304,12 +329,13 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
                 actions={{
                   runtime: detail.data?.runtime ?? "claude",
                   imageUrl: (imageId) => chatImagePath(sessionId, imageId),
-                  canRunPlan: canSend && !sending,
+                  canRunPlan: canSend && !sending && autoModeWith(catalog, session.model),
                   onRunPlan: () =>
                     void attempt(async () => {
                       await update({ mode: "autonomous" });
                       await say(t("chat.screen.carryOutPlan"));
                     }),
+                  onOpenOrbit: () => setPanel("orbit"),
                 }}
               />
             </div>
@@ -325,6 +351,7 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
               onClick={() => {
                 const el = scroller.current;
                 if (el) el.scrollTop = el.scrollHeight;
+                pinnedToBottom.current = true;
                 setAwayFromBottom(false);
               }}
             >
@@ -335,11 +362,17 @@ export function ChatScreen({ sessionId, onUpdated, onOpenNav }: { sessionId: str
         </div>
         <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
           <Composer
-            placeholder={status === "preparing" ? t("chat.screen.preparingPlaceholder") : t("chat.screen.replyPlaceholder")}
+            placeholder={
+              status === "preparing"
+                ? t("chat.screen.preparingPlaceholder")
+                : status === "setup_failed"
+                  ? t("chat.screen.setupFailedPlaceholder")
+                  : t("chat.screen.replyPlaceholder")
+            }
             canSend={canSend}
             running={running}
             busy={sending}
-            onSend={(text, images) => void say(text, images)}
+            onSend={(text, images) => say(text, images)}
             onUploadImage={uploadImage}
             onStop={() => void attempt(() => send("POST", `/api/sessions/${sessionId}/stop`))}
             commandsPath={`/api/sessions/${sessionId}/commands`}

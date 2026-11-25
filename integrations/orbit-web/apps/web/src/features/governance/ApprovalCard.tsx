@@ -9,11 +9,28 @@ import { useI18n } from "../../i18n";
 import { errorText, send } from "../../services/api";
 import { Card, ErrorBar, Word, byWhom, useParts, when } from "./parts";
 
+const EMPLOYEE_PARAM_KEYS: Record<string, string> = {
+  employeeId: "employee",
+  targetEmployeeId: "target employee",
+  fromEmployeeId: "from employee",
+};
+
 // `inline`: the card is already the confirmation (a chat's Push dialog), so approving asks nothing more.
-export function ApprovalCard({ approval, onChanged, inline = false }: { approval: ApprovalView; onChanged: (a: ApprovalView) => void; inline?: boolean }) {
+export function ApprovalCard({
+  approval,
+  employeeNames,
+  onChanged,
+  inline = false,
+}: {
+  approval: ApprovalView;
+  employeeNames?: ReadonlyMap<string, string>;
+  onChanged: (a: ApprovalView) => void;
+  inline?: boolean;
+}) {
   const { t } = useI18n();
   const s = useParts();
   const [confirm, setConfirm] = useState(false);
+  const [confirmReject, setConfirmReject] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const act = (path: string, body?: unknown) => {
@@ -25,6 +42,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
       .finally(() => {
         setBusy(false);
         setConfirm(false);
+        setConfirmReject(false);
       });
   };
   const p = approval.params;
@@ -45,27 +63,31 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
       description={t("governance.approval.desc", {
         action: approval.action,
         askedAt: when(approval.requestedAt),
-        by: byWhom(approval.requestedBy),
+        by: byWhom(approval.requestedBy, employeeNames),
         extra: timingExtra,
       })}
     >
       <div className={s.inset}>
         <table aria-label={t("governance.approval.paramsAria")} style={{ width: "100%", borderCollapse: "collapse" }}>
           <tbody>
-            {params.map(([k, v]) => (
-              <tr key={k}>
-                <td style={{ paddingRight: 14, paddingTop: 3, paddingBottom: 3, verticalAlign: "top", width: "120px" }}>
-                  <Text size={200} className={s.muted}>
-                    {k}
-                  </Text>
-                </td>
-                <td style={{ paddingTop: 3, paddingBottom: 3 }}>
-                  <Text size={200} className={s.mono}>
-                    {v === null ? t("governance.approval.noneNewBranch") : String(v)}
-                  </Text>
-                </td>
-              </tr>
-            ))}
+            {params.map(([k, v]) => {
+              const labelKey = EMPLOYEE_PARAM_KEYS[k] ?? k;
+              const resolvedName = typeof v === "string" ? employeeNames?.get(v) : undefined;
+              return (
+                <tr key={k}>
+                  <td style={{ paddingRight: 14, paddingTop: 3, paddingBottom: 3, verticalAlign: "top", width: "120px" }}>
+                    <Text size={200} className={s.muted}>
+                      {labelKey}
+                    </Text>
+                  </td>
+                  <td style={{ paddingTop: 3, paddingBottom: 3 }}>
+                    <Text size={200} className={resolvedName ? undefined : s.mono} title={resolvedName && typeof v === "string" ? v : undefined}>
+                      {v === null ? t("governance.approval.noneNewBranch") : (resolvedName ?? String(v))}
+                    </Text>
+                  </td>
+                </tr>
+              );
+            })}
             <tr>
               <td style={{ paddingRight: 14, paddingTop: 4, paddingBottom: 2, verticalAlign: "top" }}>
                 <Text size={200} weight="semibold">
@@ -106,7 +128,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
                 : t("governance.approval.approve")
               : t("governance.approval.approveEllipsis")}
           </Button>
-          <Button disabled={busy} onClick={() => act("reject", { fingerprint: approval.fingerprint })}>
+          <Button disabled={busy} onClick={() => setConfirmReject(true)}>
             {t("governance.approval.reject")}
           </Button>
         </div>
@@ -119,7 +141,7 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
         </div>
       )}
       <Dialog open={confirm} onOpenChange={(_, d) => setConfirm(d.open)}>
-        <DialogSurface>
+        <DialogSurface className="orbit-touch">
           <DialogBody>
             <DialogTitle>{t("governance.approval.confirmTitle")}</DialogTitle>
             <DialogContent>
@@ -134,6 +156,29 @@ export function ApprovalCard({ approval, onChanged, inline = false }: { approval
               <Button onClick={() => setConfirm(false)}>{t("governance.approval.cancel")}</Button>
               <Button appearance="primary" disabled={busy} onClick={() => act("grant", { fingerprint: approval.fingerprint })}>
                 {approval.action === "repository.push" ? t("governance.approval.approveAndPush") : t("governance.approval.approve")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
+      <Dialog open={confirmReject} onOpenChange={(_, d) => !busy && setConfirmReject(d.open)}>
+        <DialogSurface className="orbit-touch">
+          <DialogBody>
+            <DialogTitle>{t("governance.approval.rejectConfirmTitle")}</DialogTitle>
+            <DialogContent>
+              <Text block>{t("governance.approval.rejectConfirmBody", { summary: approval.summary })}</Text>
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setConfirmReject(false)}>
+                {t("governance.approval.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                disabled={busy}
+                style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+                onClick={() => act("reject", { fingerprint: approval.fingerprint })}
+              >
+                {t("governance.approval.reject")}
               </Button>
             </DialogActions>
           </DialogBody>

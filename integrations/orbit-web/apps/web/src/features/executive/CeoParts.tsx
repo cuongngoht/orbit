@@ -159,6 +159,15 @@ export function AssignWorkCard({ onGive, onCancel }: { onGive: (body: { mission:
   );
 }
 
+function formatRecordLine(line: string): string {
+  return line
+    .replace(/\b1 people\b/g, "1 person")
+    .replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/g, (iso) => {
+      const ms = Date.parse(iso);
+      return Number.isNaN(ms) ? iso : new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    });
+}
+
 // Who the CEO is, by which appointment, what its answers run on (and where each came from), and what the last answer
 // stood on.
 export function CeoDetails({ state, records }: { state: ExecutiveState; records: string[] }) {
@@ -208,7 +217,7 @@ export function CeoDetails({ state, records }: { state: ExecutiveState; records:
           <ul className={s.records}>
             {records.map((r, i) => (
               <li key={i}>
-                <Text size={200}>{r}</Text>
+                <Text size={200}>{formatRecordLine(r)}</Text>
               </li>
             ))}
           </ul>

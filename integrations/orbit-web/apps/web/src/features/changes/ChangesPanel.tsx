@@ -3,7 +3,7 @@
 import { Badge, Button, MessageBar, MessageBarBody, Spinner, Text, ToggleButton, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowClockwise16Regular, ArrowLeft16Regular, ChevronRight16Regular, TextWrap16Regular } from "@fluentui/react-icons";
 import type { ChangeKind, ChangesReport, FileDiff } from "@orbit-web/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
@@ -15,6 +15,7 @@ const useStyles = makeStyles({
   meta: { color: tokens.colorNeutralForeground3, display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "10px", rowGap: "2px" },
   mono: { fontFamily: tokens.fontFamilyMonospace, overflowWrap: "anywhere" },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "4px" },
+  listBounded: { maxHeight: "240px", overflowY: "auto" },
   file: { display: "flex", alignItems: "center", gap: "8px", paddingTop: "4px", paddingRight: "6px", paddingBottom: "4px", paddingLeft: "6px", borderRadius: tokens.borderRadiusSmall, cursor: "pointer", ":hover": { backgroundColor: tokens.colorNeutralBackground1Hover } },
   fileMobile: {
     minHeight: "48px",
@@ -67,6 +68,7 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
   const report = useResource<ChangesReport>(() => get(`/api/sessions/${sessionId}/changes`), [sessionId]);
   const [path, setPath] = useState<string | null>(null);
   const [wrap, setWrap] = useState(false);
+  const diffBarRef = useRef<HTMLDivElement>(null);
   // The diff that was read, and for which file and moment: shown only while it is the one asked for.
   const [read, setRead] = useState<{ key: string; diff: FileDiff | null; error: string | null } | null>(null);
   const key = `${path}@${version}`;
@@ -90,6 +92,10 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
     };
   }, [sessionId, path, version]);
 
+  useEffect(() => {
+    if (!isMobile && path !== null) diffBarRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [isMobile, path]);
+
   if (report.error) return <MessageBar intent={/not ready/.test(report.error) ? "info" : "error"}><MessageBarBody>{report.error}</MessageBarBody></MessageBar>;
   const r = report.data;
   if (r === null) return <Spinner size="tiny" label={t("chat.changes.reading")} />;
@@ -106,7 +112,7 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
       {diff && diff.tooLarge && <Text size={200}>{t("chat.changes.tooLarge", { path: diff.path })}</Text>}
       {diff && diff.diff !== null && (
         <>
-          <div className={s.diffBar}>
+          <div ref={diffBarRef} className={s.diffBar}>
             {!isMobile && (
               <Text size={200} className={s.path} title={diff.path}>
                 {diff.path}
@@ -171,16 +177,30 @@ export function ChangesPanel({ sessionId, version }: { sessionId: string; versio
       </div>
       <div className={s.meta}>
         <Text size={200}>{t("chat.changes.branch")}</Text>
-        <Text size={200} className={s.mono}>{t("chat.changes.branchValue", { current: r.currentBranch ?? t("chat.changes.detached"), base: r.baseBranch ?? "" })}</Text>
+        <Text size={200} className={s.mono}>
+          {r.baseBranch ? t("chat.changes.branchValue", { current: r.currentBranch ?? t("chat.changes.detached"), base: r.baseBranch }) : (r.currentBranch ?? t("chat.changes.detached"))}
+        </Text>
         <Text size={200}>{t("chat.changes.startedAt")}</Text>
         <Text size={200} className={s.mono}>{r.baseCommit?.slice(0, 12) ?? "?"}</Text>
         <Text size={200}>{t("chat.changes.currentCommit")}</Text>
         <Text size={200} className={s.mono}>{r.headCommit?.slice(0, 12) ?? "?"}</Text>
       </div>
       {r.files.length === 0 && <Text size={200}>{t("chat.changes.none")}</Text>}
-      <ul className={s.list} aria-label={t("chat.changes.changedFilesAria")}>
+      <ul className={mergeClasses(s.list, !isMobile && path !== null && s.listBounded)} aria-label={t("chat.changes.changedFilesAria")}>
         {r.files.map((f) => (
-          <li key={f.path} className={mergeClasses(s.file, isMobile && s.fileMobile, path === f.path && s.chosen)} onClick={() => setPath(f.path)} role="button" tabIndex={0} onKeyDown={(e) => (e.key === "Enter" ? setPath(f.path) : undefined)}>
+          <li
+            key={f.path}
+            className={mergeClasses(s.file, isMobile && s.fileMobile, path === f.path && s.chosen)}
+            onClick={() => setPath((prev) => (prev === f.path ? null : f.path))}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                if (e.key === " ") e.preventDefault();
+                setPath((prev) => (prev === f.path ? null : f.path));
+              }
+            }}
+          >
             <Badge size="small" appearance="tint" color={KIND[f.kind].color} aria-label={f.kind}>
               {KIND[f.kind].label}
             </Badge>

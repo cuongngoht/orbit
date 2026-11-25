@@ -34,7 +34,7 @@ export function parseDiff(diff: string): DiffLine[] {
 
 const useStyles = makeStyles({
   table: { borderCollapse: "collapse", width: "100%", fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, lineHeight: "18px" },
-  no: { color: tokens.colorNeutralForeground4, textAlign: "right", padding: "0 6px", userSelect: "none", verticalAlign: "top", width: "1%", whiteSpace: "nowrap" },
+  no: { color: tokens.colorNeutralForeground3, textAlign: "right", padding: "0 6px", userSelect: "none", verticalAlign: "top", width: "1%", whiteSpace: "nowrap" },
   code: { whiteSpace: "pre", padding: "0 8px" },
   codeWrap: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" },
   add: { backgroundColor: "var(--diff-add-bg)" },
@@ -69,7 +69,7 @@ export function DiffView({ diff, language, wrap = false, compact = false }: { di
                 <td className={codeClass}>{l.text}</td>
               ) : (
                 <td className={codeClass}>
-                  {SIGN[l.kind]}
+                  <span style={{ userSelect: "none" }}>{SIGN[l.kind]}</span>
                   <span dangerouslySetInnerHTML={{ __html: highlighted(l.text, language) }} />
                 </td>
               )}

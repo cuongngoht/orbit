@@ -6,7 +6,7 @@
 import { Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Dismiss16Regular } from "@fluentui/react-icons";
 import type { SlashCommand, SlashCommands } from "@orbit-web/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get } from "../../services/api";
@@ -118,20 +118,30 @@ export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number
   const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
+  const root = useRef<HTMLDivElement>(null);
+  const { onClose } = p;
   useEffect(() => {
     document.getElementById(optionId(p.id, p.active))?.scrollIntoView?.({ block: "nearest" });
   }, [p.id, p.active]);
+  useEffect(() => {
+    if (!onClose) return;
+    const onDown = (e: PointerEvent) => {
+      if (root.current && !root.current.contains(e.target as Node | null)) onClose();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
   const status = p.state.loading ? t("chat.slash.reading") : p.state.error !== null ? t("chat.slash.error", { error: p.state.error }) : p.items.length === 0 ? t("chat.slash.noMatch", { query: p.query }) : null;
   const note = p.state.data?.note ?? null;
   const said = [status, note].filter((msg): msg is string => msg !== null);
   return (
-    <div className={s.popup}>
-      {isMobile && p.onClose && (
+    <div ref={root} className={s.popup}>
+      {onClose && (
         <div className={s.bar}>
           <Text size={200} weight="semibold">
             {t("chat.slash.header")}
           </Text>
-          <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={t("chat.slash.closeAria")} onClick={p.onClose} />
+          <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={t("chat.slash.closeAria")} onClick={onClose} />
         </div>
       )}
       {p.items.length > 0 && (
@@ -161,7 +171,7 @@ export function SlashMenu(p: { id: string; items: SlashCommand[]; active: number
                       <span data-name className={s.name}>{`/${c.name}`}</span>
                       {c.argumentHint && <span className={s.hint}>{c.argumentHint}</span>}
                     </div>
-                    {c.description && <span className={s.description}>{c.description}</span>}
+                    {c.description && <span className={s.description} title={c.description}>{c.description}</span>}
                   </div>
                 ))}
               </div>

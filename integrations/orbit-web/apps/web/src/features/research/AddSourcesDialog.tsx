@@ -220,7 +220,7 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
   const [mode, setMode] = useState<Mode>("upload");
   return (
     <Dialog open={p.open} onOpenChange={(_, d) => p.onOpenChange(d.open)}>
-      <DialogSurface className={s.surface}>
+      <DialogSurface className={mergeClasses(s.surface, "orbit-touch")}>
         <DialogBody>
           <DialogTitle
             action={
@@ -238,9 +238,15 @@ export function AddSourcesDialog(p: AddSourcesDialogProps) {
               <Tab value="text">{t("research.addSources.tabText")}</Tab>
               <Tab value="existing">{t("research.addSources.tabExisting")}</Tab>
             </TabList>
-            {mode === "upload" && <UploadTab {...p} />}
-            {mode === "url" && <UrlTab {...p} />}
-            {mode === "text" && <TextTab {...p} />}
+            <div hidden={mode !== "upload"}>
+              <UploadTab {...p} />
+            </div>
+            <div hidden={mode !== "url"}>
+              <UrlTab {...p} />
+            </div>
+            <div hidden={mode !== "text"}>
+              <TextTab {...p} />
+            </div>
             {mode === "existing" && <ExistingTab {...p} />}
           </DialogContent>
           <DialogActions>
@@ -303,7 +309,9 @@ function UploadTab(p: AddSourcesDialogProps) {
           e.preventDefault();
           setOver(true);
         }}
-        onDragLeave={() => setOver(false)}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+        }}
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);

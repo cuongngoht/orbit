@@ -4,8 +4,8 @@
 // commit, the branch, the remote, where the remote's branch stood. Claude Code never holds the sign-in for it. Pushing
 // is a protected action of the chat's own account: its owner asks for it and approves it, here; somebody the chat was
 // shared with reads and talks in it, but does not push it.
-import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, Tooltip, makeStyles } from "@fluentui/react-components";
-import { ArrowUpload20Regular } from "@fluentui/react-icons";
+import { Button, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, MessageBar, MessageBarBody, Text, Tooltip, makeStyles, mergeClasses } from "@fluentui/react-components";
+import { ArrowUpload20Regular, Dismiss20Regular } from "@fluentui/react-icons";
 import type { AgentPushResult, ApprovalList, ApprovalView, SessionDetail } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
@@ -27,9 +27,11 @@ function PushBody({ session }: { session: SessionDetail }) {
   const { t } = useI18n();
   const s = useStyles();
   const owner = session.access === "owner";
+  const running = session.status === "running" || session.status === "preparing";
   const [approval, setApproval] = useState<ApprovalView | null>(null);
   // What a push the account's policy simply allows came to: it was made at once, and no approval exists for it.
   const [pushed, setPushed] = useState<string | null>(null);
+  const canPrepare = (approval === null || approval.state === "rejected" || approval.state === "expired") && pushed === null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const earlier = useResource<ApprovalList>(owner ? () => get(`/api/sessions/${session.id}/pushes`) : null, [session.id, owner, approval?.state]);
@@ -58,9 +60,14 @@ function PushBody({ session }: { session: SessionDetail }) {
         <b>{session.repository}</b>
         {t("chat.push.introAfter", { source: sourceName(session.source) })}
       </Text>
-      {approval === null && pushed === null && (
+      {running && (
+        <MessageBar intent="warning">
+          <MessageBarBody>{t("chat.push.runningWarning")}</MessageBarBody>
+        </MessageBar>
+      )}
+      {canPrepare && (
         <div>
-          <Button appearance="primary" icon={<ArrowUpload20Regular />} disabled={busy || session.workBranch === null} onClick={prepare}>
+          <Button appearance="primary" icon={<ArrowUpload20Regular />} disabled={busy || running || session.workBranch === null} onClick={prepare}>
             {busy ? t("chat.push.workingOut") : t("chat.push.prepare")}
           </Button>
         </div>
@@ -103,9 +110,15 @@ export function PushButton({ session, compact }: { session: SessionDetail; compa
           {!compact && t("chat.push.btn")}
         </Button>
       </Tooltip>
-      <DialogSurface className={s.surface}>
+      <DialogSurface className={mergeClasses(s.surface, "orbit-touch")}>
         <DialogBody>
-          <DialogTitle>{t("chat.push.dialogTitle")}</DialogTitle>
+          <DialogTitle
+            action={
+              <Button appearance="subtle" aria-label={t("chat.push.closeAria")} icon={<Dismiss20Regular />} onClick={() => setOpen(false)} />
+            }
+          >
+            {t("chat.push.dialogTitle")}
+          </DialogTitle>
           <DialogContent>{open && <PushBody session={session} />}</DialogContent>
           <DialogActions>
             <Button onClick={() => setOpen(false)}>{t("chat.push.close")}</Button>

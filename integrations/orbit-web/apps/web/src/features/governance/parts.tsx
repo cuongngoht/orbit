@@ -2,9 +2,12 @@
 // the way a time, a digest or a principal is written.
 import { Badge, MessageBar, MessageBarBody, Text, makeStyles, mergeClasses, shorthands, tokens, type FieldControlProps } from "@fluentui/react-components";
 import { ChevronDown16Regular, ChevronRight16Regular } from "@fluentui/react-icons";
-import type { ReactNode } from "react";
+import type { EmployeeDeskList, Roster } from "@orbit-web/contracts";
+import { useMemo, type ReactNode } from "react";
 import { IconBadge, type IconTone } from "../../components/SectionIcons";
+import { useResource } from "../../hooks/useResource";
 import { t as tr, useI18n, type MessageKey } from "../../i18n";
+import { get } from "../../services/api";
 
 export const useParts = makeStyles({
   page: {
@@ -47,7 +50,7 @@ export const useParts = makeStyles({
   },
   row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0 },
   between: { display: "flex", gap: "10px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", minWidth: 0 },
-  cardTitleWrap: { display: "inline-flex", alignItems: "flex-start", gap: "10px", minWidth: 0, flexWrap: "nowrap", flexGrow: 1, flexShrink: 1, flexBasis: "240px" },
+  cardTitleWrap: { display: "inline-flex", alignItems: "flex-start", gap: "10px", minWidth: 0, flexWrap: "nowrap", flexGrow: 1, flexShrink: 1, flexBasis: "160px" },
   cardTitleStack: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flexGrow: 1 },
   grid: {
     display: "grid",
@@ -151,6 +154,7 @@ export const useParts = makeStyles({
     borderRadius: "9999px",
     backgroundColor: tokens.colorNeutralBackground2,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    "@media (max-width: 639px)": { borderRadius: "14px", width: "100%" },
   },
   filterPill: {
     borderRadius: "9999px",
@@ -514,22 +518,82 @@ export const when = (iso: string | null | undefined): string => (iso ? new Date(
 
 export const short = (hex: string | null | undefined, n = 12): string => (hex ? hex.slice(0, n) : "—");
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function hasEmployeeRef(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return value.startsWith("employee:") || value.startsWith("agent:employee:") || UUID_RE.test(value);
+}
+
 // How a record names who did something (`owner:<account>`, `agent:<id>`, `system:<what>`), said for the account's owner
-// reading it: the owner is "you", Orbit Web's own work is Orbit Web's, an agent is named by its id.
-export function byWhom(label: string | null | undefined): string {
+// reading it: the owner is "you", Orbit Web's own work is Orbit Web's, an agent is named by its id or employee name.
+export function byWhom(label: string | null | undefined, employeeNames?: ReadonlyMap<string, string>): string {
   if (!label) return "—";
   if (label.startsWith("owner:")) return tr("governance.parts.byWhom.you");
   if (label.startsWith("system:")) return tr("governance.parts.byWhom.orbitWeb");
+  if (label.startsWith("agent:employee:") || label.startsWith("employee:")) {
+    const empId = label.startsWith("agent:employee:") ? label.slice("agent:employee:".length) : label.slice("employee:".length);
+    const name = employeeNames?.get(empId);
+    if (name) return `${name} (agent)`;
+    return tr("governance.parts.byWhom.agent", { id: short(label.replace(/^agent:/, ""), 16) });
+  }
   if (label.startsWith("agent:")) return tr("governance.parts.byWhom.agent", { id: short(label.slice("agent:".length), 16) });
   if (label === "anonymous" || label === "agent-network") return tr("governance.parts.byWhom.unverified");
   return label;
 }
 
+// Map employee and department ids to their readable names when governance pages display employee actors or resources.
+export function useGovernanceNames(needed: boolean): {
+  employeeNames: ReadonlyMap<string, string>;
+  departmentNames: ReadonlyMap<string, string>;
+  settled: boolean;
+} {
+  const desks = useResource<EmployeeDeskList>(needed ? () => get("/api/office/desks") : null, [needed]);
+  const roster = useResource<Roster>(needed ? () => get("/api/office/roster") : null, [needed]);
+  const employeeNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of desks.data?.desks ?? []) map.set(d.employeeId, d.name);
+    for (const e of roster.data?.employees ?? []) if (!map.has(e.id)) map.set(e.id, e.name);
+    return map;
+  }, [desks.data, roster.data]);
+  const departmentNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of roster.data?.departments ?? []) map.set(d.id, d.name);
+    return map;
+  }, [roster.data]);
+  const settled = !needed || ((desks.data !== null || desks.error !== null) && (roster.data !== null || roster.error !== null));
+  return { employeeNames, departmentNames, settled };
+}
+
+export function useEmployeeNames(needed: boolean): ReadonlyMap<string, string> {
+  return useGovernanceNames(needed).employeeNames;
+}
+
+export function resourceOf(
+  resource: string,
+  employeeNames?: ReadonlyMap<string, string>,
+  departmentNames?: ReadonlyMap<string, string>,
+): { label: string; raw: string | null } {
+  const direct = employeeNames?.get(resource) ?? departmentNames?.get(resource);
+  if (direct) return { label: direct, raw: resource };
+  if (resource.startsWith("employee:")) {
+    const [empId, ...tail] = resource.slice("employee:".length).split(":");
+    const name = empId ? employeeNames?.get(empId) : undefined;
+    if (name) return { label: tail.length > 0 ? `${name} · ${tail.join(":")}` : name, raw: resource };
+  }
+  return { label: resource, raw: null };
+}
+
 // Who a record or a decision says acted, by its principal type: the owner (a person), one of the account's agents,
 // Orbit Web itself, or somebody nobody verified.
-export function principalOf(type: string, id: string, agentId: string | null): string {
+export function principalOf(type: string, id: string, agentId: string | null, employeeNames?: ReadonlyMap<string, string>): string {
   if (type === "human") return tr("governance.parts.principal.you");
-  if (type === "agent") return tr("governance.parts.principal.agent", { id: short(agentId ?? id, 16) });
+  if (type === "agent") {
+    const raw = agentId ?? id;
+    const name = raw.startsWith("employee:") ? employeeNames?.get(raw.slice("employee:".length)) : undefined;
+    if (name) return `${name} (agent)`;
+    return tr("governance.parts.principal.agent", { id: short(raw, 16) });
+  }
   if (type === "system" || type === "service") return tr("governance.parts.principal.orbitWeb", { id });
   return tr("governance.parts.principal.unverified");
 }

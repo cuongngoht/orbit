@@ -1,7 +1,7 @@
 // A NEW RESEARCH SESSION: in a new research workspace (named here) or one this account already has, with the model and
 // effort its account may use, and -- if wanted -- a first question, asked as soon as a selected source is ready. No
 // repository, no branch and no GitHub: research needs none of them.
-import { Button, Dropdown, Field, Input, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Dropdown, Field, Input, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ShieldCheckmark16Regular } from "@fluentui/react-icons";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchSessionDetail, type ResearchWorkspaceSummary, type Settings } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -10,6 +10,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { useModelCatalog } from "../../services/models/ModelCatalog";
+import { useConnections } from "../connections/AiConnectionsSection";
 import { ModelEffortPicker } from "../composer/RunPickers";
 import { research } from "./api";
 
@@ -51,6 +52,8 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const workspaces = useResource<ResearchWorkspaceSummary[]>(() => research.workspaces(), []);
+  const connections = useConnections();
+  const noClaude = connections.data !== null && !connections.data.connections.some((c) => c.runtime === "claude" && c.auth === "connected");
   const catalog = useModelCatalog();
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
@@ -83,7 +86,7 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
 
   return (
     <form
-      className={s.form}
+      className={mergeClasses(s.form, "orbit-touch")}
       aria-label={t("research.newSession.aria")}
       onSubmit={(e) => {
         e.preventDefault();
@@ -91,10 +94,20 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
       }}
     >
       <div className={s.card}>
+        {noClaude && (
+          <MessageBar intent="warning">
+            <MessageBarBody>{t("research.newSession.noClaudeBanner")}</MessageBarBody>
+          </MessageBar>
+        )}
         <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout={isMobile ? "vertical" : "horizontal"} aria-label={t("research.newSession.workspaceAria")}>
           <Radio value="new" label={t("research.newSession.createNew")} />
           <Radio value="existing" label={t("research.newSession.useExisting")} disabled={list.length === 0} />
         </RadioGroup>
+        {workspaces.data !== null && list.length === 0 && (
+          <Text size={200} className={s.muted}>
+            {t("research.newSession.noWorkspacesHint")}
+          </Text>
+        )}
         {mode === "new" ? (
           <>
             <Field className={s.field} label={t("research.newSession.workspaceName")} required>
@@ -131,7 +144,21 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
           <ModelEffortPicker model={run.model} effort={run.effort} onModel={setModel} onEffort={setEffort} />
         </div>
         <Field className={s.field} label={t("research.newSession.firstQuestion")} hint={t("research.newSession.firstQuestionHint")}>
-          <Textarea className={s.control} value={question} onChange={(_, d) => setQuestion(d.value)} rows={3} resize="vertical" maxLength={RESEARCH_LIMITS.questionLength} placeholder={t("research.newSession.firstQuestionPlaceholder")} />
+          <Textarea
+            className={s.control}
+            value={question}
+            onChange={(_, d) => setQuestion(d.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && ready && !busy) {
+                e.preventDefault();
+                void start();
+              }
+            }}
+            rows={3}
+            resize="vertical"
+            maxLength={RESEARCH_LIMITS.questionLength}
+            placeholder={t("research.newSession.firstQuestionPlaceholder")}
+          />
         </Field>
         <ApiErrorBar error={error} />
         <div className={s.footer}>

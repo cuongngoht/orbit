@@ -2,7 +2,7 @@
 // Claude Code -- the toolbar holds the draft (a repository of either source, or none; its branch; the model and effort;
 // the mode) and sending the first message creates the chat with them and opens it. RESEARCH: a workspace of sources
 // (new, or one this account has), the model, and an optional first question -- no repository and no GitHub.
-import { Avatar, Button, Link, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { Avatar, Button, Link, MessageBar, MessageBarBody, Text, Title2, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { BookOpen20Regular, Code20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import type { ResearchSessionDetail } from "@orbit-web/contracts";
 import { NewResearchSession } from "../research/NewResearchSession";
@@ -73,7 +73,9 @@ const useStyles = makeStyles({
   kindSelected: { border: `1px solid ${tokens.colorBrandStroke1}`, backgroundColor: tokens.colorSubtleBackgroundSelected },
   kindText: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 },
   kindIcon: { flexShrink: 0, color: tokens.colorBrandForeground1, marginTop: "2px" },
-  bottomMobile: { paddingTop: "4px", paddingRight: "12px", paddingBottom: "max(10px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))", paddingLeft: "12px", flexShrink: 0 },
+  bottomMobile: { display: "flex", flexDirection: "column", gap: "8px", paddingTop: "4px", paddingRight: "12px", paddingBottom: "max(10px, var(--orbit-safe-bottom, env(safe-area-inset-bottom)))", paddingLeft: "12px", flexShrink: 0 },
+  starters: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px", width: "100%", marginTop: "10px" },
+  starterBtn: { borderRadius: "9999px", maxWidth: "100%" },
 });
 
 export type SessionKind = "coding" | "research";
@@ -146,6 +148,8 @@ export function NewSession({
   const [mode, setMode] = useState<ModeChoice | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [draftText, setDraftText] = useState("");
+  const [starterKey, setStarterKey] = useState(0);
   // Which connection the chat runs on: one of the account's Claude Code or OpenAI Codex connections, signed in, with
   // models to choose from -- the one a person names, else the one of the AI Settings names (chatConnections.ts).
   const [connectionId, setConnectionId] = useState<string | null>(null);
@@ -183,31 +187,68 @@ export function NewSession({
     if (!autoModeWith(catalog, m) && run.mode === "autonomous") setMode("plan");
   };
 
-  const start = async (prompt: string, images: string[]) => {
+  const start = async (prompt: string, images: string[]): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
       const repository = choice ? { source: choice.source, id: choice.repository.id } : null;
       const created = await send<SessionSummary>("POST", "/api/sessions", { repository, branch: choice ? (branch ?? choice.repository.defaultBranch) : null, ...(named !== null ? { connectionId: named.id } : {}), ...run, ...(prompt.trim().length > 0 ? { prompt } : {}), ...(images.length > 0 ? { images } : {}) });
       onCreated(created);
+      return true;
     } catch (err) {
       setError(err);
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
+  const STARTER_KEYS: MessageKey[] = ["chat.newSession.starter1", "chat.newSession.starter2", "chat.newSession.starter3"];
+  const starterRow = !noAi && draftText.trim() === "" && (
+    <div className={s.starters} role="group" aria-label={t("chat.newSession.startersAria")}>
+      {STARTER_KEYS.map((key) => {
+        const prompt = t(key);
+        return (
+          <Button
+            key={key}
+            size="small"
+            appearance="subtle"
+            className={s.starterBtn}
+            onClick={() => {
+              setDraftText(prompt);
+              setStarterKey((k) => k + 1);
+            }}
+          >
+            {prompt}
+          </Button>
+        );
+      })}
+    </div>
+  );
+
   const composer = (
     <Composer
+      key={starterKey}
       autoFocus={!isMobile && !isCoarse}
+      defaultValue={draftText}
+      onDraftChange={setDraftText}
       placeholder={t("chat.newSession.placeholder")}
       canSend={!busy && !noAi}
+      sendDisabledReason={noAi ? t("chat.newSession.noAiBanner") : undefined}
       running={false}
       busy={busy}
-      onSend={(text, images) => void start(text, images)}
+      onSend={(text, images) => start(text, images)}
       onUploadImage={uploadImage}
       commandsPath={choice ? `/api/commands?source=${choice.source}&repository=${encodeURIComponent(choice.repository.id)}` : "/api/commands"}
-      above={error !== null && <ApiErrorBar error={error} />}
+      above={
+        error !== null ? (
+          <ApiErrorBar error={error} />
+        ) : noAi ? (
+          <MessageBar intent="warning">
+            <MessageBarBody>{t("chat.newSession.noAiBanner")}</MessageBarBody>
+          </MessageBar>
+        ) : undefined
+      }
       left={
         <>
           <RepositoryPicker
@@ -280,10 +321,13 @@ export function NewSession({
             <Text className={s.muted}>{t("chat.newSession.codingSub")}</Text>
             <KindChooser kind={kind} onKind={setKind} />
           </div>
-          <div className={s.bottomMobile}>{composer}</div>
+          <div className={s.bottomMobile}>
+            {starterRow}
+            {composer}
+          </div>
         </>
       ) : (
-        <div className={s.stage}>
+        <div className={mergeClasses(s.stage, s.stageTop)}>
           <div className={s.hero}>
             <img src="/orbit.svg" alt="" className={s.logo} />
             <Title2 as="h1" className={s.heading}>
@@ -292,7 +336,10 @@ export function NewSession({
             <Text className={s.muted}>{t("chat.newSession.codingSub")}</Text>
           </div>
           <KindChooser kind={kind} onKind={setKind} />
-          <div className={s.composerDesktop}>{composer}</div>
+          <div className={s.composerDesktop}>
+            {composer}
+            {starterRow}
+          </div>
         </div>
       )}
     </section>

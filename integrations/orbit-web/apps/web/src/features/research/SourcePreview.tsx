@@ -5,7 +5,7 @@
 import { Badge, Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowLeft16Regular } from "@fluentui/react-icons";
 import { RESEARCH_MEDIA_LABELS, type ResearchSourceContent } from "@orbit-web/contracts";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
@@ -48,12 +48,13 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
   },
   cited: {
-    backgroundColor: tokens.colorPaletteYellowBackground1,
-    ...shorthands.borderColor(tokens.colorPaletteYellowBorder1),
-    boxShadow: `inset 3px 0 0 ${tokens.colorPaletteMarigoldBorderActive}`,
+    backgroundColor: "var(--orbit-cited-bg)",
+    ...shorthands.borderColor("var(--orbit-cited-border)"),
+    boxShadow: "inset 3px 0 0 var(--orbit-cited-accent)",
   },
   whereRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "4px" },
-  where: { color: tokens.colorNeutralForeground3, fontWeight: tokens.fontWeightSemibold, letterSpacing: "0.02em" },
+  where: { color: tokens.colorNeutralForeground2, fontWeight: tokens.fontWeightSemibold, letterSpacing: "0.02em" },
+  pager: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap", paddingTop: "4px" },
   quote: {
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
@@ -84,7 +85,8 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
   const touch = isMobile || isCoarse;
-  const content = useResource<ResearchSourceContent>(() => research.content(target.sourceId, target.revisionId, target.chunkOrdinal), [target.sourceId, target.revisionId, target.chunkOrdinal]);
+  const [around, setAround] = useState<number | null>(target.chunkOrdinal);
+  const content = useResource<ResearchSourceContent>(() => research.content(target.sourceId, target.revisionId, around), [target.sourceId, target.revisionId, around]);
   const cited = useRef<HTMLDivElement>(null);
   // A block, returning nothing: scrollIntoView() answers a promise now, and an effect's return is its clean-up.
   useEffect(() => {
@@ -143,14 +145,28 @@ export function SourcePreview({ target, onBack }: { target: PreviewTarget; onBac
               </div>
             );
           })}
-          {c.chunks.length > 0 && (c.chunks.at(-1)?.ordinal ?? 0) < c.totalChunks - 1 && (
-            <Text size={200} className={s.where}>
-              {t("research.preview.passagesRange", {
-                from: (c.chunks[0]?.ordinal ?? 0) + 1,
-                to: (c.chunks.at(-1)?.ordinal ?? 0) + 1,
-                total: c.totalChunks,
-              })}
-            </Text>
+          {c.chunks.length > 0 && (
+            <div className={s.pager}>
+              {(c.chunks[0]?.ordinal ?? 0) > 0 && (
+                <Button size="small" appearance="secondary" onClick={() => setAround(Math.max(0, (c.chunks[0]?.ordinal ?? 0) - Math.max(1, c.chunks.length)))}>
+                  {t("research.preview.earlierPassages")}
+                </Button>
+              )}
+              {(c.chunks.at(-1)?.ordinal ?? 0) < c.totalChunks - 1 && (
+                <Text size={200} className={s.where}>
+                  {t("research.preview.passagesRange", {
+                    from: (c.chunks[0]?.ordinal ?? 0) + 1,
+                    to: (c.chunks.at(-1)?.ordinal ?? 0) + 1,
+                    total: c.totalChunks,
+                  })}
+                </Text>
+              )}
+              {(c.chunks.at(-1)?.ordinal ?? 0) < c.totalChunks - 1 && (
+                <Button size="small" appearance="secondary" onClick={() => setAround((c.chunks.at(-1)?.ordinal ?? 0) + 1)}>
+                  {t("research.preview.laterPassages")}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       )}

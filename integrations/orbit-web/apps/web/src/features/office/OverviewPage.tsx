@@ -33,7 +33,7 @@ import { DefaultsDialog, DepartmentDialog, type DefaultsTarget, type DepartmentE
 import { HireWizard } from "./HireWizard";
 import { RecruitDialog } from "./RecruitDialog";
 import { AsOf, Callout, EmployeeAvatar, EmptyState, WorkLabelBadge, useOfficeStyles } from "./parts";
-import { OfficeFloorMap } from "./OfficeFloorMap";
+import { OfficeFloorMap, roomAccentFor } from "./OfficeFloorMap";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -62,7 +62,9 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
   },
-  statValue: { fontVariantNumeric: "tabular-nums", lineHeight: "1.15" },
+  statValue: { fontVariantNumeric: "tabular-nums", lineHeight: "1.15", flexShrink: 0 },
+  statLabelWrap: { display: "flex", alignItems: "center", gap: "6px", flex: "1 1 0", minWidth: 0, overflow: "hidden" },
+  statLabel: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
   statReady: { color: tokens.colorPaletteGreenForeground1 },
   statBusy: { color: tokens.colorBrandForeground1 },
   statDanger: { color: tokens.colorPaletteRedForeground1 },
@@ -74,27 +76,56 @@ const useStyles = makeStyles({
   statActive: {
     ...shorthands.borderColor(tokens.colorBrandStroke1),
     backgroundColor: tokens.colorSubtleBackgroundSelected,
+    boxShadow: `inset 0 0 0 1px ${tokens.colorBrandStroke2}`,
   },
-  filterBar: {
+  heroHeader: {
     display: "flex",
-    alignItems: "flex-end",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: "10px",
     flexWrap: "wrap",
     minWidth: 0,
-    paddingTop: "10px",
-    paddingRight: "14px",
-    paddingBottom: "10px",
-    paddingLeft: "14px",
-    borderRadius: "14px",
-    backgroundColor: tokens.colorNeutralBackground2,
-    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
   },
-  search: { flexGrow: 1, flexBasis: "220px", minWidth: "min(100%, 220px)" },
-  // On a phone: the search takes the row, the Filters button keeps its own width.
-  toolbarMobile: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center" },
-  searchMobile: { width: "100%", minWidth: 0, maxWidth: "100%" },
-  select: { minWidth: "min(100%, 175px)" },
+  heroActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    flexWrap: "wrap",
+    minWidth: 0,
+  },
+  secondaryActionBtn: {
+    color: tokens.colorNeutralForeground2,
+    paddingLeft: "8px",
+    paddingRight: "8px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    ":hover": {
+      color: tokens.colorNeutralForeground1,
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      ...shorthands.borderColor(tokens.colorNeutralStroke1Hover),
+    },
+  },
+  filterBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    flexWrap: "wrap",
+    minWidth: 0,
+    paddingTop: "7px",
+    paddingRight: "10px",
+    paddingBottom: "7px",
+    paddingLeft: "10px",
+    borderRadius: "14px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    boxShadow: "0 1px 2px rgba(28, 25, 23, 0.03)",
+  },
+  search: { flexGrow: 1, flexBasis: "200px", minWidth: "min(100%, 200px)" },
+  // On a phone: search takes the full first row, floor/list toggle and Filters share the second row.
+  toolbarMobile: { display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", alignItems: "center", gap: "8px" },
+  searchMobile: { gridColumn: "1 / -1", width: "100%", minWidth: 0, maxWidth: "100%", flexBasis: "auto" },
+  select: { minWidth: "min(100%, 158px)" },
   viewToggle: {
     display: "inline-flex",
     alignItems: "center",
@@ -104,34 +135,52 @@ const useStyles = makeStyles({
     paddingBottom: "2px",
     paddingLeft: "2px",
     borderRadius: "10px",
-    backgroundColor: "var(--orbit-card-bg)",
+    backgroundColor: tokens.colorNeutralBackground2,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
   },
-  viewBtn: { borderRadius: "8px", minHeight: "30px" },
+  viewBtn: { borderRadius: "8px", minHeight: "28px" },
   viewBtnOn: {
-    backgroundColor: tokens.colorSubtleBackgroundSelected,
+    backgroundColor: "var(--orbit-card-bg)",
     color: tokens.colorNeutralForeground1,
     fontWeight: tokens.fontWeightSemibold,
+    boxShadow: "0 1px 2px rgba(28, 25, 23, 0.08)",
   },
   listCard: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
-    paddingTop: "14px",
-    paddingRight: "16px",
+    gap: "8px",
+    paddingTop: "12px",
+    paddingRight: "14px",
     paddingBottom: "14px",
-    paddingLeft: "16px",
+    paddingLeft: "14px",
     borderRadius: "16px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: "var(--orbit-card-bg)",
     boxShadow: "var(--orbit-soft-shadow)",
     minWidth: 0,
   },
-  listRows: { listStyleType: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 },
+  listHeadRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(200px, 1.4fr) minmax(130px, 0.85fr) minmax(105px, 0.65fr) minmax(160px, 1.2fr) 176px",
+    alignItems: "center",
+    gap: "12px",
+    paddingTop: "2px",
+    paddingRight: "13px",
+    paddingBottom: "6px",
+    paddingLeft: "13px",
+    ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2),
+    fontSize: "11px",
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    textTransform: "uppercase",
+    color: tokens.colorNeutralForeground3,
+    "@media (max-width: 900px)": { display: "none" },
+  },
+  listRows: { listStyleType: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 },
   listRow: {
     display: "grid",
-    gridTemplateColumns: "minmax(180px, 1.3fr) minmax(130px, 0.9fr) auto minmax(180px, 1.4fr) auto",
+    gridTemplateColumns: "minmax(200px, 1.4fr) minmax(130px, 0.85fr) minmax(105px, 0.65fr) minmax(160px, 1.2fr) 176px",
     alignItems: "center",
     gap: "12px",
     paddingTop: "10px",
@@ -141,14 +190,37 @@ const useStyles = makeStyles({
     borderRadius: "12px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
+    transitionProperty: "background-color, border-color, box-shadow",
+    transitionDuration: "140ms",
     minWidth: 0,
+    ":hover": {
+      backgroundColor: tokens.colorNeutralBackground1Hover,
+      ...shorthands.borderColor(tokens.colorNeutralStroke1Hover),
+    },
     "@media (max-width: 900px)": { gridTemplateColumns: "1fr", alignItems: "start" },
   },
+  deptPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    paddingTop: "2px",
+    paddingRight: "9px",
+    paddingBottom: "2px",
+    paddingLeft: "8px",
+    borderRadius: "9999px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    fontSize: tokens.fontSizeBase200,
+    color: tokens.colorNeutralForeground2,
+    width: "fit-content",
+    maxWidth: "100%",
+  },
+  deptDot: { width: "7px", height: "7px", borderRadius: "9999px", flexShrink: 0 },
   leadHead: { display: "flex", alignItems: "center", gap: "10px", minWidth: 0 },
   // One slot per cell: several to a row on a wide screen, even columns on tablet, one on a phone.
   leadList: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
     gap: "8px",
     listStyleType: "none",
     marginTop: 0,
@@ -161,14 +233,34 @@ const useStyles = makeStyles({
   leadRow: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    paddingTop: "8px",
-    paddingRight: "8px",
-    paddingBottom: "8px",
+    gap: "10px",
+    paddingTop: "10px",
+    paddingRight: "10px",
+    paddingBottom: "10px",
     paddingLeft: "12px",
     borderRadius: "12px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
+    minWidth: 0,
+  },
+  leadVacantBadge: {
+    width: "30px",
+    height: "30px",
+    borderRadius: "10px",
+    ...shorthands.border("1px", "dashed", tokens.colorNeutralStroke1),
+    backgroundColor: "var(--orbit-card-bg)",
+    color: tokens.colorNeutralForeground3,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "12px",
+    fontWeight: 600,
+    flexShrink: 0,
+  },
+  leadTitleRow: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
     minWidth: 0,
   },
   leadWho: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0, overflowWrap: "anywhere" },
@@ -335,10 +427,14 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
       </div>
       <ul className={s.leadList} aria-label={t("office.leadership.listAria")}>
         <li className={s.leadRow} aria-label={t("office.leadership.ceo")}>
+          {roster.ceo ? <EmployeeAvatar name={roster.ceo.name} size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
           <div className={s.leadWho}>
-            <Text size={200} weight="semibold">
-              {t("office.leadership.ceo")}
-            </Text>
+            <span className={s.leadTitleRow}>
+              <span className={s.deptDot} style={{ backgroundColor: "#4f46e5" }} aria-hidden />
+              <Text size={200} weight="semibold">
+                {t("office.leadership.ceo")}
+              </Text>
+            </span>
             {roster.ceo ? (
               <AppointmentHolder who={roster.ceo} stateAlways onOpen={(id) => go("employee", id)} />
             ) : (
@@ -351,12 +447,17 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
         </li>
         {liveDepartments(roster.departments).map((d) => {
           const defaults = defaultsSetFor(d.defaults ?? {});
+          const accent = roomAccentFor(d.name);
           return (
             <li key={d.id} className={s.leadRow} aria-label={d.name}>
+              {d.manager ? <EmployeeAvatar name={d.manager.name} size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
               <div className={s.leadWho}>
-                <Text size={200} weight="semibold">
-                  {d.name}
-                </Text>
+                <span className={s.leadTitleRow}>
+                  <span className={s.deptDot} style={{ backgroundColor: accent.dot }} aria-hidden />
+                  <Text size={200} weight="semibold">
+                    {d.name}
+                  </Text>
+                </span>
                 {d.manager ? (
                   <AppointmentHolder who={d.manager} prefix={`${t("office.leadership.managerLabel")} `} onOpen={(id) => go("employee", id)} />
                 ) : (
@@ -402,10 +503,19 @@ function EmployeeListView({
   const deptNameById = new Map(departments.map((d) => [d.id, d.name]));
   return (
     <section className={s.listCard} aria-label={t("office.overview.viewList")}>
+      <div className={s.listHeadRow} aria-hidden>
+        <span>{t("office.overview.colEmployee")}</span>
+        <span>{t("office.overview.colDepartment")}</span>
+        <span>{t("office.overview.colStatus")}</span>
+        <span>{t("office.overview.colWork")}</span>
+        <span style={{ textAlign: "right" }}>{t("office.overview.colActions")}</span>
+      </div>
       <ul className={s.listRows}>
         {employees.map((e) => {
           const isCeo = isCeoEmployee(e, ceo);
           const deptLabel = isCeo ? t("office.floor.directorsOffice") : (e.departmentId ? (deptNameById.get(e.departmentId) ?? t("office.overview.unassigned")) : t("office.overview.unassigned"));
+          const dotColor = isCeo ? "#4f46e5" : roomAccentFor(deptLabel).dot;
+          const runtimeText = e.execution.model ? `${RUNTIME_LABELS[e.execution.runtime]} · ${e.execution.model}` : RUNTIME_LABELS[e.execution.runtime];
           return (
             <li key={e.id} className={s.listRow}>
               <div className={o.row} style={{ flexWrap: "nowrap" }}>
@@ -415,13 +525,14 @@ function EmployeeListView({
                     {e.name}
                   </Link>
                   <Text size={100} className={o.muted}>
-                    {e.title}
+                    {e.title} · {runtimeText}
                   </Text>
                 </div>
               </div>
-              <Text size={200} className={o.muted}>
-                {deptLabel}
-              </Text>
+              <span className={s.deptPill}>
+                <span className={s.deptDot} style={{ backgroundColor: dotColor }} aria-hidden />
+                <span>{deptLabel}</span>
+              </span>
               <div>
                 <WorkLabelBadge label={e.workLabel} />
               </div>
@@ -441,7 +552,7 @@ function EmployeeListView({
                   </Text>
                 )}
               </div>
-              <div className={o.row}>
+              <div className={o.row} style={{ justifyContent: "flex-end" }}>
                 <Button size="small" appearance="primary" disabled={e.employment === "archived"} onClick={() => onAssign(e.id)}>
                   {t("office.overview.assignWork")}
                 </Button>
@@ -459,7 +570,33 @@ function EmployeeListView({
 
 // The unified company floor (or compact list) for one read of the roster, and any extra pages brought by "Load more".
 // `onAppointment`: the floor's appointment actions open the Overview's own dialog, which outlives a re-read roster.
-function RosterBody({ roster, filter, query, viewMode, account, go, onAssign, onEdit, onAppointment, onRecruit }: { roster: Roster; filter: string; query: RosterQuery; viewMode: "floor" | "list"; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void; onAppointment: (edit: AppointmentEdit) => void; onRecruit: ((departmentId: string) => void) | null }) {
+function RosterBody({
+  roster,
+  filter,
+  filtered,
+  query,
+  viewMode,
+  account,
+  go,
+  onAssign,
+  onEdit,
+  onAppointment,
+  onRecruit,
+  onClearFilters,
+}: {
+  roster: Roster;
+  filter: string;
+  filtered: boolean;
+  query: RosterQuery;
+  viewMode: "floor" | "list";
+  account: AuthAccount | null;
+  go: Go;
+  onAssign: (id: string) => void;
+  onEdit: (e: DepartmentEdit) => void;
+  onAppointment: (edit: AppointmentEdit) => void;
+  onRecruit: ((departmentId: string) => void) | null;
+  onClearFilters: () => void;
+}) {
   const { t } = useI18n();
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
@@ -482,7 +619,21 @@ function RosterBody({ roster, filter, query, viewMode, account, go, onAssign, on
   const groups = groupsOf(roster, employees, filter);
   const ceoEmployee = employees.find((e) => isCeoEmployee(e, roster.ceo)) ?? null;
   if (groups.length === 0 && ceoEmployee === null) {
-    return <EmptyState icon={<RosterIcon size={22} />} tone="brand" title={t("office.overview.emptyTitle")} body={t("office.overview.emptyBody")} />;
+    return filtered ? (
+      <EmptyState
+        icon={<RosterIcon size={22} />}
+        tone="brand"
+        title={t("office.overview.emptyFilteredTitle")}
+        body={t("office.overview.emptyFilteredBody")}
+        action={
+          <Button appearance="primary" onClick={onClearFilters}>
+            {t("office.overview.clearFilters")}
+          </Button>
+        }
+      />
+    ) : (
+      <EmptyState icon={<RosterIcon size={22} />} tone="brand" title={t("office.overview.emptyTitle")} body={t("office.overview.emptyBody")} />
+    );
   }
   return (
     <>
@@ -544,6 +695,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
   const [defaultsOf, setDefaultsOf] = useState<DefaultsTarget | null>(null);
   const [filters, setFilters] = useState(false);
+  const [checklistDismissed, setChecklistDismissed] = useState(false);
   const restore = useRestoreFocusTarget();
   // A search is asked once typing pauses.
   useEffect(() => {
@@ -588,7 +740,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
     setTyped("");
     setQ("");
   };
-  const pickers = (
+  const mobilePickers = (
     <>
       <Field label={t("office.overview.departmentLabel")} className={s.select}>
         <Select value={department} onChange={(_, d) => setDepartment(d.value)}>
@@ -611,6 +763,27 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           ))}
         </Select>
       </Field>
+    </>
+  );
+  const inlinePickers = (
+    <>
+      <Select className={s.select} aria-label={t("office.overview.departmentLabel")} value={department} onChange={(_, d) => setDepartment(d.value)}>
+        <option value="all">{t("office.overview.allDepartments")}</option>
+        {live.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+        <option value="none">{t("office.overview.unassigned")}</option>
+      </Select>
+      <Select className={s.select} aria-label={t("office.overview.statusLabel")} value={status} onChange={(_, d) => setStatus(d.value as WorkLabel | "all")}>
+        <option value="all">{t("office.overview.anyStatus")}</option>
+        {WORK_LABELS.map((l) => (
+          <option key={l} value={l}>
+            {WORK_LABEL_TEXT[l]}
+          </option>
+        ))}
+      </Select>
     </>
   );
   const c = r.counts;
@@ -642,10 +815,10 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   return (
     <div className={o.page}>
       <section className={o.heroCard} aria-label={r.office.name}>
-        <div className={o.between}>
-          <div className={o.stack} style={{ gap: "4px" }}>
+        <div className={s.heroHeader}>
+          <div className={o.stack} style={{ gap: "2px" }}>
             <div className={o.row}>
-              <Text weight="semibold" size={600} as="h2" className={o.headingReset}>
+              <Text weight="semibold" size={500} as="h2" className={o.headingReset}>
                 {r.office.name}
               </Text>
               <AsOf at={r.asOf} />
@@ -664,29 +837,29 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
               </Link>
             </Text>
           </div>
-          <div className={o.row} style={{ gap: "6px" }}>
-            <Button className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
+          <div className={s.heroActions}>
+            <Button size="small" className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
               {t("office.overview.assignWork")}
             </Button>
-            <Button className={o.touch} icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
+            <Button size="small" className={o.touch} icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
               {t("office.overview.hireEmployee")}
             </Button>
-            <Button className={o.touch} icon={<PeopleAdd20Regular />} disabled={recruit?.ok !== true} title={recruit !== null && !recruit.ok ? (recruit.reason ?? undefined) : undefined} onClick={() => setRecruiting({ departmentId: null })} {...restore}>
+            <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<PeopleAdd20Regular />} disabled={recruit?.ok !== true} title={recruit !== null && !recruit.ok ? (recruit.reason ?? undefined) : undefined} onClick={() => setRecruiting({ departmentId: null })} {...restore}>
               {t("office.overview.recruit")}
             </Button>
-            <Button className={o.touch} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
+            <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
               {t("office.overview.newDepartment")}
             </Button>
-            <Button className={o.touch} icon={<Options16Regular />} onClick={() => setDefaultsOf({ kind: "company", office: company })} {...restore}>
+            <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<Options16Regular />} onClick={() => setDefaultsOf({ kind: "company", office: company })} {...restore}>
               {t("office.overview.companyDefaults")}
             </Button>
           </div>
         </div>
         <div className={o.statGrid}>
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={clearFilters}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<RosterIcon size={13} />} tone="brand" size="sm" />
-              <Text size={200} className={o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statTotalRoster")}
               </Text>
             </span>
@@ -695,9 +868,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </button>
           <button type="button" aria-pressed={status === "ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "ready" ? "all" : "ready"))}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<ReadyIcon size={13} />} tone={c.ready > 0 ? "success" : "neutral"} size="sm" />
-              <Text size={200} className={o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statReady")}
               </Text>
             </span>
@@ -706,9 +879,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </button>
           <button type="button" aria-pressed={status === "working"} className={mergeClasses(o.statCard, o.statCardAction, status === "working" && s.statActive)} onClick={() => setStatus((cur) => (cur === "working" ? "all" : "working"))}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<WorkingIcon size={13} />} tone={c.busy > 0 ? "brand" : "neutral"} size="sm" />
-              <Text size={200} className={o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statWorking")}
               </Text>
             </span>
@@ -717,9 +890,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </button>
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={() => go("work")}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<QueuedIcon size={13} />} tone="neutral" size="sm" />
-              <Text size={200} className={o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statQueued")}
               </Text>
             </span>
@@ -728,9 +901,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </button>
           <button type="button" aria-pressed={status === "not_ready"} className={mergeClasses(o.statCard, o.statCardAction, status === "not_ready" && s.statActive)} onClick={() => setStatus((cur) => (cur === "not_ready" ? "all" : "not_ready"))}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<NotReadyIcon size={13} />} tone={c.notReady > 0 ? "danger" : "neutral"} size="sm" />
-              <Text size={200} className={o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statNotReady")}
               </Text>
             </span>
@@ -739,9 +912,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </button>
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction, c.inbox > 0 && s.statInboxAlert)} onClick={() => go("inbox")} aria-label={t("office.overview.openNeedsMeAria", { count: c.inbox })}>
-            <span className={o.row} style={{ flexWrap: "nowrap", gap: "6px" }}>
+            <span className={s.statLabelWrap}>
               <IconBadge icon={<InboxActionIcon size={13} />} tone={c.inbox > 0 ? "warning" : "neutral"} size="sm" />
-              <Text size={200} className={c.inbox > 0 ? s.statWarn : o.muted} style={{ whiteSpace: "nowrap" }}>
+              <Text size={200} className={mergeClasses(c.inbox > 0 ? s.statWarn : o.muted, s.statLabel)}>
                 {t("office.overview.statNeedsYou")}
               </Text>
             </span>
@@ -757,24 +930,38 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <Link href={settingsHref("ai-connections")}>{t("office.overview.openAiConnections")}</Link>
         </Callout>
       )}
+      {r.employees.length === 0 && !checklistDismissed && (
+        <Callout tone="info">
+          <div className={o.between} style={{ alignItems: "flex-start" }}>
+            <div className={o.stack} style={{ gap: "4px" }}>
+              <Text weight="semibold" size={300}>
+                {t("office.overview.gettingStartedTitle")}
+              </Text>
+              <Text size={200}>{t("office.overview.gettingStartedBody")}</Text>
+              <Text size={200} className={o.muted}>
+                1. {t("office.overview.stepDept")} → 2. {t("office.overview.stepHire")} → 3. {t("office.overview.stepAssign")}
+              </Text>
+            </div>
+            <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={t("office.overview.dismissChecklistAria")} onClick={() => setChecklistDismissed(true)} />
+          </div>
+        </Callout>
+      )}
       <div className={mergeClasses(s.filterBar, isMobile && s.toolbarMobile)}>
         {isMobile ? (
           <>
             <SearchBox className={mergeClasses(s.search, s.searchMobile)} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
             {viewSwitch}
-            <Button className={o.touch} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
+            <Button className={o.touch} style={{ justifySelf: "end" }} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
               {t("office.overview.filtersBtn", { on: department !== "all" || status !== "all" ? t("office.overview.filtersOn") : "" })}
             </Button>
           </>
         ) : (
           <>
-            <Field label={t("office.overview.searchLabel")} className={s.search}>
-              <SearchBox style={{ width: "100%" }} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
-            </Field>
-            {pickers}
+            <SearchBox className={s.search} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
+            {inlinePickers}
             {waitingReviewCount > 0 && (
               <Button
-                size="medium"
+                size="small"
                 appearance={status === "waiting_review" ? "primary" : "outline"}
                 aria-pressed={status === "waiting_review"}
                 onClick={() => setStatus((cur) => (cur === "waiting_review" ? "all" : "waiting_review"))}
@@ -783,7 +970,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
               </Button>
             )}
             {filtered && (
-              <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={clearFilters}>
+              <Button size="small" appearance="subtle" icon={<Dismiss16Regular />} onClick={clearFilters}>
                 {t("office.overview.clear")}
               </Button>
             )}
@@ -794,7 +981,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       {isMobile && (
         <ResponsiveSheet open={filters} onOpenChange={setFilters} title={t("office.overview.filtersSheetTitle")}>
           <div className={mergeClasses(o.form, "orbit-touch")}>
-            {pickers}
+            {mobilePickers}
             {filtered && (
               <Button appearance="subtle" icon={<Dismiss16Regular />} onClick={() => { clearFilters(); setFilters(false); }}>
                 {t("office.overview.clearFilters")}
@@ -803,7 +990,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </div>
         </ResponsiveSheet>
       )}
-      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} viewMode={viewMode} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null} />
+      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} filtered={filtered} query={query} viewMode={viewMode} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null} onClearFilters={clearFilters} />
       <Leadership roster={r} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} />
       {hiring && (
         <HireWizard

@@ -25,6 +25,7 @@ import {
   Spinner,
   Switch,
   Text,
+  Tooltip,
   makeStyles,
   mergeClasses,
   shorthands,
@@ -255,6 +256,7 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
     try {
       await navigator.clipboard.writeText(text);
       setCopied(what);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       setCopied(null);
     }
@@ -329,7 +331,7 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
                   <Field label={t("settings.connections.signIn.step2Paste")} style={{ flexGrow: 1, minWidth: 0 }}>
                     <Input value={code} autoComplete="off" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
                   </Field>
-                  <Button type="submit" appearance="primary" disabled={busy || code.trim().length < 4} style={{ alignSelf: "flex-end" }}>
+                  <Button type="submit" appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy || code.trim().length < 4} style={{ alignSelf: "flex-end" }}>
                     {t("settings.connections.signIn.sendCode")}
                   </Button>
                 </form>
@@ -363,7 +365,7 @@ function SignIn({ c, autoStart, onStarted, onChanged, onClose }: { c: RuntimeCon
                 : t("settings.connections.signIn.newPromptClaude")}
           </Text>
           <div className={s.actions}>
-            <Button className={s.action} appearance="primary" icon={<Key16Regular />} disabled={busy} onClick={() => void start()}>
+            <Button className={s.action} appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : <Key16Regular />} disabled={busy} onClick={() => void start()}>
               {ended || c.auth === "connected" ? t("settings.connections.signIn.againButton") : t("settings.connections.signIn.button")}
             </Button>
             {onClose && (
@@ -392,6 +394,7 @@ function TerminalCommand({ command, secondary }: { command: string; secondary: b
     try {
       await navigator.clipboard.writeText(command);
       setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
@@ -594,7 +597,11 @@ function Confirm({ title, text, action, onConfirm, onClose }: { title: string; t
           <DialogContent>{text}</DialogContent>
           <DialogActions>
             <Button onClick={onClose}>{t("settings.connections.cancel")}</Button>
-            <Button appearance="primary" onClick={onConfirm}>
+            <Button
+              appearance="primary"
+              style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+              onClick={onConfirm}
+            >
               {action}
             </Button>
           </DialogActions>
@@ -641,8 +648,8 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
   const replaceKey = () =>
     act(async () => {
       const apiKey = key.trim();
-      setKey("");
       await send("PATCH", path, { apiKey }, ifMatch(c.version));
+      setKey("");
       setReconnecting(false);
     });
   const employees = c.employees === 1 ? t("settings.connections.employees.one") : t("settings.connections.employees.many", { count: c.employees });
@@ -699,7 +706,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
         >
           <ApiKeyField value={key} onChange={setKey} />
           <div className={s.actions}>
-            <Button type="submit" appearance="primary" disabled={busy || key.trim().length === 0}>
+            <Button type="submit" appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy || key.trim().length === 0}>
               {t("settings.connections.replaceKey.save")}
             </Button>
             <Button onClick={() => setReconnecting(false)}>{t("settings.connections.cancel")}</Button>
@@ -708,7 +715,7 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
       )}
       {c.runtime === "claude" && <OrbitPlugin c={c} onChanged={onChanged} />}
       <div className={s.actions}>
-        <Button className={s.action} size="small" icon={<ArrowSync16Regular />} disabled={busy} onClick={() => void act(() => send("POST", `${path}/check`))} title={t("settings.connections.recheck.title")}>
+        <Button className={s.action} size="small" icon={busy ? <Spinner size="extra-tiny" /> : <ArrowSync16Regular />} disabled={busy} onClick={() => void act(() => send("POST", `${path}/check`))} title={t("settings.connections.recheck.title")}>
           {t("settings.connections.recheck")}
         </Button>
         {c.method !== "cloud" && (
@@ -724,9 +731,13 @@ function ConnectionCard({ c, autoSignIn, onAutoSignIn, onChanged }: { c: Runtime
         <Button className={s.action} size="small" icon={<PlugDisconnected16Regular />} disabled={busy || c.auth === "disconnected"} onClick={() => setConfirm("disconnect")} title={t("settings.connections.disconnect.title")}>
           {t("settings.connections.disconnect")}
         </Button>
-        <Button className={s.action} size="small" appearance="subtle" icon={<Delete16Regular />} disabled={busy} onClick={() => setConfirm("delete")} title={t("settings.connections.delete.title")}>
-          {t("settings.connections.delete")}
-        </Button>
+        <Tooltip content={c.employees > 0 ? t("settings.connections.delete.inUse", { count: c.employees }) : t("settings.connections.delete.title")} relationship="description">
+          <span>
+            <Button className={s.action} size="small" appearance="subtle" icon={<Delete16Regular />} disabled={busy || c.employees > 0} onClick={() => setConfirm("delete")}>
+              {t("settings.connections.delete")}
+            </Button>
+          </span>
+        </Tooltip>
       </div>
       <Text size={200} className={s.muted}>
         {t("settings.connections.card.legend", { impact: c.employees > 0 ? t("settings.connections.card.impactActive", { count: c.employees }) : t("settings.connections.card.impactIdle") })}
@@ -800,10 +811,11 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
     };
     setBusy(true);
     setError(null);
-    // The key leaves the page's state as it is sent: it is never shown back.
-    setApiKey("");
     try {
-      onDone(await send<RuntimeConnection>("POST", "/api/connections", body));
+      const created = await send<RuntimeConnection>("POST", "/api/connections", body);
+      // The key leaves the page's state once sent: it is never shown back.
+      setApiKey("");
+      onDone(created);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -857,7 +869,7 @@ function AddConnection({ runtime, methods, onDone, onCancel }: { runtime: Runtim
         </MessageBar>
       )}
       <div className={s.actions}>
-        <Button type="submit" appearance="primary" disabled={busy || method === null || (method === "api_key" && apiKey.trim().length === 0)}>
+        <Button type="submit" appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy || method === null || (method === "api_key" && apiKey.trim().length === 0)}>
           {t("settings.connections.add.submit")}
         </Button>
         <Button onClick={onCancel}>{t("settings.connections.cancel")}</Button>
@@ -882,7 +894,7 @@ function RuntimeCard({ runtime, view, onChanged }: { runtime: RuntimeKind; view:
         <Text weight="semibold" size={400}>
           {RUNTIME_LABELS[runtime]}
         </Text>
-        <Button size="small" icon={<Add16Regular />} disabled={!installed || adding} onClick={() => setAdding(true)}>
+        <Button size="small" appearance={connections.length === 0 && installed ? "primary" : "secondary"} icon={<Add16Regular />} disabled={!installed || adding} onClick={() => setAdding(true)}>
           {t("settings.connections.add.button")}
         </Button>
       </div>

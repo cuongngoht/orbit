@@ -5,7 +5,7 @@
 import { Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowLeft20Regular, Navigation20Regular } from "@fluentui/react-icons";
 import type { AuthAccount } from "@orbit-web/contracts";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import {
   IconBadge,
   InboxActionIcon,
@@ -83,7 +83,7 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
   },
-  subnavMobile: { maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", gap: "6px", overflowX: "auto", minWidth: 0 },
+  subnavMobile: { maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 },
   tab: {
     flexShrink: 0,
     minHeight: "30px",
@@ -91,6 +91,7 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightRegular,
     color: tokens.colorNeutralForeground2,
     "&[data-fui-focus-visible]::after": { borderRadius: "9999px" },
+    "@media (max-width: 639px)": { paddingLeft: "8px", paddingRight: "8px", fontSize: tokens.fontSizeBase200 },
     "@media (pointer: coarse)": { minHeight: "44px" },
   },
   tabOn: {
@@ -111,11 +112,11 @@ const useStyles = makeStyles({
     minWidth: 0,
     overflowY: "auto",
     overflowX: "hidden",
-    paddingTop: "20px",
+    paddingTop: "14px",
     paddingBottom: "max(32px, env(safe-area-inset-bottom))",
     paddingLeft: "20px",
     paddingRight: "20px",
-    "@media (max-width: 639px)": { paddingTop: "12px", paddingLeft: "10px", paddingRight: "10px" },
+    "@media (max-width: 639px)": { paddingTop: "10px", paddingLeft: "10px", paddingRight: "10px" },
   },
 });
 
@@ -157,9 +158,16 @@ export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: 
   const { t } = useI18n();
   const s = useStyles();
   const { isMobile } = useViewport();
+  const [origin, setOrigin] = useState<OfficePage | null>(null);
   const detail = page === "employee" || page === "mission";
-  // A detail screen goes back to the list it belongs to.
-  const back: OfficePage = page === "mission" ? "work" : "overview";
+  const goTracked: Go = (...args) => {
+    const [nextPage] = args;
+    if (!detail && (nextPage === "employee" || nextPage === "mission")) setOrigin(page);
+    else if (nextPage === "overview" || nextPage === "work" || nextPage === "inbox" || nextPage === "schedule") setOrigin(null);
+    go(...args);
+  };
+  // A detail screen goes back to the originating view or the list it belongs to.
+  const back: OfficePage = origin ?? (page === "mission" ? "work" : "overview");
   return (
     <div className={`${s.root} orbit-touch`}>
       <header className={s.top}>
@@ -167,7 +175,7 @@ export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: 
           <div className={s.left}>
             {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("office.nav.openNav")} onClick={onOpenNav} />}
             {detail ? (
-              <Button className={s.touch} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => go(back)}>
+              <Button className={s.touch} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => goTracked(back)}>
                 {t("office.nav.back")}
               </Button>
             ) : (
@@ -177,16 +185,16 @@ export function OfficeView({ page, item, tab, go, account, onOpenNav }: { page: 
               {t("office.nav.headerTitle", { title: t(TITLE_KEYS[page]) })}
             </Text>
           </div>
-          {!isMobile && <OfficeNav page={page} go={go} mobile={false} />}
+          {!isMobile && <OfficeNav page={page} go={goTracked} mobile={false} />}
         </div>
       </header>
       {isMobile && !detail && (
         <div className={s.subnavBar}>
-          <OfficeNav page={page} go={go} mobile />
+          <OfficeNav page={page} go={goTracked} mobile />
         </div>
       )}
       <div className={s.content}>
-        <Page page={page} item={item} tab={tab} go={go} account={account} />
+        <Page page={page} item={item} tab={tab} go={goTracked} account={account} />
       </div>
     </div>
   );

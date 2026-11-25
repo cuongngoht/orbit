@@ -1,6 +1,6 @@
 // CHANGE THE PASSWORD: the current one, a new one held to the rules as it is typed, and the new one again. The API
 // answers with the sign-in as it is afterwards (the session may rotate, and a trial seed's waiver ends here).
-import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, makeStyles } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, makeStyles } from "@fluentui/react-components";
 import { checkChangePassword, type AuthStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useI18n } from "../../i18n";
@@ -58,9 +58,14 @@ export function ChangePasswordForm({ username, onChanged, submitLabel }: { usern
       <PasswordInput label={t("settings.auth.currentPassword")} value={current} onChange={setCurrent} autoComplete="current-password" />
       <PasswordInput label={t("settings.auth.newPassword")} value={next} onChange={setNext} autoComplete="new-password" />
       <PasswordRules password={next} username={username} />
-      <Field label={t("settings.auth.repeatNewPassword")} required validationState={mismatch ? "error" : "none"} validationMessage={mismatch ? t("settings.auth.passwordsDifferSentence") : undefined}>
-        <Input type="password" value={again} autoComplete="new-password" onChange={(_, d) => setAgain(d.value)} />
-      </Field>
+      <PasswordInput
+        label={t("settings.auth.repeatNewPassword")}
+        value={again}
+        onChange={setAgain}
+        autoComplete="new-password"
+        validationState={mismatch ? "error" : "none"}
+        validationMessage={mismatch ? t("settings.auth.passwordsDifferSentence") : undefined}
+      />
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>

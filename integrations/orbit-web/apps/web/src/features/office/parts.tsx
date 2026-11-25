@@ -13,17 +13,17 @@ import { useAppStream } from "../../services/events/AppEvents";
 export const NETWORK_DISCLOSURE = t("office.shared.networkDisclosure");
 
 export const useOfficeStyles = makeStyles({
-  page: { display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", boxSizing: "border-box", minWidth: 0 },
+  page: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", boxSizing: "border-box", minWidth: 0 },
   headingReset: { marginTop: 0, marginBottom: 0 },
   heroCard: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    paddingTop: "16px",
-    paddingRight: "22px",
-    paddingBottom: "16px",
-    paddingLeft: "22px",
-    "@media (max-width: 639px)": { paddingTop: "14px", paddingRight: "14px", paddingBottom: "14px", paddingLeft: "14px" },
+    gap: "10px",
+    paddingTop: "13px",
+    paddingRight: "18px",
+    paddingBottom: "13px",
+    paddingLeft: "18px",
+    "@media (max-width: 639px)": { paddingTop: "12px", paddingRight: "12px", paddingBottom: "12px", paddingLeft: "12px" },
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     borderRadius: "16px",
     backgroundColor: "var(--orbit-card-bg)",
@@ -61,7 +61,7 @@ export const useOfficeStyles = makeStyles({
     gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
     gap: "8px",
     minWidth: 0,
-    "@media (max-width: 900px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
+    "@media (min-width: 480px) and (max-width: 900px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
     "@media (max-width: 479px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
   },
   statCard: {
@@ -70,15 +70,16 @@ export const useOfficeStyles = makeStyles({
     alignItems: "center",
     justifyContent: "space-between",
     gap: "8px",
-    minHeight: "42px",
-    paddingTop: "8px",
-    paddingRight: "12px",
-    paddingBottom: "8px",
-    paddingLeft: "12px",
+    minHeight: "38px",
+    paddingTop: "6px",
+    paddingRight: "10px",
+    paddingBottom: "6px",
+    paddingLeft: "10px",
     borderRadius: "10px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
     minWidth: 0,
+    overflow: "hidden",
     textAlign: "left",
   },
   statCardAction: {
@@ -194,7 +195,7 @@ export const useOfficeStyles = makeStyles({
   // A control a finger can hit on a touch screen.
   touch: { "@media (pointer: coarse)": { minHeight: "44px", minWidth: "44px" } },
   form: { display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 },
-  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px", "@media (max-width: 639px)": { gridTemplateColumns: "1fr" } },
+  formGrid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "12px", alignItems: "start", "@media (max-width: 639px)": { gridTemplateColumns: "1fr" } },
   dl: { display: "grid", gridTemplateColumns: "minmax(0, 180px) minmax(0, 1fr)", gap: "6px 14px", marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, "@media (max-width: 479px)": { gridTemplateColumns: "1fr" } },
   dt: { color: tokens.colorNeutralForeground3 },
   dd: { marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, overflowWrap: "anywhere", minWidth: 0 },
@@ -381,8 +382,8 @@ export function humanizeActor(
 ): { label: string; raw: string | null } {
   if (!actor) return { label: "—", raw: null };
   if (actor.startsWith("owner:")) return { label: tr("office.mission.actorOwner"), raw: actor };
-  if (actor.startsWith("agent:employee:")) {
-    const empId = actor.slice("agent:employee:".length);
+  if (actor.startsWith("agent:employee:") || actor.startsWith("employee:")) {
+    const empId = actor.startsWith("agent:employee:") ? actor.slice("agent:employee:".length) : actor.slice("employee:".length);
     const match = assignments.find((a) => a.employeeId === empId);
     return { label: match?.employeeName ?? empId.slice(0, 8), raw: actor };
   }

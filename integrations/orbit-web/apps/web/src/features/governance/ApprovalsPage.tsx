@@ -10,7 +10,7 @@ import { useI18n, type MessageKey } from "../../i18n";
 import { get } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { ApprovalCard } from "./ApprovalCard";
-import { Card, EmptyState, plural, useParts } from "./parts";
+import { Card, EmptyState, hasEmployeeRef, plural, useEmployeeNames, useParts } from "./parts";
 
 const FILTERS: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
   { value: "pending", labelKey: "governance.approvals.filter.pending" },
@@ -26,6 +26,12 @@ export function ApprovalsPage({ item }: { item: string | null }) {
   const s = useParts();
   const [shown, setShown] = useState("pending");
   const list = useResource<ApprovalList>(() => get("/api/governance/approvals"), []);
+  const needsNames = (list.data?.approvals ?? []).some(
+    (a) =>
+      a.requestedBy.includes("employee:") ||
+      Object.entries(a.params).some(([k, v]) => ["employee", "employeeId", "targetEmployeeId", "fromEmployeeId"].includes(k) && typeof v === "string" && hasEmployeeRef(v)),
+  );
+  const employeeNames = useEmployeeNames(needsNames);
   useAppEvent("approval.changed", () => void list.reload());
   if (list.data === null) return list.error ? <MessageBar intent="error"><MessageBarBody>{list.error}</MessageBarBody></MessageBar> : <Spinner label={t("governance.approvals.reading")} />;
   const all = list.data.approvals;
@@ -74,7 +80,7 @@ export function ApprovalsPage({ item }: { item: string | null }) {
         )}
       </Card>
       {approvals.map((a) => (
-        <ApprovalCard key={a.id} approval={a} onChanged={() => void list.reload()} />
+        <ApprovalCard key={a.id} approval={a} employeeNames={employeeNames} onChanged={() => void list.reload()} />
       ))}
     </div>
   );

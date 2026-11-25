@@ -39,6 +39,7 @@ import {
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
 import { ArrowDownload16Regular, MoreHorizontal16Regular, Warning16Regular } from "@fluentui/react-icons";
+import { Markdown } from "../../components/Markdown";
 import {
   ASSIGNMENT_STATE_TEXT,
   DELIVERY_STATE_TEXT,
@@ -428,18 +429,67 @@ function CommandDialogs({ a, dialog, onClose, onDone, onLoadLatest }: { a: Assig
 
 // The commands of the mission's root, under its plan. Its question is answered where the questions are; here only when
 // the mission says no question of it (an answer the API still asks for is never left without a form).
+function CancelConfirmDialog({
+  open,
+  title,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useI18n();
+  if (!open) return null;
+  return (
+    <Dialog open onOpenChange={(_, d) => !d.open && !busy && onCancel()}>
+      <DialogSurface className="orbit-touch">
+        <DialogBody>
+          <DialogTitle>{t("office.mission.confirmCancelTitle", { title })}</DialogTitle>
+          <DialogContent>
+            <Text>{t("office.mission.confirmCancelBody")}</Text>
+          </DialogContent>
+          <DialogActions>
+            <Button disabled={busy} onClick={onCancel}>
+              {t("office.mission.confirmCancelKeep")}
+            </Button>
+            <Button
+              appearance="primary"
+              disabled={busy}
+              style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+              onClick={onConfirm}
+            >
+              {t("office.mission.action.cancel")}
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
 function AssignmentActions({ a, answerHere, onDone, onLoadLatest }: { a: AssignmentView; answerHere: boolean; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const restore = useRestoreFocusTarget();
   const c = useCommands(a, onDone);
   const [answer, setAnswer] = useState("");
+  const [confirmCancel, setConfirmCancel] = useState(false);
   return (
     <div className={o.stack}>
       {(c.commands.length > 0 || c.handOver || c.repin) && (
         <div className={o.row}>
           {c.commands.map((command) => (
-            <Button key={command} className={o.touch} size="small" disabled={c.act.busy} onClick={() => void c.run(command)}>
+            <Button
+              key={command}
+              className={o.touch}
+              size="small"
+              disabled={c.act.busy}
+              onClick={() => (command === "cancel" ? setConfirmCancel(true) : void c.run(command))}
+            >
               {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
             </Button>
           ))}
@@ -476,6 +526,16 @@ function AssignmentActions({ a, answerHere, onDone, onLoadLatest }: { a: Assignm
       )}
       <ProblemBar problem={c.act.problem} onLoadLatest={onLoadLatest} />
       <CommandDialogs a={a} dialog={c.dialog} onClose={() => c.setDialog(null)} onDone={onDone} onLoadLatest={onLoadLatest} />
+      <CancelConfirmDialog
+        open={confirmCancel}
+        title={a.title}
+        busy={c.act.busy}
+        onConfirm={() => {
+          setConfirmCancel(false);
+          void c.run("cancel");
+        }}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </div>
   );
 }
@@ -484,24 +544,41 @@ function AssignmentActions({ a, answerHere, onDone, onLoadLatest }: { a: Assignm
 function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useCommands> }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
+  const [confirmCancel, setConfirmCancel] = useState(false);
   if (c.commands.length === 0 && !c.handOver && !c.repin) return null;
   return (
-    <Menu>
-      <MenuTrigger disableButtonEnhancement>
-        <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} disabled={c.act.busy} aria-label={t("office.mission.partActions", { title: a.title })} />
-      </MenuTrigger>
-      <MenuPopover>
-        <MenuList>
-          {c.commands.map((command) => (
-            <MenuItem key={command} className={command === "cancel" ? o.dangerMenuItem : undefined} onClick={() => void c.run(command)}>
-              {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
-            </MenuItem>
-          ))}
-          {c.handOver && <MenuItem onClick={() => c.setDialog("hand_over")}>{t("office.mission.action.handOver")}</MenuItem>}
-          {c.repin && <MenuItem onClick={() => c.setDialog("repin")}>{t("office.mission.action.repin")}</MenuItem>}
-        </MenuList>
-      </MenuPopover>
-    </Menu>
+    <>
+      <Menu>
+        <MenuTrigger disableButtonEnhancement>
+          <Button className={o.touch} appearance="subtle" size="small" icon={<MoreHorizontal16Regular />} disabled={c.act.busy} aria-label={t("office.mission.partActions", { title: a.title })} />
+        </MenuTrigger>
+        <MenuPopover>
+          <MenuList>
+            {c.commands.map((command) => (
+              <MenuItem
+                key={command}
+                className={command === "cancel" ? o.dangerMenuItem : undefined}
+                onClick={() => (command === "cancel" ? setConfirmCancel(true) : void c.run(command))}
+              >
+                {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
+              </MenuItem>
+            ))}
+            {c.handOver && <MenuItem onClick={() => c.setDialog("hand_over")}>{t("office.mission.action.handOver")}</MenuItem>}
+            {c.repin && <MenuItem onClick={() => c.setDialog("repin")}>{t("office.mission.action.repin")}</MenuItem>}
+          </MenuList>
+        </MenuPopover>
+      </Menu>
+      <CancelConfirmDialog
+        open={confirmCancel}
+        title={a.title}
+        busy={c.act.busy}
+        onConfirm={() => {
+          setConfirmCancel(false);
+          void c.run("cancel");
+        }}
+        onCancel={() => setConfirmCancel(false)}
+      />
+    </>
   );
 }
 
@@ -651,7 +728,7 @@ function ResponsibleNowCard({ m, go }: { m: MissionDetail; go: Go }) {
 
 // One question: who asked whom, how it stands, the answer and who gave it, and every hop it took (to whom, why, when). A
 // question asked of the person is answered here, against the version of the asker read.
-function Question({ c, asker, onDone, onLoadLatest }: { c: ClarificationView; asker: AssignmentView | null; onDone: () => void; onLoadLatest: () => void }) {
+function Question({ c, asker, assignments, onDone, onLoadLatest }: { c: ClarificationView; asker: AssignmentView | null; assignments: readonly AssignmentView[]; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -681,7 +758,7 @@ function Question({ c, asker, onDone, onLoadLatest }: { c: ClarificationView; as
       {c.answer !== null && (
         <div className={o.inset}>
           <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-            {t("office.mission.answeredBy", { by: c.answeredBy ?? "—", at: when(c.answeredAt) })}
+            {t("office.mission.answeredBy", { by: humanizeActor(c.answeredBy, assignments, t).label, at: when(c.answeredAt) })}
           </Text>
           <Text size={200} className={s.plain}>
             {c.answer}
@@ -733,7 +810,7 @@ function Questions({ m, onDone, onLoadLatest }: { m: MissionDetail; onDone: () =
       </Text>
       <ul className={o.list} aria-label={t("office.mission.questionsAria")}>
         {m.clarifications.map((c) => (
-          <Question key={c.id} c={c} asker={m.assignments.find((a) => a.id === c.askerAssignmentId) ?? null} onDone={onDone} onLoadLatest={onLoadLatest} />
+          <Question key={c.id} c={c} asker={m.assignments.find((a) => a.id === c.askerAssignmentId) ?? null} assignments={m.assignments} onDone={onDone} onLoadLatest={onLoadLatest} />
         ))}
       </ul>
     </section>
@@ -742,7 +819,7 @@ function Questions({ m, onDone, onLoadLatest }: { m: MissionDetail; onDone: () =
 
 // One thing a lead shared with a part of its team: what (a source revision, or a part's hand-in -- its summary or in
 // full), with whom, and whether it still holds. Taking it back asks first; every attempt that holds it is stopped.
-function Share({ sh, leadName, onDone }: { sh: DataShareView; leadName: string; onDone: () => void }) {
+function Share({ sh, leadName, assignments, onDone }: { sh: DataShareView; leadName: string; assignments: readonly AssignmentView[]; onDone: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const act = useAction();
@@ -778,7 +855,7 @@ function Share({ sh, leadName, onDone }: { sh: DataShareView; leadName: string; 
       </Text>
       <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
         {t("office.mission.sharedAt", { at: when(sh.sharedAt) })}
-        {revoked ? t("office.mission.revokedMeta", { at: when(sh.revokedAt), by: sh.revokedBy ?? "—" }) : ""}
+        {revoked ? t("office.mission.revokedMeta", { at: when(sh.revokedAt), by: humanizeActor(sh.revokedBy, assignments, t).label }) : ""}
       </Text>
       <ProblemBar problem={act.problem} />
       {confirming && (
@@ -816,7 +893,7 @@ function Shares({ m, onDone }: { m: MissionDetail; onDone: () => void }) {
       </Text>
       <ul className={o.list} aria-label={t("office.mission.sharesAria")}>
         {m.dataShares.map((sh) => (
-          <Share key={sh.id} sh={sh} leadName={m.assignments.find((a) => a.id === sh.leadAssignmentId)?.employeeName ?? sh.sharedBy} onDone={onDone} />
+          <Share key={sh.id} sh={sh} leadName={m.assignments.find((a) => a.id === sh.leadAssignmentId)?.employeeName ?? humanizeActor(sh.sharedBy, m.assignments, t).label} assignments={m.assignments} onDone={onDone} />
         ))}
       </ul>
     </section>
@@ -970,6 +1047,7 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
   const [accepting, setAccepting] = useState(false);
   const reviewable = h.status === "submitted" && a !== null;
   const submitter = humanizeActor(h.submittedBy, assignments, t);
+  const reviewer = h.review ? humanizeActor(h.review.by, assignments, t) : null;
   const supportedCount = h.claims.filter((c) => c.supported).length;
   const unverifiedCount = h.claims.length - supportedCount;
   const review = async (command: AssignmentCommand, body: object) => {
@@ -996,7 +1074,7 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
           {t("office.mission.handedIn", { at: when(h.submittedAt), by: submitter.label })}
         </Text>
       </div>
-      <Text className={o.wrap}>{h.summary}</Text>
+      <Markdown text={h.summary} />
       {h.artifacts.length > 0 && (
         <ul className={o.list} aria-label={t("office.mission.artifactsAria", { revision: h.revision })}>
           {h.artifacts.map((x) => {
@@ -1059,9 +1137,9 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
           {t("office.mission.missingDeliverables", { missing: h.missing.join(", ") })}
         </Text>
       )}
-      {h.review && (
-        <Text size={200} className={mergeClasses(o.muted, s.plain)}>
-          {t("office.mission.reviewedBy", { by: h.review.by, at: when(h.review.at) })}
+      {h.review && reviewer && (
+        <Text size={200} className={mergeClasses(o.muted, s.plain)} title={reviewer.raw ?? undefined}>
+          {t("office.mission.reviewedBy", { by: reviewer.label, at: when(h.review.at) })}
           {h.review.note ? `: ${h.review.note}` : ""}
         </Text>
       )}

@@ -78,7 +78,7 @@ const useStyles = makeStyles({
   id: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
   answer: { minWidth: "200px" },
   control: { width: "100%", minWidth: 0 },
-  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px" },
+  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px", alignItems: "start" },
   warn: { color: tokens.colorPaletteDarkOrangeForeground1 },
 });
 

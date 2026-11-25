@@ -4,10 +4,10 @@
 // effort, mode). Typing is always possible; sending waits until the chat can take a message. `/` at the start of the
 // message opens the slash menu (SlashMenu.tsx): ↑ ↓ move, Enter or Tab takes one, Escape closes it. Where the page lets
 // a message carry images (onUploadImage), a screenshot pasted, images dropped or picked go with it (ImageAttachments.tsx).
-import { Button, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Spinner, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ArrowUp20Filled, ImageAdd20Regular, SlashForward16Regular, Stop16Filled } from "@fluentui/react-icons";
 import { IMAGE_MEDIA_TYPES, type SlashCommand } from "@orbit-web/contracts";
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { UploadImage } from "../../services/images";
 import { AttachmentStrip, filesOf, useImageAttachments } from "./ImageAttachments";
 import { useViewport } from "../../hooks/useViewport";
@@ -52,7 +52,7 @@ const useStyles = makeStyles({
     paddingBottom: "6px",
     paddingLeft: "16px",
     maxHeight: "40vh",
-    "::placeholder": { color: tokens.colorNeutralForeground4 },
+    "::placeholder": { color: tokens.colorNeutralForeground3 },
   },
   inputTouch: {
     fontSize: "16px",
@@ -76,7 +76,9 @@ const useStyles = makeStyles({
     minWidth: 0,
   },
   footerMobile: {
+    flexWrap: "wrap",
     alignItems: "center",
+    rowGap: "6px",
     paddingTop: "2px",
     paddingRight: "8px",
     paddingBottom: "8px",
@@ -95,6 +97,14 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
   },
+  toolbarAreaMobile: {
+    flexBasis: "100%",
+    width: "100%",
+    order: -1,
+  },
+  sendMobile: {
+    marginLeft: "auto",
+  },
   send: {
     flexShrink: 0,
     minWidth: "36px",
@@ -109,9 +119,9 @@ const useStyles = makeStyles({
     height: "40px",
   },
   toolbar: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", width: "100%", minWidth: 0 },
-  toolbarMobile: { flexWrap: "nowrap", overflowX: "auto", gap: "6px", paddingRight: "18px" },
+  toolbarMobile: { rowGap: "6px", columnGap: "6px" },
   side: { display: "flex", alignItems: "center", gap: "4px", flexWrap: "wrap", minWidth: 0 },
-  sideMobile: { flexWrap: "nowrap", flexShrink: 0, gap: "6px" },
+  sideMobile: { rowGap: "6px", columnGap: "6px" },
   grow: { flexGrow: 1 },
 });
 
@@ -123,8 +133,11 @@ export interface ComposerProps {
   running: boolean;
   busy?: boolean;
   autoFocus?: boolean;
+  defaultValue?: string;
+  onDraftChange?: (text: string) => void;
+  sendDisabledReason?: string;
   // The words, and the ids of the images that go with them (none where the page takes no images).
-  onSend: (text: string, images: string[]) => void;
+  onSend: (text: string, images: string[]) => void | boolean | Promise<boolean | void>;
   // Where a message may carry images: how one is uploaded. Absent: no images (research).
   onUploadImage?: UploadImage;
   onStop?: () => void;
@@ -144,7 +157,7 @@ export function Composer(p: ComposerProps) {
   const { t } = useI18n();
   const s = useStyles();
   const { isMobile, isCoarse } = useViewport();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(p.defaultValue ?? "");
   const [active, setActive] = useState(0);
   // The text the menu was closed at with Escape: it stays closed until the text changes.
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -160,15 +173,43 @@ export function Composer(p: ComposerProps) {
   const current = Math.min(active, Math.max(items.length - 1, 0));
   const offering = open && items.length > 0;
   const ready = p.canSend && !p.running && !p.busy && !images.holding && (text.trim().length > 0 || images.ids.length > 0);
+  const disabledReason = !p.canSend
+    ? p.sendDisabledReason ?? t("chat.composer.sendDisabledUnavailable")
+    : p.busy
+      ? t("chat.composer.sendDisabledBusy")
+      : images.holding
+        ? t("chat.composer.sendDisabledUploading")
+        : text.trim().length === 0 && images.ids.length === 0
+          ? t("chat.composer.sendDisabledEmpty")
+          : null;
   const edit = (value: string) => {
     setText(value);
     setActive(0);
+    p.onDraftChange?.(value);
+  };
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (el === null) return;
+    el.style.height = "auto";
+    if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight}px`;
+  }, [text, isMobile]);
+  const clear = () => {
+    edit("");
+    images.clear();
   };
   const submit = () => {
     if (!ready) return;
-    p.onSend(text, images.ids);
-    edit("");
-    images.clear();
+    const result = p.onSend(text, images.ids);
+    if (result !== null && typeof result === "object" && typeof (result as PromiseLike<unknown>).then === "function") {
+      void (result as PromiseLike<boolean | void>).then(
+        (ok) => {
+          if (ok !== false) clear();
+        },
+        () => {},
+      );
+      return;
+    }
+    if (result !== false) clear();
   };
   const pick = (c: SlashCommand) => {
     edit(`/${c.name} `);
@@ -215,7 +256,9 @@ export function Composer(p: ComposerProps) {
             e.preventDefault();
             setDragging(true);
           }}
-          onDragLeave={() => setDragging(false)}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
           onDrop={(e) => {
             setDragging(false);
             if (images.add(filesOf(e.dataTransfer))) e.preventDefault();
@@ -250,15 +293,17 @@ export function Composer(p: ComposerProps) {
             }}
           />
           <div className={mergeClasses(s.footer, isMobile && s.footerMobile)}>
-            {isMobile && p.commandsPath !== undefined && (
-              <Button
-                type="button"
-                className={s.slashBtn}
-                appearance={open ? "primary" : "subtle"}
-                icon={<SlashForward16Regular />}
-                aria-label={t("chat.composer.skillsCommandsAria")}
-                onClick={toggleSlash}
-              />
+            {p.commandsPath !== undefined && (
+              <Tooltip content={t("chat.composer.slashBtnTooltip")} relationship="label">
+                <Button
+                  type="button"
+                  className={s.slashBtn}
+                  appearance={open ? "primary" : "subtle"}
+                  icon={<SlashForward16Regular />}
+                  aria-label={t("chat.composer.skillsCommandsAria")}
+                  onClick={toggleSlash}
+                />
+              </Tooltip>
             )}
             {images.enabled && (
               <>
@@ -281,9 +326,9 @@ export function Composer(p: ComposerProps) {
                 />
               </>
             )}
-            <div className={s.toolbarArea}>
+            <div className={mergeClasses(s.toolbarArea, isMobile && s.toolbarAreaMobile)}>
               {(p.left || p.right) && (
-                <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile, isMobile && "orbit-hscroll orbit-hscroll-fade")} role="toolbar" aria-label={t("chat.composer.toolbarAria")}>
+                <div className={mergeClasses(s.toolbar, isMobile && s.toolbarMobile)} role="toolbar" aria-label={t("chat.composer.toolbarAria")}>
                   <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.left}</div>
                   {!isMobile && <div className={s.grow} />}
                   <div className={mergeClasses(s.side, isMobile && s.sideMobile)}>{p.right}</div>
@@ -292,11 +337,25 @@ export function Composer(p: ComposerProps) {
             </div>
             {p.running ? (
               <Tooltip content={t("chat.composer.stop")} relationship="label">
-                <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
+                <Button className={mergeClasses(s.send, touchSized && s.sendTouch, isMobile && s.sendMobile)} shape="circular" appearance="secondary" icon={<Stop16Filled />} onClick={p.onStop} />
+              </Tooltip>
+            ) : ready ? (
+              <Tooltip content={t("chat.composer.send")} relationship="label">
+                <Button className={mergeClasses(s.send, touchSized && s.sendTouch, isMobile && s.sendMobile)} shape="circular" appearance="primary" type="submit" aria-label={t("chat.composer.send")} icon={<ArrowUp20Filled />} />
               </Tooltip>
             ) : (
-              <Tooltip content={t("chat.composer.send")} relationship="label">
-                <Button className={mergeClasses(s.send, touchSized && s.sendTouch)} shape="circular" appearance="primary" type="submit" icon={<ArrowUp20Filled />} disabled={!ready} />
+              <Tooltip content={disabledReason ?? t("chat.composer.send")} relationship="description">
+                <span className={isMobile ? s.sendMobile : undefined} style={{ display: "inline-flex" }}>
+                  <Button
+                    className={mergeClasses(s.send, touchSized && s.sendTouch)}
+                    shape="circular"
+                    appearance="primary"
+                    type="submit"
+                    aria-label={t("chat.composer.send")}
+                    icon={p.busy ? <Spinner size="extra-tiny" /> : <ArrowUp20Filled />}
+                    disabled
+                  />
+                </span>
               </Tooltip>
             )}
           </div>

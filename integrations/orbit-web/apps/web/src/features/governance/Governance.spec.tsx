@@ -8,6 +8,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import {
   ACCOUNT_ID,
   approval,
+  auditEvent,
   authSession,
   CSRF,
   DRAFT_DIGEST,
@@ -22,6 +23,7 @@ import {
   revisionView,
   WORKSPACE_ID,
 } from "../../testing/fixtures";
+import { EMP_ANA, EMP_BAO, employeeCard, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { GovernanceView } from "./GovernanceView";
 
@@ -265,5 +267,107 @@ describe("the account's governance", () => {
     fakeApi().on("GET", "/api/governance/overview", () => withStatus(401, { error: { code: "sign_in_required", message: "Sign in to Orbit to continue." } }));
     renderLive(<GovernanceView page="overview" item={null} go={vi.fn()} account={ACCOUNT} />);
     expect(await screen.findByText("Sign in to Orbit to continue.")).toBeInTheDocument();
+  });
+
+  test("Decisions and Audit timeline replace raw employeeIds with employee names", async () => {
+    const deskAna = {
+      employeeId: EMP_ANA,
+      name: "Alex Chen",
+      employment: "active",
+      reason: null,
+      leftAt: null,
+      sandbox: { state: "READY", reason: null },
+      deskMiB: 400,
+      cacheMiB: 100,
+      deskUsedMiB: 1,
+      cacheUsedMiB: 1,
+      measuredAt: "2026-11-25T10:00:00.000Z",
+      deskVersion: 1,
+      busy: false,
+      canBrowse: true,
+      canClean: true,
+      version: 1,
+    };
+    const r = roster({ employees: [employeeCard({ id: EMP_ANA, name: "Alex Chen" }), employeeCard({ id: EMP_BAO, name: "Minh Tran" })] });
+    fakeApi()
+      .on("GET", "/api/office/desks", () => ({ desks: [deskAna], storage: { committedMiB: 500, budgetMiB: 18432 } }))
+      .on("GET", "/api/office/roster", () => r)
+      .on("GET", "/api/governance/decisions", () => ({
+        decisions: [
+          {
+            eventId: "evt-d1",
+            at: "2026-11-25T10:00:00.000Z",
+            principalType: "agent",
+            principalId: `employee:${EMP_ANA}`,
+            agentId: `employee:${EMP_ANA}`,
+            action: "agent.run.start",
+            resource: EMP_ANA,
+            verdict: "allow",
+            enforcement: "control",
+            reasonCodes: ["RULE_MATCHED"],
+            matchedRules: ["account:run-start"],
+          },
+          {
+            eventId: "evt-d2",
+            at: "2026-11-25T09:55:00.000Z",
+            principalType: "human",
+            principalId: `owner:${ACCOUNT_ID}`,
+            agentId: null,
+            action: "employee.hire",
+            resource: EMP_BAO,
+            verdict: "allow",
+            enforcement: "control",
+            reasonCodes: ["RULE_MATCHED"],
+            matchedRules: ["account:office-hire"],
+          },
+        ],
+      }))
+      .on("GET", "/api/governance/audit", () => ({
+        events: [
+          auditEvent({
+            eventId: "evt-a1",
+            eventType: "run.started",
+            outcome: "started",
+            principalType: "agent",
+            principalId: `employee:${EMP_ANA}`,
+            agentId: `employee:${EMP_ANA}`,
+            workspaceId: EMP_ANA,
+            data: { employeeId: EMP_ANA, startedBy: `owner:${ACCOUNT_ID}` },
+            seq: 12,
+          }),
+          auditEvent({
+            eventId: "evt-a2",
+            eventType: "policy.decision",
+            outcome: "allow",
+            principalType: "human",
+            principalId: `owner:${ACCOUNT_ID}`,
+            agentId: null,
+            workspaceId: null,
+            data: { action: "employee.hire", employee: EMP_BAO },
+            seq: 11,
+          }),
+        ],
+        next: null,
+      }));
+
+    const { unmount } = renderLive(<GovernanceView page="decisions" item={null} go={vi.fn()} account={ACCOUNT} />);
+    const decisionsTable = await screen.findByRole("table", { name: "Decisions" });
+    expect(within(decisionsTable).getByText("Alex Chen (agent)")).toBeInTheDocument();
+    expect(within(decisionsTable).getByText("Minh Tran")).toBeInTheDocument();
+    expect(within(decisionsTable).queryByText(EMP_ANA)).toBeNull();
+    expect(within(decisionsTable).queryByText(EMP_BAO)).toBeNull();
+    unmount();
+
+    renderLive(<GovernanceView page="audit" item={null} go={vi.fn()} account={ACCOUNT} />);
+    const records = await screen.findByRole("list", { name: "Audit records" });
+    const runItem = within(records).getByRole("listitem", { name: "run.started" });
+    expect(runItem).toHaveTextContent("Alex Chen (agent)");
+    expect(runItem.textContent).not.toContain(`workspace ${EMP_ANA.slice(0, 8)}`);
+    const hireItem = within(records).getByRole("listitem", { name: "policy.decision" });
+    expect(hireItem).toHaveTextContent("you · Minh Tran");
+
+    await userEvent.click(within(runItem).getByRole("button", { name: "Everything it says" }));
+    expect(within(runItem).getByText("Employee")).toBeInTheDocument();
+    expect(within(runItem).getByText("Alex Chen")).toBeInTheDocument();
   });
 });

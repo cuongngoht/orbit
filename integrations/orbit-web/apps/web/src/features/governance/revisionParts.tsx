@@ -368,7 +368,7 @@ export function RevisionTitle({ revision }: { revision: RevisionView }) {
 export function RevisionDescription({ revision }: { revision: RevisionView }) {
   const { t } = useI18n();
   const s = useParts();
-  const authors = [...new Set(revision.authors.map(byWhom))];
+  const authors = [...new Set(revision.authors.map((a) => byWhom(a)))];
   return (
     <>
       {t("governance.policy.digestPrefix")}
@@ -440,9 +440,21 @@ export function LifecycleBar({
 }) {
   const { t } = useI18n();
   const s = useParts();
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   if (!OPEN.has(revision.state)) return null;
   return (
-    <div className={s.row}>
+    <div
+      className={s.row}
+      style={{
+        position: "sticky",
+        bottom: 0,
+        zIndex: 5,
+        backgroundColor: "var(--orbit-card-bg)",
+        borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+        paddingTop: "10px",
+        paddingBottom: "6px",
+      }}
+    >
       {editable && (
         <Button onClick={onSave} disabled={busy || !dirty}>
           {t("governance.policy.saveDraft")}
@@ -458,7 +470,7 @@ export function LifecycleBar({
           {t("governance.policy.reviewChangesEllipsis")}
         </Button>
       )}
-      <Button appearance="subtle" onClick={onDiscard} disabled={busy}>
+      <Button appearance="subtle" onClick={() => setConfirmDiscard(true)} disabled={busy}>
         {t("governance.policy.discard")}
       </Button>
       {dirty && (
@@ -466,6 +478,32 @@ export function LifecycleBar({
           {t("governance.policy.dirtyHint")}
         </Text>
       )}
+      <Dialog open={confirmDiscard} onOpenChange={(_, d) => !busy && setConfirmDiscard(d.open)}>
+        <DialogSurface className="orbit-touch">
+          <DialogBody>
+            <DialogTitle>{t("governance.policy.confirmDiscardTitle")}</DialogTitle>
+            <DialogContent>
+              <Text>{t("governance.policy.confirmDiscardBody")}</Text>
+            </DialogContent>
+            <DialogActions>
+              <Button disabled={busy} onClick={() => setConfirmDiscard(false)}>
+                {t("governance.approval.cancel")}
+              </Button>
+              <Button
+                appearance="primary"
+                disabled={busy}
+                style={{ backgroundColor: tokens.colorPaletteRedBackground3, color: tokens.colorNeutralForegroundOnBrand }}
+                onClick={() => {
+                  setConfirmDiscard(false);
+                  onDiscard();
+                }}
+              >
+                {t("governance.policy.discard")}
+              </Button>
+            </DialogActions>
+          </DialogBody>
+        </DialogSurface>
+      </Dialog>
     </div>
   );
 }

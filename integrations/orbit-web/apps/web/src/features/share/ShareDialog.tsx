@@ -23,7 +23,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { Share20Regular } from "@fluentui/react-icons";
+import { Open16Regular, Share20Regular } from "@fluentui/react-icons";
 import type { AccessLevel, ShareInfo, ShareState } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource } from "../../hooks/useResource";
@@ -53,6 +53,7 @@ function SharedLink({ share }: { share: ShareInfo }) {
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
       setCopied(false);
     }
@@ -64,6 +65,9 @@ function SharedLink({ share }: { share: ShareInfo }) {
           <Input readOnly value={link} onFocus={(e) => e.target.select()} />
         </Field>
         <Button onClick={() => void copy()}>{copied ? t("chat.share.link.copied") : t("chat.share.link.copyLink")}</Button>
+        <Button icon={<Open16Regular />} as="a" href={link} target="_blank" rel="noopener noreferrer">
+          {t("chat.share.openLink")}
+        </Button>
       </div>
       <Text size={200} className={s.muted}>
         {t("chat.share.link.meta", {
@@ -109,7 +113,15 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
       return { share: null };
     });
 
-  if (state.data === null) return state.error ? <Text>{state.error}</Text> : <Spinner size="tiny" label={t("chat.share.reading")} />;
+  if (state.data === null)
+    return state.error ? (
+      <MessageBar intent="error">
+        <MessageBarBody>{state.error}</MessageBarBody>
+      </MessageBar>
+    ) : (
+      <Spinner size="tiny" label={t("chat.share.reading")} />
+    );
+  const pendingToolsChange = share !== null && choice !== null && choice !== share.includeTools;
   return (
     <div className={s.body}>
       <PeopleAccess path={`/api/sessions/${sessionId}/access`} what={t("chat.share.whatChat")} />
@@ -117,7 +129,14 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
       <Text weight="semibold">{t("chat.share.publicLink")}</Text>
       <Text>{t("chat.share.publicDesc")}</Text>
       {access === "owner" ? (
-        <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label={t("chat.share.includeTools")} />
+        <>
+          <Checkbox checked={includeTools} onChange={(_, d) => setChoice(d.checked === true)} label={t("chat.share.includeTools")} />
+          {pendingToolsChange && (
+            <Text size={200} className={s.muted}>
+              {t("chat.share.pendingUpdate")}
+            </Text>
+          )}
+        </>
       ) : (
         <Text size={200} className={s.muted}>
           {t("chat.share.ownerOnlyLink")}
@@ -131,15 +150,15 @@ function ShareBody({ sessionId, access, onBusy }: { sessionId: string; access: A
       )}
       <DialogActions className={s.actions}>
         {access !== "owner" ? null : share === null ? (
-          <Button appearance="primary" disabled={busy} onClick={() => void create()}>
+          <Button appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy} onClick={() => void create()}>
             {t("chat.share.createLink")}
           </Button>
         ) : (
           <>
-            <Button appearance="primary" disabled={busy} onClick={() => void create()}>
+            <Button appearance="primary" icon={busy ? <Spinner size="extra-tiny" /> : undefined} disabled={busy} onClick={() => void create()}>
               {t("chat.share.updateToNow")}
             </Button>
-            <Button disabled={busy} onClick={() => void stop()}>
+            <Button style={{ color: tokens.colorPaletteRedForeground1 }} disabled={busy} onClick={() => void stop()}>
               {t("chat.share.stopSharing")}
             </Button>
           </>
@@ -168,7 +187,7 @@ export function ShareButton({ sessionId, compact = false, access = "owner" }: { 
           </Button>
         )}
       </DialogTrigger>
-      <DialogSurface className={s.surface}>
+      <DialogSurface className={`${s.surface} orbit-touch`}>
         <DialogBody>
           <DialogTitle>{t("chat.share.dialogTitle")}</DialogTitle>
           <DialogContent>{open && <ShareBody sessionId={sessionId} access={access} onBusy={setBusy} />}</DialogContent>

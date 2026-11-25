@@ -193,6 +193,7 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
           const min = toField(spec, b.min);
           const field = toField(spec, value[spec.key]);
           const step = spec.unit === "vCPU" ? 0.25 : spec.unit === "GiB" ? 0.25 : 1;
+          const sliderStep = spec.unit === "GiB" && !Number.isInteger(Math.round(((field - min) / step) * 1000) / 1000) ? 0.01 : step;
           const specLabel = t(spec.labelKey);
           const label = `${specLabel} (${t(spec.unitKey)})`;
           return (
@@ -201,7 +202,7 @@ export function ResourceFields({ value, onChange, presets, summary, runtime = nu
                 {label}
               </Text>
               <div className={s.pair}>
-                {spec.slider ? <Slider className={s.slider} aria-label={t("office.resources.sliderAria", { label: specLabel })} min={min} max={sliderMax(spec, ceiling, value[spec.key])} step={step} value={field} onChange={(_, d) => set(spec, d.value)} /> : <span />}
+                {spec.slider ? <Slider className={s.slider} aria-label={t("office.resources.sliderAria", { label: specLabel })} min={min} max={sliderMax(spec, ceiling, value[spec.key])} step={sliderStep} value={field} onChange={(_, d) => set(spec, d.value)} /> : <span />}
                 <NumberInput label={label} value={field} onValue={(v) => set(spec, v)} min={min} max={toField(spec, b.max)} step={step} />
               </div>
               <Text size={200} className={o.muted}>

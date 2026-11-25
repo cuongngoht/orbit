@@ -15,7 +15,7 @@ import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { limitOf } from "./PolicyTable";
 import { overrideRowsOf, withOverrideRows, type Narrowing, type OverrideRow } from "./overrideRows";
-import { Card, CleanSelect, EmptyState, ErrorBar, Stat, Word, byWhom, principalOf, short, useParts, when } from "./parts";
+import { Card, CleanSelect, EmptyState, ErrorBar, Stat, Word, byWhom, hasEmployeeRef, principalOf, short, useEmployeeNames, useParts, when } from "./parts";
 
 const GROUPS: Record<ResourceKind, { page: GovernancePage; path: string; titleKey: MessageKey; oneKey: MessageKey; allKey: MessageKey; emptyKey: MessageKey; aboutKey: MessageKey; emptyBodyKey: MessageKey }> = {
   workspace: {
@@ -286,6 +286,8 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
   const group = GROUPS[kind];
   const one = t(group.oneKey);
   const view = useResource<ResourceGovernanceView>(() => get(`${group.path}/${encodeURIComponent(id)}`), [group.path, id]);
+  const needsNames = (view.data?.activity ?? []).some((e) => hasEmployeeRef(e.agentId ?? e.principalId));
+  const employeeNames = useEmployeeNames(needsNames);
   useAppEvent("governance.changed", (e) => e.data.area !== "reports" && e.data.area !== "isolation" && void view.reload());
   useAppEvent("approval.changed", () => void view.reload());
   const back = (
@@ -368,7 +370,7 @@ function ResourceDetail({ kind, id, go }: { kind: ResourceKind; id: string; go: 
                     {t("governance.resources.recordNumber", { seq: e.seq })}
                   </Button>
                 </div>
-                <Text size={200}>{principalOf(e.principalType, e.principalId, e.agentId)}</Text>
+                <Text size={200}>{principalOf(e.principalType, e.principalId, e.agentId, employeeNames)}</Text>
               </li>
             ))}
           </ul>

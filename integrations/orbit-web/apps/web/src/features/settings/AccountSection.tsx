@@ -19,7 +19,7 @@ const useStyles = makeStyles({
   identity: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0 },
   ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   block: { display: "flex", flexDirection: "column", gap: "10px", padding: "14px 16px", borderRadius: tokens.borderRadiusLarge, border: `1px solid ${tokens.colorNeutralStroke2}`, minWidth: 0 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", "@media (max-width: 639px)": { gridTemplateColumns: "1fr" } },
+  grid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "10px", alignItems: "start", "@media (max-width: 639px)": { gridTemplateColumns: "1fr" } },
   labelRow: { display: "inline-flex", alignItems: "center", gap: "6px" },
   sessions: { display: "flex", flexDirection: "column", gap: "6px", margin: 0, padding: 0, listStyleType: "none" },
   session: { display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: tokens.borderRadiusMedium, border: `1px solid ${tokens.colorNeutralStroke2}`, minWidth: 0 },
@@ -30,6 +30,14 @@ const useStyles = makeStyles({
 });
 
 const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "—");
+
+function friendlyUa(ua: string | null): string | null {
+  if (!ua || !ua.startsWith("Mozilla/")) return ua;
+  const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : null;
+  const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X|Macintosh/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : null;
+  if (browser && os) return `${browser} on ${os}`;
+  return browser ?? os ?? ua;
+}
 
 function Profile({ user, onSaved }: { user: AuthUser; onSaved: (u: AuthUser) => void }) {
   const { t } = useI18n();
@@ -112,6 +120,7 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const [saved, setSaved] = useState(false);
   const original = { companyName: account.companyName, displayName: account.displayName, contactEmail: account.contactEmail ?? "", timezone: account.timezone, locale: account.locale };
   const change: UpdateAccountProfileRequest = {};
   for (const f of FIELDS) if (draft[f].trim() !== original[f]) Object.assign(change, { [f]: f === "contactEmail" && draft[f].trim() === "" ? null : draft[f].trim() });
@@ -123,8 +132,10 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
     setBusy(true);
     setError(null);
     setStale(false);
+    setSaved(false);
     try {
       onSaved(await send<AuthAccount>("PATCH", "/api/account", checked.value, ifMatch(account.version)));
+      setSaved(true);
     } catch (err) {
       setStale(isStale(err));
       setError(isStale(err) ? t("settings.account.form.stale") : errorText(err));
@@ -171,7 +182,12 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
           <TimeZoneSelect value={draft.timezone} onChange={(z) => setDraft((x) => ({ ...x, timezone: z }))} />
         </Field>
         <Field label={t("settings.account.form.locale")} hint={t("settings.account.form.localeHint")}>
-          <Input value={draft.locale} onChange={set("locale")} />
+          <Input list="orbit-locale-options" value={draft.locale} onChange={set("locale")} />
+          <datalist id="orbit-locale-options">
+            <option value="en" />
+            <option value="en-US" />
+            <option value="en-GB" />
+          </datalist>
         </Field>
       </div>
       {error && (
@@ -185,6 +201,11 @@ function AccountForm({ account, onSaved }: { account: AuthAccount; onSaved: (a: 
             </MessageBarActions>
           )}
         </MessageBar>
+      )}
+      {saved && !changed && (
+        <Text size={200} className={s.hint}>
+          {t("settings.account.profile.saved")}
+        </Text>
       )}
       <Button className={s.button} type="submit" disabled={busy || !changed}>
         {busy ? t("settings.account.profile.saving") : t("settings.account.form.save")}
@@ -222,21 +243,26 @@ function Sessions({ signOut }: { signOut: SignOut }) {
         )
       ) : (
         <ul className={s.sessions} aria-label={t("settings.account.sessions.listAria")}>
-          {list.data.map((b) => (
-            <li key={b.id} className={s.session}>
-              <div className={s.sessionText}>
-                <Text className={s.ellipsis}>{b.current ? t("settings.account.sessions.thisBrowser") : (b.userAgent ?? t("settings.account.sessions.aBrowser"))}</Text>
-                <Text size={200} className={s.hint}>
-                  {t("settings.account.sessions.meta", { created: when(b.createdAt), lastSeen: when(b.lastSeenAt), expires: when(b.expiresAt) })}
-                </Text>
-              </div>
-              {!b.current && (
-                <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} disabled={busy !== null} onClick={() => void revoke(b.id)} aria-label={t("settings.account.sessions.signOutAria", { browser: b.userAgent ?? t("settings.account.sessions.thatBrowser") })}>
-                  {t("settings.account.sessions.signOut")}
-                </Button>
-              )}
-            </li>
-          ))}
+          {list.data.map((b) => {
+            const label = friendlyUa(b.userAgent) ?? t("settings.account.sessions.aBrowser");
+            return (
+              <li key={b.id} className={s.session}>
+                <div className={s.sessionText}>
+                  <Text className={s.ellipsis} title={b.userAgent ?? undefined}>
+                    {b.current ? t("settings.account.sessions.thisBrowser") : label}
+                  </Text>
+                  <Text size={200} className={s.hint}>
+                    {t("settings.account.sessions.meta", { created: when(b.createdAt), lastSeen: when(b.lastSeenAt), expires: when(b.expiresAt) })}
+                  </Text>
+                </div>
+                {!b.current && (
+                  <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} disabled={busy !== null} onClick={() => void revoke(b.id)} aria-label={t("settings.account.sessions.signOutAria", { browser: label })}>
+                    {t("settings.account.sessions.signOut")}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {(error ?? signOut.error) && (

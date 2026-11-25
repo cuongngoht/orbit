@@ -9,6 +9,7 @@ import { useI18n } from "../../i18n";
 import { ApiError, errorCode, errorText, newIdempotencyKey } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { office, useOfficeRead } from "../office/api";
+import { StateBadge } from "../office/parts";
 import { executive } from "./api";
 
 const useStyles = makeStyles({
@@ -176,6 +177,11 @@ export function MissionProposalCard({ conversationId, message, canAssign, onGive
           <Textarea value={criteria} onChange={(_, d) => setCriteria(d.value)} rows={2} />
         </Field>
       </div>
+      {p.deadline !== null && (
+        <Text size={200} className={s.muted}>
+          {t("executive.proposal.deadlineInfo", { at: new Date(p.deadline).toLocaleString() })}
+        </Text>
+      )}
       {preview === null && open && <Spinner size="tiny" label={t("executive.proposal.checking")} />}
       {preview !== null && responsible !== null && (
         <Text size={200} className={s.muted}>
@@ -229,7 +235,11 @@ export function MissionLinkCard({ missionId, title }: { missionId: string; title
         <Spinner size="tiny" />
       ) : (
         <div className={s.row}>
-          <Badge appearance="tint">{t("executive.mission.state", { state: (root?.state ?? m.data.state).toLowerCase().replace(/_/g, " ") })}</Badge>
+          {root ? (
+            <StateBadge text={t("executive.mission.state", { state: root.state.toLowerCase().replace(/_/g, " ") })} state={root.state} />
+          ) : (
+            <Badge appearance="tint">{t("executive.mission.state", { state: m.data.state.toLowerCase().replace(/_/g, " ") })}</Badge>
+          )}
           {root !== null && (
             <Text size={200} className={s.muted}>
               {root.employeeName}

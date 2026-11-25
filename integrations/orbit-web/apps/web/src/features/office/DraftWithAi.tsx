@@ -79,6 +79,7 @@ export function DraftWithAi({ form, departmentId, departmentName, state, onFill 
       return;
     }
     setBefore(now);
+    setOpen(false);
     latest.current.onFill(filled(now, draft, false));
   }, []);
 
@@ -114,6 +115,7 @@ export function DraftWithAi({ form, departmentId, departmentName, state, onFill 
   const apply = (next: DraftFields) => {
     setBefore(form);
     setAsking(null);
+    setOpen(false);
     onFill(next);
   };
   const start = () => {

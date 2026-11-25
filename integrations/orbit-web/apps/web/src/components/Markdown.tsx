@@ -55,6 +55,7 @@ const useStyles = makeStyles({
     },
   },
   cite: {
+    position: "relative",
     display: "inline-flex",
     alignItems: "center",
     marginLeft: "2px",
@@ -78,6 +79,9 @@ const useStyles = makeStyles({
     transitionDuration: "120ms",
     ":hover": { backgroundColor: tokens.colorBrandBackground2Hover, ...shorthands.borderColor(tokens.colorBrandStroke1) },
     ":focus-visible": { outline: `2px solid ${tokens.colorStrokeFocus2}` },
+    "@media (pointer: coarse)": {
+      "::after": { content: '""', position: "absolute", inset: "-8px -4px" },
+    },
   },
   tableWrap: {
     width: "100%",

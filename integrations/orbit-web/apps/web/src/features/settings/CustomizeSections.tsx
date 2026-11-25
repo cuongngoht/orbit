@@ -62,7 +62,7 @@ function Lines({ rows, label, mobile }: { rows: Line[]; label: string; mobile: b
                 {l.kind}
               </Badge>
             </div>
-            <Text size={200} className={s.description}>
+            <Text size={200} className={s.description} title={l.description ?? undefined}>
               {l.description ?? "—"}
             </Text>
           </li>
@@ -87,7 +87,9 @@ function Lines({ rows, label, mobile }: { rows: Line[]; label: string; mobile: b
             </TableCell>
             <TableCell>{l.kind}</TableCell>
             <TableCell>
-              <span className={s.description}>{l.description ?? "—"}</span>
+              <span className={s.description} title={l.description ?? undefined}>
+                {l.description ?? "—"}
+              </span>
             </TableCell>
           </TableRow>
         ))}
@@ -153,7 +155,12 @@ export function SkillsSection() {
             </section>
           ))
         ) : (
-          <Text className={s.muted}>{t("settings.customize.skills.empty")}</Text>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px" }}>
+            <Text className={s.muted}>{t("settings.customize.skills.empty")}</Text>
+            <Button size="small" onClick={() => setTab("orbit")}>
+              {t("settings.customize.skills.browseOrbit")}
+            </Button>
+          </div>
         ))}
     </div>
   );
@@ -213,6 +220,11 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
               <Text size={200} className={s.muted}>
                 {project.inventory.repository ?? project.title} · {plugin.source}
               </Text>
+              {plugin.detail && (
+                <Text size={200} style={{ color: plugin.state === "failed" ? tokens.colorPaletteRedForeground1 : tokens.colorNeutralForeground3 }}>
+                  {plugin.detail}
+                </Text>
+              )}
             </li>
           ))}
         </ul>
@@ -243,7 +255,14 @@ export function PluginsSection({ onOpenCode }: { onOpenCode: () => void }) {
                   <span className={s.name}>{plugin.id}</span>
                 </TableCell>
                 <TableCell>
-                  {project.inventory.repository ?? project.title} · {plugin.source}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                    <span>{project.inventory.repository ?? project.title} · {plugin.source}</span>
+                    {plugin.detail && (
+                      <Text size={200} style={{ color: plugin.state === "failed" ? tokens.colorPaletteRedForeground1 : tokens.colorNeutralForeground3 }}>
+                        {plugin.detail}
+                      </Text>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Tooltip content={plugin.detail ?? t(STATE_KEYS[plugin.state].labelKey)} relationship="description">

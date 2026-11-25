@@ -23,7 +23,7 @@ import {
   shorthands,
   tokens,
 } from "@fluentui/react-components";
-import { Checkmark16Regular } from "@fluentui/react-icons";
+import { Checkmark16Regular, Copy16Regular, Open16Regular } from "@fluentui/react-icons";
 import { SOURCE_LABELS, type AzureStatus, type ConnectorName, type GitHubStatus, type LoginSnapshot, type SetupStatus } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ConnectionBadge } from "../../components/StatusBadge";
@@ -81,6 +81,7 @@ const CLI_KEYS: Record<ConnectorName, MessageKey> = {
 function DeviceFlow({ connector, flow, onCancel, busy }: { connector: ConnectorName; flow: LoginSnapshot | null; onCancel: () => void; busy: boolean }) {
   const { t } = useI18n();
   const s = useStyles();
+  const [copied, setCopied] = useState(false);
   const cli = t(CLI_KEYS[connector]);
   if (flow === null || flow.state === "idle" || flow.state === "connected") return null;
   if (flow.state === "starting") return <Spinner size="tiny" label={t("settings.connectors.device.starting", { cli })} />;
@@ -95,9 +96,30 @@ function DeviceFlow({ connector, flow, onCancel, busy }: { connector: ConnectorN
           </Link>{" "}
           {t("settings.connectors.device.enterCode", { cli })}
         </Text>
-        <Text className={s.code} aria-label={connector === "github" ? t("settings.connectors.device.codeAriaGithub") : t("settings.connectors.device.codeAriaAzure")}>
-          {flow.code}
-        </Text>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <Text className={s.code} aria-label={connector === "github" ? t("settings.connectors.device.codeAriaGithub") : t("settings.connectors.device.codeAriaAzure")}>
+            {flow.code}
+          </Text>
+          {flow.code && (
+            <Button
+              size="small"
+              icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+              onClick={() => {
+                void navigator.clipboard?.writeText(flow.code as string).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+            >
+              {copied ? t("settings.connections.copied") : t("settings.connections.copy")}
+            </Button>
+          )}
+          {flow.url && (
+            <Button size="small" appearance="primary" icon={<Open16Regular />} as="a" href={flow.url} target="_blank" rel="noopener noreferrer">
+              {t("settings.connections.open")}
+            </Button>
+          )}
+        </div>
         <Spinner size="tiny" label={t("settings.connectors.device.waiting")} labelPosition="after" />
         <div>
           <Button appearance="subtle" onClick={onCancel} disabled={busy}>
@@ -298,7 +320,19 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
             {rows.map((r) => {
               const connected = r.state === "connected";
               return (
-                <TableRow key={r.connector} className={mergeClasses(s.row, open === r.connector && s.rowSelected)} onClick={() => setOpen(r.connector)} aria-label={SOURCE_LABELS[r.connector]}>
+                <TableRow
+                  key={r.connector}
+                  className={mergeClasses(s.row, open === r.connector && s.rowSelected)}
+                  tabIndex={0}
+                  onClick={() => setOpen(r.connector)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpen(r.connector);
+                    }
+                  }}
+                  aria-label={SOURCE_LABELS[r.connector]}
+                >
                   <TableCell>
                     <span className={s.name}>
                       <span className={s.icon}>
@@ -320,7 +354,13 @@ export function ConnectorsSection({ status, onChanged, initial }: { status: Setu
                         </Text>
                       </span>
                     ) : r.state === "not_connected" ? (
-                      <Button size="small" onClick={() => setOpen(r.connector)}>
+                      <Button
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpen(r.connector);
+                        }}
+                      >
                         {t("settings.connectors.connect")}
                       </Button>
                     ) : (

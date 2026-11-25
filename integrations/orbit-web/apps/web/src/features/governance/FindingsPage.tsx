@@ -8,7 +8,7 @@ import type { FindingList, FindingView } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { GovernancePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
-import { useI18n } from "../../i18n";
+import { useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { Card, EmptyState, ErrorBar, Word, plural, short, useParts, when } from "./parts";
@@ -59,12 +59,21 @@ function Finding({ f, go, onChanged }: { f: FindingView; go: (page: GovernancePa
   );
 }
 
+const FINDING_FILTERS: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
+  { value: "", labelKey: "governance.findings.filterAll" },
+  { value: "open", labelKey: "governance.findings.filterOpen" },
+  { value: "resolved", labelKey: "governance.findings.filterResolved" },
+  { value: "accepted", labelKey: "governance.findings.filterAccepted" },
+];
+
 export function FindingsPage({ go }: { go: (page: GovernancePage, item?: string | null) => void }) {
   const { t } = useI18n();
   const s = useParts();
+  const [filter, setFilter] = useState("");
   const list = useResource<FindingList>(() => get("/api/governance/findings"), []);
   useAppEvent("governance.changed", (e) => (e.data.area === "audit" || e.data.area === "findings") && void list.reload());
   if (list.data === null) return list.error ? <MessageBar intent="error"><MessageBarBody>{list.error}</MessageBarBody></MessageBar> : <Spinner label={t("governance.findings.reading")} />;
+  const shown = filter === "" ? list.data.findings : list.data.findings.filter((f) => f.resolution === filter);
   return (
     <div className={s.page}>
       {!list.data.chain.ok && (
@@ -72,22 +81,45 @@ export function FindingsPage({ go }: { go: (page: GovernancePage, item?: string 
           <MessageBarBody>{t("governance.findings.chainBroken", { at: list.data.chain.brokenAt ?? "" })}</MessageBarBody>
         </MessageBar>
       )}
-      {list.data.findings.length === 0 && (
-        <Card
-          title={t("governance.findings.title")}
-          icon={<FindingsIcon size={18} />}
-          tone="danger"
-          description={t("governance.findings.description")}
-        >
+      <Card
+        title={t("governance.findings.title")}
+        icon={<FindingsIcon size={18} />}
+        tone="danger"
+        description={t("governance.findings.description")}
+        actions={
+          list.data.findings.length > 0 ? (
+            <div className={s.pillBar} role="group" aria-label={t("governance.findings.title")}>
+              {FINDING_FILTERS.map((opt) => (
+                <Button
+                  key={opt.value || "all"}
+                  size="small"
+                  shape="circular"
+                  appearance={filter === opt.value ? "primary" : "subtle"}
+                  className={s.filterPill}
+                  aria-pressed={filter === opt.value}
+                  onClick={() => setFilter(opt.value)}
+                >
+                  {t(opt.labelKey)}
+                </Button>
+              ))}
+            </div>
+          ) : undefined
+        }
+      >
+        {list.data.findings.length === 0 ? (
           <EmptyState
             icon={<ShieldClearIcon size={22} />}
             tone="success"
             title={t("governance.findings.emptyTitle")}
             body={t("governance.findings.emptyBody")}
           />
-        </Card>
-      )}
-      {list.data.findings.map((f) => (
+        ) : shown.length === 0 ? (
+          <Text size={200} className={s.muted}>
+            {t("governance.findings.noFiltered")}
+          </Text>
+        ) : null}
+      </Card>
+      {shown.map((f) => (
         <Finding key={f.id} f={f} go={go} onChanged={() => void list.reload()} />
       ))}
     </div>

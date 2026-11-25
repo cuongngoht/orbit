@@ -2,8 +2,8 @@
 // slow hash -- or, on a new installation, the first administrator, made with the one-time code an operator prints in a
 // terminal of the server. Signing in to Orbit never starts a provider's sign-in: Claude Code, Codex and Antigravity are
 // connected later, in Settings → AI Connections, when the owner chooses to.
-import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
-import { Eye16Regular, EyeOff16Regular } from "@fluentui/react-icons";
+import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Checkmark16Regular, Copy16Regular, Eye16Regular, EyeOff16Regular } from "@fluentui/react-icons";
 import { checkSetup, ORBIT_WEB_VERSION, TOO_MANY_ATTEMPTS, type AuthStatus } from "@orbit-web/contracts";
 import { useState } from "react";
 import { browserTimeZone, TimeZoneSelect } from "../components/TimeZoneSelect";
@@ -14,19 +14,59 @@ import { useI18n } from "../i18n";
 import { ApiError, errorText, send } from "../services/api";
 import { useSignInStyles } from "./signInStyles";
 
+const useLocalStyles = makeStyles({
+  gridTwo: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "12px",
+    alignItems: "start",
+    "@media (max-width: 639px)": { gridTemplateColumns: "minmax(0, 1fr)" },
+  },
+  forgot: {
+    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+    paddingTop: "10px",
+    color: tokens.colorNeutralForeground3,
+    fontSize: tokens.fontSizeBase200,
+  },
+  forgotSummary: { cursor: "pointer", userSelect: "none", fontWeight: tokens.fontWeightMedium },
+  forgotBody: { marginTop: "6px", display: "flex", flexDirection: "column", gap: "6px" },
+  cmdRow: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", backgroundColor: tokens.colorNeutralBackground2, padding: "6px 8px", borderRadius: "8px" },
+});
+
 // A password field with a button that shows what was typed (to check it) and hides it again.
-export function PasswordInput({ value, onChange, autoComplete, label, hint, autoFocus = false }: { value: string; onChange: (v: string) => void; autoComplete: string; label: string; hint?: string; autoFocus?: boolean }) {
+export function PasswordInput({
+  value,
+  onChange,
+  autoComplete,
+  label,
+  hint,
+  autoFocus = false,
+  required = true,
+  validationState,
+  validationMessage,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete: string;
+  label: string;
+  hint?: string;
+  autoFocus?: boolean;
+  required?: boolean;
+  validationState?: "error" | "none" | "warning" | "success";
+  validationMessage?: string;
+}) {
   const { t } = useI18n();
   const [shown, setShown] = useState(false);
+  const fieldName = label.toLowerCase().replace(/^repeat (?:the )?/, "repeated ");
   return (
-    <Field label={label} hint={hint} required>
+    <Field label={label} hint={hint} required={required} validationState={validationState} validationMessage={validationMessage}>
       <Input
         type={shown ? "text" : "password"}
         value={value}
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         onChange={(_, d) => onChange(d.value)}
-        contentAfter={<Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? t("common.signIn.hideField", { label: label.toLowerCase() }) : t("common.signIn.showField", { label: label.toLowerCase() })} onClick={() => setShown(!shown)} />}
+        contentAfter={<Button appearance="transparent" size="small" icon={shown ? <EyeOff16Regular /> : <Eye16Regular />} aria-label={shown ? t("common.signIn.hideField", { label: fieldName }) : t("common.signIn.showField", { label: fieldName })} onClick={() => setShown(!shown)} />}
       />
     </Field>
   );
@@ -35,11 +75,14 @@ export function PasswordInput({ value, onChange, autoComplete, label, hint, auto
 function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; onReload: () => void }) {
   const { t } = useI18n();
   const s = useSignInStyles();
+  const ls = useLocalStyles();
   const { isMobile, isCoarse } = useViewport();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<{ text: string; throttled: boolean } | null>(null);
+  const resetCmd = "node dist/cli/governance.js owner reset-password";
   const submit = async () => {
     setBusy(true);
     setError(null);
@@ -48,8 +91,9 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
     } catch (err) {
       // An installation nobody set up yet: the page reads its state again, and shows the setup.
       if (err instanceof ApiError && err.code === "setup_required") onReload();
-      setError({ text: errorText(err), throttled: err instanceof ApiError && err.code === TOO_MANY_ATTEMPTS });
-      setPassword("");
+      const throttled = err instanceof ApiError && err.code === TOO_MANY_ATTEMPTS;
+      setError({ text: errorText(err), throttled });
+      if (err instanceof ApiError && !throttled) setPassword("");
     } finally {
       setBusy(false);
     }
@@ -80,11 +124,33 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
           {t("common.signIn.signIn")}
         </Button>
       )}
-      <Text size={200} className={s.hint}>
-        {t("common.signIn.forgotLead")}
-        <span className={s.code}>node dist/cli/governance.js owner reset-password</span>
-        {t("common.signIn.forgotEnd")}
-      </Text>
+      <details className={ls.forgot}>
+        <summary className={ls.forgotSummary}>{t("common.signIn.forgotSummary")}</summary>
+        <div className={ls.forgotBody}>
+          <Text size={200} className={s.hint}>
+            {t("common.signIn.forgotLead")}
+          </Text>
+          <div className={ls.cmdRow}>
+            <span className={s.code} style={{ flexGrow: 1 }}>
+              {resetCmd}
+            </span>
+            <Button
+              size="small"
+              appearance="subtle"
+              icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+              aria-label={t("common.codeBlock.copy")}
+              onClick={() => {
+                void navigator.clipboard?.writeText(resetCmd).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+            >
+              {copied ? t("common.codeBlock.copied") : t("common.codeBlock.copy")}
+            </Button>
+          </div>
+        </div>
+      </details>
     </form>
   );
 }
@@ -93,6 +159,7 @@ function LoginForm({ onStatus, onReload }: { onStatus: (s: AuthStatus) => void; 
 function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; standing: string | null }) {
   const { t } = useI18n();
   const s = useSignInStyles();
+  const ls = useLocalStyles();
   const [code, setCode] = useState(standing ?? "");
   const [username, setUsername] = useState("admin");
   const [fullName, setFullName] = useState("");
@@ -103,17 +170,15 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [problems, setProblems] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(false);
   const body = { code: code.trim(), username: username.trim().toLowerCase(), password, fullName: fullName.trim(), companyName: companyName.trim(), timezone, contactEmail: contactEmail.trim() === "" ? null : contactEmail.trim() };
   const mismatch = confirm.length > 0 && confirm !== password;
+  const checked = checkSetup(body);
+  const problems = submitted ? [...(checked.ok ? [] : checked.errors), ...(confirm !== password ? [t("common.signIn.passwordsDifferError")] : [])] : [];
   const submit = async () => {
     // The contract's own check first: the page says every problem at once, before anything is sent.
-    const checked = checkSetup(body);
-    if (!checked.ok || confirm !== password) {
-      setProblems([...(checked.ok ? [] : checked.errors), ...(confirm !== password ? [t("common.signIn.passwordsDifferError")] : [])]);
-      return;
-    }
-    setProblems([]);
+    setSubmitted(true);
+    if (!checked.ok || confirm !== password) return;
     setBusy(true);
     setError(null);
     try {
@@ -141,26 +206,35 @@ function SetupForm({ onStatus, standing }: { onStatus: (s: AuthStatus) => void; 
       >
         <Input value={code} autoComplete="one-time-code" spellCheck={false} onChange={(_, d) => setCode(d.value)} />
       </Field>
-      <Field label={t("common.signIn.usernameLabel")} required hint={t("common.signIn.usernameHint")}>
-        <Input value={username} autoComplete="username" autoCapitalize="none" spellCheck={false} onChange={(_, d) => setUsername(d.value)} />
-      </Field>
-      <Field label={t("common.signIn.fullNameLabel")} required>
-        <Input value={fullName} autoComplete="name" onChange={(_, d) => setFullName(d.value)} />
-      </Field>
-      <Field label={t("common.signIn.companyNameLabel")} hint={t("common.signIn.optionalHint")}>
-        <Input value={companyName} autoComplete="organization" onChange={(_, d) => setCompanyName(d.value)} />
-      </Field>
+      <div className={ls.gridTwo}>
+        <Field label={t("common.signIn.usernameLabel")} required hint={t("common.signIn.usernameHint")}>
+          <Input value={username} autoComplete="username" autoCapitalize="none" spellCheck={false} onChange={(_, d) => setUsername(d.value)} />
+        </Field>
+        <Field label={t("common.signIn.fullNameLabel")} required>
+          <Input value={fullName} autoComplete="name" onChange={(_, d) => setFullName(d.value)} />
+        </Field>
+      </div>
+      <div className={ls.gridTwo}>
+        <Field label={t("common.signIn.companyNameLabel")} hint={t("common.signIn.optionalHint")}>
+          <Input value={companyName} autoComplete="organization" onChange={(_, d) => setCompanyName(d.value)} />
+        </Field>
+        <Field label={t("common.signIn.contactEmailLabel")} hint={t("common.signIn.contactEmailHint")}>
+          <Input type="email" value={contactEmail} autoComplete="email" onChange={(_, d) => setContactEmail(d.value)} />
+        </Field>
+      </div>
       <Field label={t("common.signIn.timezoneLabel")} required hint={t("common.signIn.timezoneHint")}>
         <TimeZoneSelect value={timezone} onChange={setTimezone} />
       </Field>
-      <Field label={t("common.signIn.contactEmailLabel")} hint={t("common.signIn.contactEmailHint")}>
-        <Input type="email" value={contactEmail} autoComplete="email" onChange={(_, d) => setContactEmail(d.value)} />
-      </Field>
       <PasswordInput label={t("common.signIn.passwordLabel")} value={password} onChange={setPassword} autoComplete="new-password" />
       <PasswordRules password={password} username={username.trim().toLowerCase()} />
-      <Field label={t("common.signIn.repeatPasswordLabel")} required validationState={mismatch ? "error" : "none"} validationMessage={mismatch ? t("common.signIn.passwordsDifferValidation") : undefined}>
-        <Input type="password" value={confirm} autoComplete="new-password" onChange={(_, d) => setConfirm(d.value)} />
-      </Field>
+      <PasswordInput
+        label={t("common.signIn.repeatPasswordLabel")}
+        value={confirm}
+        onChange={setConfirm}
+        autoComplete="new-password"
+        validationState={mismatch ? "error" : "none"}
+        validationMessage={mismatch ? t("common.signIn.passwordsDifferValidation") : undefined}
+      />
       {problems.length > 0 && (
         <MessageBar intent="error" layout="multiline">
           <MessageBarBody>

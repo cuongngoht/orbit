@@ -67,7 +67,7 @@ const useStyles = makeStyles({
   capSelect: { minWidth: "180px" },
   add: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "8px", alignItems: "end", maxWidth: "560px" },
   control: { width: "100%", minWidth: 0 },
-  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px" },
+  limits: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))", gap: "10px", alignItems: "start" },
 });
 
 // The delegation a policy says (nothing said: nothing delegated).

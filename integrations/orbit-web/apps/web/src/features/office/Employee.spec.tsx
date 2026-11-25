@@ -125,9 +125,10 @@ describe("one employee", () => {
   });
 
   test("the header says its work label, its runtime, model and effort, and why it is not ready", async () => {
-    fakeApi().on("GET", `/api/employees/${EMP_ANA}`, () => ({ ...employeeDetail(), ...employeeCard({ workLabel: "not_ready", notReadyReason: "connection disconnected" }) }));
+    fakeApi().on("GET", `/api/employees/${EMP_ANA}`, () => ({ ...employeeDetail(), ...employeeCard({ workLabel: "not_ready", notReadyReason: "connection disconnected", connectionWarning: "token expiring soon" }) }));
     renderLive(<OfficeView page="employee" item={EMP_ANA} tab={null} go={vi.fn()} account={authAccount()} />);
     expect(await screen.findByText("Not ready: connection disconnected")).toBeInTheDocument();
+    expect(screen.getByText("Connection: token expiring soon")).toBeInTheDocument();
     expect(screen.getByText(/Accountant · Claude Code · sonnet · Medium/)).toBeInTheDocument();
     expect(screen.getByText(/^Data as of /)).toBeInTheDocument();
   });

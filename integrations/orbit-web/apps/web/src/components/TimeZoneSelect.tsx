@@ -1,6 +1,7 @@
 // An IANA time zone, chosen from the ones this browser knows (the API checks the name again). The browser's own zone is
 // what a new account starts from.
 import { Select, type SelectProps } from "@fluentui/react-components";
+import { memo, useMemo } from "react";
 
 export const browserTimeZone = (): string => {
   try {
@@ -29,14 +30,37 @@ function zones(including: string): string[] {
   return [...all].filter((z) => z.length > 0).sort((a, b) => a.localeCompare(b));
 }
 
-export function TimeZoneSelect({ value, onChange, ...rest }: { value: string; onChange: (zone: string) => void } & Omit<SelectProps, "value" | "onChange">) {
+const ZONE_LABELS = new Map<string, string>();
+
+const zoneLabel = (zone: string): string => {
+  const cached = ZONE_LABELS.get(zone);
+  if (cached !== undefined) return cached;
+  let label = zone;
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "shortOffset" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value;
+    if (part) label = `${zone} (${part})`;
+  } catch {
+    // Keep raw zone identifier when Intl lacks shortOffset support.
+  }
+  ZONE_LABELS.set(zone, label);
+  return label;
+};
+
+export const TimeZoneSelect = memo(function TimeZoneSelect({ value, onChange, ...rest }: { value: string; onChange: (zone: string) => void } & Omit<SelectProps, "value" | "onChange">) {
+  const options = useMemo(
+    () =>
+      zones(value).map((z) => (
+        <option key={z} value={z}>
+          {zoneLabel(z)}
+        </option>
+      )),
+    [value],
+  );
   return (
     <Select {...rest} value={value} onChange={(_, d) => onChange(d.value)}>
-      {zones(value).map((z) => (
-        <option key={z} value={z}>
-          {z}
-        </option>
-      ))}
+      {options}
     </Select>
   );
-}
+});

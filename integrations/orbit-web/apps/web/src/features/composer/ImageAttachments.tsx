@@ -143,14 +143,16 @@ const useStyles = makeStyles({
   overlay: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0, 0, 0, 0.35)", color: tokens.colorNeutralForegroundOnBrand },
   failedIcon: { color: tokens.colorPaletteRedForeground1, backgroundColor: tokens.colorNeutralBackground1, borderRadius: "9999px" },
   progress: { position: "absolute", left: 0, bottom: 0, height: "3px", backgroundColor: tokens.colorBrandBackground, transitionProperty: "width", transitionDuration: "120ms" },
-  remove: { position: "absolute", top: "3px", right: "3px", minWidth: "20px", width: "20px", height: "20px", padding: 0 },
+  remove: { position: "absolute", top: "3px", right: "3px", minWidth: "20px", width: "20px", height: "20px", padding: 0, "@media (pointer: coarse)": { "::after": { content: '""', position: "absolute", inset: "-10px" } } },
   notice: { fontSize: tokens.fontSizeBase200, color: tokens.colorPaletteRedForeground1, paddingTop: "8px", paddingRight: "16px", paddingLeft: "16px" },
 });
 
 export function AttachmentStrip({ items, notice, onRemove }: { items: Attachment[]; notice: string | null; onRemove: (key: string) => void }) {
   const { t } = useI18n();
   const s = useStyles();
-  if (items.length === 0 && notice === null) return null;
+  const failedErrors = items.map((a) => (a.state === "failed" ? a.error : null)).filter((e): e is string => e !== null);
+  const alerts = [notice, ...new Set(failedErrors)].filter((m): m is string => m !== null);
+  if (items.length === 0 && alerts.length === 0) return null;
   return (
     <>
       {items.length > 0 && (
@@ -178,11 +180,11 @@ export function AttachmentStrip({ items, notice, onRemove }: { items: Attachment
           ))}
         </ul>
       )}
-      {notice !== null && (
-        <div className={s.notice} role="status">
-          {notice}
+      {alerts.map((msg) => (
+        <div key={msg} className={s.notice} role="status">
+          {msg}
         </div>
-      )}
+      ))}
     </>
   );
 }

@@ -2,10 +2,10 @@
 // Connections, Compute & storage, Connectors, Claude connectors, Skills, Plugins, System -- and on the right the one chosen. Which one is open is the URL's (`?settings=<section>`), so
 // a reload or a link comes back to it. The connectors' status is read here, and again whenever the app stream says a
 // connector changed (or reopens, since it replays nothing).
-import { Button, Dialog, DialogSurface, DialogTitle, SearchBox, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Dialog, DialogSurface, DialogTitle, SearchBox, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Apps20Regular, ArrowLeft20Regular, BookDatabase20Regular, BrainCircuit20Regular, ChevronRight16Regular, Code20Regular, DataUsage20Regular, Dismiss20Regular, Lightbulb20Regular, PaintBrush20Regular, Person20Regular, PlugConnected20Regular, PuzzlePiece20Regular, Server20Regular } from "@fluentui/react-icons";
 import type { AuthStatus, AuthUser, ConnectorName, SetupStatus, Settings } from "@orbit-web/contracts";
-import { useCallback, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import type { SettingsSection } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
@@ -64,6 +64,8 @@ const useStyles = makeStyles({
   },
   title: { paddingTop: 0, paddingRight: "8px", paddingBottom: "8px", paddingLeft: "8px" },
   search: { marginTop: 0, marginRight: "2px", marginBottom: "8px", marginLeft: "2px" },
+  groupHead: { paddingTop: "10px", paddingRight: "8px", paddingBottom: "2px", paddingLeft: "8px", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: tokens.colorNeutralForeground3 },
+  mobileGroupHead: { paddingTop: "8px", paddingRight: "4px", paddingBottom: "2px", paddingLeft: "4px", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em", color: tokens.colorNeutralForeground3 },
   item: { justifyContent: "flex-start", fontWeight: tokens.fontWeightRegular, width: "100%", borderRadius: "10px", transitionProperty: "background-color", transitionDuration: "140ms" },
   itemSelected: { backgroundColor: tokens.colorSubtleBackgroundSelected, fontWeight: tokens.fontWeightSemibold },
   none: { padding: "8px", color: tokens.colorNeutralForeground3 },
@@ -158,8 +160,11 @@ const useStyles = makeStyles({
   },
 });
 
+type SectionGroup = "workspace" | "integrations" | "extensions" | "admin";
+
 interface Section {
   id: SettingsSection;
+  group: SectionGroup;
   labelKey: MessageKey;
   icon: ReactElement;
   // What the section is for, under its title.
@@ -168,21 +173,28 @@ interface Section {
   wordsKey: MessageKey;
 }
 
+const GROUP_KEYS: Record<SectionGroup, MessageKey> = {
+  workspace: "settings.dialog.group.workspace",
+  integrations: "settings.dialog.group.integrations",
+  extensions: "settings.dialog.group.extensions",
+  admin: "settings.dialog.group.admin",
+};
+
 const SECTIONS: Section[] = [
-  { id: "account", labelKey: "settings.dialog.section.account.label", icon: <Person20Regular />, aboutKey: "settings.dialog.section.account.about", wordsKey: "settings.dialog.section.account.words" },
-  { id: "appearance", labelKey: "settings.dialog.section.appearance.label", icon: <PaintBrush20Regular />, aboutKey: "settings.dialog.section.appearance.about", wordsKey: "settings.dialog.section.appearance.words" },
-  { id: "code", labelKey: "settings.dialog.section.code.label", icon: <Code20Regular />, aboutKey: "settings.dialog.section.code.about", wordsKey: "settings.dialog.section.code.words" },
-  { id: "ai-connections", labelKey: "settings.dialog.section.aiConnections.label", icon: <BrainCircuit20Regular />, aboutKey: "settings.dialog.section.aiConnections.about", wordsKey: "settings.dialog.section.aiConnections.words" },
-  { id: "compute", labelKey: "settings.dialog.section.compute.label", icon: <DataUsage20Regular />, aboutKey: "settings.dialog.section.compute.about", wordsKey: "settings.dialog.section.compute.words" },
-  { id: "connectors", labelKey: "settings.dialog.section.connectors.label", icon: <PlugConnected20Regular />, aboutKey: "settings.dialog.section.connectors.about", wordsKey: "settings.dialog.section.connectors.words" },
-  { id: "mcp-servers", labelKey: "settings.dialog.section.mcpServers.label", icon: <BookDatabase20Regular />, aboutKey: "settings.dialog.section.mcpServers.about", wordsKey: "settings.dialog.section.mcpServers.words" },
-  { id: "claude-connectors", labelKey: "settings.dialog.section.claudeConnectors.label", icon: <Apps20Regular />, aboutKey: "settings.dialog.section.claudeConnectors.about", wordsKey: "settings.dialog.section.claudeConnectors.words" },
-  { id: "skills", labelKey: "settings.dialog.section.skills.label", icon: <Lightbulb20Regular />, aboutKey: "settings.dialog.section.skills.about", wordsKey: "settings.dialog.section.skills.words" },
-  { id: "plugins", labelKey: "settings.dialog.section.plugins.label", icon: <PuzzlePiece20Regular />, aboutKey: "settings.dialog.section.plugins.about", wordsKey: "settings.dialog.section.plugins.words" },
-  { id: "system", labelKey: "settings.dialog.section.system.label", icon: <Server20Regular />, aboutKey: "settings.dialog.section.system.about", wordsKey: "settings.dialog.section.system.words" },
+  { id: "account", group: "workspace", labelKey: "settings.dialog.section.account.label", icon: <Person20Regular />, aboutKey: "settings.dialog.section.account.about", wordsKey: "settings.dialog.section.account.words" },
+  { id: "appearance", group: "workspace", labelKey: "settings.dialog.section.appearance.label", icon: <PaintBrush20Regular />, aboutKey: "settings.dialog.section.appearance.about", wordsKey: "settings.dialog.section.appearance.words" },
+  { id: "code", group: "workspace", labelKey: "settings.dialog.section.code.label", icon: <Code20Regular />, aboutKey: "settings.dialog.section.code.about", wordsKey: "settings.dialog.section.code.words" },
+  { id: "ai-connections", group: "integrations", labelKey: "settings.dialog.section.aiConnections.label", icon: <BrainCircuit20Regular />, aboutKey: "settings.dialog.section.aiConnections.about", wordsKey: "settings.dialog.section.aiConnections.words" },
+  { id: "compute", group: "integrations", labelKey: "settings.dialog.section.compute.label", icon: <DataUsage20Regular />, aboutKey: "settings.dialog.section.compute.about", wordsKey: "settings.dialog.section.compute.words" },
+  { id: "connectors", group: "integrations", labelKey: "settings.dialog.section.connectors.label", icon: <PlugConnected20Regular />, aboutKey: "settings.dialog.section.connectors.about", wordsKey: "settings.dialog.section.connectors.words" },
+  { id: "mcp-servers", group: "integrations", labelKey: "settings.dialog.section.mcpServers.label", icon: <BookDatabase20Regular />, aboutKey: "settings.dialog.section.mcpServers.about", wordsKey: "settings.dialog.section.mcpServers.words" },
+  { id: "claude-connectors", group: "integrations", labelKey: "settings.dialog.section.claudeConnectors.label", icon: <Apps20Regular />, aboutKey: "settings.dialog.section.claudeConnectors.about", wordsKey: "settings.dialog.section.claudeConnectors.words" },
+  { id: "skills", group: "extensions", labelKey: "settings.dialog.section.skills.label", icon: <Lightbulb20Regular />, aboutKey: "settings.dialog.section.skills.about", wordsKey: "settings.dialog.section.skills.words" },
+  { id: "plugins", group: "extensions", labelKey: "settings.dialog.section.plugins.label", icon: <PuzzlePiece20Regular />, aboutKey: "settings.dialog.section.plugins.about", wordsKey: "settings.dialog.section.plugins.words" },
+  { id: "system", group: "admin", labelKey: "settings.dialog.section.system.label", icon: <Server20Regular />, aboutKey: "settings.dialog.section.system.about", wordsKey: "settings.dialog.section.system.words" },
 ];
 
-const found = (q: string, t: (k: MessageKey) => string): Section[] => (q === "" ? SECTIONS : SECTIONS.filter((x) => `${t(x.labelKey)} ${t(x.wordsKey)}`.toLowerCase().includes(q)));
+const found = (q: string, t: (k: MessageKey) => string): Section[] => (q === "" ? SECTIONS : SECTIONS.filter((x) => `${t(x.labelKey)} ${t(x.aboutKey)} ${t(x.wordsKey)}`.toLowerCase().includes(q)));
 
 export interface SettingsDialogProps {
   section: SettingsSection;
@@ -226,7 +238,7 @@ function Body({ p, status, reloadStatus }: { p: SettingsDialogProps; status: Set
   if (p.section === "skills") return <SkillsSection />;
   if (p.section === "plugins") return <PluginsSection onOpenCode={() => p.onSection("code")} />;
   if (p.section === "system") return <SystemCard status={status} />;
-  if (p.settings === null) return <Text>{t("settings.dialog.loading")}</Text>;
+  if (p.settings === null) return <Spinner size="tiny" label={t("settings.dialog.loading")} />;
   if (p.section === "appearance") return <AppearanceSection settings={p.settings} onSettings={p.onSettings} />;
   return <CodeSection settings={p.settings} onSettings={p.onSettings} />;
 }
@@ -237,6 +249,18 @@ export function SettingsDialog(p: SettingsDialogProps) {
   const { isMobile } = useViewport();
   const [query, setQuery] = useState("");
   const [mobileStep, setMobileStep] = useState<"index" | "detail">(() => (p.connector !== null || p.section !== "account" ? "detail" : "index"));
+  const mobileSurfaceRef = useRef<HTMLDivElement>(null);
+  const mobileBackRef = useRef<HTMLButtonElement>(null);
+  const prevMobileStep = useRef<"index" | "detail">(mobileStep);
+  useEffect(() => {
+    if (!isMobile || prevMobileStep.current === mobileStep) {
+      prevMobileStep.current = mobileStep;
+      return;
+    }
+    prevMobileStep.current = mobileStep;
+    if (mobileStep === "detail") mobileBackRef.current?.focus();
+    else mobileSurfaceRef.current?.focus();
+  }, [isMobile, mobileStep]);
   const status = useSetupStatus();
   const shown = found(query.trim().toLowerCase(), t);
   const current = SECTIONS.find((x) => x.id === p.section) ?? SECTIONS[0];
@@ -244,7 +268,7 @@ export function SettingsDialog(p: SettingsDialogProps) {
   if (isMobile) {
     return (
       <Dialog open onOpenChange={(_, d) => (!d.open ? p.onClose() : undefined)}>
-        <DialogSurface className={mergeClasses(s.surfaceMobile, mobileStep === "index" && s.surfaceMobileIndex)} aria-label={t("settings.dialog.title")}>
+        <DialogSurface ref={mobileSurfaceRef} tabIndex={-1} className={mergeClasses(s.surfaceMobile, mobileStep === "index" && s.surfaceMobileIndex)} aria-label={t("settings.dialog.title")}>
           {mobileStep === "index" ? (
             <>
               <header className={s.mobileBar}>
@@ -255,39 +279,47 @@ export function SettingsDialog(p: SettingsDialogProps) {
                 <SearchBox size="medium" style={{ width: "100%" }} placeholder={t("settings.dialog.searchPlaceholder")} aria-label={t("settings.dialog.searchPlaceholder")} value={query} onChange={(_, d) => setQuery(d.value)} />
               </div>
               <nav className={s.mobileIndexList} aria-label={t("settings.dialog.sectionsAria")}>
-                {shown.map((x) => (
-                  <button
-                    key={x.id}
-                    type="button"
-                    className={mergeClasses(s.mobileRow, x.id === p.section && s.mobileRowSelected)}
-                    aria-current={x.id === p.section ? "page" : undefined}
-                    onClick={() => {
-                      p.onSection(x.id);
-                      setMobileStep("detail");
-                    }}
-                  >
-                    {x.icon}
-                    <span className={s.mobileRowText}>
-                      <Text weight="semibold">{t(x.labelKey)}</Text>
-                      <Text size={200} className={s.mobileRowAbout}>
-                        {t(x.aboutKey)}
-                      </Text>
-                    </span>
-                    <ChevronRight16Regular />
-                  </button>
-                ))}
+                {shown.map((x, idx) => {
+                  const showGroup = query.trim() === "" && (idx === 0 || shown[idx - 1].group !== x.group);
+                  return (
+                    <div key={x.id} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {showGroup && (
+                        <div role="presentation" className={s.mobileGroupHead}>
+                          <Text weight="semibold">{t(GROUP_KEYS[x.group])}</Text>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        className={s.mobileRow}
+                        onClick={() => {
+                          p.onSection(x.id);
+                          setMobileStep("detail");
+                        }}
+                      >
+                        {x.icon}
+                        <span className={s.mobileRowText}>
+                          <Text weight="semibold">{t(x.labelKey)}</Text>
+                          <Text size={200} className={s.mobileRowAbout}>
+                            {t(x.aboutKey)}
+                          </Text>
+                        </span>
+                        <ChevronRight16Regular />
+                      </button>
+                    </div>
+                  );
+                })}
                 {shown.length === 0 && <Text className={s.none}>{t("settings.dialog.nothingMatches")}</Text>}
               </nav>
             </>
           ) : (
             <>
               <header className={mergeClasses(s.mobileBar, s.mobileDetailBar)}>
-                <Button className={s.backBtn} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => setMobileStep("index")}>
+                <Button ref={mobileBackRef} className={s.backBtn} appearance="subtle" icon={<ArrowLeft20Regular />} onClick={() => setMobileStep("index")}>
                   {t("settings.dialog.title")}
                 </Button>
-                <Text as="h2" size={400} weight="semibold">
+                <DialogTitle as="h2" className={s.mobileTitle}>
                   {t(current.labelKey)}
-                </Text>
+                </DialogTitle>
                 <Button className={s.touchBtn} appearance="subtle" icon={<Dismiss20Regular />} aria-label={t("settings.dialog.closeAria")} onClick={p.onClose} />
               </header>
               <section className={s.mobileBody} aria-label={t(current.labelKey)}>
@@ -309,11 +341,21 @@ export function SettingsDialog(p: SettingsDialogProps) {
         <nav className={s.nav} aria-label={t("settings.dialog.sectionsAria")}>
           <DialogTitle className={s.title}>{t("settings.dialog.title")}</DialogTitle>
           <SearchBox className={s.search} size="small" placeholder={t("settings.dialog.searchPlaceholder")} aria-label={t("settings.dialog.searchPlaceholder")} value={query} onChange={(_, d) => setQuery(d.value)} />
-          {shown.map((x) => (
-            <Button key={x.id} className={mergeClasses(s.item, x.id === p.section && s.itemSelected)} appearance="subtle" icon={x.icon} aria-current={x.id === p.section ? "page" : undefined} onClick={() => p.onSection(x.id)}>
-              {t(x.labelKey)}
-            </Button>
-          ))}
+          {shown.map((x, idx) => {
+            const showGroup = query.trim() === "" && (idx === 0 || shown[idx - 1].group !== x.group);
+            return (
+              <div key={x.id} style={{ display: "flex", flexDirection: "column" }}>
+                {showGroup && (
+                  <div role="presentation" className={s.groupHead}>
+                    <Text weight="semibold">{t(GROUP_KEYS[x.group])}</Text>
+                  </div>
+                )}
+                <Button className={mergeClasses(s.item, x.id === p.section && s.itemSelected)} appearance="subtle" icon={x.icon} aria-current={x.id === p.section ? "page" : undefined} onClick={() => p.onSection(x.id)}>
+                  {t(x.labelKey)}
+                </Button>
+              </div>
+            );
+          })}
           {shown.length === 0 && <Text className={s.none}>{t("settings.dialog.nothingMatches")}</Text>}
         </nav>
         <section className={s.main} aria-label={t(current.labelKey)}>

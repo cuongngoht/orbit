@@ -376,13 +376,13 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
     clearRecipientOutcome();
   };
 
-  const bodyOf = (to: MissionTarget, mode: WhenBusy): CreateMissionRequest => ({
+  const bodyOf = (to: MissionTarget, mode: WhenBusy, list: Deliverable[] = deliverables): CreateMissionRequest => ({
     goal: goal.trim(),
     ...(title.trim() ? { title: title.trim() } : {}),
     target: to,
     ...(to.kind !== "employee" && expected !== null ? { expectedAssignee: expected } : {}),
     whenBusy: mode,
-    deliverables,
+    deliverables: list,
     acceptanceCriteria: criteria
       .split("\n")
       .map((l) => l.trim())
@@ -408,7 +408,17 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
 
   const submit = async (mode: WhenBusy) => {
     if (missionTarget === null || !ready) return;
-    const body = bodyOf(missionTarget, mode);
+    const pendingName = newName.trim();
+    const effectiveDeliverables =
+      pendingName !== "" && !deliverables.some((d) => d.name.toLowerCase() === pendingName.toLowerCase())
+        ? [...deliverables, { name: pendingName, required: newRequired }]
+        : deliverables;
+    if (effectiveDeliverables !== deliverables) {
+      setDeliverables(effectiveDeliverables);
+      setNewName("");
+      setNewRequired(true);
+    }
+    const body = bodyOf(missionTarget, mode, effectiveDeliverables);
     const checked = checkCreateMission(body);
     if (!checked.ok) {
       setProblems(checked.errors);

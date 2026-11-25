@@ -104,7 +104,7 @@ describe("an open chat: the conversation, and the composer always at the bottom"
     expect(screen.queryByText("Orbit plugin not loaded")).toBeNull();
     // Its end names the AI that ran -- once.
     push("session.completed", { subtype: "success", result: "Done", permissionDenials: 0, costUsd: null, turns: 1, durationMs: 100 });
-    expect(await screen.findByText(/OpenAI Codex finished \(1 turns/)).toBeInTheDocument();
+    expect(await screen.findByText(/OpenAI Codex finished \(1 turn\b/)).toBeInTheDocument();
     push("session.started", started({ runtime: "codex", claudeSessionId: "th_1", claudeCodeVersion: null, model: "gpt-6.1-sol", requestedModel: "gpt-6.1-sol", plugins: [], orbitLoaded: false, orbitVersion: null, resumed: true }));
     push("session.failed", { reason: "exit", subtype: null, message: "OpenAI Codex exited with code 1: boom", exitCode: 1, signal: null, permissionDenials: 0, costUsd: null, turns: null, durationMs: null });
     expect(await screen.findByText("OpenAI Codex failed: exited with code 1: boom")).toBeInTheDocument();

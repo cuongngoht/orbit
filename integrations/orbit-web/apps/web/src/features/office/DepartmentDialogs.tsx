@@ -114,7 +114,7 @@ const useDefaultsStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
     minWidth: 0,
   },
-  fields: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", minWidth: 0, "@media (max-width: 639px)": { gridTemplateColumns: "minmax(0, 1fr)" } },
+  fields: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", alignItems: "start", minWidth: 0, "@media (max-width: 639px)": { gridTemplateColumns: "minmax(0, 1fr)" } },
 });
 
 type DefaultField = "connectionId" | "model" | "effort";

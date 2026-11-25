@@ -34,7 +34,7 @@ import { useResource } from "../../hooks/useResource";
 import { t as tr, useI18n, type MessageKey } from "../../i18n";
 import { errorText, get, send } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
-import { Card, EmptyState, ErrorBar, Word, plural, principalOf, short, useParts, when } from "./parts";
+import { Card, EmptyState, ErrorBar, Word, byWhom, hasEmployeeRef, plural, principalOf, resourceOf, short, useGovernanceNames, useParts, when } from "./parts";
 
 const CATEGORY_KEY_OF_PREFIX: Record<string, MessageKey> = {
   account: "governance.audit.cat.account",
@@ -333,7 +333,92 @@ function EventTypePicker({ value, onChange }: { value: string; onChange: (value:
   );
 }
 
-function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boolean }) {
+const EMPLOYEE_DATA_KEYS = new Set(["employeeId", "employee", "from", "target", "resource", "workspace"]);
+const DEPARTMENT_DATA_KEYS = new Set(["departmentId", "department"]);
+const ACTOR_DATA_KEYS = new Set(["startedBy", "startedByLabel", "by", "requestedBy"]);
+
+function stripEmployeePrefix(raw: string): string {
+  if (raw.startsWith("agent:employee:")) return raw.slice("agent:employee:".length);
+  if (raw.startsWith("employee:")) return raw.slice("employee:".length).split(":")[0] ?? raw;
+  return raw;
+}
+
+function auditEmployeeIdsOf(ev: AuditEvent): string[] {
+  const ids: string[] = [];
+  if (hasEmployeeRef(ev.workspaceId)) ids.push(stripEmployeePrefix(ev.workspaceId!));
+  const data = (ev.data ?? {}) as Record<string, unknown>;
+  for (const key of EMPLOYEE_DATA_KEYS) {
+    const val = data[key];
+    if (typeof val === "string" && hasEmployeeRef(val)) ids.push(stripEmployeePrefix(val));
+  }
+  for (const key of DEPARTMENT_DATA_KEYS) {
+    const val = data[key];
+    if (typeof val === "string" && hasEmployeeRef(val)) ids.push(val);
+  }
+  return ids;
+}
+
+function formatAuditKey(key: string, trFn: (k: MessageKey) => string): string {
+  if (key === "employeeId" || key === "employee") return trFn("governance.audit.employeeField");
+  if (key === "departmentId" || key === "department") return "Department";
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\b(Ki|Mi|Gi) B\b/g, "$1B")
+    .replace(/^./, (c) => c.toUpperCase());
+}
+
+function formatAuditValue(
+  key: string,
+  val: unknown,
+  employeeNames?: ReadonlyMap<string, string>,
+  departmentNames?: ReadonlyMap<string, string>,
+): { text: string; raw?: string } {
+  if (val === null || val === undefined) return { text: "—" };
+  if (typeof val === "object") return { text: JSON.stringify(val) };
+  const s = String(val);
+  if (DEPARTMENT_DATA_KEYS.has(key)) {
+    const dept = departmentNames?.get(s);
+    return dept ? { text: dept, raw: s } : { text: s };
+  }
+  if (EMPLOYEE_DATA_KEYS.has(key)) {
+    const res = resourceOf(s, employeeNames, departmentNames);
+    return res.raw !== null ? { text: res.label, raw: res.raw } : { text: s };
+  }
+  if (ACTOR_DATA_KEYS.has(key)) {
+    const actor = byWhom(s, employeeNames);
+    return actor !== s ? { text: actor, raw: s } : { text: s };
+  }
+  return { text: s };
+}
+
+function auditWorkspaceOrEmployeeSuffix(event: AuditEvent, employeeNames: ReadonlyMap<string, string> | undefined, trFn: ReturnType<typeof useI18n>["t"]): string {
+  if (event.workspaceId) {
+    const empName = employeeNames?.get(event.workspaceId);
+    if (empName) {
+      return (event.agentId ?? event.principalId) === `employee:${event.workspaceId}` ? "" : ` · ${empName}`;
+    }
+    return trFn("governance.audit.workspaceSuffix", { id: short(event.workspaceId, 8) });
+  }
+  if (event.principalType !== "agent") {
+    for (const empId of auditEmployeeIdsOf(event)) {
+      const name = employeeNames?.get(empId);
+      if (name) return ` · ${name}`;
+    }
+  }
+  return "";
+}
+
+function Record({
+  event,
+  open: initiallyOpen,
+  employeeNames,
+  departmentNames,
+}: {
+  event: AuditEvent;
+  open: boolean;
+  employeeNames?: ReadonlyMap<string, string>;
+  departmentNames?: ReadonlyMap<string, string>;
+}) {
   const { t } = useI18n();
   const s = useParts();
   const st = useStyles();
@@ -347,6 +432,7 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
       setTimeout(() => setCopied(false), 1800);
     });
   };
+  const dataEntries = Object.entries((event.data ?? {}) as Record<string, unknown>);
   return (
     <li id={event.eventId} aria-label={event.eventType}>
       <Card className={accent}>
@@ -374,9 +460,10 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
           </Button>
         </div>
         <div className={st.reasonRow}>
+          {summary && <Text size={200}>{summary}</Text>}
           <Text size={200} className={s.muted}>
-            {principalOf(event.principalType, event.principalId, event.agentId)}
-            {event.workspaceId ? t("governance.audit.workspaceSuffix", { id: short(event.workspaceId, 8) }) : ""}
+            {principalOf(event.principalType, event.principalId, event.agentId, employeeNames)}
+            {auditWorkspaceOrEmployeeSuffix(event, employeeNames, t)}
           </Text>
           {event.reasonCodes.map((code) => (
             <span key={code} className={s.codeChip}>
@@ -398,7 +485,39 @@ function Record({ event, open: initiallyOpen }: { event: AuditEvent; open: boole
                 {copied ? t("governance.audit.copied") : t("governance.audit.copyJson")}
               </Button>
             </div>
-            <pre className={s.pre}>{JSON.stringify(event, null, 2)}</pre>
+            {dataEntries.length > 0 && (
+              <div className={s.inset}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <tbody>
+                    {dataEntries.map(([k, v]) => {
+                      const formatted = formatAuditValue(k, v, employeeNames, departmentNames);
+                      return (
+                        <tr key={k}>
+                          <td style={{ paddingRight: 14, paddingTop: 3, paddingBottom: 3, verticalAlign: "top", width: "150px" }}>
+                            <Text size={200} className={s.muted}>
+                              {formatAuditKey(k, t)}
+                            </Text>
+                          </td>
+                          <td style={{ paddingTop: 3, paddingBottom: 3 }}>
+                            <Text size={200} title={formatted.raw}>
+                              {formatted.text}
+                            </Text>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <details>
+              <summary style={{ cursor: "pointer", fontSize: tokens.fontSizeBase200, color: tokens.colorNeutralForeground3 }}>
+                {t("governance.audit.rawJson")}
+              </summary>
+              <pre className={s.pre} style={{ marginTop: "6px" }}>
+                {JSON.stringify(event, null, 2)}
+              </pre>
+            </details>
           </div>
         )}
       </Card>
@@ -412,11 +531,16 @@ export function AuditPage({ item }: { item: string | null }) {
   const st = useStyles();
   const [type, setType] = useState("");
   const [before, setBefore] = useState<number | null>(null);
+  const [cursorStack, setCursorStack] = useState<Array<number | null>>([]);
   const [verification, setVerification] = useState<ChainVerification | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const one = useResource<AuditEvent>(item ? () => get(`/api/governance/audit/${encodeURIComponent(item)}`) : null, [item]);
   const page = useResource<Page>(() => get(`/api/governance/audit?limit=50${type ? `&type=${type}` : ""}${before !== null ? `&before=${before}` : ""}`), [type, before]);
+  const needsNames = [...(one.data ? [one.data] : []), ...(page.data?.events ?? [])].some(
+    (ev) => hasEmployeeRef(ev.agentId ?? ev.principalId) || auditEmployeeIdsOf(ev).length > 0,
+  );
+  const { employeeNames, departmentNames, settled: namesSettled } = useGovernanceNames(true);
   useAppEvent("governance.changed", (e) => e.data.area === "audit" && before === null && void page.reload());
   useEffect(() => {
     if (item) document.getElementById(item)?.scrollIntoView({ block: "center" });
@@ -437,6 +561,7 @@ export function AuditPage({ item }: { item: string | null }) {
             value={type}
             onChange={(value) => {
               setBefore(null);
+              setCursorStack([]);
               setType(value);
             }}
           />
@@ -448,6 +573,7 @@ export function AuditPage({ item }: { item: string | null }) {
               icon={<Dismiss16Regular />}
               onClick={() => {
                 setBefore(null);
+                setCursorStack([]);
                 setType("");
               }}
             >
@@ -457,6 +583,7 @@ export function AuditPage({ item }: { item: string | null }) {
           {page.data && (
             <Text size={200} className={s.muted}>
               {plural(page.data.events.length, t("governance.audit.recordOne"), t("governance.audit.recordMany"))}
+              {page.data.events.length > 0 ? ` (#${page.data.events[page.data.events.length - 1].seq}–#${page.data.events[0].seq})` : ""}
             </Text>
           )}
         </div>
@@ -477,19 +604,17 @@ export function AuditPage({ item }: { item: string | null }) {
         </MessageBar>
       )}
       <ErrorBar text={error} />
-      {item && one.data && (
+      {item && one.data && (!needsNames || namesSettled) && (
         <ul className={s.list} aria-label={t("governance.audit.requestedRecordAria")}>
-          <Record event={one.data} open />
+          <Record event={one.data} open employeeNames={employeeNames} departmentNames={departmentNames} />
         </ul>
       )}
-      {page.data === null ? (
-        page.error ? (
-          <MessageBar intent="error">
-            <MessageBarBody>{page.error}</MessageBarBody>
-          </MessageBar>
-        ) : (
-          <Spinner />
-        )
+      {page.error ? (
+        <MessageBar intent="error">
+          <MessageBarBody>{page.error}</MessageBarBody>
+        </MessageBar>
+      ) : page.data === null || (needsNames && !namesSettled) ? (
+        <Spinner />
       ) : (
         <>
           {page.data.events.length === 0 ? (
@@ -504,6 +629,7 @@ export function AuditPage({ item }: { item: string | null }) {
                     shape="circular"
                     onClick={() => {
                       setBefore(null);
+                      setCursorStack([]);
                       setType("");
                     }}
                   >
@@ -515,18 +641,42 @@ export function AuditPage({ item }: { item: string | null }) {
           ) : (
             <ul className={mergeClasses(s.list)} aria-label={t("governance.audit.recordsAria")}>
               {page.data.events.map((e) => (
-                <Record key={e.eventId} event={e} open={false} />
+                <Record key={e.eventId} event={e} open={false} employeeNames={employeeNames} departmentNames={departmentNames} />
               ))}
             </ul>
           )}
           <div className={s.row}>
             {before !== null && (
-              <Button shape="circular" onClick={() => setBefore(null)}>
+              <Button
+                shape="circular"
+                onClick={() => {
+                  setBefore(null);
+                  setCursorStack([]);
+                }}
+              >
                 {t("governance.audit.newest")}
               </Button>
             )}
+            {cursorStack.length > 0 && (
+              <Button
+                shape="circular"
+                onClick={() => {
+                  const prev = cursorStack[cursorStack.length - 1] ?? null;
+                  setCursorStack((st) => st.slice(0, -1));
+                  setBefore(prev);
+                }}
+              >
+                {t("governance.audit.newer")}
+              </Button>
+            )}
             {page.data.next !== null && (
-              <Button shape="circular" onClick={() => setBefore(page.data?.next ?? null)}>
+              <Button
+                shape="circular"
+                onClick={() => {
+                  setCursorStack((st) => [...st, before]);
+                  setBefore(page.data?.next ?? null);
+                }}
+              >
                 {t("governance.audit.older")}
               </Button>
             )}

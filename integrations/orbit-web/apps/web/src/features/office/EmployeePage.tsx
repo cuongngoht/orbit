@@ -50,12 +50,13 @@ import {
   TaskListLtr20Regular,
   Warning16Regular,
 } from "@fluentui/react-icons";
-import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AppointmentView, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ExecutionProfile, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
+import { ASSIGNMENT_STATE_TEXT, DEFAULT_PRESETS, RUNTIME_LABELS, effortFor, effortLabel, type AiConnectionsView, type AppointmentView, type AssignmentSummary, type EmployeeDetail, type Employment, type EmploymentCommand, type ExecutionProfile, type ResourcePreset, type ResourceProfile, type Roster, type SandboxState } from "@orbit-web/contracts";
 import { useState, type ReactElement } from "react";
 import { IconBadge } from "../../components/SectionIcons";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
+import { get } from "../../services/api";
 import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resources/format";
 import { office, useOfficeRead, wholeRoster } from "./api";
@@ -66,7 +67,7 @@ import { useConnections } from "../connections/AiConnectionsSection";
 import { useExecutiveState } from "../executive/api";
 import { DraftWithAi, type DraftFields } from "./DraftWithAi";
 import { AssistantsField, DefaultsThatApply, INHERITED, inheritsModel, usableForEmployees } from "./HireWizard";
-import { AsOf, Callout, EmptyState, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmptyState, ProblemBar, StateBadge, WorkLabelBadge, humanizeActor, humanizeWaitingOn, useAction, useOfficeStyles, when } from "./parts";
 import { EmployeeDeskScene, deskMoodText } from "./VirtualDesk";
 import { ResourceFields, resourceProblems, storageProblem } from "./ResourceFields";
 import { RunDetails } from "./RunDetails";
@@ -418,10 +419,12 @@ function RoleCard({ e, go }: { e: EmployeeDetail; go: Go }) {
   const o = useOfficeStyles();
   const s = useStyles();
   const managerId = e.managerId;
-  const roster = useOfficeRead<Roster>(managerId !== null ? () => wholeRoster() : null, [managerId], ["roster"]);
-  const reportsTo = managerId === null ? null : (roster.data?.employees.find((x) => x.id === managerId) ?? null);
-  const now = e.appointment ?? null;
   const history = [...(e.appointments ?? [])].sort((a, b) => b.appointedAt.localeCompare(a.appointedAt));
+  const needsOtherNames = history.some((a) => [a.appointedBy, a.endedBy].some((b) => Boolean(b && b.includes("employee:") && !b.endsWith(e.id))));
+  const roster = useOfficeRead<Roster>(managerId !== null || needsOtherNames ? () => wholeRoster() : null, [managerId, needsOtherNames], ["roster"]);
+  const reportsTo = managerId === null ? null : (roster.data?.employees.find((x) => x.id === managerId) ?? null);
+  const peopleList = [{ employeeId: e.id, employeeName: e.name }, ...(roster.data?.employees.map((x) => ({ employeeId: x.id, employeeName: x.name })) ?? [])];
+  const now = e.appointment ?? null;
   return (
     <section className={o.card} aria-label={t("office.employee.authorityTitle")}>
       <div className={s.sectionHead}>
@@ -481,8 +484,8 @@ function RoleCard({ e, go }: { e: EmployeeDetail; go: Go }) {
                   <AppointmentStateBadge state={a.state} />
                 </div>
                 <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-                  {t("office.employee.appointmentMeta", { revision: a.slotRevision, at: when(a.appointedAt), by: a.appointedBy })}
-                  {a.endedAt ? t("office.employee.appointmentEnded", { at: when(a.endedAt), by: a.endedBy ?? "" }) : ""}
+                  {t("office.employee.appointmentMeta", { revision: a.slotRevision, at: when(a.appointedAt), by: humanizeActor(a.appointedBy, peopleList, t).label })}
+                  {a.endedAt ? t("office.employee.appointmentEnded", { at: when(a.endedAt), by: humanizeActor(a.endedBy, peopleList, t).label }) : ""}
                   {a.endReason ? t("office.employee.appointmentEndReason", { reason: a.endReason }) : ""}
                 </Text>
               </li>
@@ -518,7 +521,7 @@ function AssignmentList({ items, go, label, empty }: { items: AssignmentSummary[
             <Text size={200} className={o.muted}>
               {t("office.employee.updatedAt", { at: when(a.updatedAt) })}
               {a.reason ? ` · ${a.reason}` : ""}
-              {a.waitingOn ? t("office.employee.waitingOn", { what: a.waitingOn }) : ""}
+              {a.waitingOn ? t("office.employee.waitingOn", { what: humanizeWaitingOn(a.waitingOn, t) }) : ""}
             </Text>
           </div>
           <ChevronRight16Regular className={s.chevron} aria-hidden />
@@ -673,6 +676,11 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
     });
   const x = p.execution;
   const [changing, setChanging] = useState(false);
+  const connections = useOfficeRead<AiConnectionsView>(x.connectionId !== null ? () => get("/api/connections") : null, [x.connectionId], ["connections"]);
+  const conn = x.connectionId ? connections.data?.connections.find((c) => c.id === x.connectionId) : undefined;
+  const needsCreatorNames = e.revisions.some((r) => r.createdBy.includes("employee:") && !r.createdBy.endsWith(e.id));
+  const creatorRoster = useOfficeRead<Roster>(needsCreatorNames ? () => wholeRoster() : null, [needsCreatorNames], ["roster"]);
+  const creatorList = [{ employeeId: e.id, employeeName: e.name }, ...(creatorRoster.data?.employees.map((emp) => ({ employeeId: emp.id, employeeName: emp.name })) ?? [])];
   return (
     <div className={s.colStack}>
       <div className={s.twoCol}>
@@ -850,7 +858,15 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
                 <dt className={o.dt} style={{ fontSize: tokens.fontSizeBase100 }}>
                   {t("office.employee.connectionField")}
                 </dt>
-                <dd className={o.dd}>{x.connectionId ? <span className={o.mono}>{x.connectionId}</span> : t("office.employee.accountDefault")}</dd>
+                <dd className={o.dd}>
+                  {conn ? (
+                    <span title={x.connectionId ?? undefined}>{`${RUNTIME_LABELS[conn.runtime]} — ${conn.label}`}</span>
+                  ) : x.connectionId ? (
+                    <span className={o.mono}>{x.connectionId}</span>
+                  ) : (
+                    t("office.employee.accountDefault")
+                  )}
+                </dd>
               </div>
             </dl>
           </section>
@@ -898,7 +914,7 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
                         )}
                       </div>
                       <Text size={200} className={o.muted}>
-                        {t("office.employee.revisionMeta", { at: when(r.createdAt), by: r.createdBy })}
+                        {t("office.employee.revisionMeta", { at: when(r.createdAt), by: humanizeActor(r.createdBy, creatorList, t).label })}
                         {r.basedOn ? t("office.employee.copiedFrom", { revision: r.basedOn }) : ""}
                         {r.note ? ` · ${r.note}` : ""}
                       </Text>
@@ -1066,6 +1082,9 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
   const o = useOfficeStyles();
   const s = useStyles();
   const [editing, setEditing] = useState(false);
+  const needsCreatorNames = e.resourceRevisions.some((rv) => rv.createdBy.includes("employee:") && !rv.createdBy.endsWith(e.id));
+  const creatorRoster = useOfficeRead<Roster>(needsCreatorNames ? () => wholeRoster() : null, [needsCreatorNames], ["roster"]);
+  const creatorList = [{ employeeId: e.id, employeeName: e.name }, ...(creatorRoster.data?.employees.map((emp) => ({ employeeId: emp.id, employeeName: emp.name })) ?? [])];
   const sb = e.sandbox;
   const r = sb.resources;
   const run = e.activeRun;
@@ -1228,7 +1247,7 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
                       {rv.profile.presetId ? t("office.employee.presetTag", { name: rv.profile.presetId }) : t("office.employee.customTag")}
                     </Text>
                     <Text size={200} className={o.muted}>
-                      {t("office.employee.revisionMeta", { at: when(rv.createdAt), by: rv.createdBy })}
+                      {t("office.employee.revisionMeta", { at: when(rv.createdAt), by: humanizeActor(rv.createdBy, creatorList, t).label })}
                       {rv.note ? ` · ${rv.note}` : ""}
                     </Text>
                   </li>
@@ -1487,6 +1506,16 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
           </button>
         </div>
 
+        {e.employment === "probation" && (
+          <Callout tone="info" role="status">
+            <div className={o.between}>
+              <Text size={200}>{t("office.employee.probationNotice")}</Text>
+              <Button size="small" appearance="primary" onClick={() => go("employee", id, "employment")}>
+                {t("office.employee.activateAction")}
+              </Button>
+            </div>
+          </Callout>
+        )}
         {e.notReadyReason && (
           <Callout tone="danger" icon={<ErrorCircle16Regular />}>
             {t("office.floor.notReady", { reason: e.notReadyReason })}
@@ -1494,7 +1523,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
         )}
         {e.connectionWarning && (
           <Callout tone="warn" icon={<Warning16Regular />}>
-            {t("office.floor.connectionWarn", { warning: e.connectionWarning })}
+            {t("office.floor.connectionWarn", { reason: e.connectionWarning })}
           </Callout>
         )}
       </section>

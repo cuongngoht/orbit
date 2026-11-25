@@ -1,6 +1,6 @@
 // A NEW PASSWORD FIRST: the user's password was set by somebody else (the trial seed, or an operator's reset), so the
 // page asks for one of the user's own before anything of the account opens. The only other way on is to sign out.
-import { Button, Text } from "@fluentui/react-components";
+import { Button, MessageBar, MessageBarBody, Spinner, Text } from "@fluentui/react-components";
 import { ORBIT_WEB_VERSION, type AuthStatus } from "@orbit-web/contracts";
 import { ChangePasswordForm } from "../features/auth/ChangePasswordForm";
 import { TrialBar } from "../features/auth/TrialBar";
@@ -25,16 +25,16 @@ export function ChangePasswordPage({ status, onChanged, signOut }: { status: Aut
         </div>
         <section className={s.card} aria-label={t("common.changePassword.title")}>
           <ChangePasswordForm username={status.user?.username ?? null} onChanged={onChanged} submitLabel={t("common.changePassword.submit")} />
-          <div style={{ marginTop: "12px" }}>
-            <Button appearance="subtle" disabled={signOut.busy} onClick={() => void signOut.signOut()}>
+          <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <Button appearance="subtle" icon={signOut.busy ? <Spinner size="extra-tiny" /> : undefined} disabled={signOut.busy} onClick={() => void signOut.signOut()}>
               {t("common.changePassword.signOut")}
             </Button>
+            {signOut.error && (
+              <MessageBar intent="error">
+                <MessageBarBody>{signOut.error}</MessageBarBody>
+              </MessageBar>
+            )}
           </div>
-          {signOut.error && (
-            <Text size={200} className={s.hint}>
-              {signOut.error}
-            </Text>
-          )}
         </section>
         <Text size={200} className={s.foot}>
           {t("common.access.footer", { version: ORBIT_WEB_VERSION })}

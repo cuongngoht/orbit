@@ -70,7 +70,19 @@ const useStyles = makeStyles({
   },
   main: { flexGrow: 1, minWidth: 0, maxWidth: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" },
   view: { flexGrow: 1, minWidth: 0, maxWidth: "100%", minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" },
-  center: { padding: "48px" },
+  center: {
+    minHeight: "100dvh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: "24px",
+    paddingRight: "16px",
+    paddingBottom: "24px",
+    paddingLeft: "16px",
+    gap: "12px",
+  },
+  centerCard: { maxWidth: "460px", width: "100%" },
 });
 
 const ACCESS_TOKEN_REQUIRED = "access_token_required";
@@ -210,9 +222,11 @@ function Workspace({ auth, settings, onAuth, reloadAuth, signOut }: WorkspacePro
           <Sidebar {...sidebarProps} collapsed={collapsed} onToggle={toggle} />
         </div>
       ) : (
-        <OverlayDrawer open={drawerOpen} onOpenChange={(_, d) => setDrawerOpen(d.open)} position="start" className={s.drawer}>
-          <Sidebar {...sidebarProps} collapsed={false} isDrawer onToggle={() => setDrawerOpen(false)} />
-        </OverlayDrawer>
+        route.settings === null && (
+          <OverlayDrawer open={drawerOpen} onOpenChange={(_, d) => setDrawerOpen(d.open)} position="start" className={s.drawer}>
+            <Sidebar {...sidebarProps} collapsed={false} isDrawer onToggle={() => setDrawerOpen(false)} />
+          </OverlayDrawer>
+        )
       )}
       <main className={s.main}>
         <TrialBar trial={auth.trial} onChangePassword={() => openSettings("account")} />
@@ -286,14 +300,21 @@ function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resour
   const signOut = useSignOut(reload);
   if (auth.errorCode === ACCESS_TOKEN_REQUIRED) return <AccessPage onGranted={reload} />;
   if (auth.data === null) {
-    if (auth.loading) return <Spinner className={s.center} label={t("common.app.checking")} />;
+    if (auth.loading)
+      return (
+        <div className={s.center}>
+          <Spinner label={t("common.app.checking")} />
+        </div>
+      );
     return (
-      <MessageBar intent="error" className={s.center}>
-        <MessageBarBody>{t("common.app.noAnswer", { reason: auth.error ?? t("common.app.noReason") })}</MessageBarBody>
-        <MessageBarActions>
-          <Button onClick={reload}>{t("common.app.tryAgain")}</Button>
-        </MessageBarActions>
-      </MessageBar>
+      <div className={s.center}>
+        <MessageBar intent="error" className={s.centerCard}>
+          <MessageBarBody>{t("common.app.noAnswer", { reason: auth.error ?? t("common.app.noReason") })}</MessageBarBody>
+          <MessageBarActions>
+            <Button onClick={reload}>{t("common.app.tryAgain")}</Button>
+          </MessageBarActions>
+        </MessageBar>
+      </div>
     );
   }
   const status = auth.data;
@@ -313,7 +334,16 @@ function Gate({ auth, settings }: { auth: Resource<AuthStatus>; settings: Resour
 }
 
 export function App() {
-  const shared = sharedTokenOf(window.location.hash);
+  const [shared, setShared] = useState(() => sharedTokenOf(window.location.hash));
+  useEffect(() => {
+    const onHash = () => {
+      setShared(sharedTokenOf(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, []);
   return shared === null ? <OrbitWeb /> : <Shared token={shared} />;
 }
 
@@ -339,6 +369,15 @@ function OrbitWeb() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  useEffect(() => {
+    if (signedIn) return;
+    const clearHidden = () => document.getElementById("root")?.removeAttribute("aria-hidden");
+    clearHidden();
+    const id = window.requestAnimationFrame(clearHidden);
+    return () => {
+      window.cancelAnimationFrame(id);
+    };
+  }, [signedIn]);
   return (
     <I18nProvider locale={auth.data?.account?.locale ?? "en"}>
       <FluentProvider theme={themeOf(dark)} style={{ height: "100%" }}>

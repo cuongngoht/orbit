@@ -15,7 +15,7 @@ import { useResource } from "../../hooks/useResource";
 import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
-import { AsOf, Callout, EmptyState, ProblemBar, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmptyState, ProblemBar, humanizeActor, useAction, useOfficeStyles, when } from "./parts";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -39,21 +39,24 @@ const useStyles = makeStyles({
 });
 
 // What an open question's mission says of it: who asked, the lead who moved it up to the person (if one did), and the
-// names of the assignments it refers to (an item's `waiting` may name one: `assignment:<id>`).
-function useQuestion(item: InboxItem): { askedBy: string | null; movedUpBy: string | null; names: Map<string, string> } | null {
+// names of the assignments it refers to (an item's `waiting` may name one: `assignment:<id>` or `agent:employee:<id>`).
+function useQuestion(item: InboxItem): { askedBy: string | null; movedUpBy: string | null; names: Map<string, string>; assignments: MissionDetail["assignments"] } | null {
   const asks = item.state === "open" && item.kind === "information" && item.assignmentId !== null;
-  const mission = useResource<MissionDetail>(asks ? () => office.mission(item.missionId) : null, [asks, item.missionId]);
-  const m = asks ? mission.data : null;
+  const needsEmployeeName = Boolean(item.waiting?.startsWith("agent:employee:"));
+  const load = asks || needsEmployeeName;
+  const mission = useResource<MissionDetail>(load ? () => office.mission(item.missionId) : null, [load, item.missionId]);
+  const m = load ? mission.data : null;
   if (m === null) return null;
-  const asked = m.clarifications.filter((c) => c.askerAssignmentId === item.assignmentId);
+  const asked = asks ? m.clarifications.filter((c) => c.askerAssignmentId === item.assignmentId) : [];
   const c = asked.find((q) => q.state === "open") ?? asked.at(-1) ?? null;
   // The hop that brought it to the person, and the lead that had it just before.
   const up = c === null ? -1 : c.route.findIndex((h) => h.addressee === "owner");
   const lead = c !== null && up > 0 ? c.route[up - 1] : undefined;
   return {
-    askedBy: c?.askerName ?? m.assignments.find((a) => a.id === item.assignmentId)?.employeeName ?? null,
-    movedUpBy: lead === undefined ? null : (lead.addresseeName ?? ""),
+    askedBy: asks ? (c?.askerName ?? m.assignments.find((a) => a.id === item.assignmentId)?.employeeName ?? null) : null,
+    movedUpBy: !asks || lead === undefined ? null : (lead.addresseeName ?? ""),
     names: new Map(m.assignments.map((a) => [a.id, a.employeeName])),
+    assignments: m.assignments,
   };
 }
 
@@ -66,8 +69,12 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
   const act = useAction();
   const [answer, setAnswer] = useState("");
   const question = useQuestion(item);
-  // Who waits, by name: a reference to an assignment is said as its employee, or not at all.
-  const waiting = item.waiting?.startsWith(ASSIGNMENT_REF) ? (question?.names.get(item.waiting.slice(ASSIGNMENT_REF.length)) ?? null) : item.waiting;
+  // Who waits, by name: a reference to an assignment or employee is said by name when available.
+  const waiting = item.waiting?.startsWith(ASSIGNMENT_REF)
+    ? (question?.names.get(item.waiting.slice(ASSIGNMENT_REF.length)) ?? null)
+    : item.waiting
+      ? humanizeActor(item.waiting, question?.assignments ?? [], t).label
+      : null;
   const version = item.pin.assignmentVersion;
   const command = (c: "cancel" | "retry" | "answer", body?: unknown) => {
     if (item.assignmentId === null || version === null) return;

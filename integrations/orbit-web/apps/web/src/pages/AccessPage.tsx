@@ -48,6 +48,7 @@ const useStyles = makeStyles({
     gap: "18px",
   },
   step: { display: "flex", flexDirection: "column", gap: "10px" },
+  stepWaiting: { borderTop: `1px solid ${tokens.colorNeutralStroke2}`, paddingTop: "14px", opacity: 0.78 },
   stepTitle: { display: "flex", alignItems: "center", gap: "8px" },
   number: { width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: tokens.fontSizeBase200, fontWeight: tokens.fontWeightSemibold, backgroundColor: tokens.colorBrandBackground, color: tokens.colorNeutralForegroundOnBrand, flexShrink: 0 },
   numberWaiting: { backgroundColor: tokens.colorNeutralBackground5, color: tokens.colorNeutralForeground3 },
@@ -79,6 +80,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
     const pasted = tokenIn(text);
     setToken(pasted);
     if (pasted.length > 0) submit(pasted);
+    else setError(t("common.access.clipboardEmpty"));
   };
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(fromLink !== null);
@@ -117,7 +119,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
   }, []);
 
   return (
-    <main className={s.page}>
+    <main className={`${s.page} orbit-touch`}>
       <div className={s.panel}>
         <img src="/orbit.svg" alt="" className={s.logo} />
         <h1 className={s.heading}>{t("common.access.title")}</h1>
@@ -167,7 +169,7 @@ export function AccessPage({ onGranted }: { onGranted: () => void }) {
             </Button>
           )}
         </form>
-        <div className={s.step} aria-label={t("common.access.nextAria")}>
+        <div className={`${s.step} ${s.stepWaiting}`} aria-label={t("common.access.nextAria")}>
           <div className={s.stepTitle}>
             <span className={`${s.number} ${s.numberWaiting}`}>2</span>
             <Text weight="semibold" className={s.muted}>

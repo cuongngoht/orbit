@@ -3,11 +3,6 @@
 // and offers to connect it (Settings → Connectors). Repositories are read only while the picker is open.
 import {
   Button,
-  Menu,
-  MenuItemRadio,
-  MenuList,
-  MenuPopover,
-  MenuTrigger,
   MessageBar,
   MessageBarBody,
   Popover,
@@ -104,9 +99,10 @@ function Listing({ source, selected, onPick, mobile }: { source: RepositorySourc
   const [query, setQuery] = useState("");
   const [refresh, setRefresh] = useState(0);
   const list = useResource<RepositoryList>(() => get(`/api/repositories?source=${source}${refresh > 0 ? "&refresh=1" : ""}`), [source, refresh]);
-  const shown = useMemo(() => {
+  const { matched, shown } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (list.data?.repositories ?? []).filter((r) => q === "" || r.fullName.toLowerCase().includes(q)).slice(0, MAX_SHOWN);
+    const m = (list.data?.repositories ?? []).filter((r) => q === "" || r.fullName.toLowerCase().includes(q));
+    return { matched: m, shown: m.slice(0, MAX_SHOWN) };
   }, [list.data, query]);
   return (
     <>
@@ -149,6 +145,11 @@ function Listing({ source, selected, onPick, mobile }: { source: RepositorySourc
           </li>
         )}
       </ul>
+      {matched.length > MAX_SHOWN && (
+        <Text size={200} className={s.muted}>
+          {t("chat.repoPicker.truncatedNote", { shown: MAX_SHOWN, total: matched.length })}
+        </Text>
+      )}
     </>
   );
 }
@@ -273,8 +274,64 @@ export function BranchPicker({ choice, value, onChange }: { choice: RepositoryCh
   const s = useStyles();
   const { isMobile } = useViewport();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const branches = useResource<BranchList>(() => get(`/api/repositories/branches?source=${choice.source}&id=${encodeURIComponent(choice.repository.id)}`), [choice.source, choice.repository.id]);
   const current = value ?? choice.repository.defaultBranch ?? branches.data?.branches[0]?.name ?? null;
+  const filteredBranches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (branches.data?.branches ?? []).filter((b) => q === "" || b.name.toLowerCase().includes(q));
+  }, [branches.data, query]);
+
+  const branchBody = (mobile: boolean) => (
+    <>
+      <SearchBox
+        size={mobile ? "medium" : "small"}
+        placeholder={t("chat.repoPicker.searchBranchPlaceholder")}
+        aria-label={t("chat.repoPicker.searchBranchAria")}
+        value={query}
+        onChange={(_, d) => setQuery(d.value)}
+      />
+      {branches.loading && branches.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
+      {branches.error && (
+        <MessageBar intent="error">
+          <MessageBarBody>{branches.error}</MessageBarBody>
+        </MessageBar>
+      )}
+      <div className={mobile ? s.sheetInner : s.list} role="menu">
+        {filteredBranches.map((b) => {
+          const selected = current === b.name;
+          return (
+            <button
+              key={b.name}
+              type="button"
+              role="menuitemradio"
+              aria-checked={selected}
+              className={mergeClasses(s.option, mobile && s.optionMobile, selected && s.selected)}
+              onClick={() => {
+                onChange(b.name);
+                setOpen(false);
+              }}
+            >
+              <span className={s.text}>
+                <span className={s.name}>{b.name}</span>
+                {b.isDefault && (
+                  <Text size={200} className={s.muted}>
+                    {t("chat.repoPicker.default")}
+                  </Text>
+                )}
+              </span>
+              {selected && <Checkmark16Regular />}
+            </button>
+          );
+        })}
+        {branches.data !== null && filteredBranches.length === 0 && (
+          <Text size={200} className={s.muted}>
+            {t("chat.repoPicker.noBranchMatch")}
+          </Text>
+        )}
+      </div>
+    </>
+  );
 
   if (isMobile) {
     return (
@@ -288,59 +345,26 @@ export function BranchPicker({ choice, value, onChange }: { choice: RepositoryCh
           onClick={() => setOpen(true)}
         >
           <span className={s.label}>{current ?? "…"}</span>
+          <ChevronDown12Regular />
         </Button>
         <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.repoPicker.startingBranch")}>
-          {branches.loading && branches.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
-          {branches.error && <Text size={200}>{branches.error}</Text>}
-          {(branches.data?.branches ?? []).map((b) => {
-            const selected = current === b.name;
-            return (
-              <button
-                key={b.name}
-                type="button"
-                role="menuitemradio"
-                aria-checked={selected}
-                className={mergeClasses(s.option, s.optionMobile, selected && s.selected)}
-                onClick={() => {
-                  onChange(b.name);
-                  setOpen(false);
-                }}
-              >
-                <span className={s.text}>
-                  <span className={s.name}>{b.name}</span>
-                  {b.isDefault && (
-                    <Text size={200} className={s.muted}>
-                      {t("chat.repoPicker.default")}
-                    </Text>
-                  )}
-                </span>
-                {selected && <Checkmark16Regular />}
-              </button>
-            );
-          })}
+          <div className={s.sheetInner}>{branchBody(true)}</div>
         </ResponsiveSheet>
       </>
     );
   }
 
   return (
-    <Menu checkedValues={{ branch: current ? [current] : [] }} onCheckedValueChange={(_, d) => d.checkedItems[0] && onChange(d.checkedItems[0])}>
-      <MenuTrigger disableButtonEnhancement>
+    <Popover open={open} onOpenChange={(_, d) => setOpen(d.open)} positioning="above-start" trapFocus>
+      <PopoverTrigger disableButtonEnhancement>
         <Button className={s.trigger} appearance="subtle" size="small" icon={<BranchFork16Regular />} aria-label={t("chat.repoPicker.branchAria", { branch: current ?? "…" })}>
           <span className={s.label}>{current ?? "…"}</span>
+          <ChevronDown12Regular />
         </Button>
-      </MenuTrigger>
-      <MenuPopover>
-        <MenuList style={{ maxHeight: "300px", overflowY: "auto" }}>
-          {branches.loading && branches.data === null && <Spinner size="tiny" label={t("chat.repoPicker.readingBranches")} />}
-          {branches.error && <Text size={200}>{branches.error}</Text>}
-          {(branches.data?.branches ?? []).map((b) => (
-            <MenuItemRadio key={b.name} name="branch" value={b.name} secondaryContent={b.isDefault ? t("chat.repoPicker.default") : undefined}>
-              {b.name}
-            </MenuItemRadio>
-          ))}
-        </MenuList>
-      </MenuPopover>
-    </Menu>
+      </PopoverTrigger>
+      <PopoverSurface className={s.surface} aria-label={t("chat.repoPicker.startingBranch")}>
+        {branchBody(false)}
+      </PopoverSurface>
+    </Popover>
   );
 }

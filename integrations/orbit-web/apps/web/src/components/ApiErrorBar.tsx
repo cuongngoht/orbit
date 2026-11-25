@@ -27,7 +27,10 @@ export function ConnectionRequired({ what }: { what?: string }) {
 
 export function ApiErrorBar({ error }: { error: unknown }) {
   if (error === null || error === undefined) return null;
-  if (isConnectionRequired(error)) return <ConnectionRequired what="Claude Code" />;
+  if (isConnectionRequired(error)) {
+    const text = errorText(error);
+    return <ConnectionRequired what={/codex/i.test(text) ? "OpenAI Codex" : "Claude Code"} />;
+  }
   return (
     <MessageBar intent="error">
       <MessageBarBody>{errorText(error)}</MessageBarBody>

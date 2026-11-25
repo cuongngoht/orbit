@@ -50,8 +50,16 @@ export function PeopleAccess({ path, what }: { path: string; what: string }) {
     void save([...new Set([...(list?.people.map((p) => p.email) ?? []), ...(emails as string[])])]);
   };
 
-  if (list === null) return state.error ? <Text>{state.error}</Text> : <Spinner size="tiny" label={t("chat.share.people.reading")} />;
+  if (list === null)
+    return state.error ? (
+      <MessageBar intent="error">
+        <MessageBarBody>{state.error}</MessageBarBody>
+      </MessageBar>
+    ) : (
+      <Spinner size="tiny" label={t("chat.share.people.reading")} />
+    );
   const owner = list.access === "owner";
+  const atLimit = list.people.length >= SHARE_PEOPLE_LIMIT;
   return (
     <section className={s.root} aria-label={t("chat.share.people.title")}>
       <div className={s.head}>
@@ -64,14 +72,21 @@ export function PeopleAccess({ path, what }: { path: string; what: string }) {
           : t("chat.share.people.sharedDesc", { owner: list.owner ?? t("chat.share.people.itsOwner") })}
       </Text>
       {owner && (
-        <div className={s.row}>
-          <Field label={t("chat.share.people.emailLabel")} style={{ flexGrow: 1 }}>
-            <Input value={draft} type="email" disabled={busy} onChange={(_, d) => setDraft(d.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={t("chat.share.people.emailPlaceholder")} />
-          </Field>
-          <Button disabled={busy || draft.trim() === "" || list.people.length >= SHARE_PEOPLE_LIMIT} onClick={add}>
-            {t("chat.share.people.shareBtn")}
-          </Button>
-        </div>
+        <>
+          <div className={s.row}>
+            <Field label={t("chat.share.people.emailLabel")} style={{ flexGrow: 1 }}>
+              <Input value={draft} type="text" inputMode="email" disabled={busy || atLimit} onChange={(_, d) => setDraft(d.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder={t("chat.share.people.emailPlaceholder")} />
+            </Field>
+            <Button disabled={busy || draft.trim() === "" || atLimit} onClick={add}>
+              {t("chat.share.people.shareBtn")}
+            </Button>
+          </div>
+          {atLimit && (
+            <Text size={200} className={s.muted}>
+              {t("chat.share.people.limitReached", { limit: SHARE_PEOPLE_LIMIT })}
+            </Text>
+          )}
+        </>
       )}
       {list.people.length === 0 ? (
         <Text size={200} className={s.muted}>

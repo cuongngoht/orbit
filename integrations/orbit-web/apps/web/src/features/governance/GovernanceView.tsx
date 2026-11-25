@@ -5,7 +5,7 @@
 // every route to this browser's session whatever a page shows.
 import { Avatar, Button, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Navigation20Regular } from "@fluentui/react-icons";
-import type { ReactElement, ReactNode } from "react";
+import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
 import {
   ApprovalsIcon,
   AuditChainIcon,
@@ -222,15 +222,19 @@ export function GovernanceView({
   const { isMobile } = useViewport();
   const name = account ? account.displayName || account.email : null;
   const emailSuffix = account?.displayName ? t("governance.view.accountEmailSuffix", { email: account.email }) : "";
+  const navRefs = useRef<Partial<Record<GovernancePage, HTMLElement | null>>>({});
+  useEffect(() => {
+    navRefs.current[page]?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [page]);
 
   return (
-    <div className={s.root}>
+    <div className={mergeClasses(s.root, "orbit-touch")}>
       <header className={s.top}>
         <div className={s.topInner}>
           {onOpenNav && <Button className={s.touch} appearance="subtle" icon={<Navigation20Regular />} aria-label={t("governance.view.openNav")} onClick={onOpenNav} />}
           {!isMobile && <IconBadge icon={<GovernanceIcon size={18} active />} tone="brand" size="md" />}
           <div className={s.title}>
-            <Text weight="semibold" size={isMobile ? 400 : 500}>
+            <Text as="h1" weight="semibold" size={isMobile ? 400 : 500} style={{ margin: 0 }}>
               {t("governance.view.headerTitle", { page: t(TITLE_KEYS[page]) })}
             </Text>
             {name !== null && isMobile && (
@@ -257,6 +261,9 @@ export function GovernanceView({
             return (
               <Button
                 key={p}
+                ref={(el) => {
+                  navRefs.current[p] = el;
+                }}
                 size="small"
                 appearance="subtle"
                 icon={<span style={{ display: "inline-flex", color: active ? toneColor(meta.tone) : undefined }}>{meta.icon(active)}</span>}

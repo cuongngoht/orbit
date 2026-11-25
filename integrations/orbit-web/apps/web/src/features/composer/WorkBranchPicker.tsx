@@ -3,7 +3,7 @@
 // open -- and moves the chat to the one chosen, or to a new branch made from the work as it is. The repository's
 // default branch is listed and never offered; while Claude works, or the workspace is not ready, nothing moves. What the
 // workspace refuses (uncommitted work, a branch that exists) is said here, in the workspace's own words.
-import { Button, Input, MessageBar, MessageBarBody, Popover, PopoverSurface, PopoverTrigger, SearchBox, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Input, MessageBar, MessageBarBody, Popover, PopoverSurface, PopoverTrigger, SearchBox, Spinner, Text, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { BranchFork16Regular, Checkmark16Regular, ChevronDown12Regular } from "@fluentui/react-icons";
 import { isBranchName, type SessionSummary, type WorkBranch, type WorkBranches } from "@orbit-web/contracts";
 import { useMemo, useState } from "react";
@@ -168,6 +168,11 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
           {t("chat.workBranch.create")}
         </Button>
       </form>
+      {name.trim().length > 0 && !isBranchName(name.trim()) && (
+        <Text size={200} style={{ color: tokens.colorPaletteRedForeground1 }}>
+          {t("chat.workBranch.invalidName")}
+        </Text>
+      )}
       {error && (
         <MessageBar intent="error">
           <MessageBarBody>{error}</MessageBarBody>
@@ -184,9 +189,8 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
       icon={<BranchFork16Regular />}
       disabled={p.disabled}
       aria-label={t("chat.workBranch.triggerAria", { branch: p.work })}
-      title={p.disabled ? t("chat.workBranch.disabledTitle") : t("chat.workBranch.enabledTitle")}
       onClick={
-        isMobile
+        isMobile && !p.disabled
           ? () => {
               setError(null);
               setOpen(true);
@@ -199,10 +203,18 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
     </Button>
   );
 
+  const wrappedTrigger = p.disabled ? (
+    <Tooltip content={t("chat.workBranch.disabledTitle")} relationship="description">
+      <span style={{ display: "inline-flex" }}>{trigger}</span>
+    </Tooltip>
+  ) : (
+    trigger
+  );
+
   if (isMobile) {
     return (
       <>
-        {trigger}
+        {wrappedTrigger}
         <ResponsiveSheet
           open={open}
           onOpenChange={(next) => {
@@ -217,6 +229,8 @@ export function WorkBranchPicker(p: { sessionId: string; base: string | null; wo
       </>
     );
   }
+
+  if (p.disabled) return wrappedTrigger;
 
   return (
     <Popover

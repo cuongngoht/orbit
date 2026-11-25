@@ -1,9 +1,10 @@
 // The conversation: messages, tool activity (with what a subagent did inside its Agent call), and what the CLI said
 // about each run -- its version and whether Orbit loaded, how it ended, and anything it refused.
-import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Badge, Button, MessageBar, MessageBarBody, Spinner, Text, Tooltip, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
 import { effortLabel, MODE_LABELS, RUNTIME_LABELS, type RuntimeKind } from "@orbit-web/contracts";
-import { BranchFork16Regular } from "@fluentui/react-icons";
+import { BranchFork16Regular, Checkmark16Regular, ChevronDown16Regular, ChevronRight16Regular, Copy16Regular } from "@fluentui/react-icons";
+import { useState } from "react";
 import { useI18n, type MessageKey } from "../../i18n";
 import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
 import { PlanCard } from "./PlanCard";
@@ -34,7 +35,23 @@ const useStyles = makeStyles({
   userImages: { alignSelf: "flex-end", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "6px", maxWidth: "80%", marginTop: "6px", "@media (max-width: 639px)": { maxWidth: "88%" } },
   userImageLink: { display: "block", borderRadius: "14px", overflow: "hidden", lineHeight: 0, outlineOffset: "2px" },
   userImage: { display: "block", maxHeight: "220px", maxWidth: "100%", width: "auto", height: "auto", objectFit: "contain", backgroundColor: tokens.colorNeutralBackground3 },
-  assistant: { maxWidth: "100%", minWidth: 0 },
+  assistant: { maxWidth: "100%", minWidth: 0, position: "relative" },
+  assistantFoot: { display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" },
+  copyBtn: { color: tokens.colorNeutralForeground3 },
+  batch: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    paddingTop: "4px",
+    paddingRight: "8px",
+    paddingBottom: "4px",
+    paddingLeft: "8px",
+    backgroundColor: "var(--orbit-tool-bg)",
+  },
+  batchBtn: { justifyContent: "flex-start", color: tokens.colorNeutralForeground2 },
+  runEndRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" },
   meta: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
   line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" },
   msgBar: { minWidth: 0, maxWidth: "100%", borderRadius: "12px" },
@@ -152,17 +169,25 @@ function RunStart({ item }: { item: RunStartItem }) {
   );
 }
 
-function RunEnd({ item, runtime }: { item: RunEndItem; runtime: RuntimeKind }) {
+function RunEnd({ item, runtime, onOpenOrbit }: { item: RunEndItem; runtime: RuntimeKind; onOpenOrbit?: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const e = item.end;
   const label = RUNTIME_LABELS[runtime];
   if (e.type === "session.completed") {
     const cost = e.data.costUsd !== null ? ` · $${e.data.costUsd.toFixed(4)}` : "";
+    const turnWord = e.data.turns === 1 ? t("chat.timeline.turnOne") : t("chat.timeline.turnMany");
     return (
-      <Text size={200} className={s.meta}>
-        {t("chat.timeline.turnsCost", { label, turns: e.data.turns ?? "?", cost })}
-      </Text>
+      <div className={s.runEndRow}>
+        <Text size={200} className={s.meta}>
+          {t("chat.timeline.turnsCost", { label, turns: e.data.turns ?? "?", turnWord, cost })}
+        </Text>
+        {onOpenOrbit && (
+          <Button appearance="transparent" size="small" onClick={onOpenOrbit}>
+            {t("chat.timeline.openOrbitPanel")}
+          </Button>
+        )}
+      </div>
     );
   }
   if (e.type === "session.interrupted")
@@ -179,15 +204,51 @@ function RunEnd({ item, runtime }: { item: RunEndItem; runtime: RuntimeKind }) {
   );
 }
 
+function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand("copy");
+  document.body.removeChild(area);
+  return Promise.resolve();
+}
+
 function Message({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
   const { t } = useI18n();
   const s = useStyles();
+  const [copied, setCopied] = useState(false);
   if (item.role === "user") return <UserMessage item={item} imageUrl={imageUrl} />;
+  const copy = () => {
+    void copyText(item.text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
   return (
     <div className={s.assistant} data-testid="assistant-message">
       <Markdown text={item.text} />
       {item.streaming && <span className={s.cursor} aria-label={t("chat.timeline.writingAria")} />}
-      {item.partial && <Text size={200} className={s.meta}>{t("chat.timeline.cutOff")}</Text>}
+      {(item.partial || (!item.streaming && item.text.trim().length > 0)) && (
+        <div className={s.assistantFoot}>
+          {item.partial && <Text size={200} className={s.meta}>{t("chat.timeline.cutOff")}</Text>}
+          {!item.streaming && item.text.trim().length > 0 && (
+            <Tooltip content={copied ? t("chat.timeline.copiedAria") : t("chat.timeline.copyAria")} relationship="label">
+              <Button
+                className={s.copyBtn}
+                appearance="subtle"
+                size="small"
+                icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+                aria-label={copied ? t("chat.timeline.copiedAria") : t("chat.timeline.copyAria")}
+                onClick={copy}
+              />
+            </Tooltip>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -224,16 +285,17 @@ export interface TimelineActions {
   // Carry a proposed plan out: switch to Autonomous and ask for it.
   onRunPlan?: () => void;
   canRunPlan?: boolean;
+  onOpenOrbit?: () => void;
 }
 
-function Item({ item, items, actions }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions }) {
+function Item({ item, items, actions, superseded }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions; superseded?: boolean }) {
   const { t } = useI18n();
   const s = useStyles();
   switch (item.kind) {
     case "message":
       return <Message item={item} imageUrl={actions.imageUrl} />;
     case "plan":
-      return <PlanCard plan={item.plan} truncated={item.truncated} onRun={actions.onRunPlan} canRun={actions.canRunPlan === true} />;
+      return <PlanCard plan={item.plan} truncated={item.truncated} onRun={actions.onRunPlan} canRun={actions.canRunPlan === true} superseded={superseded} />;
     case "project":
       return <Project item={item} />;
     case "tool": {
@@ -247,7 +309,7 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
     case "run-start":
       return <RunStart item={item} />;
     case "run-end":
-      return <RunEnd item={item} runtime={actions.runtime ?? "claude"} />;
+      return <RunEnd item={item} runtime={actions.runtime ?? "claude"} onOpenOrbit={actions.onOpenOrbit} />;
     case "workspace":
       return <Workspace item={item} />;
     case "branch":
@@ -275,16 +337,61 @@ function Item({ item, items, actions }: { item: TimelineItem; items: TimelineIte
 // Plan mode's ExitPlanMode call (and its refusal under -p) is shown as the plan it carried, not as a tool.
 const isPlanPlumbing = (item: TimelineItem): boolean => (item.kind === "tool" && item.name === "ExitPlanMode") || (item.kind === "denied" && item.denied.toolName === "ExitPlanMode");
 
+const isCollapsibleTool = (item: TimelineItem, items: TimelineItem[]): boolean =>
+  item.kind === "tool" && item.state === "done" && !item.interrupted && childrenOf(items, item.id).length === 0;
+
+function ToolBatch({ group, items, actions }: { group: TimelineItem[]; items: TimelineItem[]; actions: TimelineActions }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={s.batch}>
+      <Button
+        className={s.batchBtn}
+        appearance="transparent"
+        size="small"
+        icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />}
+        aria-expanded={open}
+        aria-label={open ? t("chat.timeline.toolsCollapseAria") : t("chat.timeline.toolsExpandAria", { count: group.length })}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {t("chat.timeline.toolsCollapsed", { count: group.length })}
+      </Button>
+      {open && group.map((item) => <Item key={`${item.kind}-${item.id}`} item={item} items={items} actions={actions} />)}
+    </div>
+  );
+}
+
 export function Timeline({ items, actions = {} }: { items: TimelineItem[]; actions?: TimelineActions }) {
   const s = useStyles();
   const hasPlan = items.some((i) => i.kind === "plan");
+  const top = childrenOf(items, null).filter((item) => !(hasPlan && isPlanPlumbing(item)));
+  const nodes: { key: string; group?: TimelineItem[]; item?: TimelineItem; superseded?: boolean }[] = [];
+  for (let i = 0; i < top.length; i++) {
+    const item = top[i];
+    if (isCollapsibleTool(item, items)) {
+      let end = i + 1;
+      while (end < top.length && isCollapsibleTool(top[end], items)) end++;
+      if (end - i >= 4) {
+        const group = top.slice(i, end);
+        nodes.push({ key: `batch-${group[0].id}`, group });
+        i = end - 1;
+        continue;
+      }
+    }
+    const superseded =
+      item.kind === "plan" && top.slice(i + 1).some((later) => later.kind === "plan" || later.kind === "run-start" || (later.kind === "message" && later.role === "user"));
+    nodes.push({ key: `${item.kind}-${item.id}`, item, superseded });
+  }
   return (
     <div className={s.list}>
-      {childrenOf(items, null)
-        .filter((item) => !(hasPlan && isPlanPlumbing(item)))
-        .map((item) => (
-          <Item key={`${item.kind}-${item.id}`} item={item} items={items} actions={actions} />
-        ))}
+      {nodes.map((n) =>
+        n.group ? (
+          <ToolBatch key={n.key} group={n.group} items={items} actions={actions} />
+        ) : n.item ? (
+          <Item key={n.key} item={n.item} items={items} actions={actions} superseded={n.superseded} />
+        ) : null,
+      )}
     </div>
   );
 }

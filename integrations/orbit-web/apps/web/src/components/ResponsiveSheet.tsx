@@ -1,7 +1,7 @@
 // Bottom sheet container for mobile pickers and compact overlays, built on Fluent UI OverlayDrawer.
 import { Button, OverlayDrawer, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Dismiss20Regular } from "@fluentui/react-icons";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useI18n } from "../i18n";
 
 const useStyles = makeStyles({
@@ -83,6 +83,7 @@ export interface ResponsiveSheetProps {
 export function ResponsiveSheet({ open, onOpenChange, title, ariaLabel, children }: ResponsiveSheetProps) {
   const { t } = useI18n();
   const s = useStyles();
+  const dragStartY = useRef<number | null>(null);
   return (
     <OverlayDrawer
       open={open}
@@ -92,7 +93,18 @@ export function ResponsiveSheet({ open, onOpenChange, title, ariaLabel, children
       className={s.sheet}
       aria-label={ariaLabel ?? title}
     >
-      <div className={s.grabberWrap} aria-hidden>
+      <div
+        className={s.grabberWrap}
+        aria-hidden
+        onTouchStart={(e) => {
+          dragStartY.current = e.touches[0]?.clientY ?? null;
+        }}
+        onTouchEnd={(e) => {
+          const endY = e.changedTouches[0]?.clientY;
+          if (dragStartY.current !== null && endY !== undefined && endY - dragStartY.current > 64) onOpenChange(false);
+          dragStartY.current = null;
+        }}
+      >
         <span className={s.grabber} />
       </div>
       <div className={s.head}>

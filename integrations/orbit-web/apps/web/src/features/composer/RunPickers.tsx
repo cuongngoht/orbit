@@ -2,7 +2,7 @@
 // connections) first, then a model of that AI's own and its effort (one menu, the effort a submenu, as in Claude
 // Code), and the mode -- Autonomous (Claude Code's auto mode) or Plan (its plan mode). The models and the efforts each
 // takes are the signed-in account's own (services/models): a model a program gives the account appears for it alone.
-import { Button, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuItemRadio, MenuList, MenuPopover, MenuTrigger, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuItemRadio, MenuList, MenuPopover, MenuTrigger, Text, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Checkmark16Regular, ChevronDown12Regular, ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icons";
 import { effortFor, effortLabel, MODE_CHOICES, MODE_LABELS, modelLabel, modelOf, RUNTIME_LABELS, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice, type RuntimeKind } from "@orbit-web/contracts";
 import { useState } from "react";
@@ -67,7 +67,7 @@ const useStyles = makeStyles({
   },
   sheetCardTitle: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase300 },
   sheetCardMeta: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flexGrow: 1 },
-  effortGrid: { display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "6px" },
+  effortGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(64px, 1fr))", gap: "6px" },
   effortPill: {
     minHeight: "44px",
     paddingTop: "4px",
@@ -284,6 +284,7 @@ export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: 
           onClick={() => setOpen(true)}
         >
           {MODE_LABELS[mode]}
+          <ChevronDown12Regular style={{ marginLeft: "4px" }} />
         </Button>
         <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.modeTitle")}>
           {MODE_CHOICES.map((m) => {
@@ -318,9 +319,12 @@ export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: 
   return (
     <Menu checkedValues={{ mode: [mode] }} onCheckedValueChange={(_, d) => d.name === "mode" && d.checkedItems[0] && onMode(d.checkedItems[0] as ModeChoice)}>
       <MenuTrigger disableButtonEnhancement>
-        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={icon} aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}>
-          {MODE_LABELS[mode]}
-        </Button>
+        <Tooltip content={hint(mode)} relationship="description">
+          <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={icon} aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}>
+            {MODE_LABELS[mode]}
+            <ChevronDown12Regular style={{ marginLeft: "4px" }} />
+          </Button>
+        </Tooltip>
       </MenuTrigger>
       <MenuPopover>
         <MenuList>
@@ -362,9 +366,13 @@ export function AiPicker({ choices, value, onChange, readOnly = false }: { choic
   // Said, not offered: the chat's AI is fixed once the chat exists.
   if (readOnly || onChange === undefined) {
     return (
-      <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={t("chat.runPickers.aiAria", { ai: text })} title={t("chat.runPickers.aiReadOnlyTitle")}>
-        {text}
-      </Button>
+      <Tooltip content={t("chat.runPickers.aiReadOnlyTitle")} relationship="description">
+        <span style={{ display: "inline-flex" }}>
+          <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={t("chat.runPickers.aiAria", { ai: text })}>
+            {text}
+          </Button>
+        </span>
+      </Tooltip>
     );
   }
   if (isMobile) {

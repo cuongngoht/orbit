@@ -30,11 +30,11 @@
 #
 # and the employees' images (the allocator never pulls or builds one), from the repository root:
 #
-#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation    -t ghcr.io/cuongngoht/orbit-web-workstation:0.8.0-rc02 .
-#   docker build -f integrations/orbit-web/docker/Dockerfile --target model-plane    -t ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0-rc02 .
-#   docker build -f integrations/orbit-web/docker/Dockerfile --target storage-helper -t ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0-rc02 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation    -t ghcr.io/cuongngoht/orbit-web-workstation:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target model-plane    -t ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target storage-helper -t ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0 .
 #
-# (one tag for all four, ORBIT_WEB_TAG: the release candidate, 0.8.0-rc02 by default)
+# (one tag for all four, ORBIT_WEB_TAG: the release, 0.8.0 by default)
 #
 # The control plane runs within fixed limits (ORBIT_WEB_CPUS / _MEMORY / _PIDS, the same for POSTGRES and ALLOCATOR):
 # what the host has beyond them, less a reserve for the OS, is what employees may use (Settings → Compute & storage).
@@ -97,7 +97,7 @@ services:
     stop_grace_period: 30s
 
   orbit-web:
-    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
     build:
       context: ../../..
       dockerfile: integrations/orbit-web/docker/Dockerfile
@@ -159,7 +159,7 @@ services:
     stop_grace_period: 20s
 
   orbit-allocator:
-    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
     container_name: orbit-web-allocator
     command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/allocator/main.js"]
     # Root with no capability: the socket is root's, and that is the whole of what it needs.
@@ -168,11 +168,11 @@ services:
       <<: *employees
       ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
       ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
-      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:${ORBIT_WEB_TAG:-0.8.0-rc02}}
-      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:${ORBIT_WEB_TAG:-0.8.0-rc02}}
-      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:${ORBIT_WEB_TAG:-0.8.0-rc02}}
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:${ORBIT_WEB_TAG:-0.8.0}}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:${ORBIT_WEB_TAG:-0.8.0}}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:${ORBIT_WEB_TAG:-0.8.0}}
       # A chat's or research run's own sandbox: Orbit Web's own image (its CLIs, its runner).
-      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ${ORBIT_WEB_SESSION_IMAGE:-ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0-rc02}}
+      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ${ORBIT_WEB_SESSION_IMAGE:-ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}}
       # Orbit Web's data volume (its connections room holds each connection's home, its workspaces each chat's): this
       # project's own.
       ORBIT_WEB_DATA_VOLUME: ${COMPOSE_PROJECT_NAME}_orbit-web-data

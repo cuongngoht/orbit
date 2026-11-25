@@ -226,8 +226,10 @@ describe("CEO Chat: company-aware, the actual CEO answers with no tool, a propos
   });
 
   test("each answer was bound and decided as the CEO (governance run kind executive); work given in the owner's own words starts a conversation; a budget that allows no run refuses an answer, saying why", async () => {
-    const bindings = await h.sql("SELECT kind, resource_kind, resource_id, agent_id, ended_at FROM governance.run_bindings WHERE account_id = $1 AND kind = 'executive'", [h.accountId as string]);
-    assert.ok(bindings.length >= 3, JSON.stringify(bindings));
+    // An answer's binding ends just AFTER its turn's end is said (finalize: the turn, then the run, then governance), so
+    // the previous test's answer, seen completed, may still be ending: wait for every binding's end, bounded.
+    const executive = () => h.sql("SELECT kind, resource_kind, resource_id, agent_id, ended_at FROM governance.run_bindings WHERE account_id = $1 AND kind = 'executive'", [h.accountId as string]);
+    const bindings = await eventually(executive, (rows) => rows.length >= 3 && rows.every((r) => r.ended_at !== null), 5_000);
     assert.ok(bindings.every((r) => r.resource_kind === "employee" && r.resource_id === ids.An && r.agent_id === `employee:${ids.An}` && r.ended_at !== null), "bound to the CEO, and ended");
 
     const p = (await b.get("/api/missions/target?kind=ceo")).body as MissionTargetPreview;

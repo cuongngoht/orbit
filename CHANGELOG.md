@@ -8,14 +8,17 @@ model and an effort each -- gives them work, and reviews what they hand in, whil
 of its own. Every record is in PostgreSQL with pgvector enabled, every table carries the account it belongs to (its
 OrbitId), and each account's owner governs it: a policy that decides every run, a governed deployment that holds, and an
 audit record that shows (ADR 0061). 0.8.0 is Orbit Web's initial schema and starts from an empty database. The
-plugin it bundles stays 0.6.0 and its archive is unchanged; nothing under `src/`, `cli/`, `skills/`, `hooks/` or
+plugin it bundles stays 0.6.0 and behaves as 0.6.0 does: under `src/`, `cli/` and `skills/` only comments and the
+playbooks' pointers into the README changed (its sections are named now, not numbered), and nothing under `hooks/` or
 `agents/` changed.
 
-### 0.8.0-rc02: a company, its departments and an AI workforce that works as a tree
+Published as four images under one tag, `ghcr.io/cuongngoht/orbit-web*:0.8.0` -- Orbit Web itself and the three an AI
+employee's attempt is started from, for linux/amd64 and linux/arm64 -- that `docker/compose.published.yaml` runs with no
+repository. The initial schema changed in place after the release candidate 0.8.0-rc01, so a database rc01 made is
+refused at start with the command that empties it (`db.js reset --confirm=<database name> --with-data`, or `docker
+compose down -v`); nothing of a release candidate is migrated (the owner's decision).
 
-rc02 starts from an empty database too: its initial schema changed in place, and a database 0.8.0-rc01 made is refused
-at start with the command that empties it (`db.js reset --confirm=<database name> --with-data`, or `docker compose
-down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.published.yaml` names `0.8.0-rc02`.
+### A company, its departments and an AI workforce that works as a tree
 
 - **An empty company, activated on a usable connection** (ADR 0061 §8). *Activate* needs one AI connection of the
   account usable for Chat, Research or running employees -- each said apart, with why not, on the connection's card and
@@ -125,6 +128,8 @@ down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.p
 - **CI's deterministic tier passes as it should.** The two tests that need the real `codex` binary and its sandbox moved,
   unchanged, to a native tier of their own (`npm run test:native -w @orbit-web/api`); `scripts/ci.mjs` says it is not run
   there.
+
+### The Office, Orbit Web's own accounts on PostgreSQL, research, governance and the workspace
 
 - **The Office** (ADR 0061). Departments, employees and their work: *Overview*, *Work*, *Needs me*, *Schedule*, and a page
   for each employee and mission. **Hire** in five steps (identity; department and role, a team lead or not; the AI

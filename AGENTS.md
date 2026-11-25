@@ -1035,7 +1035,7 @@ Grouped by subject; every rule binds every change, whichever group it sits in.
   a one-task difference is INCONCLUSIVE, never a gain. No GitHub workflow gates the plugin: the gates run where the
   release is made, and what a pipeline ran is `ship.mjs --ci`. The one scoped exception (0.7.0, ADR 0060) is Orbit
   Web's: `.github/workflows/orbit-web-ci.yml` runs only for `integrations/orbit-web/**` and
-  `orbit-web-release.yml` only by hand, reviewer-gated, to publish its image; both call scripts that run the same
+  `orbit-web-release.yml` only by hand, reviewer-gated, to publish its images; both call scripts that run the same
   without GitHub, `.github/` is export-ignored, and neither decides anything about a plugin release. The gate never tags, pushes or publishes, and a gate is never
   loosened to get a PASS (`test/release-evidence.test.mjs`, `test/orbit-ship-plugin.test.mjs`,
   `evaluator/checks/record.check.mjs`).

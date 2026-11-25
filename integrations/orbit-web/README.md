@@ -90,7 +90,7 @@ public origin, no Secure cookie setting -- and names the condition that failed. 
 person can reach.
 
 **The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
-one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0-rc02` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
 Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
 makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
 `docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
@@ -106,7 +106,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.0-rc02
+  ghcr.io/cuongngoht/orbit-web:0.8.0
 ```
 
 | what | command |
@@ -130,14 +130,14 @@ docker run -d --name orbit-web --hostname orbit-web \
 **A fresh start.** 0.8.0 is Orbit Web's initial schema, and it starts from an empty database: nothing of an earlier Orbit
 Web is imported -- not the SQLite files of an older one (`/data/app/orbit-web.db`, `/data/governance/governance.db` stay
 in the data volume until you remove them), and not the Claude CLI's sign-in in `/data/claude` (each account connects its
-own CLIs). A database a development build or release candidate of 0.8.0 migrated -- 0.8.0-rc01's included: rc02 changed
-the initial schema in place (appointments, department policies, data shares, questions) -- is refused at start, with the
-command that empties it (`db.js reset --confirm=<database name> --with-data`, above), or remove the volumes. Nothing is
-migrated from rc01.
+own CLIs). A database a development build or release candidate of 0.8.0 migrated under another initial schema --
+0.8.0-rc01's included: the schema changed in place before the release (appointments, department policies, data shares,
+questions) -- is refused at start, with the command that empties it (`db.js reset --confirm=<database name>
+--with-data`, above), or remove the volumes. Nothing is migrated from a release candidate.
 
-Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--ref=<commit>] [--ca-file=<pem>]` (from this
-directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the employees'
-images are the same Dockerfile's `--target workstation`, `model-plane` and `storage-helper`). `--ref` picks
+Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--target=…] [--ref=<commit>] [--ca-file=<pem>]` (from
+this directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the
+employees' images are the same Dockerfile's targets, `--target=workstation`, `model-plane` and `storage-helper`). `--ref` picks
 the Orbit commit to bundle; `--ca-file` hands a TLS-inspecting proxy's CA to the download steps as a BuildKit secret
 (never kept in a layer). The image is about 3.5 GB unpacked, a third of it the Azure CLI; build it without the Azure
 CLI with `docker build --build-arg AZURE_CLI=0 …` (Azure DevOps then says it is not installed, and the rest works).
@@ -1243,7 +1243,7 @@ For one person, on their own machine, by default:
 | `too_many_attempts` (HTTP 429) | too many failed sign-ins for that username or from that address: wait the time the page says (it doubles with each failure) |
 | Every browser of a user was signed out | the password was changed, *Sign out everywhere* was used, or `owner revoke-sessions` ran: sign in again |
 | Orbit Web refuses to start: *ORBIT_WEB_TRIAL=1 refused: …* | trial mode runs only where nobody else can reach it: the message names what to remove (an allowed host, an access token, the governed deployment, a public origin or the Secure cookie setting) |
-| *This database was created by a development build or release candidate of Orbit Web 0.8.0* | 0.8.0 starts from an empty database, and rc02 does not migrate rc01's: `db.js reset --confirm=<database name> --with-data` (Orbit Web stopped), or remove the volumes |
+| *This database was created by a development build or release candidate of Orbit Web 0.8.0* | 0.8.0 starts from an empty database and migrates nothing of a release candidate's: `db.js reset --confirm=<database name> --with-data` (Orbit Web stopped), or remove the volumes |
 | The chats and governance of an earlier Orbit Web are gone after upgrading | by design: 0.8.0 starts on an empty PostgreSQL database and imports nothing from the SQLite files, which stay in the data volume |
 | *Connect Claude Code (or another CLI) in Settings → AI Connections first* | a chat, a research question and an employee's work run on your account's own connection: add one, and sign it in (the card shows the terminal command for a subscription) |
 | A connection says *Authentication required* | its login ended, was signed out, or its CLI now names another identity: sign it in again (*Reconnect*); one identity is connected to one account at a time |
@@ -1321,7 +1321,9 @@ model.
 Two workflows, scoped to Orbit Web (ADR 0060): `.github/workflows/orbit-web-ci.yml` runs `scripts/ci.mjs`, the
 plugin's suite and lint, and the Docker smoke test for pull requests that touch this directory;
 `.github/workflows/orbit-web-release.yml` is started by hand on `main`, waits for a reviewer of the `orbit-web-release`
-environment, checks that the version asked is the one in the tree (`scripts/release.mjs verify`), builds and
-smoke-tests the image, pushes `ghcr.io/<owner>/orbit-web:<version>` (and `latest` only when asked), records its digest
-and writes the release notes from `CHANGELOG.md` (`## Orbit Web <version>`). Both call scripts that run the same
-without GitHub.
+environment, checks that the version asked is the one in the tree and the one every compose file and this README tag
+the images with (`scripts/release.mjs verify`), builds and smoke-tests Orbit Web and builds the employees' three images
+(`scripts/build-image.mjs --target=…`) for linux/amd64 and, unless switched off, linux/arm64, pushes
+`ghcr.io/<owner>/orbit-web*:<version>` as one manifest per image (and `latest` only when asked), records each digest
+and writes the release notes from `CHANGELOG.md` (`## Orbit Web <version>`), with how to run `docker/compose.published.yaml`.
+Both call scripts that run the same without GitHub.

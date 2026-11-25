@@ -69,7 +69,10 @@ describe("a Stop before Claude Code starts is honoured: the run is interrupted, 
     assert.equal(stopped.status, 409, "nothing runs now: a Stop is refused");
     const { events } = await h.events(`/api/sessions/${chat.id}/events`, { until: (es) => es.some((e) => e.type === "session.interrupted"), timeoutMs: 3_000 });
     assert.deepEqual((events.find((e) => e.type === "session.interrupted") as { data: unknown }).data, { reason: "user_stop", exitCode: null, signal: null });
-    const bindings = await h.sql("SELECT ended_at FROM governance.run_bindings WHERE resource_id = $1", [chat.id]);
+    // The binding ends just AFTER the run's end is said (governance is told last, as for every run), so wait for it,
+    // bounded, as governance-runs.spec does for `run.finished`.
+    const binding = () => h.sql("SELECT ended_at FROM governance.run_bindings WHERE resource_id = $1", [chat.id]);
+    const bindings = await eventually(binding, (rows) => rows.length === 1 && rows[0]?.ended_at !== null, 5_000);
     assert.ok(bindings.length === 1 && bindings[0]?.ended_at !== null, `the run's binding ended (${JSON.stringify(bindings)})`);
   });
 

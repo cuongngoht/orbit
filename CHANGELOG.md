@@ -522,18 +522,22 @@ compose down -v`); nothing of a release candidate is migrated (the owner's decis
   (`/api/sessions/:id/events`, replayed after `Last-Event-ID`) and the app stream (`/api/events`: the sidebar's chats,
   the connectors' sign-ins, the customizations -- notifications that replace polling). Adding an event is a catalog row
   and its payload type.
-- **Checked.** 890 deterministic tests on a real PostgreSQL 17 with pgvector 0.8.1 (`scripts/ci.mjs`: governance-core 45,
-  contracts 54, API unit 266, API integration 280 -- each harness a database of its own, processes scripted, the Office end
-  to end through a fake sandbox provider and a scripted CLI that calls the real tool endpoint -- and web 245), with
-  typecheck, lint and both builds. An employee's attempt in real containers (`npm run test:sandbox`): 18/18 -- limits
-  applied and observed, an OOM kill, the PID limit, the storage quota, the connection's login and another employee's
-  desk unreadable, no way out but the proxy. The Docker smoke test on the image built from this branch, with a real
-  browser (`--browser`): 58/58 -- the setup code used once, the password a scrypt hash, sessions kept across a restart
-  and a new container, the trial refused where another machine could reach it, the Office, AI Connections, Compute &
-  storage and Employee network access in Chromium, seven pages at 320 px. Not run for this release, and said so in
-  `integrations/orbit-web/docs/0.8.0-acceptance.md` (A01-A19): a real CLI with a real model -- no account was available,
-  and the session's own token was not used, so every native row is BLOCKED; the security lab, which still drives the
-  sign-in relay this release removed; backup and restore. The plugin's own suite and archive are unchanged.
+- **Checked, on the release commit.** 1,364 deterministic tests on a real PostgreSQL 17 with pgvector 0.8.1 in CI
+  (`scripts/ci.mjs`: governance-core 58, contracts 71, the release scripts 9, API unit 424, API integration 424 -- each
+  harness a database of its own, processes scripted, the Office end to end through a fake sandbox provider and a
+  scripted CLI that calls the real tool endpoint -- and web 378), with typecheck, lint and both builds, beside the
+  plugin's own suite (5,280 tests, 0 failed) and its strict Five Lines check. Two integration tests read a run's
+  governance binding the moment its end was said -- a CEO answer's, and a chat stopped before it started -- while
+  governance is told just after, by design; they failed now and then (every red CI run of this release's pull request
+  was one of them) and now wait for the binding's end, bounded. The Docker smoke test on the four images built from a
+  clean clone of the release commit, with a real browser (`--browser`): 63/63 and one BLOCKED (activating a company
+  needs a usable AI connection, and none was given) -- the setup code used once, the password a scrypt hash, sessions
+  kept across a restart and a new container, the trial refused where another machine could reach it, the company
+  waiting for a connection and saying why, AI Connections, Compute & storage and Employee network access in Chromium,
+  seven pages at 320 px. Not run for this release, and said so in `integrations/orbit-web/docs/0.8.0-acceptance.md`: a
+  real CLI with a real model (no account the owner allowed for the test; the session's own token is never used), the
+  container suite (`npm run test:sandbox`; at rc02, 16/20 on Docker Desktop for macOS, whose container addresses the
+  host cannot reach), the security lab, and backup and restore.
 
 ## Orbit Web 0.7.0
 

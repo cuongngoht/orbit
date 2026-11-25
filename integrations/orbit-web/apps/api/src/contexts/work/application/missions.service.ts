@@ -40,6 +40,7 @@ import { accepted } from "../../../common/errors.js";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
 import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
+import { canDelegate } from "../domain/assistants.js";
 import { scopeIsEmpty } from "../domain/authority.js";
 import { CEO_NEEDS_DEPARTMENTS, resolveMissionTarget, sameAssignee, type ResolvedMissionTarget } from "../domain/target.js";
 import { handInRefusal, rulesOf } from "../domain/roles.js";
@@ -103,6 +104,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       holds: async (orbitId, employeeId) => (await this.assignments.heldBy(orbitId, employeeId)) !== null,
       pauseHeld: (actor, employeeId, reason) => this.onHeld(actor, employeeId, async (a) => this.pauseIn(actor, a, reason)),
       cancelHeld: (actor, employeeId, reason) => this.onHeld(actor, employeeId, async (a) => this.cancelIn(actor, a, reason)),
+      cancelOpen: (actor, employeeId, reason) => this.cancelOpen(actor, employeeId, reason),
     });
     // THE CASCADE: a lead that ends takes its open parts with it; an asker that ends withdraws its question.
     this.dispatcher.register({ id: "work.cascade", types: ["AssignmentCancelled", "AssignmentFailed"], handle: async (e) => this.cascade(e.accountId, e.aggregateId, e.correlationId, e.id) });
@@ -141,6 +143,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         await this.governance.authorize(actor, "work.assign", employeeId, { employee: employeeId });
         const el = await this.eligibility.of(orbitId, employeeId, true);
         if (el === null) throw missing("Employee");
+        // A temporary assistant is its lead's, for one mission: nobody gives it a mission of its own.
+        if (el.kind === "assistant") throw conflictWith("assistant_not_assignable", `${el.name} is a temporary assistant, engaged for one mission: only its lead gives it work.`, { employeeId });
         // The CEO gives work only to departments (roles.ts): by its slot or by its name, work for it waits for nobody.
         if (el.appointment?.role === "ceo" && el.appointment.active && (await this.org.departmentsManaged(orbitId)) === 0) throw conflictWith("ceo_needs_departments", CEO_NEEDS_DEPARTMENTS, { target: req.target });
         if (req.workspaceId !== null) await this.sources.check(orbitId, req.workspaceId, req.sourceRevisionIds);
@@ -173,7 +177,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       });
     } catch (err) {
       // A refusal is the answer to this key too: the same request again gets the same answer, without running again.
-      if (err instanceof DomainError && ["employee_busy", "employee_ineligible", "target_changed", "no_ceo", "no_manager", "appointment_suspended", "not_working", "ceo_needs_departments"].includes(err.code)) {
+      if (err instanceof DomainError && ["employee_busy", "employee_ineligible", "target_changed", "no_ceo", "no_manager", "appointment_suspended", "not_working", "ceo_needs_departments", "assistant_not_assignable"].includes(err.code)) {
         await this.db.tx(() => this.idempotency.complete(scope, req, { status: 409, body: { error: { code: err.code, message: err.message, details: err.details } } })).catch(() => undefined);
       }
       throw err;
@@ -330,6 +334,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       if (live !== null && ["starting", "running", "unknown"].includes(live.state)) throw conflictWith("attempt_live", "An attempt of this work is running: pause it first, then hand it over.");
       const el = await this.eligibility.of(orbitId, req.employeeId, true);
       if (el === null) throw missing("Employee");
+      // A temporary assistant takes the work of its own mission only.
+      if (el.kind === "assistant" && el.missionScope !== a.data.missionId) throw conflictWith("assistant_not_assignable", `${el.name} is a temporary assistant of another mission: it takes no work of this one.`, { employeeId: req.employeeId });
       if (a.holding && !el.eligible) throw conflictWith("employee_ineligible", el.reason ?? "That employee cannot take work now.", { employeeId: req.employeeId });
       await this.runs.stop(orbitId, a.id, "handed_over");
       const at = new Date().toISOString();
@@ -393,6 +399,22 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     await this.outbox.append(actor.command, [...events, ...locked.pullEvents()]);
   }
 
+  // Every open piece of an employee's work ends -- the one it holds and those queued for it (a temporary assistant whose
+  // engagement ended): each is cancelled, which wakes its lead (work.team) and ends what hangs from it (work.cascade). One
+  // already ending, or ended, is left as it is.
+  private async cancelOpen(actor: Actor, employeeId: string, reason: string): Promise<void> {
+    const orbitId = actor.command.orbitId;
+    const open = await this.db.query("SELECT id FROM workforce.assignments WHERE account_id = $1 AND employee_id = $2 AND state NOT IN ('COMPLETED', 'CANCELLED', 'FAILED_FINAL', 'CANCELLING') ORDER BY created_at, id", [orbitId, employeeId]);
+    for (const row of open) {
+      const a = await this.assignments.get(orbitId, String(row.id), true);
+      if (a === null || ["COMPLETED", "CANCELLED", "FAILED_FINAL", "CANCELLING"].includes(a.state)) continue;
+      const events = await this.cancelIn(actor, a, reason);
+      await this.assignments.save(a);
+      await this.outbox.append(actor.command, [...events, ...a.pullEvents()]);
+      await this.outbox.touched(orbitId, ["roster", "missions", "inbox"], a.data.missionId);
+    }
+  }
+
   // One command on one assignment: authorized, the version the person read checked (If-Match), saved with its events.
   private async onAssignment(actor: Actor, id: string, expectedVersion: number, name: string, work: (a: Assignment) => Promise<RaisedEvent[]>): Promise<CommandResult> {
     const orbitId = actor.command.orbitId;
@@ -422,7 +444,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     const b = a.data.brief;
     // What THIS attempt may read: the mission's sources for its root, what its lead shared for a part (§9).
     const data = await this.attemptData.of(orbitId, a.id);
-    const { scope, role } = await this.team.standing(orbitId, a);
+    const { scope, role, facts, assistants } = await this.team.standing(orbitId, a);
     const rules = rulesOf(role, a.data.parentId === null);
     const lead = a.data.parentId === null ? null : await this.assignments.get(orbitId, a.data.parentId);
     const leadName = lead === null ? null : await this.employeeName(orbitId, lead.data.employeeId);
@@ -443,7 +465,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         role,
         denied: rules.denied,
         connectorsDenied: rules.connectorsDenied,
-        canDelegate: !scopeIsEmpty(scope),
+        canDelegate: canDelegate(scope, facts.appointment, assistants),
+        assistants,
         scope: { employees: scope.employees.map((e) => ({ id: e.id, name: e.name, title: e.title, departmentName: e.departmentName, via: e.via })), departments: scope.departments.map((d) => ({ id: d.id, name: d.name, managerName: d.manager?.name ?? null, via: d.via })) },
         units: await this.team.units(orbitId, a.id),
         questions: (await this.team.openQuestions(orbitId, a.id)).map((q) => ({ id: q.id, askerName: q.askerName, unitKey: q.askerUnit, question: q.question, askedAt: q.askedAt })),
@@ -634,15 +657,25 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   // cancelled assignment's run always closes it.
   // ---- teams (TeamService decides; these are Execution's doors to it) -------------------------------------------------------
 
-  async delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }> {
+  // A plan refused is refused once its transaction committed what it decided (the lead's decisions, a quota's NO_GRANT
+  // among them, stay on the record) -- and nothing else: no part, no assistant.
+  async delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number; engaged: string[] }> {
     let parts = 0;
+    let engaged: string[] = [];
+    let problems: string[] = [];
     await this.onRun(actor, assignmentId, fence, async (a) => {
       if (!a.acting(fence)) throw conflictWith("stale_fence", "This attempt has ended its work: its plan was not given.");
-      const events = await this.team.delegate(actor, a, fence, units);
+      const plan = await this.team.delegate(actor, a, fence, units);
+      if (!plan.given) {
+        problems = plan.problems;
+        return [];
+      }
       parts = units.length;
-      return events;
+      engaged = plan.engaged;
+      return plan.events;
     });
-    return { parts };
+    if (problems.length > 0) throw invalid("plan_refused", `The plan was not given: ${problems.join(" ")}`, { problems });
+    return { parts, engaged };
   }
 
   async reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string, digest: string | null = null): Promise<string> {

@@ -196,6 +196,16 @@ export class AccountsService {
     return { owner: this.ownerOf(user, session, token), user, account };
   }
 
+  // The person who asked, as they are NOW -- for their own request Orbit carries out later (a hiring request the CEO
+  // planned): null when they no longer exist, are disabled, belong to another account, or the account is suspended. The
+  // session they asked from is named, never needed alive: nothing is decided from it.
+  async ownerNow(accountId: string, userId: string, sessionId: string): Promise<Owner | null> {
+    const user = await this.users.get(userId);
+    const account = await this.accounts.get(accountId);
+    if (user === null || account === null || user.accountId !== accountId || user.disabledAt !== null || account.status !== "active") return null;
+    return { kind: "owner", accountId, userId: user.id, sessionId, username: user.username, fullName: user.fullName, email: shareAddressOfUser(user), csrfToken: "", expiresAt: new Date().toISOString() };
+  }
+
   csrfMatches(owner: Owner, given: string | undefined): boolean {
     return typeof given === "string" && sameText(given, owner.csrfToken);
   }

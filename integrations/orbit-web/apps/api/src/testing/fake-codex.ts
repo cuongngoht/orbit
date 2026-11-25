@@ -1,9 +1,11 @@
 // OPENAI CODEX STAND-INS for the integration tests: the control plane's codex (version, help, sign-in status, model list,
-// raw catalog, and the employee observation -- which, like the real binary, sends the stand-in provider Orbit Web serves
-// one request naming the tools it offers) and an employee's codex in a model plane (its `exec --json` events, its tool
-// calls through Orbit Web's real tool endpoint). Never the codex installed on the machine running the tests: every codex
-// command these do not know is answered "not installed".
-import { readFileSync } from "node:fs";
+// raw catalog, and the two observations -- an employee's, and a CEO's tool-less answer -- which, like the real binary,
+// send the stand-in provider Orbit Web serves one request naming the tools offered, with the developer instructions and
+// any AGENTS.md the run reads) and an employee's codex in a model plane (its `exec --json` events, its tool calls through
+// Orbit Web's real tool endpoint). Never the codex installed on the machine running the tests: every codex command these
+// do not know is answered "not installed".
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Call, FakeChild, FakeProcessPort, SpawnScript } from "./fake-process.js";
 import { program } from "./fake-process.js";
 import type { EmployeeScript, ToolCaller } from "./fake-sandbox.js";
@@ -34,14 +36,14 @@ const CODEX_MODELS = [rawCodexEntry("gpt-6.1-sol", 1), rawCodexEntry("gpt-5.5", 
 
 const VIEWER_REFUSED = "view_image is not allowed because you do not support image inputs";
 
-// What the observed binary offers a model run with this entry: held (Orbit's entry: Orbit's tools, the MCP readers, a
-// viewer that refuses) or its own (code mode, sub-agents).
-function offeredFor(entry: Record<string, unknown> | undefined): unknown[] {
+// What the observed binary offers a model run with this entry: held (Orbit's entry: the MCP readers, a viewer that
+// refuses, and Orbit's tools where its bridge is configured) or its own (code mode, sub-agents).
+function offeredFor(entry: Record<string, unknown> | undefined, bridged: boolean): unknown[] {
   const orbit = entry !== undefined && entry.tool_mode === undefined && JSON.stringify(entry.input_modalities) === '["text"]' && entry.supports_search_tool === false;
   if (orbit) {
     return [
       { type: "namespace", name: "functions", tools: ["list_mcp_resources", "list_mcp_resource_templates", "read_mcp_resource", "request_user_input", "view_image"].map((name) => ({ type: "function", name })) },
-      { type: "namespace", name: "mcp__orbit_tools", tools: [{ type: "function", name: "submit_handoff" }] },
+      ...(bridged ? [{ type: "namespace", name: "mcp__orbit_tools", tools: [{ type: "function", name: "submit_handoff" }] }] : []),
     ];
   }
   return [
@@ -55,16 +57,27 @@ const argAfter = (args: readonly string[], prefix: string): string | null => {
   return a === undefined ? null : a.slice(prefix.length);
 };
 
-// The employee observation, as the binary runs it: one request to the stand-in provider with the tools it offers; when
-// the answer asks for the image viewer, a second with what the viewer said.
-async function observation(call: Call): Promise<{ code: number; stdout: string; stderr: string }> {
+// An observation, as the binary runs it: one request to the stand-in provider with the tools it offers (Orbit's only
+// where its bridge is configured: a CEO's tool-less run has no MCP server), the developer instructions, and the AGENTS.md
+// beside it unless project instructions are switched off; when the answer asks for the image viewer, a second request
+// with what the viewer said. `offers` replaces what a model is offered (a binary that is not held).
+export async function codexObservation(call: Call, offers?: (entry: Record<string, unknown> | undefined, bridged: boolean) => unknown[]): Promise<{ code: number; stdout: string; stderr: string }> {
   const provider = argAfter(call.args, "model_providers.orbit_observation=") ?? "";
   const base = /base_url="([^"]+)"/.exec(provider)?.[1];
   const file = JSON.parse(argAfter(call.args, "model_catalog_json=") ?? '""') as string;
   if (base === undefined || file === "") return { code: 2, stdout: "", stderr: "not an observation" };
   const entry = (JSON.parse(readFileSync(file, "utf8")) as { models: Record<string, unknown>[] }).models[0];
-  const offered = offeredFor(entry);
-  const first = await fetch(`${base}/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: entry?.slug, tools: [], input: [{ type: "additional_tools", role: "developer", tools: offered }] }) });
+  const bridged = !call.args.includes("mcp_servers={}");
+  const offered = (offers ?? offeredFor)(entry, bridged);
+  const instructions = argAfter(call.args, "developer_instructions=");
+  const agents = join(call.cwd, "AGENTS.md");
+  const project = !call.args.includes("project_doc_max_bytes=0") && existsSync(agents) ? readFileSync(agents, "utf8") : null;
+  const input = [
+    ...(instructions !== null ? [{ type: "message", role: "developer", content: [{ type: "input_text", text: JSON.parse(instructions) as string }] }] : []),
+    ...(project !== null ? [{ type: "message", role: "user", content: [{ type: "input_text", text: project }] }] : []),
+    { type: "additional_tools", role: "developer", tools: offered },
+  ];
+  const first = await fetch(`${base}/responses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: entry?.slug, tools: [], input }) });
   const said = await first.text();
   if (said.includes('"name":"view_image"')) {
     const output = JSON.stringify(entry?.input_modalities) === '["text"]' ? VIEWER_REFUSED : "unable to process image: invalid or unsupported image data";
@@ -85,7 +98,7 @@ export function fakeCodexControl(fake: FakeProcessPort): FakeProcessPort {
     .on(program("codex", "login", "--with-api-key"), { run: { stdout: "Successfully logged in\n" } })
     .on(program("codex", "login", "status"), { run: { stderr: "Logged in using an API key - sk-proj-***ABCDE\n" } })
     .on(program("codex", "debug", "models"), { run: { stdout: JSON.stringify({ models: CODEX_MODELS }) } })
-    .on(program("codex", "exec", "--json"), { run: (call) => observation(call) })
+    .on(program("codex", "exec", "--json"), { run: (call) => codexObservation(call) })
     .on(program("codex", "app-server"), {
       spawn: (child) => {
         child.onSignal((signal) => child.exit(null, signal));

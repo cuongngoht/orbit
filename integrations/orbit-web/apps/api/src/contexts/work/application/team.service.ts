@@ -15,20 +15,25 @@
 //     accepted hand-in of a part it waits for, as its summary or in full (domain/data-authorization.ts);
 //   - the manager waits (WAITING_FOR_SUBORDINATES); when every part handed in or ended, a new attempt of the manager
 //     REVIEWS them (`review_unit`: accept, or ask for a revision -- the part keeps its employee) and, once all are
-//     accepted, integrates and hands in its own result to the person who gave the work.
+//     accepted, integrates and hands in its own result to the person who gave the work;
+//   - a part may HIRE instead of naming someone (domain/assistants.ts): the CEO or a manager in force engages a temporary
+//     assistant for this mission, within its quota. The hires and the plan are decided together, as the lead: a plan
+//     with any problem -- a hire refused included -- gives nothing and engages nobody, and its decisions stay on record.
 import { Inject, Injectable, type OnModuleInit } from "@nestjs/common";
-import { isWorkforceId, WORKFORCE_LIMITS, type AssignmentState, type DataShareView, type Deliverable, type TeamRoomChange } from "@orbit-web/contracts";
+import { isWorkforceId, WORKFORCE_LIMITS, type AssignmentState, type DataShareView, type Deliverable, type HireAssistantRequest, type TeamRoomChange } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
 import { OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
-import { conflictWith, invalid, missing, refused, type RaisedEvent } from "../../shared/domain.js";
+import { conflictWith, DomainError, invalid, missing, refused, type RaisedEvent } from "../../shared/domain.js";
 import { EventDispatcher } from "../../shared/infrastructure/consumers.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { ResourcesService } from "../../execution/application/resources.service.js";
 import type { TeamRoom } from "../../execution/application/run-outcomes.port.js";
+import { HiringService, type Engagement } from "../../workforce/application/hiring.service.js";
 import { Assignment, type AssignmentTargetData } from "../domain/assignment.js";
-import { delegationScope, resolveTarget, scopeIsEmpty, type DelegationScope } from "../domain/authority.js";
+import { placeHire, type Quota } from "../domain/assistants.js";
+import { delegationScope, resolveTarget, scopeIsEmpty, type AuthorityFacts, type DelegationScope } from "../domain/authority.js";
 import { roleFrom, type WorkRole } from "../domain/roles.js";
 import { allEnded, DONE, leadNext, planProblems } from "../domain/team.js";
 import { ClarificationRepository } from "../infrastructure/clarifications.repository.js";
@@ -39,13 +44,14 @@ import { AttemptDataService } from "./attempt-data.service.js";
 import { DecisionRepository } from "../infrastructure/decisions.js";
 import { AssignmentRepository, HandoffRepository, MissionRepository } from "../infrastructure/repositories.js";
 
-// A part as the lead's plan names it: to an employee or a department (by id or exact name), what it must do, what it waits
-// for, and what the lead shares with it (nothing unless it says): source labels it reads ("all": every one it reads), and
-// the accepted hand-in of a part this one waits for -- its summary, or in full.
+// A part as the lead's plan names it: to an employee or a department (by id or exact name) -- or to an assistant it hires
+// for it -- what it must do, what it waits for, and what the lead shares with it (nothing unless it says): source labels
+// it reads ("all": every one it reads), and the accepted hand-in of a part this one waits for -- its summary, or in full.
 export interface UnitPlan {
   key: string;
   employee?: string;
   department?: string;
+  hire?: HireAssistantRequest;
   title: string;
   goal: string;
   deliverables: Deliverable[];
@@ -55,8 +61,15 @@ export interface UnitPlan {
   receives?: { from: string; as: ShareMode }[];
 }
 
-// A part once its authority resolved who takes it.
-type ResolvedPart = UnitPlan & { employeeId: string; target: AssignmentTargetData };
+// A part once its authority resolved who takes it -- and, for a part that hires, the department its assistant joins and
+// who manages it there (the part goes to the assistant itself, or -- the CEO's -- to that department's manager).
+type ResolvedPart = UnitPlan & { employeeId: string; target: AssignmentTargetData; joins?: { departmentId: string; managerId: string } };
+
+// What a plan came to: given (its events, and the assistants it engaged), or refused whole with every problem.
+export type PlanOutcome = { given: true; events: RaisedEvent[]; engaged: string[] } | { given: false; problems: string[] };
+
+// Who takes a manager's hired part until its assistant is engaged: the assistant.
+const toAssistant = (key: string): string => `assistant:${key}`;
 
 export interface UnitView {
   key: string;
@@ -94,6 +107,7 @@ export class TeamService implements OnModuleInit {
     @Inject(AccessHooks) private readonly access: AccessHooks,
     @Inject(OrgReader) private readonly org: OrgReader,
     @Inject(ClarificationRepository) private readonly clarifications: ClarificationRepository,
+    @Inject(HiringService) private readonly hiring: HiringService,
   ) {}
 
   onModuleInit(): void {
@@ -118,12 +132,14 @@ export class TeamService implements OnModuleInit {
     return (await this.standing(orbitId, a)).scope;
   }
 
-  // Its standing in this work, from one read of the company's authority: whom it may give work to, and its role (the
-  // CEO, a manager with or without a team, or an employee: domain/roles.ts).
-  async standing(orbitId: string, a: Assignment): Promise<{ scope: DelegationScope; role: WorkRole }> {
+  // Its standing in this work, from one read of the company's authority ON ITS MISSION (an assistant of another mission
+  // is not there): whom it may give work to, its role (the CEO, a manager with or without a team, or an employee:
+  // domain/roles.ts), and -- an appointee in force -- its quota of temporary assistants.
+  async standing(orbitId: string, a: Assignment): Promise<{ scope: DelegationScope; role: WorkRole; facts: AuthorityFacts; assistants: Quota | null }> {
     const chain = await this.org.chainOf(orbitId, a.id);
-    const facts = await this.org.authority(orbitId, a.data.employeeId, chain);
-    return { scope: delegationScope(facts), role: roleFrom(facts) };
+    const facts = await this.org.authority(orbitId, a.data.employeeId, chain, a.data.missionId);
+    const assistants = facts.appointment === null ? null : await this.hiring.assistantQuota(orbitId, a.data.employeeId);
+    return { scope: delegationScope(facts), role: roleFrom(facts), facts, assistants };
   }
 
   // The questions its team asked this lead, still open.
@@ -177,25 +193,36 @@ export class TeamService implements OnModuleInit {
   // ---- the manager's plan ------------------------------------------------------------------------------------------
 
   // Inside the lead's run transaction (its assignment locked by the caller): the plan held to its authority and its own
-  // rules (refused whole, with every problem), the parts made and queued, what it shares with each, and the room.
-  async delegate(actor: Actor, manager: Assignment, fence: number, units: UnitPlan[]): Promise<RaisedEvent[]> {
+  // rules, its hires decided as the lead -- a plan with any problem gives nothing and engages nobody, and says every
+  // problem (the caller refuses it once its decisions are committed: they stay on record) -- else the assistants engaged,
+  // the parts made and queued, what it shares with each, and the room.
+  async delegate(actor: Actor, manager: Assignment, fence: number, units: UnitPlan[]): Promise<PlanOutcome> {
     const orbitId = manager.orbitId;
-    const scope = await this.scope(orbitId, manager);
-    if (scopeIsEmpty(scope)) throw refused("no_authority", "You hold no appointment or grant that lets you give work to others: do it yourself.");
+    const { scope, facts } = await this.standing(orbitId, manager);
+    if (scopeIsEmpty(scope) && !units.some((u) => u.hire !== undefined)) throw refused("no_authority", "You hold no appointment or grant that lets you give work to others: do it yourself.");
     if ((await this.depth(orbitId, manager)) >= WORKFORCE_LIMITS.delegationDepth) throw refused("delegation_too_deep", `Work is already given down ${WORKFORCE_LIMITS.delegationDepth} levels: do this part yourself.`);
     const problems: string[] = [];
     const parts: ResolvedPart[] = [];
     for (const u of units) {
-      const r = resolveTarget(scope, { employee: u.employee, department: u.department });
+      const r = u.hire !== undefined ? this.hiredPart(facts, scope, manager, u) : resolveTarget(scope, { employee: u.employee, department: u.department });
       if ("problem" in r) problems.push(`"${u.key}": ${r.problem}`);
-      else parts.push({ ...u, employeeId: r.employeeId, target: r.target });
+      else parts.push({ ...u, ...r });
     }
     const taken = new Set((await this.units(orbitId, manager.id)).map((u) => u.key));
     problems.push(...planProblems(parts, manager.data.employeeId, taken));
-    if (problems.length > 0) throw invalid("plan_refused", `The plan was not given: ${problems.join(" ")}`, { problems });
+    const shared = await this.sharesOf(orbitId, manager, parts, problems);
+    const engagements = await this.decideHires(actor, manager, parts, problems);
+    if (problems.length > 0) return { given: false, problems };
     const at = new Date().toISOString();
     manager.delegated(fence, parts.length, at);
-    const shared = await this.sharesOf(orbitId, manager, parts);
+    const engaged: string[] = [];
+    for (const u of parts) {
+      const g = engagements.get(u.key);
+      if (g === undefined) continue;
+      await this.hiring.engageAssistant(actor, g);
+      engaged.push(g.name);
+      if (u.employeeId === toAssistant(u.key)) u.employeeId = g.id;
+    }
     for (const u of parts) await this.governance.authorize(actor, "work.delegate", u.employeeId, { employee: u.employeeId, manager: manager.data.employeeId });
     await this.openRoom(orbitId, manager.data.missionId, await this.departmentOf(orbitId, manager.data.employeeId), at);
     const events: RaisedEvent[] = [];
@@ -229,7 +256,40 @@ export class TeamService implements OnModuleInit {
     }
     // Its attempt ended here, by design: asked to stop, it ends as having handed its work to its team.
     await this.runs.stop(orbitId, manager.id, "delegated");
-    return events;
+    return { given: true, events, engaged };
+  }
+
+  // Who takes a part that hires (domain/assistants.ts): a manager's assistant itself, once engaged; the CEO's part goes to
+  // the department its assistant joins, through that department's manager.
+  private hiredPart(facts: AuthorityFacts, scope: DelegationScope, manager: Assignment, u: UnitPlan): Pick<ResolvedPart, "employeeId" | "target" | "joins"> | { problem: string } {
+    const p = placeHire(facts, scope, { employee: u.employee, department: u.department });
+    if ("problem" in p) return p;
+    if (p.goesTo === "manager") return { employeeId: p.employeeId, target: p.target, joins: { departmentId: p.departmentId, managerId: p.employeeId } };
+    return { employeeId: toAssistant(u.key), target: { kind: "employee", departmentId: null, appointmentId: null, appointmentRevision: null }, joins: { departmentId: p.departmentId, managerId: manager.data.employeeId } };
+  }
+
+  // Each assistant the plan hires, decided as the lead (Workforce: its quota through governance, the department, the
+  // mission's time, the execution and resources a hire is held to) -- every refusal a problem of the plan, each one
+  // counting those decided before it against the lead's quota and the account's storage.
+  private async decideHires(actor: Actor, manager: Assignment, parts: readonly ResolvedPart[], problems: string[]): Promise<Map<string, Engagement>> {
+    const out = new Map<string, Engagement>();
+    if (!parts.some((u) => u.hire !== undefined)) return out;
+    const deadline = (await this.missions.get(manager.orbitId, manager.data.missionId))?.data.deadline ?? null;
+    const before = { assistants: 0, deskMiB: 0, cacheMiB: 0 };
+    for (const u of parts) {
+      if (u.hire === undefined || u.joins === undefined) continue;
+      try {
+        const g = await this.hiring.decideAssistant(actor, { leadId: manager.data.employeeId, missionId: manager.data.missionId, deadline, departmentId: u.joins.departmentId, managerId: u.joins.managerId, hire: u.hire, before: { ...before } });
+        out.set(u.key, g);
+        before.assistants += 1;
+        before.deskMiB += g.resources.deskStorageMiB;
+        before.cacheMiB += g.resources.cacheStorageMiB;
+      } catch (err) {
+        if (!(err instanceof DomainError)) throw err;
+        problems.push(`"${u.key}": ${err.message}`);
+      }
+    }
+    return out;
   }
 
   private async depth(orbitId: string, a: Assignment): Promise<number> {
@@ -265,19 +325,17 @@ export class TeamService implements OnModuleInit {
   // ---- what a lead shares with its parts ---------------------------------------------------------------------------------
 
   // The source revisions each part is given, held to what the lead reads itself (a label it does not read refuses the
-  // plan whole, with the others' problems).
-  private async sharesOf(orbitId: string, manager: Assignment, units: readonly ResolvedPart[]): Promise<Map<string, string[]>> {
+  // plan whole, with the others' problems: added to `problems`).
+  private async sharesOf(orbitId: string, manager: Assignment, units: readonly ResolvedPart[], problems: string[]): Promise<Map<string, string[]>> {
     const asked = units.filter((u) => (u.shareSources ?? []).length > 0);
     const out = new Map<string, string[]>();
     if (asked.length === 0) return out;
     const held = (await this.data.of(orbitId, manager.id))?.sources ?? [];
-    const problems: string[] = [];
     for (const u of asked) {
       const r = sharedSourcesOf(u.shareSources ?? [], held);
       problems.push(...r.problems.map((p) => `"${u.key}": ${p}`));
       out.set(u.key, r.revisionIds);
     }
-    if (problems.length > 0) throw invalid("plan_refused", `The plan was not given: ${problems.join(" ")}`, { problems });
     return out;
   }
 

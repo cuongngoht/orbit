@@ -334,7 +334,7 @@ describe("signed in: the workspace, as in Claude Code", () => {
 
   test("CEO Chat is a company's: with no company, #/ceo goes back to a new session, and the sidebar offers Create company", async () => {
     window.location.hash = "#/ceo";
-    signedIn().on("GET", "/api/executive", () => ({ company: null, state: "no_company", ceo: null, converse: { ok: false, code: "office_not_set_up", reason: "No company." }, assign: { ok: false, code: "office_not_set_up", reason: "No company." } }));
+    signedIn().on("GET", "/api/executive", () => ({ company: null, state: "no_company", ceo: null, converse: { ok: false, code: "office_not_set_up", reason: "No company." }, assign: { ok: false, code: "office_not_set_up", reason: "No company." }, recruit: { ok: false, code: "office_not_set_up", reason: "No company." } }));
     render(<App />);
     await waitFor(() => expect(window.location.hash).toBe("#/"));
     const sidebar = await screen.findByRole("navigation", { name: "Orbit" });
@@ -351,6 +351,7 @@ describe("signed in: the workspace, as in Claude Code", () => {
         ceo: { employeeId: EMP_ANA, name: "An", title: "Chief executive", employment: "active", appointment: { id: "ap1", revision: 1, state: "active", since: "2026-11-20T00:00:00.000Z" }, execution: { runtime: "claude", connectionId: null, connectionName: null, model: "claude-sonnet-5-5", effort: null, sources: { connection: "runtime", model: "employee", effort: "runtime" } }, holding: null },
         converse: { ok: true, code: null, reason: null },
         assign: { ok: true, code: null, reason: null },
+        recruit: { ok: true, code: null, reason: null },
       }))
       .on("GET", "/api/executive/conversations", () => ({ conversations: [], nextCursor: null }));
     render(<App />);

@@ -3,7 +3,7 @@
 // answers it), how a turn asks for its run (a conversation run of the CEO, admitted like any run), how it ends, and what
 // starts next. Shared by the service that takes the owner's messages and the runner that runs the answers.
 import { Inject, Injectable } from "@nestjs/common";
-import type { ExecutiveTurnState } from "@orbit-web/contracts";
+import type { ExecutiveTurnKind, ExecutiveTurnState } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { Db } from "../../../infra/db/db.js";
 import { WorkerSignals } from "../../execution/application/worker-signals.js";
@@ -12,6 +12,8 @@ import { conflictWith } from "../../shared/domain.js";
 import { OrgReader } from "../../work/infrastructure/org.reader.js";
 import { EmployeeEligibility } from "../../workforce/application/eligibility.js";
 import { PENDING_TURN_STATES, TURN_FAILURES, type TurnFailure } from "../domain/conversation.js";
+import { executiveRuntimeOf } from "../infrastructure/executive-runtimes.js";
+import { TurnTasks } from "./turn-tasks.js";
 import { ExecutiveRepository, turnView, type TurnRecord } from "../infrastructure/executive.repository.js";
 import { ExecutiveStream } from "../infrastructure/executive-stream.js";
 
@@ -36,6 +38,7 @@ export class ExecutiveTurns {
     @Inject(EmployeeEligibility) private readonly eligibility: EmployeeEligibility,
     @Inject(ConversationRunRepository) private readonly runs: ConversationRunRepository,
     @Inject(WorkerSignals) private readonly signals: WorkerSignals,
+    @Inject(TurnTasks) private readonly tasks: TurnTasks,
   ) {}
 
   // The CEO in office who can answer now -- or the 409 that says why nobody can (no CEO, a suspended appointment, a CEO
@@ -46,7 +49,7 @@ export class ExecutiveTurns {
     if (i.state === "suspended") throw conflictWith("appointment_suspended", `${i.employeeName}'s appointment as CEO is suspended: reinstate it, or appoint another CEO, before asking the CEO anything.`);
     const el = await this.eligibility.of(orbitId, i.employeeId, false);
     if (el === null || !el.eligible) throw conflictWith("ceo_unavailable", `${i.employeeName} cannot answer now: ${el?.reason ?? "the employee no longer exists."}`);
-    if (el.execution.runtime !== "claude") throw conflictWith("runtime_unsupported", `${i.employeeName} runs on ${el.execution.runtime}, which CEO Chat cannot hold to answering without tools: CEO Chat answers through Claude Code. Work you give the CEO still goes to ${i.employeeName}.`);
+    if (executiveRuntimeOf(el.execution.runtime) === null) throw conflictWith("runtime_unsupported", `${i.employeeName} runs on ${el.execution.runtime}, which CEO Chat cannot hold to answering without tools: CEO Chat answers through Claude Code or OpenAI Codex. Work you give the CEO still goes to ${i.employeeName}.`);
     if (el.execution.model === null || el.execution.model === "") throw conflictWith("ceo_unavailable", `${i.employeeName}'s profile names no model: choose one on the profile, or set a default.`);
     return { employeeId: i.employeeId, name: i.employeeName, appointmentId: i.appointmentId, appointmentRevision: i.slotRevision, execution: { runtime: el.execution.runtime, connectionId: el.execution.connectionId, model: el.execution.model, effort: el.execution.effort } };
   }
@@ -54,17 +57,17 @@ export class ExecutiveTurns {
   // An owner's message, answered: it joins the turn of this CEO that waits to start, or a new turn answers it -- queued
   // behind the conversation's running answer, else asking for its run now. A turn that waits for a CEO no longer in
   // office ends first, saying why. Inside the caller's transaction (the conversation's row held).
-  async answer(orbitId: string, conversationId: string, messageId: string, ceo: CeoForTurn): Promise<TurnRecord> {
+  async answer(orbitId: string, conversationId: string, messageId: string, ceo: CeoForTurn, kind: ExecutiveTurnKind = "answer"): Promise<TurnRecord> {
     const open = await this.repo.openTurns(orbitId, conversationId, true);
     for (const stale of open.filter((t) => PENDING_TURN_STATES.includes(t.state) && t.appointmentId !== ceo.appointmentId)) await this.end(stale, "failed", "ceo_changed");
-    const pending = open.find((t) => PENDING_TURN_STATES.includes(t.state) && t.appointmentId === ceo.appointmentId);
+    const pending = open.find((t) => PENDING_TURN_STATES.includes(t.state) && t.appointmentId === ceo.appointmentId && t.kind === kind);
     if (pending !== undefined) {
       const joined = (await this.repo.updateTurn(orbitId, pending.id, PENDING_TURN_STATES, { requestMessageId: messageId })) ?? pending;
       await this.stream.publish(orbitId, conversationId, "executive.turn.waiting", { turn: turnView(joined) }, joined.id);
       return joined;
     }
     const running = open.some((t) => t.state === "running");
-    const turn = await this.repo.insertTurn({ id: randomUUID(), orbitId, conversationId, requestMessageId: messageId, employeeId: ceo.employeeId, authorName: ceo.name, appointmentId: ceo.appointmentId, appointmentRevision: ceo.appointmentRevision, state: running ? "queued" : "waiting", runId: null, at: new Date().toISOString() });
+    const turn = await this.repo.insertTurn({ id: randomUUID(), orbitId, conversationId, kind, requestMessageId: messageId, employeeId: ceo.employeeId, authorName: ceo.name, appointmentId: ceo.appointmentId, appointmentRevision: ceo.appointmentRevision, state: running ? "queued" : "waiting", runId: null, at: new Date().toISOString() });
     const asked = running ? turn : await this.requestRun(turn, ceo);
     await this.stream.publish(orbitId, conversationId, "executive.turn.waiting", { turn: turnView(asked) }, asked.id);
     return asked;
@@ -85,6 +88,8 @@ export class ExecutiveTurns {
     if (ended === null) return null;
     if (turn.runId !== null && turn.state !== "running") await this.runs.move(turn.orbitId, turn.runId, ["requested", "waiting"], "cancelled", { detail: words, endedAt: new Date().toISOString() });
     await this.stream.publish(turn.orbitId, turn.conversationId, "executive.response.failed", { turn: turnView(ended) }, ended.id);
+    // What the turn asked beyond an answer (a hiring request, a draft) ends with it, saying why.
+    await this.tasks.settled(ended, null, { completed: false, detail: words });
     return ended;
   }
 

@@ -188,6 +188,8 @@ export interface TeamPrompt {
   // Its role in the work (Work's roles.ts); absent: an employee.
   role?: "ceo" | "manager_with_team" | "manager_alone" | "employee";
   canDelegate: boolean;
+  // Its temporary assistants (an appointee in force's): its quota, how many are engaged, how many more it may engage.
+  assistants?: { max: number; engaged: number; left: number } | null;
   scope: { employees: { id: string; name: string; title: string; departmentName: string | null; via: string }[]; departments: { id: string; name: string; managerName: string | null; via: string }[] };
   units: { key: string; employeeName: string; state: string; handoff: { revision: number; digest: string; summary: string; artifacts: { name: string }[] } | null }[];
   questions: { id: string; askerName: string; unitKey: string | null; question: string }[];
@@ -219,6 +221,15 @@ const ROLE_TEXT: Record<NonNullable<TeamPrompt["role"]>, string> = {
   employee: "",
 };
 
+// Its temporary assistants, in one paragraph: how many more it may engage for this mission, and how (nothing when its
+// quota is 0, or it is no appointee in force).
+function assistantsText(role: NonNullable<TeamPrompt["role"]>, q: TeamPrompt["assistants"]): string {
+  if (q === null || q === undefined || q.max === 0 || role === "employee") return "";
+  if (q.left === 0) return `Temporary assistants: your ${q.max} are all engaged -- you may engage no more now.`;
+  const where = role === "ceo" ? "together with the department it joins: that department's manager takes the part and can give the assistant work" : "instead of naming someone: the assistant joins your department for this mission and takes that part";
+  return `Temporary assistants: you may engage ${q.left} more for this mission (your quota is ${q.max}; ${q.engaged} engaged now). In delegate, give a part \`hire\` (name, title, duties, skills, languages) ${where}. An assistant is released when this mission ends.`;
+}
+
 function teamText(t: TeamPrompt | undefined): string {
   if (t === undefined) return "";
   const out: string[] = [];
@@ -231,11 +242,14 @@ function teamText(t: TeamPrompt | undefined): string {
   if (t.canDelegate) {
     const people = t.scope.employees.map((e) => `- ${e.name} (${e.id})${e.title ? ` -- ${e.title}` : ""}${e.departmentName ? `, ${e.departmentName}` : ""}`);
     const departments = t.scope.departments.map((d) => `- department ${d.name} (${d.id}): ${d.managerName === null ? "no manager in office -- it takes nothing" : `its manager ${d.managerName} takes it`}`);
-    out.push(`You may give parts of this work with the delegate tool (you stay responsible for the result) -- to these, and nobody else:\n${[...people, ...departments].join("\n")}\nA part reads only what you share with it (share_sources, receives). Plans given so far: ${t.planCount}.`);
+    const whom = [...people, ...departments];
+    out.push(`You may give parts of this work with the delegate tool (you stay responsible for the result)${whom.length > 0 ? ` -- to these, and nobody else:\n${whom.join("\n")}\n` : ". "}A part reads only what you share with it (share_sources, receives). Plans given so far: ${t.planCount}.`);
+    const engage = assistantsText(role, t.assistants ?? null);
+    if (engage !== "") out.push(engage);
   }
   if (t.units.length > 0) {
     out.push(
-      `The parts you gave your team:\n${t.units.map((u) => `- ${u.key}: ${u.employeeName}, ${u.state.toLowerCase().replace(/_/g, " ")}${u.handoff ? ` -- handed in revision ${u.handoff.revision} (digest ${u.handoff.digest}): ${u.handoff.summary.slice(0, 500)}${u.handoff.artifacts.length > 0 ? ` (files in /input: ${u.handoff.artifacts.map((a) => `unit-${u.key}-${a.name}`).join(", ")})` : ""}` : ""}`).join("\n")}\nDecide on each part handed in with review_unit (accept, or revise saying what must change), naming the digest of the revision you reviewed. When every part has ended, integrate their results into your own deliverables in /output and call submit_handoff.`,
+      `The parts you gave your team:\n${t.units.map((u) => `- ${u.key}: ${u.employeeName}, ${u.state.toLowerCase().replace(/_/g, " ")}${u.handoff ? ` -- handed in revision ${u.handoff.revision} (digest ${u.handoff.digest}): ${u.handoff.summary.slice(0, 500)}${u.handoff.artifacts.length > 0 ? ` (files in /input: ${u.handoff.artifacts.map((a) => `unit-${u.key}-${a.name}`).join(", ")})` : ""}` : ""}`).join("\n")}\nDecide on each part handed in with review_unit (accept, or revise saying what must change), naming the digest of the revision you reviewed. When every part has ended, integrate their results into your own deliverables in /output and call submit_handoff. While a part is still being worked on, end this attempt once you have decided: you are woken again when it hands in.`,
     );
   }
   if (t.questions.length > 0)

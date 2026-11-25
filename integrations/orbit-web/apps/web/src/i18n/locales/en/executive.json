@@ -82,5 +82,6 @@
   "panel.authority": "Gives work only to departments, through their managers; reads no company system and runs no command.",
   "panel.records": "What the last answer stood on",
   "panel.noRecords": "No answer yet.",
-  "panel.close": "Close"
+  "panel.close": "Close",
+  "quick.recruit": "Recruit"
 }

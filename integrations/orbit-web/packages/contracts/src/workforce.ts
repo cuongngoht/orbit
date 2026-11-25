@@ -55,6 +55,8 @@ export const WORKFORCE_LIMITS = {
   fileNameLength: 120,
   sources: 40,
   maxAssistants: 5,
+  // The longest a temporary assistant is engaged (its mission's deadline, when sooner, ends it sooner).
+  assistantDays: 7,
   delegationDepth: 3,
   reworkLimit: 5,
   replanLimit: 3,
@@ -391,12 +393,16 @@ export interface EmploymentRequest {
   held?: "keep_paused" | "cancel";
 }
 
+// A TEMPORARY ASSISTANT, as a lead's plan engages one (a part of its `delegate` tool that hires instead of naming
+// someone): who it is, never how long or on what. Its mission bounds its engagement (released when the mission ends, at
+// most WORKFORCE_LIMITS.assistantDays), its department's execution defaults -- else its lead's own -- what it runs on,
+// and its lead's profile.maxAssistants how many it may have at once.
 export interface HireAssistantRequest {
   name: string;
-  // How long the engagement lasts, and the mission it is for.
-  ttlMinutes: number;
-  missionId: string;
-  profile: EmployeeProfile;
+  title: string;
+  duties: string;
+  skills: string[];
+  languages: string[];
 }
 
 // ---- missions, assignments, handoffs ------------------------------------------------------------------------------
@@ -1333,14 +1339,18 @@ export function checkEmployment(body: unknown): Checked<EmploymentRequest> {
 
 export function checkHireAssistant(body: unknown): Checked<HireAssistantRequest> {
   if (!isRecord(body)) return NOT_OBJECT;
-  const errors = unknownFields(body, ["name", "ttlMinutes", "missionId", "profile"]);
+  const errors = unknownFields(body, ["name", "title", "duties", "skills", "languages"]);
   const name = line(body.name, WORKFORCE_LIMITS.nameLength);
-  const profile = checkEmployeeProfile(body.profile);
+  const title = line(body.title, WORKFORCE_LIMITS.titleLength);
+  const duties = text(body.duties ?? "", WORKFORCE_LIMITS.textLength, true);
+  const skills = lines(body.skills ?? [], WORKFORCE_LIMITS.listItems, WORKFORCE_LIMITS.itemLength);
+  const languages = lines(body.languages ?? [], WORKFORCE_LIMITS.listItems, 40);
   if (name === null) errors.push(`name must be 1-${WORKFORCE_LIMITS.nameLength} printable characters`);
-  if (!Number.isInteger(body.ttlMinutes) || (body.ttlMinutes as number) < 1 || (body.ttlMinutes as number) > 7 * 24 * 60) errors.push("ttlMinutes must be 1 minute to 7 days");
-  if (!isWorkforceId(body.missionId)) errors.push("missionId must be a mission id");
-  if (!profile.ok) errors.push(...profile.errors);
-  return checked(errors, () => ({ name: name as string, ttlMinutes: body.ttlMinutes as number, missionId: body.missionId as string, profile: (profile as { ok: true; value: EmployeeProfile }).value }));
+  if (title === null) errors.push(`title must be 1-${WORKFORCE_LIMITS.titleLength} printable characters`);
+  if (duties === null) errors.push("duties is too long");
+  if (skills === null) errors.push("skills must be a short list of short lines");
+  if (languages === null) errors.push("languages must be a short list of short lines");
+  return checked(errors, () => ({ name: name as string, title: title as string, duties: duties as string, skills: skills as string[], languages: languages as string[] }));
 }
 
 function deliverablesOf(v: unknown, errors: string[]): Deliverable[] {

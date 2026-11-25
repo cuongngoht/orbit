@@ -10,7 +10,13 @@ import type {
   ExecutiveSent,
   ExecutiveState,
   ExecutiveTurn,
+  HiringRequest,
   MissionAccepted,
+  ProfileDraftAccepted,
+  ProfileDraftRequest,
+  ProfileDraftView,
+  StaffingAccepted,
+  StaffingView,
 } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource, type Resource } from "../../hooks/useResource";
@@ -35,6 +41,12 @@ export const executive = {
   give: (conversationId: string, body: ExecutiveMissionRequest, key: string) => send<MissionAccepted>("POST", `${at(conversationId)}/missions`, body, idempotent(key)),
   dismiss: (conversationId: string, messageId: string) => send<{ message: ExecutiveMessage }>("POST", `${at(conversationId)}/proposals/${id(messageId)}/dismiss`, {}),
   eventsUrl: (conversationId: string, after: number) => `${at(conversationId)}/events?after=${after}`,
+  // The owner's hiring request: the CEO plans it, Orbit carries it out at once (ADR 0062, staffing).
+  recruit: (body: HiringRequest, key: string) => send<StaffingAccepted>("POST", "/api/executive/staffing", body, idempotent(key)),
+  staffing: (staffingId: string) => get<StaffingView>(`/api/executive/staffing/${id(staffingId)}`),
+  // One profile drafted by the CEO for a form: it fills the form, and hires nobody.
+  draft: (body: ProfileDraftRequest, key: string) => send<ProfileDraftAccepted>("POST", "/api/executive/drafts", body, idempotent(key)),
+  draftOf: (draftId: string) => get<ProfileDraftView>(`/api/executive/drafts/${id(draftId)}`),
 };
 
 // What CEO Chat is for this account now: read again when the office's roster changes (a company set up, an appointment,

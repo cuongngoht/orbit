@@ -1,29 +1,31 @@
 // THE CEO ANSWERS (Executive, application; ADR 0062): what runs a turn once the admission pass admitted its conversation
 // run (CONVERSATION_DISPATCH). Before anything starts, everything is checked again as it is NOW: the CEO in office is
 // still the one the turn was asked of (else `ceo_changed` -- never another employee's answer), the employee can work, its
-// runtime is Claude Code, its connection is connected and offers its model, and the company's policy lets it run, as
-// the employee, on that model (governance run kind `executive`). Then the Claude CLI runs in a sandbox of its own (its
+// runtime has a strategy here (executive-runtimes.ts: Claude Code or OpenAI Codex) that PROVES its connection answers
+// with that model holding no tool, its connection is connected and offers its model, and the company's policy lets it
+// run, as the employee, on that model (governance run kind `executive`). Then the CLI runs in a sandbox of its own (its
 // connection's home alone) with NO tool: one that starts with a tool or tries one is stopped. Its answer streams out as
-// deltas; the end is decided from the process's real exit and the CLI's own result line, never from the text. The answer
+// deltas (an answer that arrives whole is said whole); the end is decided from the process's real exit and the CLI's
+// own result line, never from the text. No line below names a runtime: what differs per CLI is its strategy's. The answer
 // is kept as the CEO's message -- the proposal it may carry is read by the server (domain/proposal.ts) and authorizes
 // nothing -- and the turn's end is said on the conversation's stream. What the run held is given back once its process is
 // gone, and the conversation's next answer starts.
-import { Inject, Injectable, Logger, type BeforeApplicationShutdown } from "@nestjs/common";
-import type { EffortChoice, ModelChoice } from "@orbit-web/contracts";
+import { Inject, Injectable, Logger, Optional, type BeforeApplicationShutdown } from "@nestjs/common";
 import { EXECUTIVE_LIMITS } from "@orbit-web/contracts";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
 import { Db } from "../../../infra/db/db.js";
-import { claudeEnv } from "../../../infra/process/env.js";
 import { LineSplitter } from "../../../infra/process/lines.js";
 import type { ExitInfo, ProcessHandle } from "../../../infra/process/process.port.js";
 import { bounded, tail } from "../../../infra/security/redact.js";
 import { decideOutcome } from "../../../modules/claude-runner/outcome.js";
-import { StreamMapper, TEXT_LIMIT, type MappedEvent } from "../../../modules/claude-runner/stream-mapper.js";
-import { RunConnections } from "../../../modules/connections/run-connections.js";
+import { TEXT_LIMIT, type MappedEvent } from "../../../modules/claude-runner/stream-mapper.js";
+import { ConnectionProbe } from "../../../modules/connections/probe.js";
+import { RunConnections, type RunConnection } from "../../../modules/connections/run-connections.js";
 import { RunGovernanceService, type RunPlan } from "../../../modules/governance/run-governance.service.js";
-import { forbiddenInit } from "../../../modules/research/runner/research-runner.service.js";
 import { SESSION_SANDBOXES, type SessionLease, type SessionSandboxes } from "../../../modules/session-sandbox/session-sandboxes.js";
 import { AdmissionService } from "../../execution/application/admission.service.js";
 import type { ConversationDispatch } from "../../execution/application/conversation-dispatch.port.js";
@@ -34,10 +36,12 @@ import { OrgReader } from "../../work/infrastructure/org.reader.js";
 import { EmployeeEligibility } from "../../workforce/application/eligibility.js";
 import { TURN_FAILURES, type TurnFailure } from "../domain/conversation.js";
 import { readAnswer } from "../domain/proposal.js";
-import { executiveArgs, executivePrompt, newNonce, type PromptMessage } from "../infrastructure/executive-prompt.js";
+import { executivePrompt, newNonce, type PromptMessage } from "../infrastructure/executive-prompt.js";
+import { executiveRuntimeOf, type ChatStreamMapper, type ExecutiveRuntime } from "../infrastructure/executive-runtimes.js";
 import { ExecutiveRepository, messageView, turnView, type TurnRecord } from "../infrastructure/executive.repository.js";
 import { ExecutiveStream } from "../infrastructure/executive-stream.js";
 import { ExecutiveReports } from "./executive-reports.js";
+import { TurnTasks, type AnswerBlocks } from "./turn-tasks.js";
 import { ExecutiveTurns } from "./turns.js";
 
 const STDERR_LIMIT = 16 * 1024;
@@ -54,7 +58,8 @@ interface Active {
   run: ConversationRunRecord;
   turn: TurnRecord;
   handle: ProcessHandle;
-  mapper: StreamMapper;
+  rt: ExecutiveRuntime;
+  mapper: ChatStreamMapper;
   splitter: LineSplitter;
   messageId: string;
   answer: string;
@@ -68,6 +73,30 @@ interface Active {
   lease: SessionLease;
   finalizing: boolean;
   done: Promise<void>;
+}
+
+// What an answer runs on, once everything was checked: its runtime's strategy, the run's governance, its connection, what
+// it is asked, its environment, its effort, and the model entry its strategy proved with (written where the CLI reads it).
+interface Ready {
+  rt: ExecutiveRuntime;
+  plan: RunPlan;
+  connectionId: string;
+  prompt: string;
+  env: Record<string, string>;
+  effort: string | null;
+  modelFile: string | null;
+}
+
+// The model entry a strategy proved with, written once by its content into the connection's own home -- the one place
+// of Orbit Web's the CLI's sandbox holds, at the same path -- and named to the CLI (null: none).
+function modelFileOf(rc: RunConnection, entry: string | null): string | null {
+  if (entry === null) return null;
+  const path = join(rc.configDir, `orbit-executive-model-${createHash("sha256").update(entry).digest("hex").slice(0, 16)}.json`);
+  if (existsSync(path)) return path;
+  const temp = `${path}.${randomUUID()}.tmp`;
+  writeFileSync(temp, entry, { mode: 0o600 });
+  renameSync(temp, path);
+  return path;
 }
 
 // Why an answer could not start, said on its turn.
@@ -101,6 +130,8 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     @Inject(RunGovernanceService) private readonly governance: RunGovernanceService,
     @Inject(SESSION_SANDBOXES) private readonly sandboxes: SessionSandboxes,
     @Inject(WorkerSignals) private readonly signals: WorkerSignals,
+    @Inject(TurnTasks) private readonly tasks: TurnTasks,
+    @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
   ) {
     this.timings = workerTimings(config.sourceEnv);
   }
@@ -172,7 +203,7 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
       const ready = await this.ready(run, turn);
       plan = ready.plan;
       lease = await this.sandbox(run, turn, ready.connectionId);
-      this.start(run, turn, ready.prompt, ready.env, ready.effort, plan, lease);
+      this.start(run, turn, ready, lease);
     } catch (err) {
       if (lease !== null) await lease.release().catch(() => undefined);
       if (plan !== null) await this.governance.finished(plan, runId, "failed", null).catch(() => undefined);
@@ -184,7 +215,7 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
   }
 
   // Everything checked again as it is now; what the answer runs on, and what it is given.
-  private async ready(run: ConversationRunRecord, turn: TurnRecord): Promise<{ plan: RunPlan; connectionId: string; prompt: string; env: Record<string, string>; effort: string | null }> {
+  private async ready(run: ConversationRunRecord, turn: TurnRecord): Promise<Ready> {
     const orbitId = run.orbitId;
     const ceo = (await this.org.slot(orbitId, { kind: "ceo" }, false)).incumbent;
     if (ceo === null || ceo.appointmentId !== turn.appointmentId || ceo.slotRevision !== turn.appointmentRevision || ceo.employeeId !== turn.employeeId) throw new NotStarted("ceo_changed");
@@ -192,18 +223,23 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     const el = await this.eligibility.of(orbitId, turn.employeeId, false);
     if (el === null || !el.eligible) throw new NotStarted("ceo_unavailable", el?.reason ?? "The employee no longer exists.");
     const requested = run.requested;
-    if (requested.runtime !== "claude") throw new NotStarted("runtime_unsupported", `${turn.authorName} runs on ${requested.runtime}.`);
+    const rt = executiveRuntimeOf(requested.runtime);
+    if (rt === null) throw new NotStarted("runtime_unsupported", `${turn.authorName} runs on ${requested.runtime}.`);
+    const refusal = rt.refusal(this.config);
+    if (refusal !== null) throw new NotStarted("runtime_unsupported", refusal);
     const rc = await this.connections.readyChat(orbitId, requested.connectionId);
     if (rc === null) throw new NotStarted("ceo_unavailable", `${turn.authorName}'s AI connection is not connected: check it in Settings → AI Connections.`);
     const model = rc.connection.catalog.models.find((m) => m.id === requested.model);
     if (model === undefined) throw new NotStarted("ceo_unavailable", `${turn.authorName}'s model ${requested.model} is not offered by its connection now: choose another on the profile.`);
     const effort = model.efforts.length === 0 ? null : requested.effort !== null && model.efforts.includes(requested.effort) ? requested.effort : null;
     if (model.efforts.length > 0 && requested.effort !== null && effort === null) throw new NotStarted("ceo_unavailable", `${requested.model} takes no effort ${requested.effort}: choose another on the profile.`);
-    const prepared = await this.governance.prepareExecutive({ accountId: orbitId, employeeId: turn.employeeId, title: turn.authorName, departmentId: el.departmentId }, run.id, { startedBy: { kind: "system", id: "ceo-chat", accountId: orbitId }, startedByLabel: `owner:${orbitId}`, runtime: "claude", model: requested.model });
+    const proof = await rt.toolless(this.probe, rc, requested.model);
+    if (!proof.ok) throw new NotStarted("runtime_unsupported", `${rt.label} cannot answer with ${requested.model} holding no tool: ${proof.reason}.`);
+    const prepared = await this.governance.prepareExecutive({ accountId: orbitId, employeeId: turn.employeeId, title: turn.authorName, departmentId: el.departmentId }, run.id, { startedBy: { kind: "system", id: "ceo-chat", accountId: orbitId }, startedByLabel: `owner:${orbitId}`, runtime: rt.kind, model: requested.model });
     if (!prepared.ok) throw new NotStarted("governance", prepared.message);
     const prompt = await this.promptFor(turn, el.name, el.profile.title, el.profile.duties, el.profile.instructions);
-    const env = { ...claudeEnv(this.config, rc.configDir), ...rc.secretEnv, ENABLE_CLAUDEAI_MCP_SERVERS: "false", ...prepared.plan.env };
-    return { plan: prepared.plan, connectionId: rc.connection.id, prompt: prompt.text, env, effort };
+    const env = { ...rt.env(this.config, rc), ...prepared.plan.env };
+    return { rt, plan: prepared.plan, connectionId: rc.connection.id, prompt: prompt.text, env, effort, modelFile: modelFileOf(rc, proof.modelEntry) };
   }
 
   // The persona, the records, the conversation so far and what the owner asked since the CEO last answered.
@@ -217,7 +253,8 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     const records = await this.reports.lines(turn.orbitId);
     await this.repo.updateTurn(turn.orbitId, turn.id, ["waiting"], { records });
     const company = (records[0] ?? "Company: the company").replace(/^Company: /, "").replace(/ \(records as of .*\)$/, "");
-    return { text: executivePrompt({ persona: { name, title, company, duties, instructions }, records, history, asked: asked.length > 0 ? asked : [String(request?.text ?? "")], nonce: newNonce() }) };
+    const task = await this.tasks.taskOf(turn);
+    return { text: executivePrompt({ persona: { name, title, company, duties, instructions }, records, history, asked: asked.length > 0 ? asked : [String(request?.text ?? "")], nonce: newNonce(), task }) };
   }
 
   // Its own sandbox (its connection's home alone), or the agent's place.
@@ -230,16 +267,18 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     }
   }
 
-  private start(run: ConversationRunRecord, turn: TurnRecord, prompt: string, env: Record<string, string>, effort: string | null, plan: RunPlan, lease: SessionLease): void {
+  private start(run: ConversationRunRecord, turn: TurnRecord, ready: Ready, lease: SessionLease): void {
+    const { rt, prompt, env, effort, plan, modelFile } = ready;
     const model = run.requested.model;
     const cwd = this.config.data.home;
-    const handle = lease.port.spawn(this.config.binaries.claude, executiveArgs({ model, effort, maxBudgetUsd: this.config.maxBudgetUsd }), { cwd, env });
+    const handle = lease.port.spawn(rt.binary(this.config), rt.args({ model, effort, maxBudgetUsd: this.config.maxBudgetUsd, modelFile }), { cwd, env });
     let resolveDone: () => void = () => undefined;
     const a: Active = {
       run,
       turn,
       handle,
-      mapper: new StreamMapper({ requestedModel: model as ModelChoice, requestedEffort: effort as EffortChoice, requestedMode: "plan", resumed: false, cwd }),
+      rt,
+      mapper: rt.mapper({ model, effort, cwd }),
       splitter: new LineSplitter((line) => this.onLine(a, line)),
       messageId: randomUUID(),
       answer: "",
@@ -309,10 +348,8 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
       return;
     }
     if (!isRecord(parsed)) return;
-    if (parsed.type === "system" && parsed.subtype === "init") {
-      const forbidden = forbiddenInit(parsed, false);
-      if (forbidden !== null) return this.refuse(a, forbidden.replace("a research run", "the CEO's answer"));
-    }
+    const violation = a.rt.violation(parsed);
+    if (violation !== null) return this.refuse(a, violation);
     for (const e of a.mapper.push(parsed)) this.onMapped(a, e);
   }
 
@@ -343,9 +380,14 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     this.stream.emit(a.turn.orbitId, a.turn.conversationId, "executive.response.delta", { messageId: a.messageId, offset, text }, a.turn.id);
   }
 
+  // A segment's whole text: what its deltas did not say yet -- all of it, for a CLI whose answer arrives whole -- is said
+  // now, as one delta.
   private completed(a: Active, segmentId: string, text: string): void {
     if (!a.segments.has(segmentId)) this.segment(a, segmentId);
-    a.answer = a.answer.slice(0, a.segments.get(segmentId)) + text;
+    const base = a.segments.get(segmentId) ?? a.answer.length;
+    const said = a.answer.slice(base);
+    if (text.length > said.length && text.startsWith(said)) this.append(a, text.slice(said.length));
+    a.answer = a.answer.slice(0, base) + text;
   }
 
   private refuse(a: Active, reason: string): void {
@@ -358,7 +400,7 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
   // How it ended: completed, interrupted (stopped, restarted, timed out, a connection gone) or failed.
   private outcomeOf(a: Active, exit: ExitInfo): { state: "completed" | "failed" | "interrupted"; code: TurnFailure | null; detail: string | null } {
     if (a.refused !== null) return { state: "failed", code: "tool_refused", detail: null };
-    const o = decideOutcome({ stoppedBy: a.stoppedBy === null ? null : a.stoppedBy === "server_restart" || a.stoppedBy === "lost" ? "server_restart" : "user_stop", exit, result: a.mapper.result, stderrTail: tail(a.stderr, 6) });
+    const o = decideOutcome({ stoppedBy: a.stoppedBy === null ? null : a.stoppedBy === "server_restart" || a.stoppedBy === "lost" ? "server_restart" : "user_stop", exit, result: a.mapper.result, stderrTail: tail(a.stderr, 6), cli: a.rt.label });
     if (o.type === "session.completed") return { state: "completed", code: null, detail: null };
     if (o.type === "session.interrupted") return { state: "interrupted", code: a.stoppedBy ?? "stopped", detail: null };
     return { state: "failed", code: "cli_error", detail: o.data.message.slice(0, 600) };
@@ -378,14 +420,21 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
       await this.db.tx(async () => {
         const at = new Date().toISOString();
         const said = a.answer.trim().length > 0 ? readAnswer(a.answer) : null;
-        if (said === null || said.text.length === 0) {
-          const ended = await this.repo.updateTurn(turn.orbitId, turn.id, ["waiting", "running"], { state: outcome.state === "completed" ? "failed" : outcome.state, code: outcome.code ?? "cli_error", detail: outcome.code === null ? "The CEO's AI CLI ended without an answer." : outcome.detail === null ? TURN_FAILURES[outcome.code] : `${TURN_FAILURES[outcome.code]} ${outcome.detail}`, endedAt: at });
+        if (said === null || (said.text.length === 0 && said.staffing === null && said.profile === null)) {
+          const detail = outcome.code === null ? "The CEO's AI CLI ended without an answer." : outcome.detail === null ? TURN_FAILURES[outcome.code] : `${TURN_FAILURES[outcome.code]} ${outcome.detail}`;
+          const ended = await this.repo.updateTurn(turn.orbitId, turn.id, ["waiting", "running"], { state: outcome.state === "completed" ? "failed" : outcome.state, code: outcome.code ?? "cli_error", detail, endedAt: at });
           if (ended !== null) await this.stream.publish(turn.orbitId, turn.conversationId, "executive.response.failed", { turn: turnView(ended) }, turn.id);
+          await this.settle(turn, null, { completed: false, detail });
           return;
         }
-        const row = await this.repo.addMessage({ id: a.messageId, orbitId: turn.orbitId, conversationId: turn.conversationId, role: "ceo", authorName: turn.authorName, employeeId: turn.employeeId, appointmentId: turn.appointmentId, appointmentRevision: turn.appointmentRevision, text: bounded(said.text, EXECUTIVE_LIMITS.textLength * 4).text, partial: outcome.state !== "completed", model: a.run.requested.model, effort: a.run.requested.effort, proposal: outcome.state === "completed" ? said.proposal : null, proposalNote: outcome.state === "completed" ? said.note : null, turnId: turn.id, at });
+        const completed = outcome.state === "completed";
+        // A block only another kind of turn reads (a staffing plan, a profile) is ignored here, and says so.
+        const note = [...(completed && said.note !== null ? [said.note] : []), ...this.tasks.ignored(turn, said)].join(" ");
+        const text = said.text.length > 0 ? said.text : "(The CEO answered with what it was asked for, below.)";
+        const row = await this.repo.addMessage({ id: a.messageId, orbitId: turn.orbitId, conversationId: turn.conversationId, role: "ceo", authorName: turn.authorName, employeeId: turn.employeeId, appointmentId: turn.appointmentId, appointmentRevision: turn.appointmentRevision, text: bounded(text, EXECUTIVE_LIMITS.textLength * 4).text, partial: !completed, model: a.run.requested.model, effort: a.run.requested.effort, proposal: completed ? said.proposal : null, proposalNote: note.length > 0 ? note : null, turnId: turn.id, at });
         const ended = await this.repo.updateTurn(turn.orbitId, turn.id, ["waiting", "running"], { state: outcome.state, responseMessageId: a.messageId, code: outcome.code, detail: outcome.code === null ? null : outcome.detail === null ? TURN_FAILURES[outcome.code] : `${TURN_FAILURES[outcome.code]} ${outcome.detail}`, endedAt: at });
         if (row !== null && ended !== null) await this.stream.publish(turn.orbitId, turn.conversationId, "executive.response.completed", { turn: turnView(ended), message: messageView(row, turn.appointmentId) }, turn.id);
+        await this.settle(turn, said, { completed, detail: outcome.code === null ? null : (outcome.detail ?? TURN_FAILURES[outcome.code]) });
       });
     } catch (err) {
       this.logger.error(`The end of CEO answer ${a.run.id} could not be written: ${message(err)}`);
@@ -398,9 +447,16 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
     await this.turns.next(turn.orbitId, turn.conversationId).catch((err: unknown) => this.logger.warn(`The next answer of conversation ${turn.conversationId} did not start: ${message(err)}`));
   }
 
-  // The run's end, and what it held given back (its process is gone).
+  // What the turn asked beyond an answer (a hiring request's plan, a draft) is settled, in a savepoint of the turn's end:
+  // what could not be settled never takes the turn's end with it.
+  private async settle(turn: TurnRecord, blocks: AnswerBlocks | null, ended: { completed: boolean; detail: string | null }): Promise<void> {
+    await this.db.tx(() => this.tasks.settled(turn, blocks, ended)).catch((err: unknown) => this.logger.error(`What CEO answer ${turn.id} was asked for was not settled: ${message(err)}`));
+  }
+
+  // The run's end, and what it held given back (its process is gone) -- and a pass asked for now, since what waited for
+  // that compute (an employee's attempt, another answer) may start (not on the worker's next tick).
   private async endRun(orbitId: string, runId: string, state: "succeeded" | "failed" | "interrupted" | "cancelled", detail: string | null): Promise<void> {
     await this.runs.move(orbitId, runId, ["requested", "waiting", "starting", "running"], state, { detail, endedAt: new Date().toISOString() });
-    await this.admission.releaseConversation(orbitId, runId, state);
+    if (await this.admission.releaseConversation(orbitId, runId, state)) this.signals.kick();
   }
 }

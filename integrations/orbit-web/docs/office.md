@@ -76,6 +76,69 @@ flowchart LR
 - **Synchronous edges** stay inside one transaction (eligibility at a claim, the reservation, the run intent);
   everything else crosses as a durable event or a stop request on the run row.
 
+## Temporary assistants
+
+The CEO and a department's manager (an appointment in force) engage TEMPORARY ASSISTANTS for the mission at hand: a part
+of their `delegate` plan may `hire` (a name, a title, duties, skills, languages) instead of naming someone.
+
+- **Where it goes** (`work/domain/assistants.ts`): a manager's assistant joins its own department and takes the part
+  itself; the CEO names a department with a manager in office -- the assistant joins it, and the part goes to that
+  manager, who can then give the assistant work. A manager alone is offered `delegate` while its quota has room.
+- **The quota** is the owner's, per employee (`profile.maxAssistants`, 0-5; the hire templates say 2; 0 turns it off):
+  the lead's LIVE assistants (`engaged_by`, not released, not expired) and those its plan engages before this one.
+- **Decided as the lead**, with the plan, in one transaction (`TeamService.delegate` → `HiringService.decideAssistant`):
+  `employee.hire_assistant` with the grant the quota gives (full: `NO_GRANT`, "2 of 2 assistants engaged"), the
+  department, the mission's time, the execution a hire is held to (its department's defaults for the lead's runtime,
+  else the company's, else what the lead runs on) and the Lightweight resources. A plan with any problem engages
+  nobody and gives nothing; its decisions stay on the record. Then `engageAssistant` makes it: `kind = assistant`,
+  `mission_scope` (its mission), `expires_at` (at most 7 days, or the mission's deadline), active at once.
+- **Scoped to its mission**: the `OrgReader` counts an assistant as working only on its own mission, so it changes no
+  role or scope elsewhere; it takes no appointment, delegation grant, mission or another mission's work.
+- **Released** (`workforce/application/assistant-releases.ts`, a system actor) when its mission's ROOT is accepted,
+  cancelled or failed, when its sandbox fails, or when a sweep finds its engagement expired: its open work is cancelled
+  through `HeldWorkPort.cancelOpen` (its lead is woken), it is archived and its desk deleted -- the provisioner removes
+  it and only then frees its storage. Hiring a permanent employee (`employee.hire`) stays a person's.
+
+## Recruiting and drafting with the CEO (Executive)
+
+- **A hiring request** (*Recruit*: the Overview, a department's menu, CEO Chat; `POST /api/executive/staffing`). The
+  owner's words, a scope (one department or the whole company) and what every hire runs on and holds (the owner's
+  connection, model, effort and resource preset). The CEO plans it in a turn of kind `staffing` and writes one
+  `orbit-staffing` block; when that turn ends, `StaffingRunner` (`executive/application/staffing.ts`) holds the plan to
+  the company as it is then (`executive/domain/staffing.ts`: the scope, the room -- at most 10 hires and what the
+  storage budget holds --, at most 3 new departments, unique names, the managers) and carries it out at once AS THE
+  PERSON WHO ASKED (`deferredOwnerActor`): `OfficeService.createDepartment`, `HiringService.hire` (on probation),
+  `AppointmentsService.appoint`, each decided by the policy as their own click would be, in one savepoint -- all or
+  nothing. The request (`executive.staffing_requests`) leaves `planning` once (`hired`, `refused` or `failed`), and Orbit
+  reports it in the conversation (a `staffing` report). It is sent again, never retried.
+- **A profile draft** (*Draft with AI* in Hire and on a profile; `POST /api/executive/drafts`). A turn of kind `profile`
+  whose answer holds one `orbit-profile` block; `ProfileDrafts` keeps a profile's descriptive fields alone
+  (`executive.profile_drafts`) for the form to fill. It hires nobody.
+- Both are handlers of one registry (`TurnTasks`), by the turn's kind: the turn's lifecycle names no kind, and a block
+  of one kind written in a turn of another is ignored, saying so.
+
+## Work in parallel, and what bounds it
+
+Independent work runs at once: one admission pass admits every candidate that fits, the worker drives each attempt it
+was handed without waiting for another, and a lead's parts with no wait are claimable together. A part that waits for
+another starts as soon as its lead accepts that one: the lead is woken for a result a queued part waits on at once
+(`work/domain/team.ts` `readyToReview`), beside parts still running. What holds work back, in the order admission says
+it (`execution/domain/admission.ts`):
+
+- **The account's concurrency** (`maxConcurrent`: by default one per usable vCPU) -- "The account already runs n of its
+  n concurrent attempts."
+- **The budget's CPU, memory and storage**: an attempt needs its employee's profile PLUS its runtime's model plane
+  (Claude Code 0.5 vCPU / 1024 MiB, Codex 0.5 / 768, Antigravity 0.5 / 1024 by default:
+  `ORBIT_WEB_MODEL_PLANE_<RUNTIME>_CPU` / `_MEMORY`, read once in their units). A Lightweight Claude attempt needs 1.5
+  vCPU and 3072 MiB.
+- **The host's usable capacity**: what the container runtime gives, less the control plane's limits and a reserve
+  (`ORBIT_WEB_CAPACITY_*`, `ORBIT_WEB_CONTROL_PLANE_LIMITS`). On a Mac with Docker Desktop's default 8 GiB VM this is
+  about 4 GiB: one Lightweight Claude attempt at a time. More memory for Docker Desktop, then *Re-check* in Settings →
+  Compute & storage, raises it; the owner can lower the budget there, and the operator can set it
+  (`governance.js budget set`), never above the host.
+- **One run of an employee at a time** (and a lead holds itself while its team works), and the dependencies a lead
+  declares.
+
 ## Events
 
 Every durable event is a row of `INTEGRATION_EVENTS` (`packages/contracts/src/workforce.ts`), validated against its
@@ -89,7 +152,7 @@ each event they handled in the inbox (`consumer_inbox`) in the transaction of th
 | `EmployeeEmploymentChanged`, `EmployeeActivated` | Workforce (employment) | `work.scheduler` (queued work may start) |
 | `EmployeeResourcesRevised`, `BudgetChanged`, `CapacityChanged` | Workforce, the budget, the capacity probe | the admission pass (pending runs re-read) |
 | `SandboxProvisionRequested` | Workforce (hire, a retried provisioning) | the sandbox provisioner (polls `PROVISIONING`, woken by the outbox) |
-| `SandboxReady`, `SandboxFailed` | the sandbox provisioner | `work.scheduler` (on ready) |
+| `SandboxReady`, `SandboxFailed` | the sandbox provisioner | `work.scheduler` (on ready); `workforce.assistants` (on failed: an assistant is released) |
 | `MissionCreated`, `MissionPlanRevised` | Work (a new mission, a team's plan) | the pages |
 | `AssignmentQueued`, `AssignmentClaimed` | Work (create, the queue) | `work.scheduler` (on queued) |
 | `AssignmentDelegated`, `AssignmentReviewing`, `AssignmentAnswering` | Work (a lead's plan, its review, its team's questions) | the pages |
@@ -101,10 +164,10 @@ each event they handled in the inbox (`consumer_inbox`) in the transaction of th
 | `ResourcesReserved`, `RunWaitingForResources`, `RunUnschedulable`, `ResourcesReleased` | Execution (admission, release) | the admission pass; the mission's timeline |
 | `HandoffSubmitted` | Work (a hand-in) | `work.team` (wakes a waiting lead) |
 | `RevisionRequested`, `InformationProvided` | Work (a person's review, an answer) | the worker (a new attempt) |
-| `AssignmentAccepted` | Work (a person's or a lead's acceptance) | `execution.desk` (publish to the desk), `work.delivery` (deliveries) |
+| `AssignmentAccepted` | Work (a person's or a lead's acceptance) | `execution.desk` (publish to the desk), `work.delivery` (deliveries), `workforce.assistants` (a root's: its mission's assistants are released) |
 | `DeskPublished` | Execution (the desk publisher) | `execution.workspace-cleanup` |
 | `AssignmentBlocked`, `AssignmentPaused`, `AssignmentResumed` | Work | the pages; Needs me |
-| `AssignmentCancelling`, `AssignmentCancelled`, `AssignmentFailed` | Work | `work.team`, `work.cascade` (a lead's open parts end with it; its question is withdrawn), `execution.workspace-cleanup` |
+| `AssignmentCancelling`, `AssignmentCancelled`, `AssignmentFailed` | Work | `work.team`, `work.cascade` (a lead's open parts end with it; its question is withdrawn), `execution.workspace-cleanup`, `workforce.assistants` (a root's: its mission's assistants are released) |
 | `EmployeeDepartmentChanged` | Workforce | `execution.access` (an attempt holding another department's room is stopped) |
 | `ReservationReleased` | Work (the employee is free) | `work.scheduler` (its next queued work) |
 | `ExecutiveMissionLinked` | Executive (a mission given from a CEO Chat conversation) | the mission's timeline ("Given to the CEO from CEO Chat") |
@@ -187,8 +250,9 @@ account's budget or the host is in use) → `starting` (admitted: its compute re
 → `running` → `succeeded` | `failed` | `interrupted` | `cancelled`; one that can never start as configured is `failed`
 with the numbers. One live per employee (a unique index), and none while an attempt of the employee is live (and the
 reverse: the admission pass holds the attempt). Released (`released_at`, the budget's counters) once its process is gone.
-A TURN (`executive.turns`) follows it: `queued` (behind the conversation's running answer) → `waiting` → `running` →
-`completed` | `failed` (`ceo_changed`, `ceo_unavailable`, `governance`, `unschedulable`, `tool_refused`, `cli_error`) |
+A TURN (`executive.turns`, of kind `answer`, `staffing` or `profile`) follows it: `queued` (behind the conversation's
+running answer) → `waiting` → `running` →
+`completed` | `failed` (`ceo_changed`, `ceo_unavailable`, `runtime_unsupported`, `governance`, `unschedulable`, `tool_refused`, `cli_error`) |
 `interrupted` (a stop, a restart, a time limit, a connection gone) | `cancelled`; one waiting and one running per
 conversation at most, and an owner's message joins the turn that has not started.
 

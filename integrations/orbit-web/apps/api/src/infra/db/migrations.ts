@@ -934,9 +934,10 @@ CREATE TABLE workforce.employees (
   profile_revision integer NOT NULL,
   resource_revision integer NOT NULL,
   connection_id uuid,
-  -- A temporary assistant: when its engagement ends, and the mission it serves.
+  -- A temporary assistant: when its engagement ends, the mission it serves, and the lead who engaged it (its quota).
   expires_at timestamptz,
   mission_scope uuid,
+  engaged_by uuid,
   created_by text NOT NULL,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
@@ -945,9 +946,14 @@ CREATE TABLE workforce.employees (
   FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id),
   FOREIGN KEY (account_id, manager_id) REFERENCES workforce.employees (account_id, id),
   FOREIGN KEY (account_id, connection_id) REFERENCES app.ai_connections (account_id, id),
+  CONSTRAINT assistant_engaged_by FOREIGN KEY (account_id, engaged_by) REFERENCES workforce.employees (account_id, id),
   CHECK (manager_id IS NULL OR manager_id <> id),
-  CHECK ((kind = 'assistant') = (expires_at IS NOT NULL))
+  CHECK ((kind = 'assistant') = (expires_at IS NOT NULL)),
+  CONSTRAINT assistant_engagement CHECK ((kind = 'assistant') = (engaged_by IS NOT NULL) AND (kind = 'assistant') = (mission_scope IS NOT NULL) AND engaged_by IS DISTINCT FROM id)
 );
+-- A lead's live assistants (its quota), and an engagement's mission (released when it ends).
+CREATE INDEX assistants_by_lead ON workforce.employees (account_id, engaged_by) WHERE kind = 'assistant' AND employment NOT IN ('archived', 'deleted');
+CREATE INDEX assistants_by_mission ON workforce.employees (account_id, mission_scope) WHERE kind = 'assistant' AND employment NOT IN ('archived', 'deleted');
 CREATE INDEX employees_by_department ON workforce.employees (account_id, department_id) WHERE employment NOT IN ('archived', 'deleted');
 CREATE TRIGGER employees_account_fixed BEFORE UPDATE ON workforce.employees FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
@@ -1948,6 +1954,7 @@ CREATE TABLE executive.turns (
   appointment_id uuid NOT NULL,
   appointment_revision integer NOT NULL,
   run_id uuid,
+  kind text NOT NULL DEFAULT 'answer' CHECK (kind IN ('answer', 'staffing', 'profile')),
   state text NOT NULL CHECK (state IN ('queued', 'waiting', 'running', 'completed', 'failed', 'interrupted', 'cancelled')),
   waiting_reason text,
   code text,
@@ -1986,6 +1993,66 @@ CREATE TABLE executive.mission_links (
   FOREIGN KEY (account_id, message_id) REFERENCES executive.messages (account_id, id)
 );
 CREATE INDEX mission_links_of_conversation ON executive.mission_links (account_id, conversation_id, linked_at);
+
+-- THE OWNER'S HIRING REQUESTS (ADR 0062, staffing): what the owner asked and within which bounds, the CEO's turn that
+-- plans it, and what was carried out -- once, on the authority of the person who asked (their user, and the session they
+-- asked from). A plan is read only from that turn; its state moves out of planning once, in one transaction.
+CREATE TABLE executive.staffing_requests (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  turn_id uuid NOT NULL,
+  requested_by_user uuid NOT NULL REFERENCES app.users (id),
+  requested_by_session uuid NOT NULL,
+  requirement text NOT NULL,
+  department_id uuid,
+  execution jsonb NOT NULL,
+  resources jsonb NOT NULL,
+  max_hires integer NOT NULL CHECK (max_hires BETWEEN 1 AND 10),
+  state text NOT NULL CHECK (state IN ('planning', 'hired', 'refused', 'failed')),
+  plan jsonb,
+  outcome jsonb,
+  report_message_id uuid,
+  created_at timestamptz NOT NULL,
+  ended_at timestamptz,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT staffing_account_id UNIQUE (account_id, id),
+  CONSTRAINT one_staffing_per_turn UNIQUE (account_id, turn_id),
+  CONSTRAINT staffing_ends_once CHECK ((state = 'planning') = (ended_at IS NULL)),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id),
+  FOREIGN KEY (account_id, turn_id) REFERENCES executive.turns (account_id, id),
+  FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id),
+  FOREIGN KEY (account_id, report_message_id) REFERENCES executive.messages (account_id, id)
+);
+CREATE INDEX staffing_of_account ON executive.staffing_requests (account_id, created_at DESC);
+CREATE TRIGGER staffing_account_fixed BEFORE UPDATE ON executive.staffing_requests FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+-- PROFILE DRAFTS (ADR 0062): one employee's profile, drafted by the CEO from the owner's description of the job, for a
+-- form the owner fills (Hire, an employee's profile) -- it hires nobody. The draft as Orbit read it from the CEO's answer.
+CREATE TABLE executive.profile_drafts (
+  id uuid PRIMARY KEY,
+  account_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  turn_id uuid NOT NULL,
+  requested_by_user uuid NOT NULL REFERENCES app.users (id),
+  description text NOT NULL,
+  title text NOT NULL,
+  department_id uuid,
+  state text NOT NULL CHECK (state IN ('drafting', 'ready', 'failed')),
+  draft jsonb,
+  problems jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL,
+  ended_at timestamptz,
+  version integer NOT NULL DEFAULT 1,
+  CONSTRAINT draft_account_id UNIQUE (account_id, id),
+  CONSTRAINT one_draft_per_turn UNIQUE (account_id, turn_id),
+  CONSTRAINT draft_ends_once CHECK ((state = 'drafting') = (ended_at IS NULL)),
+  CONSTRAINT draft_when_ready CHECK ((state = 'ready') = (draft IS NOT NULL)),
+  FOREIGN KEY (account_id, conversation_id) REFERENCES executive.conversations (account_id, id),
+  FOREIGN KEY (account_id, turn_id) REFERENCES executive.turns (account_id, id),
+  FOREIGN KEY (account_id, department_id) REFERENCES workforce.departments (account_id, id)
+);
+CREATE TRIGGER drafts_account_fixed BEFORE UPDATE ON executive.profile_drafts FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 -- THE JOURNAL of a conversation's stream: what a client that reconnects is replayed after its Last-Event-ID.
 CREATE TABLE executive.events (

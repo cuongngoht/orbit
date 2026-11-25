@@ -10,7 +10,7 @@
 // The account's connectors (GitHub, Azure DevOps) the employee was let use add their tools (CONNECTOR_TOOLS): Orbit Web
 // asks them with its own sign-in, never the sandbox.
 import { Inject, Injectable, Optional } from "@nestjs/common";
-import { CLARIFICATION_KINDS, isDeliverableName } from "@orbit-web/contracts";
+import { checkHireAssistant, CLARIFICATION_KINDS, isDeliverableName, type HireAssistantRequest } from "@orbit-web/contracts";
 import { createHash } from "node:crypto";
 import { conflictWith, invalid, refused } from "../../shared/domain.js";
 import { employeeActor, OfficeGovernance, systemActor, type Actor } from "../../shared/application/commands.js";
@@ -57,10 +57,11 @@ const askOf = (lead: { name: string } | null): ToolSpec => ({
   inputSchema: obj({ question: str("The question") }, ["question"]),
 });
 
-// Offered only to an employee who may give work to colleagues, and only while it reviews its team's parts.
+// Offered only to an employee who may give work to colleagues -- or, the CEO or a manager in force, engage a temporary
+// assistant within its quota.
 const DELEGATE: ToolSpec = {
   name: "delegate",
-  description: "Give parts of your assignment to the employees or departments you may give work to (you stay responsible). Each part: a short key, an employee (id or exact name) OR a department (id or exact name: its manager takes it), a title and goal, the files it must produce, its acceptance criteria, the keys of parts it must wait for, the sources it may read (share_sources) and what it receives of a part it waits for (receives: its summary, or in full). A part reads nothing you do not share. Your attempt ends: you are woken to review what they hand in, or to answer what they ask. /team is shared only with the colleagues of your own department.",
+  description: "Give parts of your assignment to the employees or departments you may give work to (you stay responsible). Each part: a short key, an employee (id or exact name) OR a department (id or exact name: its manager takes it), a title and goal, the files it must produce, its acceptance criteria, the keys of parts it must wait for, the sources it may read (share_sources) and what it receives of a part it waits for (receives: its summary, or in full). A part reads nothing you do not share. As the CEO or a department's manager you may instead engage a temporary assistant for a part (hire), within your quota: a manager's joins its department for this mission and takes the part; the CEO names the department it joins, whose manager takes the part. It is released when this mission ends. Your attempt ends: you are woken to review what they hand in, or to answer what they ask. /team is shared only with the colleagues of your own department.",
   inputSchema: obj(
     {
       parts: {
@@ -70,6 +71,10 @@ const DELEGATE: ToolSpec = {
             key: str("A short key: lower-case letters, digits, dashes"),
             employee: str("An employee you may give work to: id or exact name"),
             department: str("Or a department you may give work to: id or exact name (its manager takes the part)"),
+            hire: {
+              ...obj({ name: str("Its name"), title: str("Its title, e.g. Research assistant"), duties: str("What it does"), skills: { type: "array", items: { type: "string" } }, languages: { type: "array", items: { type: "string" } } }, ["name", "title"]),
+              description: "Or a temporary assistant you engage for this part, instead of naming someone (counts against your quota of assistants; released when this mission ends). The CEO names the department it joins too.",
+            },
             title: str("A short title"),
             goal: str("What this part must achieve"),
             deliverables: { type: "array", items: { type: "string" } },
@@ -272,16 +277,28 @@ export class ToolsService {
 
   private async delegate(run: RunRecord, args: Record<string, unknown>, actor: Actor): Promise<ToolAnswer> {
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
-    if (ctx === null || !ctx.team.canDelegate) return { text: "You hold no appointment or grant that lets you give work to others: do it yourself.", isError: true };
+    if (ctx === null || !ctx.team.canDelegate) {
+      const full = ctx !== null && ctx.team.role === "manager_alone" && ctx.team.assistants !== null && ctx.team.assistants.max > 0;
+      return { text: full ? `Nobody else works in your department now, and your ${ctx?.team.assistants?.max ?? 0} temporary assistants are all engaged: do it yourself.` : "You hold no appointment or grant that lets you give work to others: do it yourself.", isError: true };
+    }
     if (!Array.isArray(args.parts)) throw invalid("bad_argument", "parts must be a list.");
     const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 300)) : []);
     const name = (v: unknown): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, 120) : undefined);
+    // An assistant a part hires, held to the contract (an argument it cannot be is said, for the model to correct).
+    const hireOf = (key: unknown, v: unknown): HireAssistantRequest | undefined => {
+      if (v === undefined || v === null) return undefined;
+      const checked = checkHireAssistant(v);
+      if (!checked.ok) throw invalid("bad_argument", `"${String(key ?? "")}": hire ${checked.errors.join("; ")}.`);
+      return checked.value;
+    };
     const units = args.parts.slice(0, 20).map((p) => {
       const x = (typeof p === "object" && p !== null ? p : {}) as Record<string, unknown>;
+      const hire = hireOf(x.key, x.hire);
       return {
         key: String(x.key ?? "").trim(),
         employee: name(x.employee),
         department: name(x.department),
+        ...(hire !== undefined ? { hire } : {}),
         title: String(x.title ?? "").slice(0, 120),
         goal: String(x.goal ?? "").slice(0, 8000),
         deliverables: list(x.deliverables).filter((n) => isDeliverableName(n)).map((n) => ({ name: n, required: true })),
@@ -295,7 +312,8 @@ export class ToolsService {
       };
     });
     const r = await this.outcomes.delegate(actor, run.assignmentId, run.fence, units);
-    return { text: `Gave ${r.parts} part(s) to your team. Your attempt ends here: you are woken to review what they hand in, or to answer what they ask. Stop here.`, isError: false };
+    const engaged = r.engaged.length === 0 ? "" : ` Engaged for this mission: ${r.engaged.join(", ")} (released when it ends).`;
+    return { text: `Gave ${r.parts} part(s) to your team.${engaged} Your attempt ends here: you are woken to review what they hand in, or to answer what they ask. Stop here.`, isError: false };
   }
 
   // An appointee's draft, decided as the employee (governance.policy.propose) and kept as a draft its owner decides on.

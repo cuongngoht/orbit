@@ -21,7 +21,7 @@ describe("one employee", () => {
     renderLive(<OfficeView page="employee" item={EMP_ANA} tab="resources" go={vi.fn()} account={authAccount()} />);
     const sandbox = await screen.findByRole("region", { name: "Personal Sandbox" });
     expect(within(sandbox).getByText("Ready")).toBeInTheDocument();
-    expect(sandbox.textContent).toContain("Resources (revision 1): 1 vCPU · 2 GiB memory · 5 GiB desk · 5 GiB scratch · 1 GiB cache · 256 processes · 60 minutes per attempt");
+    expect(sandbox.textContent).toContain("Resources (revision 1): 1 vCPU · 2 GiB memory · 400 MiB desk · 500 MiB scratch · 100 MiB cache · 256 processes · 60 minutes per attempt");
     const areas = within(sandbox).getByRole("table", { name: "Storage areas" });
     expect(rowOf(areas, "Desk and toolbox").textContent).toBe("Desk and toolbox5 GiB300 MiBHard limit — the kernel refuses past itover-quota write refused");
     expect(rowOf(areas, "Assignment scratch").textContent).toBe("Assignment scratch5 GiBnot measuredMeasured only — not a hard limitmeasured every 30 s");

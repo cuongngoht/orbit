@@ -7,12 +7,12 @@
 // leaves this machine; the scratch home is removed. Held ("yes"): every tool offered is Orbit's own (the bridge's
 // namespace), one of the MCP readers that only reach Orbit's bridge, the request-user-input tool, or the image viewer
 // seen refusing -- and Orbit's tools are there.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { codexArgs, CODEX_MODEL_FILE } from "../../contexts/execution/infrastructure/employee-runtimes.js";
+import { codexArgs, CODEX_MODEL_FILE, codexToollessArgs } from "../../contexts/execution/infrastructure/employee-runtimes.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
 
 // Orbit's tool bridge, as built beside this module (dist/bridge/main.js): the observation runs the real one.
@@ -156,6 +156,59 @@ export async function observeCodexSplit(d: ObserveDeps, o: { model: string; entr
     if (seen.first === null) return { split: "unknown", reason: `codex asked no model (${r.timedOut ? "timed out" : `exit ${String(r.code)}`}): ${(r.stderr || r.stdout).trim().split("\n").slice(-1)[0]?.slice(0, 200) ?? ""}`, offered: [] };
     const offered = offeredTools(seen.first);
     return { ...splitVerdict({ offered, viewImage: seen.viewImage }), offered };
+  } finally {
+    server.close();
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+// ---- the tool-less observation: a CEO's answer ---------------------------------------------------------------------------
+
+// What the observed request must hold, and must never hold: the fixed prompt Orbit gives (its developer instructions
+// reach the model) -- and not a word of a project's AGENTS.md planted where the run starts (Codex reads none of it).
+export const TOOLLESS_PROMPT = "orbit-observation: you answer with words only.";
+export const TOOLLESS_AGENTS_MARKER = "orbit-observation-agents-md-must-not-be-read";
+
+// What Codex reads from its own home as global instructions whatever it is told (seen on codex-cli 0.169.0: neither
+// `--ignore-user-config` nor `project_doc_max_bytes=0` keeps them out) -- the first of these there is. The observation's
+// home has none; a run's home is held to having none before it starts (executive-runtimes.ts).
+export const CODEX_GLOBAL_INSTRUCTIONS = ["AGENTS.override.md", "AGENTS.md"] as const;
+
+// Held ("yes") for an answer with no tool that acts: every tool offered is one of the MCP readers (no MCP server is
+// configured, so they reach nothing), the request-user-input tool, or the image viewer seen refusing; no MCP server's
+// tool, no shell, no patch, no sub-agent, no search. The fixed prompt reached the model, and no AGENTS.md did.
+export function toollessVerdict(o: { offered: string[]; viewImage: string | null; request: string }): CodexSplit {
+  const foreign = o.offered.filter((t) => !INERT.has(bare(t)) && bare(t) !== "view_image");
+  if (foreign.length > 0) return { split: "no", reason: `it offers the model tools: ${foreign.slice(0, 12).join(", ")}` };
+  if (o.offered.some((t) => bare(t) === "view_image") && (o.viewImage === null || !VIEWER_REFUSED.test(o.viewImage))) return { split: "no", reason: `its view_image read a file (${(o.viewImage ?? "never asked").slice(0, 120)})` };
+  if (o.request.includes(TOOLLESS_AGENTS_MARKER)) return { split: "no", reason: "it read a project's AGENTS.md into what the model is told" };
+  if (!o.request.includes(TOOLLESS_PROMPT)) return { split: "no", reason: "the fixed system prompt did not reach the model" };
+  return { split: "yes", reason: null };
+}
+
+// One observation of `model` run as a CEO's answer runs it (codexToollessArgs, Orbit's `entry` for the model), laid out
+// as that run is: its home (HOME and CODEX_HOME: Orbit's entry, no instructions) apart from where it starts (a project
+// whose AGENTS.md must not be read).
+export async function observeCodexToolless(d: ObserveDeps, o: { model: string; entry: Json }): Promise<CodexObservation> {
+  const scratch = mkdtempSync(join(d.scratchParent, "codex-toolless-"));
+  const home = join(scratch, "home");
+  const project = join(scratch, "project");
+  mkdirSync(home, { mode: 0o700 });
+  mkdirSync(project, { mode: 0o700 });
+  const planted = join(project, "planted-login.json");
+  writeFileSync(planted, '{"tokens":{"access_token":"orbit-observation-not-a-secret"}}', { mode: 0o600 });
+  writeFileSync(join(project, "AGENTS.md"), `# Instructions\n\n${TOOLLESS_AGENTS_MARKER}\n`, { mode: 0o600 });
+  writeFileSync(join(home, CODEX_MODEL_FILE), JSON.stringify({ models: [o.entry] }), { mode: 0o600 });
+  const { server, seen } = standIn(planted);
+  try {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    const args = codexToollessArgs({ model: o.model, effort: null, systemPrompt: TOOLLESS_PROMPT, modelFile: join(home, CODEX_MODEL_FILE) });
+    const provider = ["-c", 'model_provider="orbit_observation"', "-c", `model_providers.orbit_observation={name="Orbit Web observation",base_url="http://127.0.0.1:${port}/v1",wire_api="responses"}`];
+    const r = await d.process.run(d.codex, [...args.slice(0, -1), ...provider, "-"], { cwd: project, env: { ...d.env, HOME: home, CODEX_HOME: home }, input: "Observe.\n", timeoutMs: d.timeoutMs });
+    if (seen.first === null) return { split: "unknown", reason: `codex asked no model (${r.timedOut ? "timed out" : `exit ${String(r.code)}`}): ${(r.stderr || r.stdout).trim().split("\n").slice(-1)[0]?.slice(0, 200) ?? ""}`, offered: [] };
+    const offered = offeredTools(seen.first);
+    return { ...toollessVerdict({ offered, viewImage: seen.viewImage, request: JSON.stringify(seen.first) }), offered };
   } finally {
     server.close();
     rmSync(scratch, { recursive: true, force: true });

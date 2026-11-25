@@ -14,10 +14,13 @@ import {
   checkMoveEmployee,
   checkUpdateEmployee,
   checkUpdateResources,
+  DEFAULT_PRESETS,
   isWorkforceId,
   modelOf,
+  WORKFORCE_LIMITS,
   type EmployeeProfile,
   type ExecutionProfile,
+  type HireAssistantRequest,
   type ResourceProfile,
 } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
@@ -29,11 +32,12 @@ import { ResourcesService } from "../../execution/application/resources.service.
 import { SANDBOX_PROVIDER, type SandboxProvider } from "../../execution/application/sandbox.port.js";
 import { EMPLOYEE_RUNTIMES } from "../../execution/infrastructure/employee-runtimes.js";
 import { OfficeGovernance, type Actor } from "../../shared/application/commands.js";
-import { conflictWith, missing, stale, unprocessable } from "../../shared/domain.js";
+import { conflictWith, DomainError, missing, refused, stale, unprocessable } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { Employee, managerCycle, type EmploymentMove } from "../domain/employee.js";
 import { resolveExecution } from "../domain/execution-precedence.js";
 import { AppointmentRepository } from "../infrastructure/appointments.repository.js";
+import { EmployeeEligibility } from "./eligibility.js";
 import { ConnectionsReader, usable, type ConnectionFacts } from "../infrastructure/connections.reader.js";
 import { ConnectionProbe } from "../../../modules/connections/probe.js";
 import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepository } from "../infrastructure/repositories.js";
@@ -43,8 +47,48 @@ import { DepartmentRepository, EmployeeRepository, OfficeRepository, SandboxRepo
 export interface HeldWorkPort {
   pauseHeld(actor: Actor, employeeId: string, reason: string): Promise<void>;
   cancelHeld(actor: Actor, employeeId: string, reason: string): Promise<void>;
+  // Every open piece of work of the employee -- the held one and those queued for it -- cancelled (each wakes its lead).
+  cancelOpen(actor: Actor, employeeId: string, reason: string): Promise<void>;
   holds(orbitId: string, employeeId: string): Promise<boolean>;
 }
+
+// What a lead's plan asks of one TEMPORARY ASSISTANT (ADR 0061 §8): who it is, the mission it is engaged for, the
+// department it joins and who manages it there, and what the same plan engages before it (each counts against the
+// lead's quota, and commits storage).
+export interface AssistantAsk {
+  leadId: string;
+  missionId: string;
+  // The mission's deadline: the engagement ends then at the latest.
+  deadline: string | null;
+  departmentId: string;
+  managerId: string;
+  hire: HireAssistantRequest;
+  before: { assistants: number; deskMiB: number; cacheMiB: number };
+}
+
+// An engagement decided (as the lead, through governance) and checked -- not made yet: `engageAssistant` makes it.
+export interface Engagement {
+  readonly id: string;
+  readonly leadId: string;
+  readonly missionId: string;
+  readonly departmentId: string;
+  readonly managerId: string;
+  readonly name: string;
+  readonly expiresAt: string;
+  readonly profile: EmployeeProfile;
+  readonly resources: ResourceProfile;
+}
+
+// A lead's assistants now: its profile's maxAssistants, and how many are engaged and not released or expired.
+export interface AssistantQuota {
+  max: number;
+  engaged: number;
+  left: number;
+}
+
+// An assistant's resources: the Lightweight preset (writing, light analysis, small scripts).
+const ASSISTANT_RESOURCES = (DEFAULT_PRESETS.find((p) => p.id === "lightweight") ?? DEFAULT_PRESETS[0]) as { profile: ResourceProfile };
+const DAY_MS = 86_400_000;
 
 export const HELD_WORK = Symbol("HELD_WORK");
 
@@ -64,6 +108,7 @@ export class HiringService {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
     @Inject(PolicyService) private readonly policy: PolicyService,
+    @Inject(EmployeeEligibility) private readonly eligibility: EmployeeEligibility,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
     // What says whether an OpenAI Codex model is held to Orbit's tools on the binary installed (observed).
     @Optional() @Inject(ConnectionProbe) private readonly probe: ConnectionProbe | null = null,
@@ -88,26 +133,121 @@ export class HiringService {
       await this.resources.checkProfile(orbitId, req.resources);
       const at = new Date().toISOString();
       const e = Employee.hire(
-        { id, orbitId, name: req.name, kind: "permanent", departmentId, managerId, connectionId: execution.connectionId, expiresAt: null, missionScope: null, createdBy: actor.command.actor, createdAt: at },
+        { id, orbitId, name: req.name, kind: "permanent", departmentId, managerId, connectionId: execution.connectionId, expiresAt: null, missionScope: null, engagedBy: null, createdBy: actor.command.actor, createdAt: at },
         { skip: req.skipProbation === true, reason: req.skipReason ?? "" },
       );
-      const profile: EmployeeProfile = { ...req.profile, execution };
-      await this.employees.insert(e);
-      await this.employees.insertProfile(orbitId, id, 1, profile, req.templateId ? `from template ${req.templateId}` : "", null, actor.command.actor, at);
-      await this.employees.insertResources(orbitId, id, 1, req.resources, "", actor.command.actor, at);
-      const sandboxId = randomUUID();
-      await this.sandboxes.insert({ id: sandboxId, orbitId, employeeId: id, state: "PROVISIONING", reason: null, provider: this.provider?.kind ?? "process", areas: [], deskVersion: 0, provisionAttempts: 0 }, at);
-      await this.resources.commit(orbitId, "desk", id, req.resources.deskStorageMiB);
-      await this.resources.commit(orbitId, "cache", id, req.resources.cacheStorageMiB);
-      await this.governed.register("employee", { accountId: orbitId, id, title: req.name });
-      await this.outbox.append(actor.command, [
-        ...e.pullEvents().map((x) => ({ ...x, aggregateVersion: 1 })),
-        { type: "SandboxProvisionRequested", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: 1, payload: { employeeId: id, deskMiB: req.resources.deskStorageMiB, cacheMiB: req.resources.cacheStorageMiB } },
-      ]);
-      await this.outbox.touched(orbitId, ["roster"]);
+      await this.employ(actor, e, { ...req.profile, execution }, req.resources, req.templateId ? `from template ${req.templateId}` : "", at);
       await this.governance.recorded(actor, "employee.hire", "employee", id, 1, `${req.name} on ${execution.runtime} ${execution.model}${execution.effort ? ` (${execution.effort})` : ""}`);
       return id;
     });
+  }
+
+  // What a hire and an engagement both make, in the caller's transaction: the employee, revision 1 of its profile and of
+  // its resources, its Personal Sandbox (PROVISIONING: the provisioner prepares it, and only then says READY), the
+  // storage it commits, and their events.
+  private async employ(actor: Actor, e: Employee, profile: EmployeeProfile, resources: ResourceProfile, note: string, at: string): Promise<void> {
+    const orbitId = actor.command.orbitId;
+    const id = e.id;
+    await this.employees.insert(e);
+    await this.employees.insertProfile(orbitId, id, 1, profile, note, null, actor.command.actor, at);
+    await this.employees.insertResources(orbitId, id, 1, resources, "", actor.command.actor, at);
+    const sandboxId = randomUUID();
+    await this.sandboxes.insert({ id: sandboxId, orbitId, employeeId: id, state: "PROVISIONING", reason: null, provider: this.provider?.kind ?? "process", areas: [], deskVersion: 0, provisionAttempts: 0 }, at);
+    await this.resources.commit(orbitId, "desk", id, resources.deskStorageMiB);
+    await this.resources.commit(orbitId, "cache", id, resources.cacheStorageMiB);
+    await this.governed.register("employee", { accountId: orbitId, id, title: e.data.name });
+    await this.outbox.append(actor.command, [
+      ...e.pullEvents().map((x) => ({ ...x, aggregateVersion: 1 })),
+      { type: "SandboxProvisionRequested", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: 1, payload: { employeeId: id, deskMiB: resources.deskStorageMiB, cacheMiB: resources.cacheStorageMiB } },
+    ]);
+    await this.outbox.touched(orbitId, ["roster"]);
+  }
+
+  // ---- temporary assistants (ADR 0061 §8) ------------------------------------------------------------------------
+
+  // A lead's quota now: its profile's maxAssistants (the owner's, per employee; 0 engages none) against its live ones.
+  async assistantQuota(orbitId: string, leadId: string): Promise<AssistantQuota> {
+    const lead = await this.employees.get(orbitId, leadId);
+    const profile = lead === null ? null : await this.employees.profile(orbitId, leadId, lead.data.profileRevision);
+    const max = profile?.maxAssistants ?? 0;
+    const engaged = await this.employees.liveAssistantsOf(orbitId, leadId);
+    return { max, engaged, left: Math.max(0, max - engaged) };
+  }
+
+  // An engagement DECIDED, as the lead (its own agent principal -- never employee.hire, which stays a person's), and
+  // checked as a hire is, before anything of it is made: governance decides employee.hire_assistant with the grant its
+  // quota gives (a full one is NO_GRANT, said with the numbers); the department takes members; the mission leaves it
+  // time (at most WORKFORCE_LIMITS.assistantDays); it runs on its department's defaults for its lead's runtime (else
+  // the company's, else exactly as its lead runs), held to the same connection and model rules as a hire; its Lightweight
+  // resources fit. Writes only the decision's record. A refusal says why, in words the lead can act on.
+  async decideAssistant(actor: Actor, ask: AssistantAsk): Promise<Engagement> {
+    const orbitId = actor.command.orbitId;
+    const id = randomUUID();
+    const quota = await this.assistantQuota(orbitId, ask.leadId);
+    const engaged = quota.engaged + ask.before.assistants;
+    const room = engaged < quota.max;
+    try {
+      await this.governance.authorize(actor, "employee.hire_assistant", id, { mission: ask.missionId, employee: id }, undefined, room ? "held" : "not_held");
+    } catch (err) {
+      if (room || !(err instanceof DomainError) || err.code !== "policy_denied") throw err;
+      const d = err.details as { decisionId?: string; reasonCodes?: string[] } | undefined;
+      const full = quota.max === 0 ? "your profile engages none (maxAssistants is 0)" : "your quota is full";
+      throw refused("assistant_quota", `${engaged} of ${quota.max} assistants engaged: ${full} -- give this part to someone you have. Decision ${d?.decisionId ?? ""} (${(d?.reasonCodes ?? []).join(", ")}).`, { ...quota, engaged });
+    }
+    await this.liveDepartment(orbitId, ask.departmentId);
+    const now = Date.now();
+    const deadline = ask.deadline === null ? Number.POSITIVE_INFINITY : Date.parse(ask.deadline);
+    const ends = Math.min(now + WORKFORCE_LIMITS.assistantDays * DAY_MS, deadline);
+    if (ends <= now) throw conflictWith("engagement_ended", "The mission's deadline has passed: an assistant engaged now would have no time.");
+    const execution = await this.executionFor(orbitId, await this.assistantExecution(orbitId, ask), ask.departmentId);
+    const resources = ASSISTANT_RESOURCES.profile;
+    await this.resources.checkProfile(orbitId, resources, { deskMiB: -ask.before.deskMiB, cacheMiB: -ask.before.cacheMiB });
+    const profile: EmployeeProfile = { title: ask.hire.title, duties: ask.hire.duties, instructions: "You are a temporary assistant, engaged for one mission: do the part you are given and hand it in.", skills: ask.hire.skills, languages: ask.hire.languages, knowledge: [], execution, handoffStandard: "", reportingRule: "", canDelegate: false, maxAssistants: 0, canHirePermanent: false };
+    return { id, leadId: ask.leadId, missionId: ask.missionId, departmentId: ask.departmentId, managerId: ask.managerId, name: ask.hire.name, expiresAt: new Date(ends).toISOString(), profile, resources };
+  }
+
+  // What an assistant runs on: its department's default for its lead's runtime -- else the company's -- inherited as a
+  // profile that leaves its connection, model and effort to them; with neither, exactly what its lead runs on now.
+  private async assistantExecution(orbitId: string, ask: AssistantAsk): Promise<ExecutionProfile> {
+    const lead = await this.eligibility.of(orbitId, ask.leadId, false);
+    if (lead === null) throw missing("The lead");
+    const runtime = lead.execution.runtime;
+    const department = await this.departments.get(orbitId, ask.departmentId);
+    const company = (await this.offices.get(orbitId))?.defaults ?? null;
+    if (department?.defaults?.[runtime] !== undefined || company?.[runtime] !== undefined) return { runtime, connectionId: null, model: "", effort: null, webSearch: false, orbitPlugin: false, inherit: ["connection", "model", "effort"] };
+    return { ...lead.execution };
+  }
+
+  // The engagement made, in the caller's transaction (the lead's plan): an active assistant of the mission, its
+  // revisions, its Personal Sandbox and storage -- recorded as the lead's employee.hire_assistant.
+  async engageAssistant(actor: Actor, g: Engagement): Promise<string> {
+    const orbitId = actor.command.orbitId;
+    const at = new Date().toISOString();
+    const e = Employee.engage({ id: g.id, orbitId, name: g.name, departmentId: g.departmentId, managerId: g.managerId, connectionId: g.profile.execution.connectionId, missionScope: g.missionId, engagedBy: g.leadId, expiresAt: g.expiresAt, createdBy: actor.command.actor, createdAt: at });
+    await this.employ(actor, e, g.profile, g.resources, `engaged by ${g.leadId} for mission ${g.missionId}`, at);
+    await this.governance.recorded(actor, "employee.hire_assistant", "employee", g.id, 1, `${g.name} for mission ${g.missionId}, engaged by ${g.leadId} until ${g.expiresAt}`);
+    return g.id;
+  }
+
+  // THE END OF AN ENGAGEMENT -- its mission ended, it expired, or its sandbox could not be made: Orbit's own act (a
+  // system actor; no person's employment command and no policy to refuse it -- the engagement was decided when it was
+  // made, and this only ends what that decision bounded). Its open work is cancelled (each part wakes its lead), it is
+  // archived and its desk deleted, so the storage it committed is freed once the provisioner reads the desk back gone.
+  // An assistant already released, or no assistant at all, changes nothing (false).
+  async releaseAssistant(actor: Actor, employeeId: string, reason: string): Promise<boolean> {
+    const orbitId = actor.command.orbitId;
+    const e = await this.employees.get(orbitId, employeeId, true);
+    if (e === null || e.data.kind !== "assistant" || e.data.employment === "archived" || e.data.employment === "deleted") return false;
+    await this.heldWork?.cancelOpen(actor, employeeId, reason);
+    const at = new Date().toISOString();
+    const expected = e.data.version;
+    e.release(reason, at);
+    const v = await this.employees.save(e, expected);
+    await this.deleteDesk(orbitId, employeeId, at, `Released: ${reason}`);
+    await this.outbox.append(actor.command, e.pullEvents().map((x) => ({ ...x, aggregateVersion: v })));
+    await this.outbox.touched(orbitId, ["roster"]);
+    await this.governance.recorded(actor, "employee.release_assistant", "employee", employeeId, v, reason);
+    return true;
   }
 
   // A new profile revision (and/or a new name or manager). Applies to the next claim; an assignment already claimed keeps
@@ -226,10 +366,10 @@ export class HiringService {
   // Its owner deleted an archived employee's desk (Governance → Employee desks): the sandbox goes DELETING, and the
   // provisioner removes it through the provider, tried again until it is read back gone (sandbox-provisioner.ts) -- only
   // then is its storage released. An employee with no sandbox has nothing to remove: its storage is released now.
-  private async deleteDesk(orbitId: string, employeeId: string, at: string): Promise<void> {
+  private async deleteDesk(orbitId: string, employeeId: string, at: string, reason = "Its owner deleted the desk: it is being removed."): Promise<void> {
     const s = await this.sandboxes.ofEmployee(orbitId, employeeId, true);
     if (s !== null && s.state !== "DELETED") {
-      await this.sandboxes.save({ ...s, state: "DELETING", reason: "Its owner deleted the desk: it is being removed.", provisionAttempts: 0 }, at);
+      if (s.state !== "DELETING") await this.sandboxes.save({ ...s, state: "DELETING", reason, provisionAttempts: 0 }, at);
       return;
     }
     await this.resources.commit(orbitId, "desk", employeeId, 0);

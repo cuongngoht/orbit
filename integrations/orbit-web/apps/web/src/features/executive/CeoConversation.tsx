@@ -18,6 +18,7 @@ import { Callout } from "../office/parts";
 import { executive } from "./api";
 import { MissionLinkCard, MissionProposalCard, SystemReportCard } from "./cards";
 import { AssignWorkCard, QuickActions } from "./CeoParts";
+import { RecruitFromChat } from "../office/RecruitDialog";
 import { openTurns } from "./executiveReducer";
 import { useConversation } from "./useConversation";
 
@@ -52,6 +53,7 @@ export function CeoHome({ state, go }: { state: ExecutiveState; go: (conversatio
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [assigning, setAssigning] = useState(false);
+  const [recruiting, setRecruiting] = useState(false);
   const [changed, setChanged] = useState(0);
   useAppEvent("executive.conversation.created", () => setChanged((n) => n + 1));
   const list = useResource<ExecutiveConversationList>(() => executive.conversations(), [changed]);
@@ -84,7 +86,17 @@ export function CeoHome({ state, go }: { state: ExecutiveState; go: (conversatio
         ) : (
           <Composer placeholder={t("executive.home.placeholder")} canSend={c.canSend && !busy} running={false} busy={busy} autoFocus onSend={(text) => void run(() => executive.start(text, newIdempotencyKey()))} above={problem !== null ? <Text className={s.muted}>{problem}</Text> : undefined} />
         )}
-        <QuickActions onReport={(kind: ExecutiveReportKind) => void run(() => executive.startWithReport(kind, newIdempotencyKey()))} onAssign={() => setAssigning(true)} canAssign={state.assign.ok} busy={busy} />
+        <QuickActions onReport={(kind: ExecutiveReportKind) => void run(() => executive.startWithReport(kind, newIdempotencyKey()))} onAssign={() => setAssigning(true)} canAssign={state.assign.ok} busy={busy} onRecruit={() => setRecruiting(true)} canRecruit={state.recruit.ok} />
+        {recruiting && (
+          <RecruitFromChat
+            ceoName={state.ceo?.name ?? null}
+            onClose={() => setRecruiting(false)}
+            onSent={(a) => {
+              setRecruiting(false);
+              go(a.conversationId);
+            }}
+          />
+        )}
         <div className={s.recent}>
           <Text weight="semibold">{t("executive.home.recent")}</Text>
           {list.data === null ? (
@@ -198,8 +210,9 @@ export function CeoConversation({ conversationId, state, onRecords }: { conversa
       setBusy(false);
     }
   };
-  // An ended answer may be asked again only when it is the newest and nothing else is on its way.
-  const retryable = lastEnded !== null && open.length === 0 && view.turns.at(-1)?.id === lastEnded.id;
+  // An ended answer may be asked again only when it is the newest and nothing else is on its way -- and an answer at all:
+  // a hiring request or a draft ended with its turn, and is sent again.
+  const retryable = lastEnded !== null && lastEnded.kind === "answer" && open.length === 0 && view.turns.at(-1)?.id === lastEnded.id;
 
   if (loading && view.messages.length === 0)
     return (

@@ -108,7 +108,7 @@ describe("hiring an employee, in five steps", () => {
         handoffStandard: "",
         reportingRule: "",
         canDelegate: false,
-        maxAssistants: 0,
+        maxAssistants: 2,
         canHirePermanent: false,
       },
       resources: { ...developer, presetId: "developer" },
@@ -165,14 +165,19 @@ describe("hiring an employee, in five steps", () => {
     expect(lead).not.toBeChecked();
     expect(dialog.textContent).toContain("reviews each part as it is handed in, and hands the whole in to you");
     await userEvent.click(lead);
+    // A lead may engage temporary assistants for a mission it leads: two by default, none turning it off.
+    const assistants = within(dialog).getByRole("combobox", { name: /^Temporary assistants/ });
+    expect(assistants).toHaveValue("2");
+    await userEvent.selectOptions(assistants, "3");
     await next(dialog);
     await within(dialog).findByRole("radio", { name: "Claude Code — Claude subscription" });
     await next(dialog);
     await next(dialog);
     expect(within(dialog).getByLabelText("Your choices").textContent).toContain("Team leadYes: may give parts of its work to colleagues");
+    expect(within(dialog).getByLabelText("Your choices").textContent).toContain("Temporary assistants3");
     await userEvent.click(within(dialog).getByRole("button", { name: "Hire" }));
     await waitFor(() => expect(posted(a)).toBeDefined());
-    expect(posted(a)?.profile).toMatchObject({ title: "Team lead", canDelegate: true, maxAssistants: 0 });
+    expect(posted(a)?.profile).toMatchObject({ title: "Team lead", canDelegate: true, maxAssistants: 3 });
   });
 
   test("a refusal says why: a per-employee limit, with the API's reasons", async () => {

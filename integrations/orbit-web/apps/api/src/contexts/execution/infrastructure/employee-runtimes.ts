@@ -123,6 +123,38 @@ export function codexArgs(o: EmployeeRunInput): string[] {
   ];
 }
 
+// A codex that answers with NO tool that acts (a CEO's answer in CEO Chat): an employee's codex without Orbit's bridge --
+// no MCP server at all, the provider's search off, no project instructions read (AGENTS.md) -- with the fixed system
+// prompt as developer instructions and Orbit's neutralized entry for its model. It is held to that only once the
+// installed binary was OBSERVED so (codex-split.ts observeCodexToolless), never from these switches alone.
+export function codexToollessArgs(o: { model: string; effort: string | null; systemPrompt: string; modelFile: string | null }): string[] {
+  return [
+    "exec",
+    "--json",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--sandbox",
+    "read-only",
+    "--model",
+    o.model,
+    ...(o.effort !== null ? ["-c", `model_reasoning_effort=${toml(o.effort)}`] : []),
+    ...CODEX_EMPLOYEE_FEATURES_OFF.flatMap((f) => ["--disable", f]),
+    "-c",
+    `web_search=${toml("disabled")}`,
+    "-c",
+    "mcp_servers={}",
+    "-c",
+    "project_doc_max_bytes=0",
+    ...(o.modelFile ? ["-c", `model_catalog_json=${toml(o.modelFile)}`] : []),
+    "-c",
+    `developer_instructions=${toml(o.systemPrompt)}`,
+    // The question on stdin.
+    "-",
+  ];
+}
+
 export const codexEnv = (base: Record<string, string>, home: string, apiKey: string | null): Record<string, string> => ({ ...base, CODEX_HOME: `${home}/codex`, ...(apiKey !== null ? { CODEX_API_KEY: apiKey } : {}) });
 
 // The items an employee's Codex may show: its messages and reasoning, its plan list, its warnings (`error` items), Orbit's

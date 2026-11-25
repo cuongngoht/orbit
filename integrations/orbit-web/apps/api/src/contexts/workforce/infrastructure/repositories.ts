@@ -9,6 +9,8 @@ import { Employee, type EmployeeData } from "../domain/employee.js";
 
 const str = (v: unknown): string => String(v);
 const strOrNull = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
+// An assistant not released yet (its engagement may still have run out: see expires_at).
+const LIVE_ASSISTANT = "kind = 'assistant' AND employment NOT IN ('archived', 'deleted')";
 
 export const employeeDataOf = (r: Row): EmployeeData => ({
   id: str(r.id),
@@ -24,6 +26,7 @@ export const employeeDataOf = (r: Row): EmployeeData => ({
   connectionId: strOrNull(r.connection_id),
   expiresAt: strOrNull(r.expires_at),
   missionScope: strOrNull(r.mission_scope),
+  engagedBy: strOrNull(r.engaged_by),
   createdBy: str(r.created_by),
   createdAt: str(r.created_at),
   updatedAt: str(r.updated_at),
@@ -176,10 +179,25 @@ export class EmployeeRepository {
   async insert(e: Employee): Promise<void> {
     const d = e.data;
     await this.db.query(
-      `INSERT INTO workforce.employees (id, account_id, name, kind, department_id, manager_id, employment, employment_reason, profile_revision, resource_revision, connection_id, expires_at, mission_scope, created_by, created_at, updated_at, version)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15, 1)`,
-      [d.id, d.orbitId, d.name, d.kind, d.departmentId, d.managerId, d.employment, d.employmentReason, d.profileRevision, d.resourceRevision, d.connectionId, d.expiresAt, d.missionScope, d.createdBy, d.createdAt],
+      `INSERT INTO workforce.employees (id, account_id, name, kind, department_id, manager_id, employment, employment_reason, profile_revision, resource_revision, connection_id, expires_at, mission_scope, engaged_by, created_by, created_at, updated_at, version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16, 1)`,
+      [d.id, d.orbitId, d.name, d.kind, d.departmentId, d.managerId, d.employment, d.employmentReason, d.profileRevision, d.resourceRevision, d.connectionId, d.expiresAt, d.missionScope, d.engagedBy, d.createdBy, d.createdAt],
     );
+  }
+
+  // TEMPORARY ASSISTANTS still engaged (not released, not expired): a lead's (its quota), a mission's, and those whose
+  // engagement ran out (a sweep releases them).
+  async liveAssistantsOf(orbitId: string, leadId: string): Promise<number> {
+    const row = await this.db.one(`SELECT count(*) AS n FROM workforce.employees WHERE account_id = $1 AND engaged_by = $2 AND ${LIVE_ASSISTANT} AND expires_at > now()`, [orbitId, leadId]);
+    return Number(row?.n ?? 0);
+  }
+
+  async assistantsOfMission(orbitId: string, missionId: string): Promise<string[]> {
+    return (await this.db.query(`SELECT id FROM workforce.employees WHERE account_id = $1 AND mission_scope = $2 AND ${LIVE_ASSISTANT} ORDER BY created_at, id`, [orbitId, missionId])).map((r) => str(r.id));
+  }
+
+  async expiredAssistants(limit: number): Promise<{ orbitId: string; id: string }[]> {
+    return (await this.db.query(`SELECT account_id, id FROM workforce.employees WHERE ${LIVE_ASSISTANT} AND expires_at <= now() ORDER BY expires_at, id LIMIT $1`, [limit])).map((r) => ({ orbitId: str(r.account_id), id: str(r.id) }));
   }
 
   async save(e: Employee, expectedVersion: number): Promise<number> {

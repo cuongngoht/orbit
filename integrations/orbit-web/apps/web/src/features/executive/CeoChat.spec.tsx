@@ -26,7 +26,7 @@ const ceo = (over: Partial<NonNullable<ExecutiveState["ceo"]>> = {}): NonNullabl
   holding: null,
   ...over,
 });
-const available: ExecutiveState = { company: { id: "o1", name: "Chat Co" }, state: "available", ceo: ceo(), converse: { ok: true, code: null, reason: null }, assign: { ok: true, code: null, reason: null } };
+const available: ExecutiveState = { company: { id: "o1", name: "Chat Co" }, state: "available", ceo: ceo(), converse: { ok: true, code: null, reason: null }, assign: { ok: true, code: null, reason: null }, recruit: { ok: true, code: null, reason: null } };
 
 const message = (over: Partial<ExecutiveMessage>): ExecutiveMessage => ({
   id: "m1",
@@ -46,7 +46,7 @@ const message = (over: Partial<ExecutiveMessage>): ExecutiveMessage => ({
   createdAt: "2026-11-20T00:00:00.000Z",
   ...over,
 });
-const turn = (over: Partial<ExecutiveTurn>): ExecutiveTurn => ({ id: "t1", conversationId: CONV, state: "completed", requestMessageId: "m1", responseMessageId: "m2", employeeId: AN, authorName: "An", appointmentId: APPT, appointmentRevision: 1, waitingReason: null, code: null, detail: null, records: ["Company: Chat Co"], createdAt: "2026-11-20T00:00:00.000Z", startedAt: null, endedAt: null, ...over });
+const turn = (over: Partial<ExecutiveTurn>): ExecutiveTurn => ({ id: "t1", conversationId: CONV, kind: "answer", state: "completed", requestMessageId: "m1", responseMessageId: "m2", employeeId: AN, authorName: "An", appointmentId: APPT, appointmentRevision: 1, waitingReason: null, code: null, detail: null, records: ["Company: Chat Co"], createdAt: "2026-11-20T00:00:00.000Z", startedAt: null, endedAt: null, ...over });
 const ceoSaid = (over: Partial<ExecutiveMessage> = {}) => message({ id: "m2", position: 2, role: "ceo", author: { name: "An", userId: null, employeeId: AN, appointmentId: APPT, appointmentRevision: 1, current: true }, text: "We are **fine**.", model: "claude-sonnet-5-5", turnId: "t1", ...over });
 
 const show = (state: ExecutiveState, conversationId: string | null = null, go = vi.fn()) => renderLive(<CeoChatView state={resource(state)} conversationId={conversationId} go={go} />);

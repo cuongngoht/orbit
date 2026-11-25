@@ -24,6 +24,7 @@ export interface EmployeeData {
   connectionId: string | null;
   expiresAt: string | null;
   missionScope: string | null;
+  engagedBy: string | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +48,8 @@ export type EmploymentMove = keyof typeof MOVES;
 // The employments in which an employee may take work (a probation is a trial that does real, limited work).
 export const WORKING: readonly Employment[] = ["probation", "active"];
 
+const ASSISTANT_ACTIVE = "a temporary assistant: active for its engagement";
+
 export class Employee extends AccountOwned {
   private readonly raised: RaisedEvent[] = [];
 
@@ -66,6 +69,26 @@ export class Employee extends AccountOwned {
     e.raise("EmployeeHired", { name: o.name, kind: o.kind, departmentId: o.departmentId, employment, trialSkipped: skipProbation.skip });
     if (employment === "active") e.raise("EmployeeActivated", { reason: e.d.employmentReason });
     return e;
+  }
+
+  // A TEMPORARY ASSISTANT a lead engaged for one mission (ADR 0061 §8): active for its engagement -- it has no trial --
+  // until its mission ends or `expiresAt`, whichever comes first. Who engaged it and for which mission are kept on it.
+  static engage(o: Omit<EmployeeData, "kind" | "employment" | "employmentReason" | "profileRevision" | "resourceRevision" | "updatedAt" | "version" | "missionScope" | "engagedBy" | "expiresAt"> & { missionScope: string; engagedBy: string; expiresAt: string }): Employee {
+    if (o.missionScope.trim() === "") throw invalid("assistant_without_mission", "An assistant is engaged for one mission: name it.");
+    if (o.engagedBy === o.id) throw conflictWith("relation_cycle", "An assistant is engaged by its lead, never by itself.");
+    if (Date.parse(o.expiresAt) <= Date.parse(o.createdAt)) throw conflictWith("engagement_ended", "This engagement would end before it starts: the mission has no time left for an assistant.");
+    const e = new Employee({ ...o, kind: "assistant", employment: "active", employmentReason: ASSISTANT_ACTIVE, profileRevision: 1, resourceRevision: 1, updatedAt: o.createdAt, version: 0 });
+    e.raise("EmployeeHired", { name: o.name, kind: "assistant", departmentId: o.departmentId, employment: "active", trialSkipped: true, missionId: o.missionScope, engagedBy: o.engagedBy });
+    e.raise("EmployeeActivated", { reason: ASSISTANT_ACTIVE });
+    return e;
+  }
+
+  // The END OF AN ENGAGEMENT (its mission ended, it expired, its sandbox could not be made): archived, then its desk
+  // deleted -- each move said. Only an assistant is released; a permanent employee leaves by a person's command.
+  release(reason: string, at: string): void {
+    if (this.d.kind !== "assistant") throw conflictWith("not_an_assistant", `${this.d.name} is a permanent employee: only a person ends their employment.`);
+    this.move("archive", reason, at);
+    this.move("delete", reason, at);
   }
 
   get data(): Readonly<EmployeeData> {

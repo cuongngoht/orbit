@@ -37,7 +37,7 @@ describe("CEO Chat, pure", () => {
     const invalid = readAnswer('Here.\n```orbit-mission\n{"goal": ""}\n```');
     assert.equal(invalid.proposal, null);
     assert.match(invalid.note ?? "", /could not take as a mission/);
-    assert.deepEqual(readAnswer("  Just an answer.  "), { text: "Just an answer.", proposal: null, note: null });
+    assert.deepEqual(readAnswer("  Just an answer.  "), { text: "Just an answer.", proposal: null, note: null, staffing: null, profile: null });
   });
 
   test("Orbit's records: reports of each kind, and the lines an answer is given -- names, states and counts only", () => {

@@ -3,7 +3,7 @@
 // events. Every read and write is scoped by the account; a message's place is taken from its conversation's row in the
 // transaction that writes it, so two messages never share one.
 import { Inject, Injectable } from "@nestjs/common";
-import type { AnyExecutiveEvent, DurableExecutiveEventType, EventDataMap, ExecutiveConversationSummary, ExecutiveMessage, ExecutiveMissionLink, ExecutiveReport, ExecutiveTurn, ExecutiveTurnState, MissionProposal, ProposalState } from "@orbit-web/contracts";
+import type { AnyExecutiveEvent, DurableExecutiveEventType, EventDataMap, ExecutiveConversationSummary, ExecutiveMessage, ExecutiveMissionLink, ExecutiveReport, ExecutiveTurn, ExecutiveTurnKind, ExecutiveTurnState, MissionProposal, ProposalState } from "@orbit-web/contracts";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 
 const iso = (v: unknown): string | null => (v === null || v === undefined ? null : new Date(String(v)).toISOString());
@@ -47,6 +47,7 @@ export interface TurnRecord {
   id: string;
   orbitId: string;
   conversationId: string;
+  kind: ExecutiveTurnKind;
   requestMessageId: string;
   responseMessageId: string | null;
   employeeId: string;
@@ -82,6 +83,7 @@ export const turnOf = (r: Row): TurnRecord => ({
   id: String(r.id),
   orbitId: String(r.account_id),
   conversationId: String(r.conversation_id),
+  kind: String(r.kind ?? "answer") as ExecutiveTurnKind,
   requestMessageId: String(r.request_message_id),
   responseMessageId: strOrNull(r.response_message_id),
   employeeId: String(r.employee_id),
@@ -103,6 +105,7 @@ export const turnOf = (r: Row): TurnRecord => ({
 export const turnView = (t: TurnRecord): ExecutiveTurn => ({
   id: t.id,
   conversationId: t.conversationId,
+  kind: t.kind,
   state: t.state,
   requestMessageId: t.requestMessageId,
   responseMessageId: t.responseMessageId,
@@ -246,11 +249,11 @@ export class ExecutiveRepository {
 
   // ---- turns --------------------------------------------------------------------------------------------------------
 
-  async insertTurn(t: { id: string; orbitId: string; conversationId: string; requestMessageId: string; employeeId: string; authorName: string; appointmentId: string; appointmentRevision: number; state: ExecutiveTurnState; runId: string | null; at: string }): Promise<TurnRecord> {
+  async insertTurn(t: { id: string; orbitId: string; conversationId: string; kind: ExecutiveTurnKind; requestMessageId: string; employeeId: string; authorName: string; appointmentId: string; appointmentRevision: number; state: ExecutiveTurnState; runId: string | null; at: string }): Promise<TurnRecord> {
     const row = await this.db.one(
-      `INSERT INTO executive.turns (id, account_id, conversation_id, request_message_id, employee_id, author_name, appointment_id, appointment_revision, run_id, state, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) RETURNING *`,
-      [t.id, t.orbitId, t.conversationId, t.requestMessageId, t.employeeId, t.authorName, t.appointmentId, t.appointmentRevision, t.runId, t.state, t.at],
+      `INSERT INTO executive.turns (id, account_id, conversation_id, request_message_id, employee_id, author_name, appointment_id, appointment_revision, run_id, state, kind, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12) RETURNING *`,
+      [t.id, t.orbitId, t.conversationId, t.requestMessageId, t.employeeId, t.authorName, t.appointmentId, t.appointmentRevision, t.runId, t.state, t.kind, t.at],
     );
     return turnOf(row as Row);
   }

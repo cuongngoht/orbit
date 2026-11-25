@@ -56,7 +56,7 @@ describe("the host's capacity, read again", () => {
     assert.equal(after.budget.authorized.source, "capacity");
     assert.equal(after.budget.cpuMillis, after.capacity.usable.cpuMillis, "the CPU budget stood at the authorization: it follows");
     assert.equal(after.budget.perEmployee.cpuMillis, after.capacity.usable.cpuMillis);
-    assert.equal(after.budget.perEmployee.deskStorageMiB, Math.floor(after.capacity.usable.storageMiB / 2), "a 5 GiB desk fits a 20 GiB pool");
+    assert.equal(after.budget.perEmployee.deskStorageMiB, Math.floor(after.capacity.usable.storageMiB / 2), "a desk of at most half the pool");
     assert.equal(after.budget.memoryMiB, 1024, "the memory the owner lowered stays");
     const done = await h.sql("SELECT data->>'command' AS command FROM audit_events WHERE account_id = $1 AND event_type = 'office.command' AND data->>'command' = 'resources.capacity.check'", [h.accountId]);
     assert.equal(done.length, 1, "the Re-check is in the account's audit record");

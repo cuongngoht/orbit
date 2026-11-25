@@ -3,7 +3,7 @@
 // one rule decides them all. It locks the employee's row FIRST (FOR UPDATE): every claim takes its locks in the same
 // order (employee → assignment → reservation → office version), and two claims of one employee take turns.
 import { Inject, Injectable } from "@nestjs/common";
-import type { EmployeeProfile, Employment, ExecutionProfile, ExecutionSources } from "@orbit-web/contracts";
+import type { EmployeeKind, EmployeeProfile, Employment, ExecutionProfile, ExecutionSources } from "@orbit-web/contracts";
 import { WORKING } from "../domain/employee.js";
 import { resolveExecution } from "../domain/execution-precedence.js";
 import { ConnectionsReader, employeeUse, type ConnectionFacts } from "../infrastructure/connections.reader.js";
@@ -15,6 +15,9 @@ export interface Eligibility {
   reason: string | null;
   employeeId: string;
   name: string;
+  // A temporary assistant is its lead's for one mission (missionScope): nobody gives it work of its own.
+  kind: EmployeeKind;
+  missionScope: string | null;
   profileRevision: number;
   resourceRevision: number;
   departmentId: string | null;
@@ -59,6 +62,8 @@ export class EmployeeEligibility {
       reason,
       employeeId,
       name: d.name,
+      kind: d.kind,
+      missionScope: d.missionScope,
       profileRevision: d.profileRevision,
       resourceRevision: d.resourceRevision,
       departmentId: d.departmentId,

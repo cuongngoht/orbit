@@ -88,7 +88,7 @@ export const ACTIONS = {
   "office.department.manage": { summary: "Create, rename, reorder or archive the office's departments.", subject: "governance", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["account"] },
   "office.roster.manage": { summary: "Move an employee between departments, or change who manages whom.", subject: "governance", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
   "employee.hire": { summary: "Hire a permanent AI employee, or change one's employment.", subject: "execution", enforcement: "control", sensitive: true, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
-  "employee.hire_assistant": { summary: "Engage a temporary assistant for one mission, within a manager's grant.", subject: "execution", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["mission", "employee"] },
+  "employee.hire_assistant": { summary: "Engage a temporary assistant for one mission, within its lead's quota (the CEO's or a manager's).", subject: "execution", enforcement: "control", sensitive: true, ceiling: {}, fingerprint: ["mission", "employee"] },
   "employee.resources.change": { summary: "Change the CPU, memory or storage an employee's attempts may use.", subject: "resources", enforcement: "control", sensitive: false, ceiling: PEOPLE_ONLY, fingerprint: ["employee"] },
   // AN EMPLOYEE'S DESK is the account's: a person looks into it (read only, every look recorded) and cleans it up when
   // it fills -- never while its work could still change it, and never an agent.

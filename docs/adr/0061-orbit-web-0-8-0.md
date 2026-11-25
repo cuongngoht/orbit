@@ -381,8 +381,9 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   depth, never called enforcement) or `none` (nothing here can carry it out, so it is denied); only a boundary action
   may be reported PREVENTED. A CEILING per kind of principal caps what any rule may grant: nobody reads a raw
   credential (`credential.read_raw`) or changes an audit record (`governance.audit.modify`); modifying the policy,
-  deciding an approval, a privileged setting and the office's management (departments, roster, hiring, an employee's
-  resources and desk, the budget, connections) are people-only; for an agent a production action
+  deciding an approval, a privileged setting and the office's management (departments, roster, hiring a permanent
+  employee, an employee's resources and desk, the budget, connections) are people-only (a lead's temporary assistant,
+  `employee.hire_assistant`, is the lead's to engage, within its quota); for an agent a production action
   (`deployment.production`, `database.production.migrate`, `data.production.destroy`, all `none`) is at most one
   approval of exactly it, and the policy at most a draft it hands in (`governance.policy.propose`). `repository.push`
   has no ceiling: git is the policy's to decide for an agent as for a person.
@@ -631,8 +632,29 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   a circle or shares what the lead does not read is refused whole (`work.delegate`, decided as the lead). A part starts
   once those it waits for are accepted; its lead reviews each by the DIGEST of the revision it read (a newer one refuses
   the decision), and hands its own result in only once every part has ended (`parts_not_ended`). Limits: five revisions
-  of one hand-in, three plans per assignment, three questions per assignment, delegation three levels deep. Temporary
-  assistants (`employee.hire_assistant`) are a word of the vocabulary, not built.
+  of one hand-in, three plans per assignment, three questions per assignment, delegation three levels deep.
+- **Temporary assistants: leads engage them for the mission at hand** (`work/domain/assistants.ts`; the engagement is
+  Workforce's, `HiringService.engageAssistant`). A part of a lead's plan may HIRE instead of naming someone -- a name, a
+  title, duties, skills, languages. Only an appointee in force engages one: a department's manager into its own
+  department, the part going to the assistant itself; the CEO into a department with a manager in office that the part
+  names, the part going to that department's manager as all of the CEO's work does, who can then give the assistant
+  work. The owner sets each employee's QUOTA (`profile.maxAssistants`, 0-5; 2 in the hire templates; 0 turns it off): it
+  caps the lead's LIVE assistants, those of its plan before this one counted. Each hire is decided as the lead (its own
+  agent principal) as `employee.hire_assistant`, with the grant its quota gives -- a full quota is `NO_GRANT`, said with
+  the numbers ("2 of 2 assistants engaged") -- and the policy may refuse assistants altogether; the hires and the plan
+  are decided together, and a plan with any problem (a hire that cannot be made among them) gives nothing and engages
+  nobody, its decisions kept on the record. A manager alone is offered `delegate` while its quota has room, and once it
+  engaged an assistant it reviews as a manager with a team. An assistant is `kind = assistant`, engaged by its lead
+  (`engaged_by`) for ONE mission (`mission_scope`), active at once (no trial) until its mission ends or, at the latest,
+  seven days or the mission's deadline (`expires_at`); it runs on its department's defaults for its lead's runtime
+  (else the company's, else exactly as its lead runs), held to every rule a hire is (a usable connection, the model
+  allow-list), on the Lightweight resources. It counts only on its own mission -- on any other it changes nobody's
+  role or scope -- and takes no appointment, delegation grant, mission or another mission's work of its own. It is
+  RELEASED when its mission ends (the root accepted, cancelled or failed), when its engagement expires (a sweep), or
+  when its Personal Sandbox cannot be made: Orbit's own act (a system actor, `employee.release_assistant` on the
+  record; no policy refuses the end of what a decision bounded) cancels its open work -- which wakes its lead -- archives
+  it and deletes its desk, so its storage is freed. Hiring a PERMANENT employee stays a person's: `employee.hire` is
+  people-only by its ceiling, whatever a rule says.
 - **Roles: the CEO plans, managers run their departments** (`work/domain/roles.ts`, one place for what an attempt is
   told, the tools it is offered, the tool door and its hand-in). A role comes from the appointment in force and the
   department's working members, never a title. The CEO plans and synthesizes: it is offered no shell and no connector
@@ -855,5 +877,5 @@ the desk ... it can be refreshed when the data grows").
   reviewing the call. The model catalog and the connector list come from the control protocol the Agent SDK speaks,
   not a documented CLI command. The audit chain is tamper evidence on this host, not proof against whoever controls it.
 - Not built in 0.8.0: semantic retrieval, OCR, web search or "deep research" in research, serving a source's original
-  file, a local model, temporary assistants, an external delivery channel, email verification, OIDC or a single sign-on
+  file, a local model, an external delivery channel, email verification, OIDC or a single sign-on
   of Orbit Web's own, billing, audit pruning, and any run of an employee on Antigravity.

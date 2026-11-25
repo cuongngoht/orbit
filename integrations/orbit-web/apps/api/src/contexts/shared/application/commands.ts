@@ -25,6 +25,13 @@ export function ownerActor(): Actor {
   return { owner, principal: owner, command: { orbitId: owner.accountId, actor: labelOf(owner), correlationId }, governance: contextOf(owner, correlationId) };
 }
 
+// THE OWNER'S OWN REQUEST, carried out later (a hiring request, once the CEO's plan is in): that person, as they are now
+// (AccountsService.ownerNow), acting -- each action decided under the account's policy as their own click is, and recorded
+// as theirs. The request is the correlation. Never a service standing in for a person.
+export function deferredOwnerActor(owner: Owner, correlationId: string): Actor {
+  return { owner, principal: owner, command: { orbitId: owner.accountId, actor: labelOf(owner), correlationId }, governance: contextOf(owner, correlationId) };
+}
+
 // Orbit Web itself, for an account (a worker, a scheduler, a consumer).
 export function systemActor(orbitId: string, id: string, correlationId: string, causationId: string | null = null): Actor {
   const principal: Principal = { kind: "system", id, accountId: orbitId };
@@ -51,12 +58,14 @@ export class OfficeGovernance {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  // The account's policy decides the action (and records the decision); anything but allow refuses the command.
-  async authorize(actor: Actor, action: string, resource: string, params: Record<string, unknown> = {}, scope: EnforcementScope = scopeOf(actor.principal)): Promise<void> {
-    const decision = await this.policy.decide(actor.governance, { action, resource, scope, params });
+  // The account's policy decides the action (and records the decision); anything but allow refuses the command. `grant`:
+  // whether the actor holds what the action needs beyond the rules (a lead's room in its quota of assistants), established
+  // by the caller -- one not held is a deny the decision records as NO_GRANT, whatever the rules say.
+  async authorize(actor: Actor, action: string, resource: string, params: Record<string, unknown> = {}, scope: EnforcementScope = scopeOf(actor.principal), grant?: "held" | "not_held"): Promise<void> {
+    const decision = await this.policy.decide(actor.governance, { action, resource, scope, params, ...(grant !== undefined ? { grant } : {}) });
     if (decision.verdict === "allow") return;
     const why = decision.verdict === "require_approval" ? "needs an approval the office does not ask for yet" : `is not allowed (${decision.reasonCodes.join(", ")})`;
-    throw refused("policy_denied", `The account's policy ${why}: ${action}. Decision ${decision.decisionId}.`, { decisionId: decision.decisionId, action });
+    throw refused("policy_denied", `The account's policy ${why}: ${action}. Decision ${decision.decisionId}.`, { decisionId: decision.decisionId, action, reasonCodes: decision.reasonCodes });
   }
 
   async recorded(actor: Actor, command: string, aggregate: string, aggregateId: string, version: number, detail = ""): Promise<void> {

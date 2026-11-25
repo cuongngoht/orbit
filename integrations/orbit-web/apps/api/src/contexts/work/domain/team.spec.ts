@@ -15,6 +15,16 @@ describe("a lead's team: what it is woken for, and what makes a plan givable", (
     assert.equal(allEnded([u("a", "COMPLETED"), u("b", "AWAITING_ACCEPTANCE")]), false);
   });
 
+  test("a result another part waits for is reviewed at once, while unrelated parts are still worked on -- never a result nothing waits for", () => {
+    // {a, b, c after a}: a handed in while b runs -- c can start only on the lead's decision, so the lead is woken now.
+    assert.equal(leadNext([u("a", "AWAITING_ACCEPTANCE"), u("b", "RUNNING"), u("c", "QUEUED", ["a"])], 0), "review");
+    assert.equal(leadNext([u("a", "AWAITING_ACCEPTANCE"), u("b", "RUNNING"), u("c", "QUEUED", ["a", "b"])], 0), "review", "one of what it waits for is decided now");
+    // Nothing waits for a: the lead reviews once nothing is being worked on.
+    assert.equal(leadNext([u("a", "AWAITING_ACCEPTANCE"), u("b", "RUNNING")], 0), "wait");
+    assert.equal(leadNext([u("a", "AWAITING_ACCEPTANCE"), u("b", "RUNNING"), u("c", "RUNNING", ["a"])], 0), "wait", "a part already started waits for nothing");
+    assert.equal(leadNext([u("a", "COMPLETED"), u("b", "RUNNING"), u("c", "QUEUED", ["a"])], 0), "wait", "already accepted: c starts on its own");
+  });
+
   test("a plan's keys are unique among a lead's parts; a part receives only what it waits for; never to the lead itself", () => {
     const parts = [
       { key: "research", employeeId: "minh", goal: "r", dependsOn: [] },

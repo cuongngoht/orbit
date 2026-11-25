@@ -120,6 +120,23 @@ test("an employee's desk is a person's to look into and to clean up, never an ag
   }
 });
 
+test("a lead engages a temporary assistant within its quota (a grant it holds or not); hiring a permanent employee is never an agent's", () => {
+  const lead = { principalType: "agent", principalId: "employee:lead-1", runKind: "assignment", employeeId: "lead-1" } as const;
+  for (const deployment of ["single", "governed"] as const) {
+    const p = policy(defaultAccountPolicy(ACCOUNT, deployment));
+    const engaged = evaluate(p, ask({ ...lead, action: "employee.hire_assistant", resource: "emp-9" }), { grant: "held" });
+    assert.deepEqual([engaged.verdict, engaged.matchedRules], ["allow", ["account:office-assistants"]], deployment);
+    const full = evaluate(p, ask({ ...lead, action: "employee.hire_assistant", resource: "emp-9" }), { grant: "not_held" });
+    assert.deepEqual([full.verdict, full.reasonCodes], ["deny", ["RULE_MATCHED", "NO_GRANT"]], `${deployment}: its quota is full`);
+  }
+  const generous = policy(withRules([{ id: "all-hire", action: "employee.hire", effect: "allow" }, { id: "assist", action: "employee.hire_assistant", effect: "deny" }]));
+  const hire = evaluate(generous, ask({ ...lead, action: "employee.hire", resource: "emp-9" }));
+  assert.deepEqual([hire.verdict, hire.reasonCodes.includes("PRINCIPAL_CEILING")], ["deny", true], "a permanent hire stays people-only, whatever a rule says");
+  assert.equal(evaluate(generous, ask({ principalType: "human", principalId: "owner:acc-1", action: "employee.hire", resource: "emp-9" })).verdict, "allow");
+  assert.equal(evaluate(generous, ask({ ...lead, action: "employee.hire_assistant", resource: "emp-9" }), { grant: "held" }).verdict, "deny", "the policy may refuse assistants altogether");
+  assert.deepEqual(ACTIONS["employee.hire_assistant"].fingerprint, ["mission", "employee"]);
+});
+
 test("a production action is never simply allowed to an agent: the most it gets is one approval", () => {
   for (const action of ["deployment.production", "database.production.migrate", "data.production.destroy"] as const) {
     const most = (ACTIONS[action].ceiling as Partial<Record<string, string>>).agent;

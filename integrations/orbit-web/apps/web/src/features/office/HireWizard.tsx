@@ -31,6 +31,7 @@ import {
 import {
   DEFAULT_PRESETS,
   RUNTIME_LABELS,
+  WORKFORCE_LIMITS,
   checkHireEmployee,
   effortFor,
   effortLabel,
@@ -54,10 +55,12 @@ import { useViewport } from "../../hooks/useViewport";
 import { t as tr, useI18n, type I18nContextValue } from "../../i18n";
 import { ApiError, errorText } from "../../services/api";
 import { useConnections } from "../connections/AiConnectionsSection";
+import { useExecutiveState } from "../executive/api";
 import { cpuText, sizeText } from "../resources/format";
 import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { office } from "./api";
 import { Disclosure, useOfficeStyles } from "./parts";
+import { DraftWithAi } from "./DraftWithAi";
 import { ResourceFields, profileLine, resourceProblems, storageProblem } from "./ResourceFields";
 
 export const HIRE_STEPS = [
@@ -141,9 +144,14 @@ interface Draft {
   skipProbation: boolean;
   skipReason: string;
   canDelegate: boolean;
+  // How many temporary assistants it may engage while it leads a mission (as the CEO or a manager).
+  maxAssistants: number;
 }
 
-const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, inherit: false, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false };
+// What a new profile allows by default: a lead (the CEO, a manager) may engage two temporary assistants per mission.
+export const DEFAULT_ASSISTANTS = 2;
+
+const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, inherit: false, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false, maxAssistants: DEFAULT_ASSISTANTS };
 
 const list = (text: string): string[] =>
   text
@@ -154,6 +162,22 @@ const list = (text: string): string[] =>
 // A connection an employee may run on, as the server says it (employeeReadiness): connected, its models read from the
 // account (never a fallback list), and its model plane observed held to Orbit's tools.
 export const usableForEmployees = (c: RuntimeConnection): boolean => c.employeeReady.ready;
+
+// How many temporary assistants it may engage while it leads a mission: 0 to the contract's bound, 0 turning it off.
+export function AssistantsField({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const { t } = useI18n();
+  return (
+    <Field label={t("office.hire.assistantsLabel")} hint={t("office.hire.assistantsHint")}>
+      <Select value={String(value)} onChange={(_, d) => onChange(Number(d.value))}>
+        {Array.from({ length: WORKFORCE_LIMITS.maxAssistants + 1 }, (_, n) => (
+          <option key={n} value={String(n)}>
+            {n === 0 ? t("office.hire.assistantsNone") : String(n)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
 
 const whyNot = (c: RuntimeConnection): string => c.employeeReady.reason ?? tr("office.hire.cannotRunEmployees");
 
@@ -269,6 +293,8 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
   const { isMobile } = useViewport();
   const connections = useConnections();
   const summary = useResourceSummary();
+  // Whether the CEO can draft a profile for this form now.
+  const executiveState = useExecutiveState();
   const templates = useResource<EmployeeTemplate[]>(() => office.templates(), []);
   const presetsRead = useResource<ResourcePreset[]>(() => office.presets(), []);
   const presets: readonly ResourcePreset[] = presetsRead.data ?? (presetsRead.error ? DEFAULT_PRESETS : []);
@@ -319,7 +345,7 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
             handoffStandard: draft.handoffStandard.trim(),
             reportingRule: draft.reportingRule.trim(),
             canDelegate: draft.canDelegate,
-            maxAssistants: 0,
+            maxAssistants: draft.maxAssistants,
             canHirePermanent: false,
           },
           resources,
@@ -341,7 +367,7 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
     const t = (templates.data ?? []).find((x) => x.id === id);
     if (!t) return set({ templateId: null });
     const p = t.profile;
-    set({ templateId: t.id, title: p.title, duties: p.duties, instructions: p.instructions, skills: p.skills.join(", "), languages: p.languages.join(", "), handoffStandard: p.handoffStandard, reportingRule: p.reportingRule });
+    set({ templateId: t.id, title: p.title, duties: p.duties, instructions: p.instructions, skills: p.skills.join(", "), languages: p.languages.join(", "), handoffStandard: p.handoffStandard, reportingRule: p.reportingRule, maxAssistants: p.maxAssistants });
   };
 
   const hire = async () => {
@@ -395,6 +421,13 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
 
             {at === 1 && (
               <div className={o.form}>
+                <DraftWithAi
+                  form={{ title: draft.title, duties: draft.duties, instructions: draft.instructions, skills: draft.skills, languages: draft.languages, handoffStandard: draft.handoffStandard }}
+                  departmentId={department?.id ?? null}
+                  departmentName={department?.name ?? null}
+                  state={executiveState.data}
+                  onFill={(f) => set({ title: f.title, duties: f.duties, instructions: f.instructions, skills: f.skills, languages: f.languages, handoffStandard: f.handoffStandard })}
+                />
                 <div className={o.formGrid}>
                   <Field label={t("office.hire.choiceDept")}>
                     <Select value={draft.departmentId ?? ""} onChange={(_, d) => set({ departmentId: d.value === "" ? null : d.value })}>
@@ -430,6 +463,7 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
                     {t("office.hire.teamLeadDesc")}
                   </Text>
                 </div>
+                <AssistantsField value={draft.maxAssistants} onChange={(v) => set({ maxAssistants: v })} />
               </div>
             )}
 
@@ -513,6 +547,8 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
                   <dd className={o.dd}>{department?.name ?? t("office.overview.unassigned")}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceTeamLead")}</dt>
                   <dd className={o.dd}>{draft.canDelegate ? t("office.hire.teamLeadYes") : t("office.hire.teamLeadNo")}</dd>
+                  <dt className={o.dt}>{t("office.hire.choiceAssistants")}</dt>
+                  <dd className={o.dd}>{draft.maxAssistants === 0 ? t("office.hire.assistantsNone") : String(draft.maxAssistants)}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceRuntime")}</dt>
                   <dd className={o.dd}>
                     {RUNTIME_LABELS[connection.runtime]} — {connection.label}

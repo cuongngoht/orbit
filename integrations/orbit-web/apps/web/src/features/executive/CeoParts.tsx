@@ -2,7 +2,7 @@
 // (who it is, by which appointment, what its answers run on and where each came from, what the last answer stood on),
 // and the no-CEO state, which opens the Office's own hire and appointment dialogs -- nobody is appointed by opening it.
 import { Button, Field, Input, MessageBar, MessageBarBody, Spinner, Text, Textarea, makeStyles, tokens } from "@fluentui/react-components";
-import { Briefcase20Regular, Building20Regular, DataBarVertical20Regular, PersonAdd20Regular, PersonStar20Regular, Wrench20Regular } from "@fluentui/react-icons";
+import { Briefcase20Regular, Building20Regular, DataBarVertical20Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, Wrench20Regular } from "@fluentui/react-icons";
 import { checkMissionFields, type Department, type ExecutionDefaults, type ExecutiveMissionFields, type ExecutiveReportKind, type ExecutiveState, type ExpectedAssignee, type MissionTargetPreview, type Roster } from "@orbit-web/contracts";
 import { useEffect, useState, type ReactElement } from "react";
 import { useResource } from "../../hooks/useResource";
@@ -35,7 +35,7 @@ export const REPORT_ACTIONS: { kind: ExecutiveReportKind; key: "executive.quick.
   { kind: "decisions", key: "executive.quick.decisions", icon: <DataBarVertical20Regular /> },
 ];
 
-export function QuickActions({ onReport, onAssign, canAssign, busy }: { onReport: (kind: ExecutiveReportKind) => void; onAssign: (() => void) | null; canAssign: boolean; busy: boolean }) {
+export function QuickActions({ onReport, onAssign, canAssign, busy, onRecruit = null, canRecruit = false }: { onReport: (kind: ExecutiveReportKind) => void; onAssign: (() => void) | null; canAssign: boolean; busy: boolean; onRecruit?: (() => void) | null; canRecruit?: boolean }) {
   const { t } = useI18n();
   const s = useStyles();
   return (
@@ -48,6 +48,11 @@ export function QuickActions({ onReport, onAssign, canAssign, busy }: { onReport
       {onAssign !== null && (
         <Button size="small" shape="circular" icon={<Briefcase20Regular />} disabled={busy || !canAssign} onClick={onAssign}>
           {t("executive.quick.assign")}
+        </Button>
+      )}
+      {onRecruit !== null && (
+        <Button size="small" shape="circular" icon={<PeopleAdd20Regular />} disabled={busy || !canRecruit} onClick={onRecruit}>
+          {t("executive.quick.recruit")}
         </Button>
       )}
       {REPORT_ACTIONS.slice(2).map((a) => (

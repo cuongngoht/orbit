@@ -6,7 +6,7 @@ import type { InfrastructureCapacity } from "@orbit-web/contracts";
 import type { Reserve, SandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
 
-const reserveOf = (r: Reserve, total: number): number => (r.kind === "amount" ? r.value : Math.ceil((total * r.percent) / 100));
+export const reserveOf = (r: Reserve, total: number): number => (r.kind === "amount" ? r.value : Math.ceil((total * r.percent) / 100));
 
 export function infrastructureCapacity(caps: HostCapabilities, config: Pick<SandboxConfig, "capacity" | "headroom">): InfrastructureCapacity {
   const configured = config.capacity.cpuMillis !== null || config.capacity.memoryMiB !== null || config.capacity.storageMiB !== null;

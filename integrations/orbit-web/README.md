@@ -822,6 +822,17 @@ Office's own hire and appointment dialogs; nobody is appointed for you.
   handed in, accepted, blocked or cancelled. *Assign work* gives the CEO work in your own words.
 - **A new CEO.** Replacing the CEO keeps every conversation; what the former CEO said stays theirs, and an answer it had
   not started is not answered by the new one (*Ask again* asks the new CEO).
+- **Recruit.** One request staffs the company: say what it needs, for one department or the whole company, and choose
+  what every new hire runs on (a connection, a model and effort -- or the defaults --, and a resource preset). The CEO
+  plans who to hire (and new departments, each with its manager); Orbit hires them at once, on probation, and reports
+  it in the conversation -- or, if the plan breaks a rule, hires nobody and says why. *Recruit* is on the Office's
+  Overview, in a department's menu and among CEO Chat's quick actions.
+- **Draft with AI.** In Hire's *Department & role* step and on an employee's profile, describe the job in a few words and
+  the CEO drafts the title, duties, instructions, skills, languages and handoff standard. It fills empty fields, asks
+  before replacing what you wrote, and can be undone; it hires nobody and never chooses the model or resources.
+- **A CEO on OpenAI Codex.** A CEO on Claude Code or OpenAI Codex answers. Codex is held to answering with no tool by an
+  observation of the installed binary and the CEO's model; a model, a connection or a spending cap it cannot be held
+  to is refused, saying why. A CEO on Antigravity cannot answer in CEO Chat (work still goes to it).
 
 ## Governance
 

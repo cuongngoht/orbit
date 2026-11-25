@@ -16,7 +16,15 @@ import {
   checkExecutiveMission,
   checkExecutiveReport,
   checkExecutiveText,
+  checkHiringRequest,
+  checkProfileDraftRequest,
+  CONNECTION_ERRORS,
   EXECUTIVE_LIMITS,
+  STAFFING_LIMITS,
+  type ProfileDraftAccepted,
+  type ProfileDraftView,
+  type StaffingAccepted,
+  type StaffingView,
   isIdempotencyKey,
   isWorkforceId,
   type ExecutiveCapability,
@@ -41,15 +49,19 @@ import { RunRepository } from "../../execution/infrastructure/runs.repository.js
 import { ConversationRunRepository } from "../../execution/infrastructure/conversation-runs.repository.js";
 import { OfficeGovernance, type Actor } from "../../shared/application/commands.js";
 import { accepted } from "../../../common/errors.js";
-import { conflictWith, DomainError, invalid, missing } from "../../shared/domain.js";
+import { conflictWith, DomainError, invalid, missing, unprocessable } from "../../shared/domain.js";
 import { Idempotency, type IdempotencyScope, type StoredAnswer } from "../../shared/infrastructure/idempotency.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
 import { MissionsService } from "../../work/application/missions.service.js";
 import { OrgReader } from "../../work/infrastructure/org.reader.js";
 import { AssignmentRepository, MissionRepository } from "../../work/infrastructure/repositories.js";
 import { EmployeeEligibility } from "../../workforce/application/eligibility.js";
-import { ConnectionsReader } from "../../workforce/infrastructure/connections.reader.js";
-import { OfficeRepository } from "../../workforce/infrastructure/repositories.js";
+import { ConnectionsReader, employeeUse } from "../../workforce/infrastructure/connections.reader.js";
+import { DepartmentRepository, OfficeRepository } from "../../workforce/infrastructure/repositories.js";
+import { HiringService } from "../../workforce/application/hiring.service.js";
+import { ResourcesService } from "../../execution/application/resources.service.js";
+import { StaffingRepository, staffingView } from "../infrastructure/staffing.repository.js";
+import { DraftRepository, draftView } from "../infrastructure/drafts.repository.js";
 import { titleOf } from "../domain/conversation.js";
 import { ExecutiveRepository, messageView, summaryOf, turnView, type ConversationRecord } from "../infrastructure/executive.repository.js";
 import { ExecutiveStream } from "../infrastructure/executive-stream.js";
@@ -84,18 +96,23 @@ export class ExecutiveService {
     @Inject(OfficeGovernance) private readonly governance: OfficeGovernance,
     @Inject(Outbox) private readonly outbox: Outbox,
     @Inject(EventBus) private readonly bus: EventBus,
+    @Inject(StaffingRepository) private readonly staffing: StaffingRepository,
+    @Inject(DepartmentRepository) private readonly departments: DepartmentRepository,
+    @Inject(HiringService) private readonly hiring: HiringService,
+    @Inject(ResourcesService) private readonly resources: ResourcesService,
+    @Inject(DraftRepository) private readonly drafts: DraftRepository,
   ) {}
 
   // ---- what CEO Chat is now -------------------------------------------------------------------------------------------
 
   async state(orbitId: string): Promise<ExecutiveState> {
     const office = await this.offices.get(orbitId);
-    if (office === null) return { company: null, state: "no_company", ceo: null, converse: refusal("office_not_set_up", NO_COMPANY), assign: refusal("office_not_set_up", NO_COMPANY) };
+    if (office === null) return { company: null, state: "no_company", ceo: null, converse: refusal("office_not_set_up", NO_COMPANY), assign: refusal("office_not_set_up", NO_COMPANY), recruit: refusal("office_not_set_up", NO_COMPANY) };
     const company = { id: office.id, name: office.name };
     const preview = await this.missions.preview(orbitId, { kind: "ceo" });
     const assign = preview.responsible !== null ? OK : refusal(preview.code ?? "no_ceo", preview.reason ?? NO_CEO);
     const i = (await this.org.slot(orbitId, { kind: "ceo" }, false)).incumbent;
-    if (i === null) return { company, state: "no_ceo", ceo: null, converse: refusal("no_ceo", NO_CEO), assign };
+    if (i === null) return { company, state: "no_ceo", ceo: null, converse: refusal("no_ceo", NO_CEO), assign, recruit: refusal("no_ceo", NO_CEO) };
     const converse = await this.turns.ceo(orbitId).then(
       () => OK,
       (err: unknown) => {
@@ -122,7 +139,15 @@ export class ExecutiveService {
       },
       converse,
       assign,
+      recruit: await this.recruitOf(orbitId, converse),
     };
+  }
+
+  // A hiring request is planned by the CEO's answer, and hires employees onto a connection that can run them.
+  private async recruitOf(orbitId: string, converse: ExecutiveCapability): Promise<ExecutiveCapability> {
+    if (!converse.ok) return converse;
+    const connections = await this.connections.all(orbitId);
+    return connections.some((c) => employeeUse(c).ready) ? OK : refusal(CONNECTION_ERRORS.connectionRequired, "No AI connection can run employees now: connect one in Settings → AI Connections, or reconnect one.");
   }
 
   // What the CEO holds now: the mission, and whether an attempt of it runs (an answer then waits for it).
@@ -254,10 +279,97 @@ export class ExecutiveService {
       const t = isWorkforceId(turnId) ? await this.repo.turn(orbitId, turnId) : null;
       if (t === null || t.conversationId !== c.id) throw missing("The answer");
       if (!["failed", "interrupted", "cancelled"].includes(t.state)) throw conflictWith("turn_not_ended", "That answer has not ended: wait for it, or stop it first.");
+      // A hiring request (or a draft) ended with its turn: it is sent again, never asked again.
+      if (t.kind === "staffing") throw conflictWith("staffing_request_ended", "This answer planned a hiring request, which ended with it: send the request again (Recruit).");
+      if (t.kind !== "answer") throw conflictWith("draft_ended", "This answer drafted a profile, which ended with it: ask for the draft again.");
       if ((await this.repo.openTurns(orbitId, c.id)).length > 0) throw conflictWith("turn_open", "An answer is already on its way in this conversation.");
       const ceo = await this.turns.ceo(orbitId, true);
       return { turn: turnView(await this.turns.answer(orbitId, c.id, t.requestMessageId, ceo)) };
     });
+  }
+
+  // ---- staffing: the owner's hiring request ---------------------------------------------------------------------------
+
+  // A hiring request (POST /api/executive/staffing). Refused before the CEO spends anything: no company, a CEO that
+  // cannot answer, a department that is not live, an execution a hire would refuse (checked as a hire checks it), no
+  // room in the storage budget for even one hire. Else: a conversation of its own, the owner's words as its first
+  // message, the CEO's turn to plan it (waiting exactly as an answer does), and the request -- planning, its room fixed
+  // (the plan's bound, or what the storage budget holds, whichever is less).
+  async recruit(actor: Actor, owner: Owner, body: unknown, key: unknown): Promise<StoredAnswer> {
+    const req = accepted(checkHiringRequest(body));
+    const scope = this.scopeOf(actor, "executive.staffing", key);
+    const orbitId = actor.command.orbitId;
+    return this.governance.command(actor, "executive.staffing", "new", async () => {
+      const prior = await this.idempotency.begin(scope, req);
+      if (prior !== null) return prior;
+      const office = await this.requireOffice(orbitId);
+      const ceo = await this.turns.ceo(orbitId, true);
+      const department = req.departmentId === null ? null : await this.departments.get(orbitId, req.departmentId, "share");
+      if (req.departmentId !== null && department === null) throw missing("The department");
+      if (department !== null && department.archivedAt !== null) throw conflictWith("department_archived", `${department.name} is archived: it takes no new members.`);
+      await this.hiring.executionFor(orbitId, req.execution, req.departmentId);
+      const room = await this.resources.hiresThatFit(orbitId, req.resources);
+      if (room.fit === 0) throw unprocessable("storage_budget_exceeded", `No hire fits now: ${room.why}. Lower the preset, raise the storage budget, or archive an employee.`);
+      const at = new Date().toISOString();
+      const c = await this.repo.insertConversation({ id: randomUUID(), orbitId, officeId: office.id, title: titleOf(`Hiring: ${req.requirement}`), userId: owner.userId, at });
+      const row = await this.repo.addMessage({ id: randomUUID(), orbitId, conversationId: c.id, role: "owner", authorName: owner.fullName || owner.username, userId: owner.userId, text: req.requirement, at });
+      const message = messageView(row as NonNullable<typeof row>, ceo.appointmentId);
+      await this.stream.publish(orbitId, c.id, "executive.message.created", { message }, null);
+      const turn = await this.turns.answer(orbitId, c.id, message.id, ceo, "staffing");
+      const staffing = await this.staffing.insert({ id: randomUUID(), orbitId, conversationId: c.id, turnId: turn.id, userId: owner.userId, sessionId: owner.sessionId, requirement: req.requirement, departmentId: req.departmentId, execution: req.execution, resources: req.resources, maxHires: Math.min(STAFFING_LIMITS.hires, room.fit), createdAt: at });
+      const accepted202: StaffingAccepted = { staffingId: staffing.id, conversationId: c.id, message, turn: turnView(turn) };
+      const answer: StoredAnswer = { status: 202, body: accepted202 };
+      await this.idempotency.complete(scope, req, answer);
+      await this.governance.recorded(actor, "executive.staffing", "staffing", staffing.id, 1, `asked: up to ${staffing.maxHires} hire(s)${department !== null ? ` in ${department.name}` : " for the company"}`);
+      this.db.afterCommit(() => this.bus.publishApp("executive.conversation.created", { conversationId: c.id }, accountAudience(office.orbitId)));
+      return answer;
+    });
+  }
+
+  // A hiring request as it stands: planning, or what was carried out (another account's: not found).
+  async staffingOf(orbitId: string, id: string): Promise<StaffingView> {
+    await this.requireOffice(orbitId);
+    const s = isWorkforceId(id) ? await this.staffing.get(orbitId, id) : null;
+    if (s === null) throw missing("The hiring request");
+    const department = s.departmentId === null ? null : await this.departments.get(orbitId, s.departmentId);
+    return staffingView(s, department?.name ?? null);
+  }
+
+  // ---- a profile draft, for a form ------------------------------------------------------------------------------------
+
+  // A profile draft (POST /api/executive/drafts): the owner's description of the job, for a form being filled -- answered
+  // by the CEO in a conversation of its own (a turn of kind profile), read back when it ends. It hires nobody.
+  async draft(actor: Actor, owner: Owner, body: unknown, key: unknown): Promise<StoredAnswer> {
+    const req = accepted(checkProfileDraftRequest(body));
+    const scope = this.scopeOf(actor, "executive.draft", key);
+    const orbitId = actor.command.orbitId;
+    return this.governance.command(actor, "executive.draft", "new", async () => {
+      const prior = await this.idempotency.begin(scope, req);
+      if (prior !== null) return prior;
+      const office = await this.requireOffice(orbitId);
+      const ceo = await this.turns.ceo(orbitId, true);
+      if (req.departmentId !== null && (await this.departments.get(orbitId, req.departmentId)) === null) throw missing("The department");
+      const at = new Date().toISOString();
+      const c = await this.repo.insertConversation({ id: randomUUID(), orbitId, officeId: office.id, title: titleOf(`Profile: ${req.title.length > 0 ? req.title : req.description}`), userId: owner.userId, at });
+      const row = await this.repo.addMessage({ id: randomUUID(), orbitId, conversationId: c.id, role: "owner", authorName: owner.fullName || owner.username, userId: owner.userId, text: req.description, at });
+      const message = messageView(row as NonNullable<typeof row>, ceo.appointmentId);
+      await this.stream.publish(orbitId, c.id, "executive.message.created", { message }, null);
+      const turn = await this.turns.answer(orbitId, c.id, message.id, ceo, "profile");
+      const d = await this.drafts.insert({ id: randomUUID(), orbitId, conversationId: c.id, turnId: turn.id, userId: owner.userId, description: req.description, title: req.title, departmentId: req.departmentId, createdAt: at });
+      const accepted202: ProfileDraftAccepted = { draftId: d.id, conversationId: c.id, message, turn: turnView(turn) };
+      const answer: StoredAnswer = { status: 202, body: accepted202 };
+      await this.idempotency.complete(scope, req, answer);
+      await this.governance.recorded(actor, "executive.draft", "draft", d.id, 1, "asked");
+      this.db.afterCommit(() => this.bus.publishApp("executive.conversation.created", { conversationId: c.id }, accountAudience(office.orbitId)));
+      return answer;
+    });
+  }
+
+  async draftOf(orbitId: string, id: string): Promise<ProfileDraftView> {
+    await this.requireOffice(orbitId);
+    const d = isWorkforceId(id) ? await this.drafts.get(orbitId, id) : null;
+    if (d === null) throw missing("The draft");
+    return draftView(d);
   }
 
   // ---- Orbit's records ------------------------------------------------------------------------------------------------

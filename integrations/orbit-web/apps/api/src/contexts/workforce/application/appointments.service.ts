@@ -152,10 +152,13 @@ export class AppointmentsService {
       await this.governance.authorize(actor, "office.roster.manage", `employee:${employeeId}`, { employee: employeeId, target: req.target.kind === "employee" ? req.target.employeeId : req.target.departmentId });
       const grantee = isWorkforceId(employeeId) ? await this.employees.get(orbitId, employeeId, true) : null;
       if (grantee === null || grantee.data.employment === "archived" || grantee.data.employment === "deleted") throw missing("Employee");
+      // A temporary assistant is its lead's for one mission: a standing grant names permanent employees only, either way.
+      if (grantee.data.kind === "assistant") throw conflictWith("assistant_no_grant", `${grantee.data.name} is a temporary assistant, engaged for one mission: a delegation grant is a permanent employee's.`);
       if (req.target.kind === "employee") {
         if (req.target.employeeId === employeeId) throw conflictWith("delegation_to_self", "An employee gives work to others, never to itself.");
         const target = await this.employees.get(orbitId, req.target.employeeId);
         if (target === null || target.data.employment === "archived" || target.data.employment === "deleted") throw missing("Colleague");
+        if (target.data.kind === "assistant") throw conflictWith("assistant_no_grant", `${target.data.name} is a temporary assistant, engaged for one mission: only its lead gives it work, never a standing grant.`);
       } else {
         const d = await this.departments.get(orbitId, req.target.departmentId, "share");
         if (d === null || d.archivedAt !== null) throw missing("Department");
@@ -198,6 +201,7 @@ export class AppointmentsService {
   private async appointable(orbitId: string, employeeId: string, slot: Slot): Promise<Employee> {
     const e = await this.employees.get(orbitId, employeeId, true);
     if (e === null) throw missing("Employee");
+    if (e.data.kind === "assistant") throw conflictWith("assistant_not_appointable", `${e.data.name} is a temporary assistant, engaged for one mission: an appointment is held by a permanent employee.`);
     if (!WORKING.includes(e.data.employment)) throw conflictWith("employee_not_working", `${e.data.name} is ${e.data.employment}: only an employee on trial or active is appointed.`);
     if (slot.role === "manager" && e.data.departmentId !== slot.departmentId) throw conflictWith("manager_not_member", `A manager is a member of its department: move ${e.data.name} into it first.`);
     const other = await this.appointments.heldBy(orbitId, employeeId);

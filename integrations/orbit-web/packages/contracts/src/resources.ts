@@ -56,7 +56,9 @@ const GiB = 1024;
 
 // Suggestions that fill the form: not tied to a role, every employee may use custom values.
 export const DEFAULT_PRESETS: readonly ResourcePreset[] = [
-  { id: "lightweight", name: "Lightweight", description: "Writing, light analysis, small scripts.", profile: { presetId: "lightweight", cpuMillis: 1000, memoryMiB: 2 * GiB, deskStorageMiB: 5 * GiB, scratchStorageMiB: 5 * GiB, cacheStorageMiB: 1 * GiB, pidsLimit: 256, timeoutMinutes: 60 } },
+  // The default of every hire (and of an assistant): 500 MB of the account's storage held per employee -- 400 MB of desk
+  // and 100 MB of cache -- and 500 MB of scratch per attempt, enough for writing and light analysis.
+  { id: "lightweight", name: "Lightweight", description: "Writing, light analysis, small scripts: 500 MB of storage.", profile: { presetId: "lightweight", cpuMillis: 1000, memoryMiB: 2 * GiB, deskStorageMiB: 400, scratchStorageMiB: 500, cacheStorageMiB: 100, pidsLimit: 256, timeoutMinutes: 60 } },
   { id: "research", name: "Research", description: "Reading sources, downloading documents, data notebooks.", profile: { presetId: "research", cpuMillis: 1000, memoryMiB: 2 * GiB, deskStorageMiB: 10 * GiB, scratchStorageMiB: 5 * GiB, cacheStorageMiB: 2 * GiB, pidsLimit: 256, timeoutMinutes: 120 } },
   { id: "developer", name: "Developer", description: "Code, dependencies, unit tests.", profile: { presetId: "developer", cpuMillis: 2000, memoryMiB: 4 * GiB, deskStorageMiB: 20 * GiB, scratchStorageMiB: 10 * GiB, cacheStorageMiB: 5 * GiB, pidsLimit: 1024, timeoutMinutes: 240 } },
   { id: "build-test", name: "Build / Test", description: "Builds and test suites that use several cores.", profile: { presetId: "build-test", cpuMillis: 4000, memoryMiB: 8 * GiB, deskStorageMiB: 30 * GiB, scratchStorageMiB: 20 * GiB, cacheStorageMiB: 10 * GiB, pidsLimit: 2048, timeoutMinutes: 480 } },

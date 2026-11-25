@@ -1,7 +1,7 @@
 // What Execution reports to Work about a run (synchronous port, in the worker's transaction). Execution says what HAPPENED
 // (the run started, a handoff was submitted, a question was asked, the run ended and how); Work decides what it MEANS
 // for the assignment. Work registers its implementation, so Execution imports nothing of Work.
-import type { ClarificationKind, EmployeeProfile, RunState } from "@orbit-web/contracts";
+import type { ClarificationKind, EmployeeProfile, HireAssistantRequest, RunState } from "@orbit-web/contracts";
 import type { Actor } from "../../shared/application/commands.js";
 import type { AttemptRepository } from "./repository-bundles.port.js";
 
@@ -101,8 +101,12 @@ export interface AttemptContext {
     role: "ceo" | "manager_with_team" | "manager_alone" | "employee";
     denied: { name: string; why: string }[];
     connectorsDenied: string | null;
-    // Whether it may give parts of the work to anyone: its appointment in force or a person's grant (never a title).
+    // Whether it may give parts of the work to anyone: its appointment in force or a person's grant (never a title) --
+    // or, a manager in force, room in its quota to engage an assistant.
     canDelegate: boolean;
+    // Its temporary assistants, an appointee in force's only (null otherwise): its profile's maxAssistants, how many
+    // are engaged now, and how many more it may engage for this mission.
+    assistants: { max: number; engaged: number; left: number } | null;
     // Whom: employees (by appointment or grant) and departments (each to its manager in office).
     scope: { employees: { id: string; name: string; title: string; departmentName: string | null; via: string }[]; departments: { id: string; name: string; managerName: string | null; via: string }[] };
     units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; digest: string; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
@@ -153,8 +157,9 @@ export interface RunOutcomes {
   question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void>;
   ended(actor: Actor, assignmentId: string, fence: number, end: RunEnd): Promise<void>;
   recovering(actor: Actor, assignmentId: string, fence: number, reason: string): Promise<void>;
-  // A manager's plan: parts of its assignment given to colleagues (refused whole, with why).
-  delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number }>;
+  // A manager's plan: parts of its assignment given to colleagues -- and the assistants it engaged for them, by name
+  // (refused whole, with why).
+  delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number; engaged: string[] }>;
   // A lead's decision on one part it reviews, naming the digest of the hand-in it looked at.
   reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string, digest?: string | null): Promise<string>;
   // A lead answers its team's question, or moves it one level up saying why.
@@ -169,6 +174,9 @@ export interface DelegatedUnit {
   // Who takes it: an employee or a department (by id or exact name) its lead's authority reaches.
   employee?: string;
   department?: string;
+  // Or a temporary assistant the lead engages for it, within its quota: a manager's joins its department and takes the
+  // part; the CEO's joins the department the part names, whose manager takes the part.
+  hire?: HireAssistantRequest;
   title: string;
   goal: string;
   deliverables: { name: string; required: boolean }[];

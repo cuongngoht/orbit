@@ -78,10 +78,10 @@ export interface SandboxConfig {
 
 // Starting values of one model plane, per runtime: the CLI and its bridge, idle most of the time (it waits on the
 // model). Claude Code and Antigravity are Node programs; Codex is a native binary. The per-run peaks read from the model
-// plane's cgroup show an operator when to change them.
+// plane's cgroup show an operator when to change them. The one table: admission counts it, and the container is given it.
 export const MODEL_PLANE_DEFAULTS: Record<RuntimeKind, Amount> = {
   claude: { cpuMillis: 500, memoryMiB: 1024 },
-  codex: { cpuMillis: 500, memoryMiB: 512 },
+  codex: { cpuMillis: 500, memoryMiB: 768 },
   agy: { cpuMillis: 500, memoryMiB: 1024 },
 };
 

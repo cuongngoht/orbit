@@ -5,7 +5,7 @@
 // employee may leave its model and effort to. An account with no company yet is offered to activate it -- empty -- once
 // an AI connection of its own can be used.
 import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
 import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
@@ -25,11 +25,13 @@ import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { useConnections } from "../connections/AiConnectionsSection";
+import { useExecutiveState } from "../executive/api";
 import { office, useOfficeRead, type RosterQuery } from "./api";
 import { AppointmentDialog, AppointmentHolder, AppointmentMenu, type AppointmentEdit } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
 import { DefaultsDialog, DepartmentDialog, type DefaultsTarget, type DepartmentEdit } from "./DepartmentDialogs";
 import { HireWizard } from "./HireWizard";
+import { RecruitDialog } from "./RecruitDialog";
 import { AsOf, Callout, EmptyState, useOfficeStyles } from "./parts";
 import { OfficeFloorMap } from "./OfficeFloorMap";
 
@@ -331,7 +333,7 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
 
 // The unified company floor for one read of the roster, and any extra pages brought by "Load more".
 // `onAppointment`: the floor's appointment actions open the Overview's own dialog, which outlives a re-read roster.
-function RosterBody({ roster, filter, query, account, go, onAssign, onEdit, onAppointment }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void; onAppointment: (edit: AppointmentEdit) => void }) {
+function RosterBody({ roster, filter, query, account, go, onAssign, onEdit, onAppointment, onRecruit }: { roster: Roster; filter: string; query: RosterQuery; account: AuthAccount | null; go: Go; onAssign: (id: string) => void; onEdit: (e: DepartmentEdit) => void; onAppointment: (edit: AppointmentEdit) => void; onRecruit: ((departmentId: string) => void) | null }) {
   const { t } = useI18n();
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
@@ -369,6 +371,7 @@ function RosterBody({ roster, filter, query, account, go, onAssign, onEdit, onAp
         onOpenMission={(id) => go("mission", id)}
         onEditDepartment={onEdit}
         onAppointment={onAppointment}
+        onRecruit={onRecruit}
       />
       {error && (
         <MessageBar intent="error">
@@ -396,6 +399,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<WorkLabel | "all">("all");
   const [hiring, setHiring] = useState(false);
+  // A hiring request, for the whole company (null) or one department.
+  const [recruiting, setRecruiting] = useState<{ departmentId: string | null } | null>(null);
   const [assigning, setAssigning] = useState<{ employeeId: string | null } | null>(null);
   const [editing, setEditing] = useState<DepartmentEdit | null>(null);
   const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
@@ -411,6 +416,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const roster = useOfficeRead<Roster>(() => office.roster(query), [department, q, status], ["roster", "connections", "inbox"]);
   const connections = useConnections();
   const canHire = connections.data?.canHire === true;
+  // A hiring request is the CEO's to plan: offered when the CEO answers and a connection can run employees.
+  const executiveState = useExecutiveState();
+  const recruit = executiveState.data?.recruit ?? null;
 
   if (roster.data === null)
     return roster.error ? (
@@ -494,6 +502,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           <div className={o.row}>
             <Button className={o.touch} appearance="primary" icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
               {t("office.overview.hireEmployee")}
+            </Button>
+            <Button className={o.touch} icon={<PeopleAdd20Regular />} disabled={recruit?.ok !== true} title={recruit !== null && !recruit.ok ? (recruit.reason ?? undefined) : undefined} onClick={() => setRecruiting({ departmentId: null })} {...restore}>
+              {t("office.overview.recruit")}
             </Button>
             <Button className={o.touch} icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
               {t("office.overview.assignWork")}
@@ -616,7 +627,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </div>
         </ResponsiveSheet>
       )}
-      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} />
+      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} query={query} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null} />
       {hiring && (
         <HireWizard
           departments={r.departments}
@@ -625,6 +636,19 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           onHired={(e) => {
             setHiring(false);
             go("employee", e.id);
+          }}
+        />
+      )}
+      {recruiting && (
+        <RecruitDialog
+          departments={r.departments}
+          departmentId={recruiting.departmentId}
+          companyDefaults={company.defaults ?? {}}
+          ceoName={executiveState.data?.ceo?.name ?? null}
+          onClose={() => setRecruiting(null)}
+          onOpenEmployee={(id) => {
+            setRecruiting(null);
+            go("employee", id);
           }}
         />
       )}

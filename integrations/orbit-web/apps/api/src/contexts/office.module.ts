@@ -59,6 +59,7 @@ import { SourcesCheck } from "./work/infrastructure/sources.check.js";
 import { MissionsController } from "./work/presentation/missions.controller.js";
 import { SchedulesController } from "./work/presentation/schedules.controller.js";
 import { AppointmentsService } from "./workforce/application/appointments.service.js";
+import { AssistantReleases } from "./workforce/application/assistant-releases.js";
 import { EmployeeEligibility } from "./workforce/application/eligibility.js";
 import { DeskService } from "./workforce/application/desk.service.js";
 import { EmployeeQueries } from "./workforce/application/employee.queries.js";
@@ -78,6 +79,11 @@ import { ExecutiveReports } from "./executive/application/executive-reports.js";
 import { ExecutiveService } from "./executive/application/executive.service.js";
 import { ExecutiveNotices } from "./executive/application/notices.consumer.js";
 import { TurnRunner } from "./executive/application/turn-runner.js";
+import { StaffingRunner } from "./executive/application/staffing.js";
+import { ProfileDrafts } from "./executive/application/drafts.js";
+import { TurnTasks } from "./executive/application/turn-tasks.js";
+import { DraftRepository } from "./executive/infrastructure/drafts.repository.js";
+import { StaffingRepository } from "./executive/infrastructure/staffing.repository.js";
 import { ExecutiveTurns } from "./executive/application/turns.js";
 import { ExecutiveRepository } from "./executive/infrastructure/executive.repository.js";
 import { ExecutiveStream } from "./executive/infrastructure/executive-stream.js";
@@ -103,6 +109,7 @@ const PROVIDERS: Provider[] = [
   EmployeeQueries,
   DeskService,
   SandboxProvisioner,
+  AssistantReleases,
   // work
   MissionRepository,
   AssignmentRepository,
@@ -142,6 +149,11 @@ const PROVIDERS: Provider[] = [
   ExecutiveStream,
   ExecutiveTurns,
   ExecutiveReports,
+  StaffingRepository,
+  StaffingRunner,
+  DraftRepository,
+  ProfileDrafts,
+  TurnTasks,
   TurnRunner,
   ExecutiveService,
   ExecutiveNotices,

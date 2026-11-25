@@ -702,6 +702,7 @@ export function OfficeFloorMap({
   onOpenMission,
   onEditDepartment,
   onAppointment,
+  onRecruit = null,
 }: {
   groups: FloorGroup[];
   ceo?: AppointmentSummary | null;
@@ -715,6 +716,8 @@ export function OfficeFloorMap({
   // A change of a department's manager, when the page holds the dialog itself; without it the floor asks in its own
   // (the change moves the roster, which the page reads again when the office says so).
   onAppointment?: (edit: AppointmentEdit) => void;
+  // A hiring request for one department, when the CEO can plan one now (null: not offered).
+  onRecruit?: ((departmentId: string) => void) | null;
 }) {
   const { t } = useI18n();
   const s = useStyles();
@@ -1015,6 +1018,7 @@ export function OfficeFloorMap({
                   </div>
                   {g.department && (
                     <AppointmentMenu slot={{ role: "manager", department: g.department, incumbent: g.department.manager ?? null }} label={t("office.floor.actionsForDept", { name: g.department.name })} onPick={pickAppointment}>
+                      {onRecruit !== null && <MenuItem onClick={() => g.department && onRecruit(g.department.id)}>{t("office.floor.recruit")}</MenuItem>}
                       <MenuItem onClick={() => g.department && onEditDepartment({ kind: "rename", department: g.department })}>{t("office.floor.rename")}</MenuItem>
                       <MenuItem onClick={() => g.department && onEditDepartment({ kind: "archive", department: g.department })}>{t("office.floor.archive")}</MenuItem>
                     </AppointmentMenu>

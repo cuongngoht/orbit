@@ -63,7 +63,9 @@ import { AppointmentStateBadge } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
 import { AccessTab } from "./EmployeeAccessTab";
 import { useConnections } from "../connections/AiConnectionsSection";
-import { DefaultsThatApply, INHERITED, inheritsModel, usableForEmployees } from "./HireWizard";
+import { useExecutiveState } from "../executive/api";
+import { DraftWithAi, type DraftFields } from "./DraftWithAi";
+import { AssistantsField, DefaultsThatApply, INHERITED, inheritsModel, usableForEmployees } from "./HireWizard";
 import { AsOf, Callout, EmptyState, ProblemBar, StateBadge, WorkLabelBadge, useAction, useOfficeStyles, when } from "./parts";
 import { EmployeeDeskScene, deskMoodText } from "./VirtualDesk";
 import { ResourceFields, resourceProblems, storageProblem } from "./ResourceFields";
@@ -636,14 +638,33 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
   const [title, setTitle] = useState(p.title);
   const [duties, setDuties] = useState(p.duties);
   const [instructions, setInstructions] = useState(p.instructions);
+  const [skills, setSkills] = useState(p.skills.join(", "));
+  const [languages, setLanguages] = useState(p.languages.join(", "));
+  const [handoff, setHandoff] = useState(p.handoffStandard);
+  const [assistants, setAssistants] = useState(p.maxAssistants);
   const [note, setNote] = useState("");
-  const changed = title.trim() !== p.title || duties.trim() !== p.duties || instructions.trim() !== p.instructions;
-  const save = () => act.run(async () => onSaved(await office.updateEmployee(e, { profile: { ...p, title: title.trim(), duties: duties.trim(), instructions: instructions.trim() }, note: note.trim() })));
+  // Whether the CEO can draft this profile now.
+  const executiveState = useExecutiveState();
+  const listOf = (v: string): string[] => v.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
+  const changed = title.trim() !== p.title || duties.trim() !== p.duties || instructions.trim() !== p.instructions || listOf(skills).join("\n") !== p.skills.join("\n") || listOf(languages).join("\n") !== p.languages.join("\n") || handoff.trim() !== p.handoffStandard || assistants !== p.maxAssistants;
+  const save = () => act.run(async () => onSaved(await office.updateEmployee(e, { profile: { ...p, title: title.trim(), duties: duties.trim(), instructions: instructions.trim(), skills: listOf(skills), languages: listOf(languages), handoffStandard: handoff.trim(), maxAssistants: assistants }, note: note.trim() })));
   const reset = () => {
     setTitle(p.title);
     setDuties(p.duties);
     setInstructions(p.instructions);
+    setSkills(p.skills.join(", "));
+    setLanguages(p.languages.join(", "));
+    setHandoff(p.handoffStandard);
+    setAssistants(p.maxAssistants);
     setNote("");
+  };
+  const fill = (f: DraftFields) => {
+    setTitle(f.title);
+    setDuties(f.duties);
+    setInstructions(f.instructions);
+    setSkills(f.skills);
+    setLanguages(f.languages);
+    setHandoff(f.handoffStandard);
   };
   const restore = (revision: number) =>
     act.run(async () => {
@@ -682,6 +703,7 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
             )}
           </div>
           <div className={o.divider} />
+          <DraftWithAi form={{ title, duties, instructions, skills, languages, handoffStandard: handoff }} departmentId={e.departmentId} departmentName={null} state={executiveState.data} onFill={fill} />
           <Field label={t("office.hire.roleTitleLabel")} required>
             <Input value={title} onChange={(_, d) => setTitle(d.value)} />
           </Field>
@@ -691,6 +713,16 @@ function ProfileTab({ e, go, onSaved, onLoadLatest }: { e: EmployeeDetail; go: G
           <Field label={t("office.hire.instructionsLabel")} hint={t("office.employee.instructionsHint")}>
             <Textarea value={instructions} rows={5} resize="vertical" onChange={(_, d) => setInstructions(d.value)} />
           </Field>
+          <Field label={t("office.hire.skillsLabel")} hint={t("office.hire.languagesHint")}>
+            <Input value={skills} onChange={(_, d) => setSkills(d.value)} />
+          </Field>
+          <Field label={t("office.hire.languagesLabel")} hint={t("office.hire.languagesHint")}>
+            <Input value={languages} onChange={(_, d) => setLanguages(d.value)} />
+          </Field>
+          <Field label={t("office.hire.handoffLabel")} hint={t("office.hire.handoffHint")}>
+            <Input value={handoff} onChange={(_, d) => setHandoff(d.value)} />
+          </Field>
+          <AssistantsField value={assistants} onChange={setAssistants} />
           <Field label={t("office.employee.whyChangesLabel")} hint={t("office.employee.whyChangesHint")}>
             <Input value={note} placeholder={t("office.employee.whyChangesPlaceholder")} onChange={(_, d) => setNote(d.value)} />
           </Field>

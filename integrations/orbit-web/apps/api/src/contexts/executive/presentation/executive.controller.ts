@@ -12,10 +12,16 @@
 //   POST  /api/executive/conversations/:id/missions       (Idempotency-Key) { proposalMessageId, mission, expectedAssignee }
 //   POST  /api/executive/conversations/:id/proposals/:messageId/dismiss set a proposal aside
 //   GET   /api/executive/conversations/:id/events                      the conversation's stream (Last-Event-ID)
+//   POST  /api/executive/staffing                           (Idempotency-Key) { requirement, departmentId, execution, resources }:
+//                                                                      a hiring request, planned by the CEO, carried out at once
+//   GET   /api/executive/staffing/:id                                  a hiring request as it stands
+//   POST  /api/executive/drafts                             (Idempotency-Key) { description, title, departmentId }: a
+//                                                                      profile drafted by the CEO for a form (hires nobody)
+//   GET   /api/executive/drafts/:id                                    a draft as it stands
 //
 // Every route but the first answers 409 office_not_set_up when the account has no company.
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
-import type { ExecutiveConversationDetail, ExecutiveConversationList, ExecutiveMessage, ExecutiveMessagePage, ExecutiveState, ExecutiveTurn } from "@orbit-web/contracts";
+import type { ExecutiveConversationDetail, ExecutiveConversationList, ExecutiveMessage, ExecutiveMessagePage, ExecutiveState, ExecutiveTurn, ProfileDraftView, StaffingView } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
 import { viewer } from "../../../common/request-scope.js";
 import { ownerActor } from "../../shared/application/commands.js";
@@ -93,5 +99,27 @@ export class ExecutiveController {
   @Get("conversations/:id/events")
   async events(@Param("id") id: string, @Req() req: Request, @Res() res: Response): Promise<void> {
     await this.executive.events(viewer(), id, req, res);
+  }
+
+  @Post("staffing")
+  async recruit(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<unknown> {
+    const actor = ownerActor();
+    return sendStored(res, await this.executive.recruit(actor, viewer(), body, req.headers["idempotency-key"]));
+  }
+
+  @Get("staffing/:id")
+  staffing(@Param("id") id: string): Promise<StaffingView> {
+    return this.executive.staffingOf(ownerActor().command.orbitId, id);
+  }
+
+  @Post("drafts")
+  async draft(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<unknown> {
+    const actor = ownerActor();
+    return sendStored(res, await this.executive.draft(actor, viewer(), body, req.headers["idempotency-key"]));
+  }
+
+  @Get("drafts/:id")
+  draftOf(@Param("id") id: string): Promise<ProfileDraftView> {
+    return this.executive.draftOf(ownerActor().command.orbitId, id);
   }
 }

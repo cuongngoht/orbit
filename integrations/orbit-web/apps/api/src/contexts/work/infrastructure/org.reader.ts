@@ -10,6 +10,9 @@ import type { AuthorityFacts } from "../domain/authority.js";
 import type { SlotFacts } from "../domain/target.js";
 
 const WORKING = "e.employment IN ('probation', 'active') AND (e.expires_at IS NULL OR e.expires_at > now())";
+// Working ON ONE MISSION: a temporary assistant counts only on the mission it was engaged for -- elsewhere it changes
+// nobody's role or delegation scope (a mission-less read, $2 null, counts none).
+const WORKING_ON = `${WORKING} AND (e.mission_scope IS NULL OR e.mission_scope = $2)`;
 
 @Injectable()
 export class OrgReader {
@@ -27,7 +30,8 @@ export class OrgReader {
     return rows.map((r) => String(r.employee_id));
   }
 
-  async authority(orbitId: string, employeeId: string, chain: readonly string[]): Promise<AuthorityFacts> {
+  // The facts of one assignment's standing, on its mission (`missionId`: an assistant of another mission is not there).
+  async authority(orbitId: string, employeeId: string, chain: readonly string[], missionId: string | null): Promise<AuthorityFacts> {
     const own = await this.db.one("SELECT role, department_id FROM workforce.appointments WHERE account_id = $1 AND employee_id = $2 AND state = 'active'", [orbitId, employeeId]);
     const managers = await this.db.query(
       `SELECT a.id, a.employee_id, a.department_id, a.slot_revision, e.name, p.profile->>'title' AS title, d.name AS department_name
@@ -35,17 +39,17 @@ export class OrgReader {
        JOIN workforce.employees e ON e.account_id = a.account_id AND e.id = a.employee_id
        JOIN workforce.employee_profiles p ON p.account_id = e.account_id AND p.employee_id = e.id AND p.revision = e.profile_revision
        JOIN workforce.departments d ON d.account_id = a.account_id AND d.id = a.department_id
-       WHERE a.account_id = $1 AND a.role = 'manager' AND a.state = 'active' AND d.archived_at IS NULL AND ${WORKING}
+       WHERE a.account_id = $1 AND a.role = 'manager' AND a.state = 'active' AND d.archived_at IS NULL AND ${WORKING_ON}
        ORDER BY d.name, d.id`,
-      [orbitId],
+      [orbitId, missionId],
     );
     const working = await this.db.query(
       `SELECT e.id, e.name, p.profile->>'title' AS title, e.department_id, d.name AS department_name
        FROM workforce.employees e
        JOIN workforce.employee_profiles p ON p.account_id = e.account_id AND p.employee_id = e.id AND p.revision = e.profile_revision
        LEFT JOIN workforce.departments d ON d.account_id = e.account_id AND d.id = e.department_id
-       WHERE e.account_id = $1 AND ${WORKING} ORDER BY e.name, e.id`,
-      [orbitId],
+       WHERE e.account_id = $1 AND ${WORKING_ON} ORDER BY e.name, e.id`,
+      [orbitId, missionId],
     );
     const departments = await this.db.query("SELECT id, name FROM workforce.departments WHERE account_id = $1 AND archived_at IS NULL ORDER BY name, id", [orbitId]);
     const grants = await this.db.query("SELECT target_kind, target_employee_id, target_department_id FROM workforce.delegation_grants WHERE account_id = $1 AND employee_id = $2 AND state = 'active' ORDER BY granted_at, id", [orbitId, employeeId]);

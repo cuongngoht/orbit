@@ -30,6 +30,8 @@ import {
   type ResourcePreset,
   type ResourceProfile,
   type ResourceSummary,
+  RUNTIME_KINDS,
+  type RuntimeKind,
   type StorageCategory,
   type UpdateBudgetRequest,
 } from "@orbit-web/contracts";
@@ -39,8 +41,8 @@ import type { AppConfig } from "../../../config/config.js";
 import { APP_CONFIG } from "../../../core/tokens.js";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 import { refused, stale, unprocessable } from "../../shared/domain.js";
-import { loadSandboxConfig, type SandboxConfig } from "../../../config/sandbox-config.js";
-import { infrastructureCapacity } from "../infrastructure/sandbox/capacity.js";
+import { loadSandboxConfig, MODEL_PLANE_DEFAULTS, type Reserve, type SandboxConfig } from "../../../config/sandbox-config.js";
+import { infrastructureCapacity, reserveOf } from "../infrastructure/sandbox/capacity.js";
 import { SANDBOX_PROVIDER, type HostCapabilities, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 
 const sandboxConfigOrNull = (env: AppConfig["sourceEnv"]): SandboxConfig | null => {
@@ -62,14 +64,6 @@ interface Amounts3 {
   memoryMiB: number;
   storageMiB: number;
 }
-
-// Starting values for what each runtime's model plane (the CLI) reserves beside the employee's own limits. The peaks each
-// run records show the operator when to change them (ORBIT_WEB_MODEL_PLANE_<RUNTIME>_CPU / _MEMORY).
-const MODEL_PLANE_DEFAULTS: Record<string, { cpuMillis: number; memoryMiB: number }> = {
-  claude: { cpuMillis: 500, memoryMiB: 1024 },
-  codex: { cpuMillis: 500, memoryMiB: 768 },
-  agy: { cpuMillis: 500, memoryMiB: 1024 },
-};
 
 // At a start, how often (and how far apart) the sandbox provider is asked before the capacity is left as it was: the
 // allocator starts beside Orbit Web.
@@ -115,12 +109,6 @@ export function followAuthorization(before: Pick<AccountResourceBudget, "cpuMill
 
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms).unref());
 
-const num = (v: string | undefined): number | null => {
-  if (v === undefined || v.trim() === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
-};
-
 const budgetOf = (r: Row): AccountResourceBudget => ({
   cpuMillis: Number(r.cpu_millis),
   memoryMiB: Number(r.memory_mib),
@@ -151,15 +139,19 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
   ) {}
 
+  private planes: Record<RuntimeKind, { cpuMillis: number; memoryMiB: number }> | null = null;
+
   presets(): ResourcePreset[] {
     return DEFAULT_PRESETS.map((p) => ({ ...p, profile: { ...p.profile } }));
   }
 
+  // What one attempt's model plane reserves beside the employee's own limits: the sandbox configuration's amounts
+  // (ORBIT_WEB_MODEL_PLANE_<RUNTIME>_CPU / _MEMORY, read in its units: "0.5", "768m", "2g"), the ONE reading of them --
+  // what admission counts is what the container is given.
   modelPlane(runtime: string): { cpuMillis: number; memoryMiB: number } {
-    const d = MODEL_PLANE_DEFAULTS[runtime] ?? { cpuMillis: 500, memoryMiB: 1024 };
-    const env = this.config.sourceEnv;
-    const key = runtime.toUpperCase();
-    return { cpuMillis: num(env[`ORBIT_WEB_MODEL_PLANE_${key}_CPU`]) ?? d.cpuMillis, memoryMiB: num(env[`ORBIT_WEB_MODEL_PLANE_${key}_MEMORY`]) ?? d.memoryMiB };
+    this.planes ??= sandboxConfigOrNull(this.config.sourceEnv)?.modelPlane ?? MODEL_PLANE_DEFAULTS;
+    const amount = Object.hasOwn(this.planes, runtime) ? this.planes[runtime as RuntimeKind] : MODEL_PLANE_DEFAULTS.claude;
+    return { cpuMillis: amount.cpuMillis, memoryMiB: amount.memoryMiB };
   }
 
   onApplicationBootstrap(): void {
@@ -233,12 +225,13 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     return this.keepCapacity(this.measure(await this.probe()));
   }
 
-  // What the host gives employees, from a probe (null: this process's own host) and the operator's settings.
+  // What the host gives employees, from a probe (null: this process's own host) and the operator's settings -- read in
+  // their ONE reading (sandbox-config.ts: "1.5" vCPUs or "500m", "8g", "10%"), whichever way the host is measured.
   private measure(probe: HostCapabilities | null): InfrastructureCapacity {
     const env = this.config.sourceEnv;
-    const sandbox = probe === null ? null : sandboxConfigOrNull(env);
+    const sandbox = sandboxConfigOrNull(env);
     if (probe !== null && sandbox !== null) return infrastructureCapacity(probe, sandbox);
-    const configured = { cpuMillis: num(env.ORBIT_WEB_CAPACITY_CPU), memoryMiB: num(env.ORBIT_WEB_CAPACITY_MEMORY), storageMiB: num(env.ORBIT_WEB_CAPACITY_STORAGE) };
+    const configured = sandbox?.capacity ?? { cpuMillis: null, memoryMiB: null, storageMiB: null };
     const anyConfigured = configured.cpuMillis !== null || configured.memoryMiB !== null || configured.storageMiB !== null;
     const detected = this.detected(probe);
     const total: Amounts3 = {
@@ -246,10 +239,14 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
       memoryMiB: configured.memoryMiB ?? detected.memoryMiB,
       storageMiB: configured.storageMiB ?? detected.storageMiB,
     };
+    // A reserve the operator named, as named; none named: a larger one than a probed host's (nothing here knows the
+    // control plane's own limits).
+    const reserve = (name: string, r: Reserve | undefined, of: number, otherwise: number): number => (env[name]?.trim() && r !== undefined ? reserveOf(r, of) : otherwise);
+    const named = sandbox?.headroom.reserve;
     const headroom: Amounts3 = {
-      cpuMillis: num(env.ORBIT_WEB_CAPACITY_RESERVE_CPU) ?? Math.max(1000, Math.round(total.cpuMillis * 0.2)),
-      memoryMiB: num(env.ORBIT_WEB_CAPACITY_RESERVE_MEMORY) ?? Math.max(2048, Math.round(total.memoryMiB * 0.25)),
-      storageMiB: num(env.ORBIT_WEB_CAPACITY_RESERVE_STORAGE) ?? Math.max(10 * 1024, Math.round(total.storageMiB * 0.1)),
+      cpuMillis: reserve("ORBIT_WEB_CAPACITY_RESERVE_CPU", named?.cpu, total.cpuMillis, Math.max(1000, Math.round(total.cpuMillis * 0.2))),
+      memoryMiB: reserve("ORBIT_WEB_CAPACITY_RESERVE_MEMORY", named?.memory, total.memoryMiB, Math.max(2048, Math.round(total.memoryMiB * 0.25))),
+      storageMiB: reserve("ORBIT_WEB_CAPACITY_RESERVE_STORAGE", named?.storage, total.storageMiB, Math.max(10 * 1024, Math.round(total.storageMiB * 0.1))),
     };
     const usable: Amounts3 = { cpuMillis: Math.max(0, total.cpuMillis - headroom.cpuMillis), memoryMiB: Math.max(0, total.memoryMiB - headroom.memoryMiB), storageMiB: Math.max(0, total.storageMiB - headroom.storageMiB) };
     const storage = probe?.storage ?? { mechanism: "measured" as const, perArea: "SOFT_MONITORED" as const, hostProtection: "UNSUPPORTED" as const, evidence: "No container sandbox provider is configured: storage is measured, never enforced by the kernel.", probedAt: new Date().toISOString() };
@@ -359,6 +356,18 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     }
   }
 
+  // How many hires of this profile the account can take now: none above a per-employee limit (and why); else as many as
+  // the storage budget's room holds, each committing its desk and cache. What a batch of hires is bounded by.
+  async hiresThatFit(orbitId: string, profile: ResourceProfile): Promise<{ fit: number; why: string | null }> {
+    const b = await this.budget(orbitId, false);
+    const problems = ceilingProblems(profile, b.perEmployee);
+    if (problems.length > 0) return { fit: 0, why: `the resources are above the account's per-employee limits: ${problems.join("; ")}` };
+    const committed = await this.committedStorage(orbitId);
+    const each = profile.deskStorageMiB + profile.cacheStorageMiB;
+    const fit = each <= 0 ? Number.MAX_SAFE_INTEGER : Math.max(0, Math.floor((b.storageMiB - committed) / each));
+    return { fit, why: fit > 0 ? null : `the account's storage budget is ${b.storageMiB} MiB, ${committed} MiB of it committed; one hire needs ${each} MiB` };
+  }
+
   // Quotas promised (desks, caches, team rooms) + scratch held by admitted attempts + measured use of what has no quota.
   async committedStorage(orbitId: string): Promise<number> {
     const row = await this.db.one(
@@ -431,7 +440,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
       running: Number(counts?.running ?? 0),
       waiting: Number(counts?.waiting ?? 0),
       unschedulable: Number(counts?.unschedulable ?? 0),
-      modelPlane: Object.keys(MODEL_PLANE_DEFAULTS).map((runtime) => ({ runtime, ...this.modelPlane(runtime) })),
+      modelPlane: RUNTIME_KINDS.map((runtime) => ({ runtime, ...this.modelPlane(runtime) })),
       observed: await this.observed(orbitId),
       asOf: new Date().toISOString(),
     };

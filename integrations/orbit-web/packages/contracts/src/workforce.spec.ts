@@ -128,8 +128,12 @@ test("a change of an employee names what changes, and a restore the revision it 
   assert.deepEqual(checkEmployment({ command: "suspend", reason: " audit ", held: "keep_paused" }), { ok: true, value: { command: "suspend", reason: "audit", held: "keep_paused" } });
   assert.deepEqual(checkEmployment({ command: "activate" }), { ok: true, value: { command: "activate", reason: "" } });
   assert.deepEqual(errorsOf(checkEmployment({ command: "fire", held: "drop" })), ["command must be one of start_probation, activate, reject, suspend, reinstate, archive, delete", "held must be keep_paused or cancel"]);
-  assert.deepEqual(checkHireAssistant({ name: "Helper", ttlMinutes: 60, missionId: id(3), profile: PROFILE }), { ok: true, value: { name: "Helper", ttlMinutes: 60, missionId: id(3), profile: PROFILE } });
-  assert.deepEqual(errorsOf(checkHireAssistant({ name: "Helper", ttlMinutes: 7 * 24 * 60 + 1, missionId: "m", profile: PROFILE })), ["ttlMinutes must be 1 minute to 7 days", "missionId must be a mission id"]);
+  // An assistant a lead's plan engages: who it is, never how long or on what -- its mission decides the one, its
+  // department's defaults (else its lead's own) the other.
+  assert.deepEqual(checkHireAssistant({ name: " Tâm ", title: "Research assistant", duties: " Drafts the notes. ", skills: ["writing"], languages: ["vi", "en"] }), { ok: true, value: { name: "Tâm", title: "Research assistant", duties: "Drafts the notes.", skills: ["writing"], languages: ["vi", "en"] } });
+  assert.deepEqual(checkHireAssistant({ name: "Helper", title: "Assistant" }), { ok: true, value: { name: "Helper", title: "Assistant", duties: "", skills: [], languages: [] } });
+  assert.deepEqual(errorsOf(checkHireAssistant({ name: "", title: "x".repeat(121), skills: "writing", ttlMinutes: 60 })), ["ttlMinutes is not a field of this request", "name must be 1-80 printable characters", "title must be 1-120 printable characters", "skills must be a short list of short lines"]);
+  assert.deepEqual(errorsOf(checkHireAssistant("Helper")), ["the body must be a JSON object"]);
 });
 
 test("a mission: its goal and brief, a title from the goal's first line when none is given, and every default said", () => {

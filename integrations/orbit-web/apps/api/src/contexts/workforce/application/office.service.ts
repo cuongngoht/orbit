@@ -92,7 +92,8 @@ export class OfficeService {
       handoffStandard: "Hand in every required deliverable as a file, with a summary of what was done and how it was checked.",
       reportingRule: "Say what is not supported by a source, and ask when something blocks the work.",
       canDelegate: false,
-      maxAssistants: 0,
+      // A lead (the CEO, a department's manager) engages up to this many temporary assistants at once; 0 turns it off.
+      maxAssistants: 2,
       canHirePermanent: false,
     };
   }

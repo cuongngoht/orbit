@@ -7,9 +7,14 @@
 //   records   a quick action asks Orbit's own records: a deterministic report (no model), labelled as Orbit's, available
 //             while the CEO is busy or unavailable;
 //   work      an answer may PROPOSE a mission; it is inert until the owner gives it to the CEO in one click (the
-//             existing mission creation, `target: { kind: "ceo" }`, held to the responsible the owner saw).
+//             existing mission creation, `target: { kind: "ceo" }`, held to the responsible the owner saw);
+//   staff     the owner's HIRING REQUEST: the CEO plans who to hire (and the departments to make), and Orbit carries the
+//             plan out at once on the owner's authority, within the request's bounds (POST /api/executive/staffing);
+//   draft     a PROFILE DRAFT: the CEO drafts one employee's profile from the owner's description of the job; it only
+//             fills a form the owner reviews (Hire, an employee's profile), and hires nobody (POST /api/executive/drafts).
+import { checkResourceProfile, type ResourceProfile } from "./resources.js";
 import type { Checked } from "./validate.js";
-import { checkCreateMission, isWorkforceId, type CreateMissionRequest, type Deliverable, type Employment, type ExecutionSources, type ExpectedAssignee } from "./workforce.js";
+import { checkCreateMission, checkExecutionProfile, isWorkforceId, WORKFORCE_LIMITS, type CreateMissionRequest, type Deliverable, type Employment, type ExecutionProfile, type ExecutionSources, type ExpectedAssignee } from "./workforce.js";
 
 export const EXECUTIVE_LIMITS = {
   textLength: 8000,
@@ -52,6 +57,8 @@ export interface ExecutiveState {
   // Whether the CEO answers a message (now, or once its run ends), and whether work can be given to it now.
   converse: ExecutiveCapability;
   assign: ExecutiveCapability;
+  // Whether a hiring request can be sent now: the CEO answers, and a connection can run employees.
+  recruit: ExecutiveCapability;
 }
 
 export interface ExecutiveConversationSummary {
@@ -85,9 +92,10 @@ export type ProposalState = (typeof PROPOSAL_STATES)[number];
 export const EXECUTIVE_REPORT_KINDS = ["status", "missions", "departments", "resources", "decisions"] as const;
 export type ExecutiveReportKind = (typeof EXECUTIVE_REPORT_KINDS)[number];
 
-// A report from Orbit's own records (never a model's words): facts, and the items they are about.
+// A report from Orbit's own records (never a model's words): facts, and the items they are about. `staffing`: what a
+// hiring request carried out (Orbit's report of its own act, never asked for as a quick action).
 export interface ExecutiveReport {
-  kind: ExecutiveReportKind;
+  kind: ExecutiveReportKind | "staffing";
   title: string;
   at: string;
   facts: { label: string; value: string }[];
@@ -120,10 +128,17 @@ export interface ExecutiveMessage {
 export const EXECUTIVE_TURN_STATES = ["queued", "waiting", "running", "completed", "failed", "interrupted", "cancelled"] as const;
 export type ExecutiveTurnState = (typeof EXECUTIVE_TURN_STATES)[number];
 
+// What a turn asks of the CEO: an answer to the owner, the plan of a hiring request (carried out once it ends), or the
+// draft of one profile (never carried out: it only fills a form). Only an answer is asked again; a hiring request or a
+// draft is sent again.
+export const EXECUTIVE_TURN_KINDS = ["answer", "staffing", "profile"] as const;
+export type ExecutiveTurnKind = (typeof EXECUTIVE_TURN_KINDS)[number];
+
 // One answer of the CEO: to the owner's messages since its last one, by the CEO in office when they were sent.
 export interface ExecutiveTurn {
   id: string;
   conversationId: string;
+  kind: ExecutiveTurnKind;
   state: ExecutiveTurnState;
   requestMessageId: string;
   responseMessageId: string | null;
@@ -226,4 +241,220 @@ export function checkExecutiveMission(body: unknown): Checked<ExecutiveMissionRe
   if (errors.length > 0 || !mission.ok) return { ok: false, errors };
   const x = e as { employeeId: string; appointmentId: string | null; appointmentRevision: number | null };
   return { ok: true, value: { proposalMessageId: (body.proposalMessageId as string | null | undefined) ?? null, mission: mission.value, expectedAssignee: { employeeId: x.employeeId, appointmentId: x.appointmentId, appointmentRevision: x.appointmentRevision } } };
+}
+
+// ---- staffing: a hiring request, the CEO's plan, what was carried out -------------------------------------------------
+
+export const STAFFING_LIMITS = {
+  requirementLength: 4000,
+  // A plan's bounds: what one request may hire and the departments it may make.
+  hires: 10,
+  departments: 3,
+  dutiesLength: 2000,
+  instructionsLength: 4000,
+} as const;
+
+export const STAFFING_ROLES = ["member", "manager"] as const;
+export type StaffingRole = (typeof STAFFING_ROLES)[number];
+
+export const STAFFING_STATES = ["planning", "hired", "refused", "failed"] as const;
+export type StaffingState = (typeof STAFFING_STATES)[number];
+
+// POST /api/executive/staffing: the owner's hiring request. What every new hire runs on and holds is the OWNER's choice
+// (the CEO never picks a connection, a model or resources); the scope is one department, or the whole company.
+export interface HiringRequest {
+  requirement: string;
+  departmentId: string | null;
+  execution: ExecutionProfile;
+  resources: ResourceProfile;
+}
+
+// One employee of the CEO's plan: only what describes the person -- never what it runs on, holds or may do.
+export interface StaffingHire {
+  name: string;
+  // A live department's name, or one the plan makes.
+  department: string;
+  role: StaffingRole;
+  title: string;
+  duties: string;
+  instructions: string;
+  skills: string[];
+  languages: string[];
+}
+
+export interface StaffingPlan {
+  departments: { name: string }[];
+  hires: StaffingHire[];
+}
+
+export interface StaffingOutcome {
+  hired: { employeeId: string; name: string; departmentId: string; departmentName: string; role: StaffingRole }[];
+  departmentsCreated: { id: string; name: string }[];
+  appointed: { employeeId: string; name: string; departmentName: string }[];
+  // Why nothing was carried out (a refused or failed request).
+  problems: string[];
+}
+
+export interface StaffingView {
+  id: string;
+  state: StaffingState;
+  requirement: string;
+  departmentId: string | null;
+  departmentName: string | null;
+  execution: ExecutionProfile;
+  resources: ResourceProfile;
+  // The most this request may hire: the plan's bound and the storage budget's room, whichever is less.
+  maxHires: number;
+  conversationId: string;
+  turnId: string;
+  plan: StaffingPlan | null;
+  outcome: StaffingOutcome | null;
+  createdAt: string;
+  endedAt: string | null;
+}
+
+// What sending a hiring request answers: the request, and the CEO's turn that plans it.
+export interface StaffingAccepted {
+  staffingId: string;
+  conversationId: string;
+  message: ExecutiveMessage;
+  turn: ExecutiveTurn;
+}
+
+const oneLine = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim().length > 0 && v.trim().length <= max && !CONTROL.test(v) && !v.includes("\n") ? v.trim() : null);
+const text = (v: unknown, max: number): string | null => (typeof v === "string" && v.length <= max && !CONTROL.test(v) ? v.replace(/\r\n?/g, "\n").trim() : null);
+const items = (v: unknown): string[] | null => (Array.isArray(v) && v.length <= WORKFORCE_LIMITS.listItems && v.every((x) => oneLine(x, WORKFORCE_LIMITS.itemLength) !== null) ? v.map((x) => (x as string).trim()) : null);
+
+export function checkHiringRequest(body: unknown): Checked<HiringRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = Object.keys(body).filter((k) => !["requirement", "departmentId", "execution", "resources"].includes(k)).map((k) => `${k} is not a field of this request`);
+  const requirement = typeof body.requirement === "string" ? body.requirement.replace(/\r\n?/g, "\n").trim() : null;
+  if (requirement === null || requirement.length === 0 || requirement.length > STAFFING_LIMITS.requirementLength || CONTROL.test(requirement)) errors.push(`requirement must be 1-${STAFFING_LIMITS.requirementLength} printable characters`);
+  if (!(body.departmentId === null || body.departmentId === undefined || isWorkforceId(body.departmentId))) errors.push("departmentId must be a department's id, or null for the whole company");
+  const execution = checkExecutionProfile(body.execution);
+  if (!execution.ok) errors.push(...execution.errors.map((e) => `execution: ${e}`));
+  const resources = checkResourceProfile(body.resources);
+  if (!resources.ok) errors.push(...resources.errors.map((e) => `resources: ${e}`));
+  if (errors.length > 0 || !execution.ok || !resources.ok) return { ok: false, errors };
+  return { ok: true, value: { requirement: requirement as string, departmentId: (body.departmentId as string | null | undefined) ?? null, execution: execution.value, resources: resources.value } };
+}
+
+// The CEO's plan as Orbit takes it: its own fields only, each within its bounds. What a plan MEANS against the company
+// (which departments exist, who manages them, the budget) is decided where those are known.
+export function checkStaffingPlan(v: unknown): Checked<StaffingPlan> {
+  if (!isRecord(v)) return { ok: false, errors: ["the plan must be { departments, hires }"] };
+  const errors = Object.keys(v).filter((k) => k !== "departments" && k !== "hires").map((k) => `${k} is not a field of a staffing plan`);
+  const departments = v.departments === undefined ? [] : v.departments;
+  if (!Array.isArray(departments) || departments.length > STAFFING_LIMITS.departments) errors.push(`departments must be a list of at most ${STAFFING_LIMITS.departments}`);
+  const made = (Array.isArray(departments) ? departments : []).map((d, i) => {
+    const name = isRecord(d) ? oneLine(d.name, WORKFORCE_LIMITS.nameLength) : null;
+    if (!isRecord(d) || Object.keys(d).some((k) => k !== "name") || name === null) errors.push(`departments[${i}] must be { name } of 1-${WORKFORCE_LIMITS.nameLength} characters`);
+    return { name: name ?? "" };
+  });
+  const hires = v.hires;
+  if (!Array.isArray(hires) || hires.length === 0 || hires.length > STAFFING_LIMITS.hires) errors.push(`hires must be a list of 1-${STAFFING_LIMITS.hires}`);
+  const KEYS = ["name", "department", "role", "title", "duties", "instructions", "skills", "languages"];
+  const people = (Array.isArray(hires) ? hires : []).map((h, i): StaffingHire => {
+    const at = `hires[${i}]`;
+    if (!isRecord(h)) {
+      errors.push(`${at} must be an object`);
+      return { name: "", department: "", role: "member", title: "", duties: "", instructions: "", skills: [], languages: [] };
+    }
+    for (const k of Object.keys(h).filter((k) => !KEYS.includes(k))) errors.push(`${at}.${k} is not a field Orbit takes from a plan`);
+    const name = oneLine(h.name, WORKFORCE_LIMITS.nameLength);
+    const department = oneLine(h.department, WORKFORCE_LIMITS.nameLength);
+    const title = oneLine(h.title, WORKFORCE_LIMITS.titleLength);
+    const duties = h.duties === undefined ? "" : text(h.duties, STAFFING_LIMITS.dutiesLength);
+    const instructions = h.instructions === undefined ? "" : text(h.instructions, STAFFING_LIMITS.instructionsLength);
+    const skills = h.skills === undefined ? [] : items(h.skills);
+    const languages = h.languages === undefined ? [] : items(h.languages);
+    const role = h.role === undefined ? "member" : h.role;
+    if (name === null) errors.push(`${at}.name must be 1-${WORKFORCE_LIMITS.nameLength} characters on one line`);
+    if (department === null) errors.push(`${at}.department must name a department`);
+    if (title === null) errors.push(`${at}.title must be 1-${WORKFORCE_LIMITS.titleLength} characters on one line`);
+    if (duties === null) errors.push(`${at}.duties must be at most ${STAFFING_LIMITS.dutiesLength} characters`);
+    if (instructions === null) errors.push(`${at}.instructions must be at most ${STAFFING_LIMITS.instructionsLength} characters`);
+    if (skills === null) errors.push(`${at}.skills must be at most ${WORKFORCE_LIMITS.listItems} items of ${WORKFORCE_LIMITS.itemLength} characters`);
+    if (languages === null) errors.push(`${at}.languages must be at most ${WORKFORCE_LIMITS.listItems} items of ${WORKFORCE_LIMITS.itemLength} characters`);
+    if (!(STAFFING_ROLES as readonly unknown[]).includes(role)) errors.push(`${at}.role must be member or manager`);
+    return { name: name ?? "", department: department ?? "", role: role as StaffingRole, title: title ?? "", duties: duties ?? "", instructions: instructions ?? "", skills: skills ?? [], languages: languages ?? [] };
+  });
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value: { departments: made, hires: people } };
+}
+
+// ---- a profile draft: one employee's profile, drafted by the CEO for a form ------------------------------------------
+
+export const DRAFT_LIMITS = { descriptionLength: 2000 } as const;
+
+export const DRAFT_STATES = ["drafting", "ready", "failed"] as const;
+export type DraftState = (typeof DRAFT_STATES)[number];
+
+// POST /api/executive/drafts: what the job is, in the owner's words, for a form being filled (its title and department,
+// when known). Nothing is hired: the draft fills the form, and the owner decides.
+export interface ProfileDraftRequest {
+  description: string;
+  title: string;
+  departmentId: string | null;
+}
+
+// What a draft fills: a person's own description, never what it runs on, holds or may do.
+export interface ProfileDraft {
+  title: string;
+  duties: string;
+  instructions: string;
+  skills: string[];
+  languages: string[];
+  handoffStandard: string;
+}
+
+export interface ProfileDraftView {
+  id: string;
+  state: DraftState;
+  description: string;
+  conversationId: string;
+  turnId: string;
+  draft: ProfileDraft | null;
+  // Why there is no draft (a failed one).
+  problems: string[];
+  createdAt: string;
+  endedAt: string | null;
+}
+
+export interface ProfileDraftAccepted {
+  draftId: string;
+  conversationId: string;
+  message: ExecutiveMessage;
+  turn: ExecutiveTurn;
+}
+
+export function checkProfileDraftRequest(body: unknown): Checked<ProfileDraftRequest> {
+  if (!isRecord(body)) return NOT_OBJECT;
+  const errors = Object.keys(body).filter((k) => !["description", "title", "departmentId"].includes(k)).map((k) => `${k} is not a field of this request`);
+  const description = typeof body.description === "string" ? body.description.replace(/\r\n?/g, "\n").trim() : null;
+  if (description === null || description.length === 0 || description.length > DRAFT_LIMITS.descriptionLength || CONTROL.test(description)) errors.push(`description must be 1-${DRAFT_LIMITS.descriptionLength} printable characters`);
+  const title = body.title === undefined ? "" : typeof body.title === "string" && body.title.length <= WORKFORCE_LIMITS.titleLength && !CONTROL.test(body.title) ? body.title.trim() : null;
+  if (title === null) errors.push(`title must be at most ${WORKFORCE_LIMITS.titleLength} printable characters`);
+  if (!(body.departmentId === null || body.departmentId === undefined || isWorkforceId(body.departmentId))) errors.push("departmentId must be a department's id, or null");
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { description: description as string, title: title as string, departmentId: (body.departmentId as string | null | undefined) ?? null } };
+}
+
+// The CEO's draft as Orbit takes it: a profile's own descriptive fields, each within the profile's own bounds.
+export function checkProfileDraft(v: unknown): Checked<ProfileDraft> {
+  if (!isRecord(v)) return { ok: false, errors: ["the draft must be { title, duties, instructions, skills, languages, handoffStandard }"] };
+  const errors = Object.keys(v).filter((k) => !["title", "duties", "instructions", "skills", "languages", "handoffStandard"].includes(k)).map((k) => `${k} is not a field Orbit takes from a draft`);
+  const title = oneLine(v.title, WORKFORCE_LIMITS.titleLength);
+  const duties = v.duties === undefined ? "" : text(v.duties, WORKFORCE_LIMITS.textLength);
+  const instructions = v.instructions === undefined ? "" : text(v.instructions, WORKFORCE_LIMITS.textLength);
+  const handoffStandard = v.handoffStandard === undefined ? "" : text(v.handoffStandard, WORKFORCE_LIMITS.noteLength);
+  const skills = v.skills === undefined ? [] : items(v.skills);
+  const languages = v.languages === undefined ? [] : items(v.languages);
+  if (title === null) errors.push(`title must be 1-${WORKFORCE_LIMITS.titleLength} characters on one line`);
+  if (duties === null) errors.push(`duties must be at most ${WORKFORCE_LIMITS.textLength} characters`);
+  if (instructions === null) errors.push(`instructions must be at most ${WORKFORCE_LIMITS.textLength} characters`);
+  if (handoffStandard === null) errors.push(`handoffStandard must be at most ${WORKFORCE_LIMITS.noteLength} characters`);
+  if (skills === null) errors.push(`skills must be at most ${WORKFORCE_LIMITS.listItems} items of ${WORKFORCE_LIMITS.itemLength} characters`);
+  if (languages === null) errors.push(`languages must be at most ${WORKFORCE_LIMITS.listItems} items of ${WORKFORCE_LIMITS.itemLength} characters`);
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { title: title as string, duties: duties as string, instructions: instructions as string, skills: skills as string[], languages: languages as string[], handoffStandard: handoffStandard as string } };
 }

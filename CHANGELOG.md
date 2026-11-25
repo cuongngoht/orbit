@@ -80,6 +80,42 @@ down -v`). Nothing of rc01 is migrated (the owner's decision). `docker/compose.p
   attempts (it waits for one, said why, and one waits for it); quick actions show Orbit's own records; a mission the CEO
   proposes is given in one click through the existing mission creation, linked to the conversation, and the conversation
   is told how it goes. A replaced CEO's queued answer fails `ceo_changed`; what a former CEO said stays theirs.
+- **A CEO on OpenAI Codex answers** (ADR 0062). Each AI CLI that can answer in CEO Chat is a strategy of one registry
+  (`executive-runtimes.ts`; the turn's lifecycle names no runtime): Claude Code and OpenAI Codex. A Codex CEO answers
+  only once its installed binary was OBSERVED answering with that model holding no tool that acts -- no MCP server,
+  every executor off, the fixed prompt reaching the model, a project's `AGENTS.md` not read (run on codex-cli 0.169.0 in
+  the native tier) -- and any item that is not an answer stops the turn (`tool_refused`). A model not held, a connection
+  whose Codex home holds global instructions (`AGENTS.md`, `AGENTS.override.md`: Codex reads them whatever it is told)
+  or a spending cap Codex cannot keep refuses the turn (`runtime_unsupported`), saying why.
+- **Recruit: the owner's hiring request** (ADR 0062). One request -- what the company needs, for one department or the
+  whole company, on the connection, model, effort and resources the owner chose -- is planned by the CEO (who may make
+  up to 3 departments, each with exactly one manager) and carried out at once on the owner's authority: departments
+  made, everyone hired on probation, managers appointed, each through its own command and the policy. All or nothing,
+  every problem listed; at most 10 hires, never more than the storage budget holds; carried out once. Office →
+  Overview (*Recruit*), a department's menu (*Recruit for this department*), CEO Chat's quick actions;
+  `POST /api/executive/staffing`, `GET /api/executive/staffing/:id`. A staffing plan in an ordinary answer hires nobody.
+- **Draft with AI** (ADR 0062). In Hire's *Department & role* step and on an employee's profile, the CEO drafts the
+  title, duties, instructions, skills, languages and handoff standard from a few words about the job, in their
+  language. Empty fields are filled, what the owner wrote is replaced only when asked, *Undo* puts it back; it sets no
+  runtime, model, resources, delegation or probation, and hires nobody (`POST /api/executive/drafts`). The profile
+  editor now edits skills, languages and the handoff standard.
+- **Temporary assistants** (ADR 0061). The CEO and a manager in office may engage temporary assistants for the mission
+  they lead, through `delegate` (a part that carries `hire` instead of a name), up to their profile's *Temporary
+  assistants* (2 by default for new profiles, 0 turns it off; set in Hire and on the profile). Decided as the lead's
+  own `employee.hire_assistant` (a full quota is NO_GRANT, with the numbers); a plan with any problem engages nobody. An
+  assistant works on its mission alone, on the Lightweight preset, and is released (its desk and storage freed) when
+  the mission ends, its engagement expires (7 days at most) or its sandbox fails. Hiring a permanent employee stays
+  people-only.
+- **A 500 MB default.** The Lightweight preset, every new hire's default, holds 400 MB of desk and 100 MB of cache, and
+  500 MB of scratch per attempt.
+- **Work in parallel, up to the budget.** Independent parts given to different employees run at once while the
+  account's budget holds them (three at once on a budget of three; with two, the third waits, saying `The account
+  already runs 2 of its 2 concurrent attempts.`, and starts as a slot frees). A part that waits for another starts as
+  soon as its lead accepts that one, beside unrelated parts still running: the lead is woken for that result at once. A
+  CEO Chat answer that ends wakes the worker at once. The model plane's size
+  (`ORBIT_WEB_MODEL_PLANE_<RUNTIME>_CPU` / `_MEMORY`) and the capacity settings (`ORBIT_WEB_CAPACITY_*`) are read once,
+  in their documented units (`0.5`, `768m`, `2g`): admission had read them as plain integers (`2g` ignored, `0.5` as
+  0). Codex's model plane starts at 768 MiB.
 - **Questions go up the tree, and stop below the CEO; review follows it** (ADR 0061 §8). A part asks its lead, who is
   woken to answer; the asker resumes once. Only a root's own questions reach *Needs me*. A lead reviews its parts by the
   digest of the revision read and hands in only once they all ended; the person reviews the mission's result only. Every revision is kept as handed in (v1 asked to revise beside v2 accepted).

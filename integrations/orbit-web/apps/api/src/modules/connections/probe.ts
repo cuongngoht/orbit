@@ -22,7 +22,7 @@ import { endedHow, succeeded, type ProcessPort, type RunResult } from "../../inf
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { parseModelCatalog, PROBE_ARGS, PROBE_REQUEST } from "./claude-models.js";
 import { CODEX_BUNDLED_MODELS_ARGS, CODEX_MODELS_REQUEST, codexModelsOf, parseBundledCodexModels } from "./codex-models.js";
-import { CODEX_BRIDGE_MAIN, observeCodexSplit, type CodexSplit } from "./codex-split.js";
+import { CODEX_BRIDGE_MAIN, observeCodexSplit, observeCodexToolless, type CodexSplit } from "./codex-split.js";
 import { neutralizedCodexModel } from "../../contexts/execution/infrastructure/employee-runtimes.js";
 import { sha256 } from "../../infra/accounts/stores.js";
 import { supportOf } from "./methods.js";
@@ -291,7 +291,17 @@ export class ConnectionProbe {
   // made Orbit's: neutralizedCodexModel), and whether the installed binary was observed to hold a model plane running it
   // to Orbit's tools (codex-split.ts) -- observed once per version and entry. `file`: what the model plane is given as
   // its model catalog, only when held.
-  async codexEmployeeModel(c: { id: string; runtime: RuntimeKind; home: string }, model: string): Promise<CodexSplit & { file: string | null }> {
+  codexEmployeeModel(c: { id: string; runtime: RuntimeKind; home: string }, model: string): Promise<CodexSplit & { file: string | null }> {
+    return this.codexObservedModel(c, model, "split");
+  }
+
+  // A CEO'S CODEX MODEL, for an answer in CEO Chat: the same entry, and whether the installed binary was observed to
+  // answer with it holding NO tool that acts (codex-split.ts observeCodexToolless) -- observed once per version and entry.
+  codexToollessModel(c: { id: string; runtime: RuntimeKind; home: string }, model: string): Promise<CodexSplit & { file: string | null }> {
+    return this.codexObservedModel(c, model, "toolless");
+  }
+
+  private async codexObservedModel(c: { id: string; runtime: RuntimeKind; home: string }, model: string, kind: "split" | "toolless"): Promise<CodexSplit & { file: string | null }> {
     const installation = await this.installation("codex", INSTALLATION_MS);
     if (installation.state !== "installed") return { split: "unknown", reason: "OpenAI Codex is not installed here", file: null };
     const entries = await this.rawCodexEntries(c);
@@ -299,10 +309,10 @@ export class ConnectionProbe {
     if (own === null) return { split: "unknown", reason: `Codex did not give the catalog entry of ${model} for this connection`, file: null };
     const entry = neutralizedCodexModel(own);
     const file = JSON.stringify({ models: [entry] });
-    const key = `${installation.version ?? ""}:${sha256(file)}`;
+    const key = `${kind}:${installation.version ?? ""}:${sha256(file)}`;
     let observed = this.observations.get(key);
     if (observed === undefined) {
-      observed = this.observeCodex(model, entry);
+      observed = this.observeCodex(model, entry, kind);
       this.observations.set(key, observed);
       // An observation that could not be made is asked again next time.
       void observed.then((o) => (o.split === "unknown" ? this.observations.delete(key) : undefined));
@@ -311,11 +321,12 @@ export class ConnectionProbe {
     return { ...verdict, file: verdict.split === "yes" ? file : null };
   }
 
-  private observeCodex(model: string, entry: Record<string, unknown>): Promise<CodexSplit> {
+  private observeCodex(model: string, entry: Record<string, unknown>, kind: "split" | "toolless"): Promise<CodexSplit> {
     const scratchParent = join(this.d.config.data.home, "codex-probe");
     mkdirSync(scratchParent, { recursive: true, mode: 0o700 });
     const { CODEX_HOME: _home, ...env } = codexEnv(this.d.config, scratchParent);
-    return observeCodexSplit({ process: this.d.process, codex: this.binaryOf("codex"), node: process.execPath, bridge: CODEX_BRIDGE_MAIN, scratchParent, env, timeoutMs: OBSERVATION_TIMEOUT_MS }, { model, entry }).catch((err: unknown) => ({ split: "unknown" as const, reason: `the observation failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) }));
+    const deps = { process: this.d.process, codex: this.binaryOf("codex"), node: process.execPath, bridge: CODEX_BRIDGE_MAIN, scratchParent, env, timeoutMs: OBSERVATION_TIMEOUT_MS };
+    return (kind === "split" ? observeCodexSplit(deps, { model, entry }) : observeCodexToolless(deps, { model, entry })).catch((err: unknown) => ({ split: "unknown" as const, reason: `the observation failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) }));
   }
 
   // `codex debug models` in that connection's home: every model's whole entry, as its account's catalog has it.

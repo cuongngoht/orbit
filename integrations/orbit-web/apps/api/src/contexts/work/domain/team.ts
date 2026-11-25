@@ -17,9 +17,12 @@ export interface PlanPart {
 
 // Whether a lead waiting for its team has something to review now: a part's result waits for its decision, or every part
 // ended -- and no part is still being worked on. A part that waits for others it has not accepted yet is not "being
-// worked on": its lead's decisions are what it waits for.
+// worked on": its lead's decisions are what it waits for. One exception, so the team works in parallel: a result that a
+// queued part waits for is reviewed at once, whatever else is being worked on -- that part can start only on this
+// decision, beside the parts still running.
 export function readyToReview(units: readonly { key: string; state: AssignmentState; dependsOn: string[] }[]): boolean {
   if (units.length === 0) return false;
+  if (units.some((u) => u.state === "AWAITING_ACCEPTANCE" && units.some((w) => w.state === "QUEUED" && w.dependsOn.includes(u.key)))) return true;
   const done = new Set(units.filter((u) => u.state === "COMPLETED").map((u) => u.key));
   const working = units.some((u) => (u.state === "QUEUED" ? u.dependsOn.every((d) => done.has(d)) : !SETTLED.includes(u.state) && u.state !== "BLOCKED"));
   if (working) return false;

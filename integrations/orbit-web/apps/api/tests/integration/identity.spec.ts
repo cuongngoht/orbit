@@ -47,7 +47,18 @@ describe("the first administrator: one code, two browsers, one account", () => {
     const status = (await h.anonymous.get("/api/auth/status")).body as AuthStatus;
     assert.deepEqual([status.state, status.session, status.user, status.trial.enabled], ["setup_required", null, null, false]);
     assert.equal(status.setupCode, null, "no standing code unless the operator set one: the setup needs a printed code");
-    const open = new Set(["GET /api/health", "POST /api/access", "GET /api/auth/status", "POST /api/auth/login", "POST /api/auth/setup", "GET /api/shared/:token"]);
+    const open = new Set([
+      "GET /api/health",
+      "POST /api/access",
+      "GET /api/auth/status",
+      "POST /api/auth/login",
+      "POST /api/auth/mobile/login",
+      "POST /api/auth/mobile/refresh",
+      "POST /api/auth/mobile/exchange",
+      "POST /api/auth/mobile/logout",
+      "POST /api/auth/setup",
+      "GET /api/shared/:token",
+    ]);
     const routes = routesOf(h);
     assert.deepEqual(routes.filter((r) => r.open).map((r) => `${r.method} ${r.path}`).sort(), [...open].sort(), "nothing else is public");
     for (const r of routes.filter((x) => !x.open && !x.agent)) {

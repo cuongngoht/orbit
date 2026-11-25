@@ -16,12 +16,14 @@ import type { GovernanceContext, Owner } from "./principal.js";
 
 // What the identity steps are, for the audit record. Never a password, a code or a token: what happened, and its cause.
 export type IdentityEvent =
-  | { kind: "login_refused"; cause: "invalid_credentials" | "too_many_attempts" | "setup_required" }
+  | { kind: "login_refused"; cause: "invalid_credentials" | "too_many_attempts" | "setup_required"; route?: string }
   | { kind: "setup_code_used"; purpose: "first_admin" | "new_account" | "reset_password"; standing?: boolean }
   | { kind: "password_changed"; how: "changed" | "reset" }
   | { kind: "profile_changed"; fields: string[] }
   | { kind: "account_changed"; fields: string[] }
-  | { kind: "trial_started"; seeded: boolean };
+  | { kind: "trial_started"; seeded: boolean }
+  | { kind: "mobile_signed_in"; deviceId: string }
+  | { kind: "mobile_refresh_reused"; familyId: string };
 
 export interface CreatedAccount {
   accountId: string;

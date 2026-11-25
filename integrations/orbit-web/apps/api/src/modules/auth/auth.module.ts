@@ -9,6 +9,7 @@ import { AuthController } from "./auth.controller.js";
 import { AuthGuard } from "./auth.guard.js";
 import { AuthHooks } from "./auth-hooks.js";
 import { IdentityService } from "./identity.service.js";
+import { MobileAuthService } from "./mobile-auth.service.js";
 import { PrincipalResolver } from "./principals.js";
 import { ShareRecipients } from "./share-recipients.js";
 import { LoginThrottle } from "./throttle.js";
@@ -53,8 +54,8 @@ class StreamsEnd implements OnApplicationBootstrap, OnApplicationShutdown {
 
 @Global()
 @Module({
-  providers: [AuthHooks, AccountsService, IdentityService, LoginThrottle, PrincipalResolver, ShareRecipients, TrialSeed, StreamsEnd, { provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [AuthHooks, AccountsService, IdentityService, MobileAuthService, LoginThrottle, PrincipalResolver, ShareRecipients, TrialSeed, StreamsEnd, { provide: APP_GUARD, useClass: AuthGuard }],
   controllers: [AuthController],
-  exports: [AuthHooks, AccountsService, IdentityService, PrincipalResolver, ShareRecipients],
+  exports: [AuthHooks, AccountsService, IdentityService, MobileAuthService, PrincipalResolver, ShareRecipients],
 })
 export class AuthModule {}

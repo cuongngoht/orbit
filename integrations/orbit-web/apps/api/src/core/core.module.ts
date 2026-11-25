@@ -8,7 +8,7 @@
 import { type DynamicModule, Global, Inject, Injectable, Logger, Module, type OnApplicationShutdown, type Provider } from "@nestjs/common";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.js";
-import { AccountSettingsStore, AccountStore, BrowserSessionStore, LoginThrottleStore, SetupCodeStore, UserStore } from "../infra/accounts/stores.js";
+import { AccountSettingsStore, AccountStore, BrowserSessionStore, LoginThrottleStore, MobileAuthStore, SetupCodeStore, UserStore } from "../infra/accounts/stores.js";
 import { ConnectionStore, InstallationStore, PluginGrantStore } from "../infra/connections/stores.js";
 import { Db } from "../infra/db/db.js";
 import { migrate } from "../infra/db/migrate.js";
@@ -64,6 +64,7 @@ const STORES: (new (db: Db) => unknown)[] = [
   SetupCodeStore,
   LoginThrottleStore,
   BrowserSessionStore,
+  MobileAuthStore,
   AccountSettingsStore,
   ConnectionStore,
   InstallationStore,

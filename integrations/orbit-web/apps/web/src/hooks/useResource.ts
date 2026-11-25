@@ -43,6 +43,8 @@ export function useResource<T>(load: (() => Promise<T>) | null, deps: unknown[],
   }, [fetchNow]);
   const set = useCallback((value: T) => {
     setData(value);
+    setError(null);
+    setErrorCode(null);
     setLoadedAt(new Date().toISOString());
   }, []);
   useEffect(() => {

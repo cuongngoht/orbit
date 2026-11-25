@@ -18,7 +18,7 @@
 //   PATCH  /api/account              owner    { displayName?, companyName?, contactEmail?, timezone?, locale? } with
 //                                             If-Match: "<version>" (412 stale_version, 428 without it)
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Patch, Post, Req, Res } from "@nestjs/common";
-import type { AuthAccount, AuthStatus, AuthUser, SessionView } from "@orbit-web/contracts";
+import type { AuthAccount, AuthStatus, AuthUser, MobileTokenGrant, SessionView } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
@@ -28,6 +28,7 @@ import { cookieValue } from "../../infra/security/guards.js";
 import { AccountsService, type Issued } from "./accounts.service.js";
 import { Public } from "./decorators.js";
 import { IdentityService, type ClientOf } from "./identity.service.js";
+import { MobileAuthService } from "./mobile-auth.service.js";
 import { PrincipalResolver, SESSION_COOKIE } from "./principals.js";
 
 const header = (req: Request, name: string): string | undefined => {
@@ -40,6 +41,7 @@ export class AuthController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(IdentityService) private readonly identity: IdentityService,
+    @Inject(MobileAuthService) private readonly mobileAuth: MobileAuthService,
     @Inject(AccountsService) private readonly accounts: AccountsService,
     @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
   ) {}
@@ -56,6 +58,41 @@ export class AuthController {
   @HttpCode(200)
   async login(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: unknown): Promise<AuthStatus> {
     return this.signedIn(res, await this.retryAfter(res, () => this.identity.login(body, this.client(req))));
+  }
+
+  @Post("auth/mobile/login")
+  @Public()
+  @HttpCode(200)
+  mobileLogin(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: unknown): Promise<MobileTokenGrant> {
+    return this.retryAfter(res, () => this.mobileAuth.login(body, this.client(req)));
+  }
+
+  @Post("auth/mobile/refresh")
+  @Public()
+  @HttpCode(200)
+  mobileRefresh(@Req() req: Request, @Body() body: unknown): Promise<MobileTokenGrant> {
+    return this.mobileAuth.refresh(body, this.client(req));
+  }
+
+  @Post("auth/mobile/exchange")
+  @Public()
+  @HttpCode(200)
+  async mobileExchange(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: unknown): Promise<AuthStatus> {
+    return this.signedIn(res, await this.mobileAuth.exchange(body, this.client(req)));
+  }
+
+  @Post("auth/mobile/logout")
+  @Public()
+  @HttpCode(200)
+  async mobileLogout(@Req() req: Request, @Res({ passthrough: true }) res: Response, @Body() body: unknown): Promise<{ ok: true }> {
+    await this.mobileAuth.logout(body);
+    const token = cookieValue(req.headers.cookie, SESSION_COOKIE);
+    if (token !== null && token.length > 0) {
+      const resolved = await this.accounts.resolve(token);
+      if (resolved !== null) await this.accounts.endSession(resolved.owner);
+      this.clear(res);
+    }
+    return { ok: true };
   }
 
   @Post("auth/setup")

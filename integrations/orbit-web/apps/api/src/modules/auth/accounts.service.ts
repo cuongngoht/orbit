@@ -16,7 +16,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { ApiError } from "../../common/errors.js";
-import { AccountSettingsStore, AccountStore, BrowserSessionStore, sha256, UserStore, type AccountRecord, type BrowserSessionRecord, type UserRecord } from "../../infra/accounts/stores.js";
+import { AccountSettingsStore, AccountStore, BrowserSessionStore, MobileAuthStore, sha256, UserStore, type AccountRecord, type BrowserSessionRecord, type UserRecord } from "../../infra/accounts/stores.js";
 import { Db } from "../../infra/db/db.js";
 import { AuthHooks, type CreatedAccount } from "./auth-hooks.js";
 import { contextOf, type Owner } from "./principal.js";
@@ -101,6 +101,7 @@ export class AccountsService {
     @Inject(AccountStore) private readonly accounts: AccountStore,
     @Inject(UserStore) readonly users: UserStore,
     @Inject(BrowserSessionStore) private readonly sessions: BrowserSessionStore,
+    @Inject(MobileAuthStore) private readonly mobileAuth: MobileAuthStore,
     @Inject(AccountSettingsStore) readonly settings: AccountSettingsStore,
     @Inject(AuthHooks) private readonly hooks: AuthHooks,
   ) {}
@@ -216,9 +217,11 @@ export class AccountsService {
     if (session !== null) await this.end(session, reason);
   }
 
-  // Every session of a user ends (but `except`); their streams close. How many ended.
+  // Every session of a user ends (but `except`); their streams close, and any mobile refresh tokens are revoked. How many ended.
   async endUserSessions(userId: string, reason: string, except: string | null = null): Promise<number> {
-    const ended = await this.sessions.revokeUser(userId, new Date().toISOString(), reason, except);
+    const at = new Date().toISOString();
+    const ended = await this.sessions.revokeUser(userId, at, reason, except);
+    await this.mobileAuth.revokeUser(userId, at, reason);
     if (ended.length > 0) await this.hooks.sessionsEnded({ scope: "sessions", accountId: (ended[0] as { accountId: string }).accountId, sessionIds: ended.map((e) => e.id), reason });
     return ended.length;
   }

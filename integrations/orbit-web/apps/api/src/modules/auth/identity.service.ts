@@ -36,7 +36,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
 import { APP_CONFIG } from "../../core/tokens.js";
 import { accepted, ApiError } from "../../common/errors.js";
-import { AccountStore, SetupCodeStore, UserStore, type UserRecord } from "../../infra/accounts/stores.js";
+import { AccountStore, SetupCodeStore, UserStore, type AccountRecord, type UserRecord } from "../../infra/accounts/stores.js";
 import { Db } from "../../infra/db/db.js";
 import { AccountsService, accountView, userView, type Issued } from "./accounts.service.js";
 import { AuthHooks, type IdentityEvent } from "./auth-hooks.js";
@@ -108,35 +108,49 @@ export class IdentityService {
     return timingSafeEqual(Buffer.from(setupCodeHash(standing)), Buffer.from(hash));
   }
 
-  // A SIGN-IN. Counted first; then compared; then a new session.
-  async login(body: unknown, client: ClientOf): Promise<Issued> {
-    const req = accepted(checkLogin(body));
+  // Verifies username (and optionally verified email) + password with throttling, lockout, and dummy-hash timing safety.
+  async verifyCredentials(
+    identifier: string,
+    password: string,
+    client: Pick<ClientOf, "address">,
+    opts: { allowVerifiedEmail?: boolean; route?: string } = {},
+  ): Promise<{ user: UserRecord; account: AccountRecord }> {
     if ((await this.users.count()) === 0) {
-      await this.hooks.identity(systemContext("sign-in"), { kind: "login_refused", cause: "setup_required" });
+      await this.hooks.identity(systemContext("sign-in"), { kind: "login_refused", cause: "setup_required", ...(opts.route ? { route: opts.route } : {}) });
       throw new ApiError(HttpStatus.CONFLICT, SETUP_REQUIRED, "Nobody can sign in yet: set up the first administrator with the one-time code printed by `cli/governance.js owner setup-code`.");
     }
     const now = new Date().toISOString();
     const address = addressKey(client.address);
     try {
-      await this.throttle.attempt([{ key: usernameKey(req.username), rule: USERNAME_RULE }, { key: address, rule: ADDRESS_RULE }], now);
+      await this.throttle.attempt([{ key: usernameKey(identifier), rule: USERNAME_RULE }, { key: address, rule: ADDRESS_RULE }], now);
     } catch (err) {
-      await this.refused(null, "too_many_attempts");
+      await this.refused(null, "too_many_attempts", opts.route);
       throw err;
     }
-    const user = await this.users.byUsername(req.username);
+    let user = await this.users.byUsername(identifier);
+    if (user === null && opts.allowVerifiedEmail && identifier.includes("@")) {
+      user = await this.users.byVerifiedEmail(identifier);
+    }
     if (user !== null && user.lockedUntil !== null && Date.parse(user.lockedUntil) > Date.parse(now)) {
-      await this.refused(user, "too_many_attempts");
+      await this.refused(user, "too_many_attempts", opts.route);
       throw tooManyAttempts(user.lockedUntil);
     }
-    const matches = await verifyPassword(req.password, user?.passwordHash ?? (await this.dummy.get()));
+    const matches = await verifyPassword(password, user?.passwordHash ?? (await this.dummy.get()));
     const account = user === null ? null : await this.accountStore.get(user.accountId);
     if (!matches || user === null || account === null || user.disabledAt !== null || account.status !== "active") {
       if (user !== null) await this.failed(user, now);
-      await this.refused(user, "invalid_credentials");
+      await this.refused(user, "invalid_credentials", opts.route);
       throw invalidCredentials();
     }
-    await this.throttle.succeeded(req.username, address);
-    if (needsRehash(user.passwordHash, this.config.identity.kdf)) await this.users.rehash(user.id, await hashPassword(req.password, this.config.identity.kdf));
+    await this.throttle.succeeded(identifier, address);
+    if (needsRehash(user.passwordHash, this.config.identity.kdf)) await this.users.rehash(user.id, await hashPassword(password, this.config.identity.kdf));
+    return { user, account };
+  }
+
+  // A SIGN-IN. Counted first; then compared; then a new session.
+  async login(body: unknown, client: ClientOf): Promise<Issued> {
+    const req = accepted(checkLogin(body));
+    const { user } = await this.verifyCredentials(req.username, req.password, client);
     return this.accounts.issue(user, { previousToken: client.previousToken, userAgent: client.userAgent });
   }
 
@@ -257,8 +271,8 @@ export class IdentityService {
     if (lock !== null) await this.users.lock(user.id, new Date(Date.parse(now) + lock).toISOString());
   }
 
-  private async refused(user: UserRecord | null, cause: Extract<IdentityEvent, { kind: "login_refused" }>["cause"]): Promise<void> {
-    await this.hooks.identity(systemContext("sign-in", user?.accountId ?? null), { kind: "login_refused", cause });
+  private async refused(user: UserRecord | null, cause: Extract<IdentityEvent, { kind: "login_refused" }>["cause"], route?: string): Promise<void> {
+    await this.hooks.identity(systemContext("sign-in", user?.accountId ?? null), { kind: "login_refused", cause, ...(route ? { route } : {}) });
   }
 
   private async trialView(): Promise<AuthStatus["trial"]> {

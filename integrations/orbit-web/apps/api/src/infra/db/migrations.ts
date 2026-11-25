@@ -2070,6 +2070,59 @@ CREATE TABLE executive.events (
 
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier
 // build is upgraded; `cli/db.js reset` empties one). Later releases add migrations after it.
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "initial", sql: `${INITIAL}
+const MOBILE_AUTH = String.raw`
+-- Mobile refresh token families (long-lived tokens stay in iOS Keychain, never in WebView storage) and single-use
+-- short-lived exchange codes traded by the embedded WebView for a standard browser session cookie.
+CREATE TABLE app.mobile_refresh_tokens (
+  id uuid PRIMARY KEY,
+  family_id uuid NOT NULL,
+  token_hash text NOT NULL UNIQUE,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  user_id uuid NOT NULL,
+  device_id text NOT NULL,
+  device_name text,
+  user_agent text,
+  created_at timestamptz NOT NULL,
+  last_used_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  rotated_at timestamptz,
+  replaced_by uuid,
+  revoked_at timestamptz,
+  revoked_reason text,
+  UNIQUE (account_id, id),
+  FOREIGN KEY (account_id, user_id) REFERENCES app.users (account_id, id)
+);
+CREATE INDEX mobile_refresh_tokens_by_user ON app.mobile_refresh_tokens (user_id) WHERE revoked_at IS NULL AND rotated_at IS NULL;
+CREATE INDEX mobile_refresh_tokens_by_family ON app.mobile_refresh_tokens (family_id);
+CREATE TRIGGER mobile_refresh_tokens_account_fixed BEFORE UPDATE ON app.mobile_refresh_tokens FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+CREATE TABLE app.mobile_exchange_codes (
+  id uuid PRIMARY KEY,
+  code_hash text NOT NULL UNIQUE,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  user_id uuid NOT NULL,
+  refresh_token_id uuid NOT NULL,
+  created_at timestamptz NOT NULL,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  FOREIGN KEY (account_id, user_id) REFERENCES app.users (account_id, id),
+  FOREIGN KEY (account_id, refresh_token_id) REFERENCES app.mobile_refresh_tokens (account_id, id) ON DELETE CASCADE
+);
+CREATE INDEX mobile_exchange_codes_open ON app.mobile_exchange_codes (refresh_token_id) WHERE consumed_at IS NULL;
+CREATE TRIGGER mobile_exchange_codes_account_fixed BEFORE UPDATE ON app.mobile_exchange_codes FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+`;
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 1,
+    name: "initial",
+    sql: `${INITIAL}
 ${WORKFORCE}
-${EXECUTIVE}` }];
+${EXECUTIVE}`,
+  },
+  {
+    version: 2,
+    name: "mobile_auth",
+    sql: MOBILE_AUTH,
+  },
+];

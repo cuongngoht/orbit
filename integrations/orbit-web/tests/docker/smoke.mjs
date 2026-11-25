@@ -442,6 +442,8 @@ async function inBrowser(port) {
     await page.goto(`${url}/#/office`);
     const activate = page.getByRole("button", { name: "Activate the company" });
     await activate.waitFor({ timeout: 15_000 });
+    // The button is drawn (disabled) before the connections are read; the reason arrives with them -- wait for it, then count.
+    await page.getByText(/Connect an AI CLI first/).first().waitFor({ timeout: 15_000 }).catch(() => undefined);
     const why = await page.getByText(/Connect an AI CLI first/).count();
     const link = await page.getByRole("link", { name: "Open Settings → AI Connections" }).count();
     const preselected = await page.getByRole("checkbox").count();

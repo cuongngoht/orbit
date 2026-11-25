@@ -8,6 +8,8 @@ import { IconBadge, type IconTone } from "../../components/SectionIcons";
 import { t, useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
 import { errorText, isStale } from "../../services/api";
 import { useAppStream } from "../../services/events/AppEvents";
+import { readFloorPrefs, type AvatarCustomization } from "./floorPrefs";
+import { ChibiPortraitAvatar } from "./VirtualDesk";
 
 // The one sentence a person reads wherever an employee's network access matters: Governance, Hire → Review, Assign.
 export const NETWORK_DISCLOSURE = t("office.shared.networkDisclosure");
@@ -261,53 +263,22 @@ export function StateBadge({ text, state }: { text: string; state?: AssignmentSt
   );
 }
 
-const AVATAR_TONES = [
-  { bg: tokens.colorBrandBackground2, fg: tokens.colorBrandForeground1 },
-  { bg: tokens.colorPaletteTealBackground2, fg: tokens.colorPaletteTealForeground2 },
-  { bg: tokens.colorPaletteGrapeBackground2, fg: tokens.colorPaletteGrapeForeground2 },
-  { bg: tokens.colorPaletteMarigoldBackground2, fg: tokens.colorPaletteMarigoldForeground2 },
-  { bg: tokens.colorPaletteForestBackground2, fg: tokens.colorPaletteForestForeground2 },
-  { bg: tokens.colorPaletteBerryBackground2, fg: tokens.colorPaletteBerryForeground2 },
-] as const;
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return `${parts[0]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toUpperCase();
-}
-
-function toneIndexOf(name: string): number {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return hash % AVATAR_TONES.length;
-}
-
-export function EmployeeAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
-  const tone = AVATAR_TONES[toneIndexOf(name)]!;
-  const px = size === "sm" ? 30 : size === "lg" ? 48 : 38;
-  const fontSize = size === "sm" ? "11px" : size === "lg" ? "16px" : "13px";
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: `${px}px`,
-        height: `${px}px`,
-        borderRadius: "12px",
-        backgroundColor: tone.bg,
-        color: tone.fg,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 600,
-        fontSize,
-        letterSpacing: "0.02em",
-        flexShrink: 0,
-      }}
-    >
-      {initialsOf(name)}
-    </span>
-  );
+export function EmployeeAvatar({
+  name,
+  size = "md",
+  employeeId,
+  avatarStyle,
+  executive = false,
+}: {
+  name: string;
+  size?: "sm" | "md" | "lg";
+  employeeId?: string;
+  avatarStyle?: AvatarCustomization;
+  executive?: boolean;
+}) {
+  const px = size === "sm" ? 32 : size === "lg" ? 48 : 38;
+  const resolvedStyle = avatarStyle ?? (employeeId ? readFloorPrefs().avatarStyles[employeeId] : undefined);
+  return <ChibiPortraitAvatar name={name} size={px} seed={employeeId} avatarStyle={resolvedStyle} executive={executive} />;
 }
 
 export function Callout({ tone, icon, children, role }: { tone: "info" | "warn" | "danger"; icon?: ReactNode; children: ReactNode; role?: "status" }) {

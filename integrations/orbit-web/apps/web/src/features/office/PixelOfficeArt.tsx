@@ -2,24 +2,10 @@
 // sipping coffee in Pantry, spinning a pen), modern studio desks, executive suite, Pantry lounge, and bookshelves.
 import type { WorkLabel } from "@orbit-web/contracts";
 import type { CSSProperties, ReactNode } from "react";
+import type { AvatarCustomization } from "./floorPrefs";
 import { personaFor, presenceKindOf } from "./VirtualDesk";
 
 export type ChibiActivity = "default" | "director" | "typing" | "asking" | "coffee" | "pen-spin";
-
-const PIXEL_HAIRS = [
-  { main: "#2bb89a", shade: "#1d8571" },
-  { main: "#5e3c26", shade: "#3e2617" },
-  { main: "#252f44", shade: "#171d2b" },
-  { main: "#d97724", shade: "#9e4f12" },
-  { main: "#6d3b7d", shade: "#4c2559" },
-  { main: "#262320", shade: "#141210" },
-] as const;
-
-function hairFor(name: string) {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return PIXEL_HAIRS[h % PIXEL_HAIRS.length]!;
-}
 
 export type ChibiFacing = "front" | "left" | "right";
 
@@ -32,6 +18,8 @@ export function PixelChibiSvg({
   stride = 0,
   size = 50,
   executive = false,
+  avatarStyle,
+  seed,
 }: {
   name: string;
   workLabel: WorkLabel;
@@ -41,12 +29,14 @@ export function PixelChibiSvg({
   stride?: 0 | 1;
   size?: number;
   executive?: boolean;
+  avatarStyle?: AvatarCustomization;
+  seed?: string;
 }) {
-  const p = personaFor(name);
-  const hair = hairFor(name);
+  const p = personaFor(name, avatarStyle, seed);
+  const hair = { main: p.hair, shade: p.hairShade };
   const kind = presenceKindOf(workLabel);
 
-  const isDirector = executive || activity === "director";
+  const isDirector = (executive || activity === "director") && avatarStyle?.shirt === undefined;
   const shirt = isDirector ? "#1e3a5f" : p.shirt;
   const shirtTrim = isDirector ? "#f8fafc" : p.shirtTrim;
   const shirtShade = isDirector ? "#132640" : p.shirtShade;
@@ -89,12 +79,32 @@ export function PixelChibiSvg({
       )}
 
       <g style={animStyle}>
-        {/* Hair */}
+        {/* Hair (6 distinct silhouettes matching EmployeeDeskScene) */}
+        {p.hairStyle === 4 && (
+          <>
+            <rect x="6" y="-0.6" width="4" height="2" fill={hair.main} />
+            <rect x="6.5" y="0.9" width="3" height="0.7" fill="#f59e0b" />
+          </>
+        )}
+        {p.hairStyle === 1 && (
+          <>
+            <rect x="5" y="0" width="1.5" height="1.5" fill={hair.main} />
+            <rect x="7.5" y="-0.3" width="2" height="1.8" fill={hair.main} />
+            <rect x="10.2" y="0.2" width="1.5" height="1.3" fill={hair.main} />
+          </>
+        )}
+        {p.hairStyle === 3 && <rect x="2.5" y="1" width="11" height="6" fill={hair.main} />}
         <rect x="4" y="1" width="8" height="2" fill={hair.main} />
         <rect x="3" y="2" width="10" height="5" fill={hair.main} />
         <rect x="3" y="5" width="2" height="4" fill={hair.shade} />
         <rect x="11" y="5" width="2" height="4" fill={hair.shade} />
         {p.hairStyle === 2 && <rect x="3" y="7" width="10" height="3" fill={hair.shade} />}
+        {p.hairStyle === 5 && (
+          <>
+            <rect x="2" y="6" width="2" height="3.5" fill={hair.shade} />
+            <rect x="12" y="6" width="2" height="3.5" fill={hair.shade} />
+          </>
+        )}
 
         {/* Face */}
         <rect x="4" y="4" width="8" height="5" fill={p.skin} />
@@ -167,11 +177,31 @@ export function PixelChibiSvg({
           </>
         )}
 
-        {/* Glasses accessory */}
+        {/* Glasses, headset, beanie, or scarf accessory */}
         {p.accessory === 1 && (
           <>
             <rect x={4 + lookDx} y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
             <rect x={9 + lookDx} y="5" width="3" height="2" stroke="#1e1b24" strokeWidth="0.6" fill="none" />
+          </>
+        )}
+        {p.accessory === 2 && (
+          <>
+            <rect x="2.5" y="4" width="1.2" height="3.2" fill="#334155" />
+            <rect x="12.3" y="4" width="1.2" height="3.2" fill="#334155" />
+            <rect x="4" y="0.5" width="8" height="0.8" fill="#475569" />
+          </>
+        )}
+        {p.accessory === 3 && (
+          <>
+            <rect x="3.5" y="0.8" width="9" height="2.2" fill={shirt} />
+            <rect x="3" y="2.6" width="10" height="1.2" fill={shirtShade} />
+            <rect x="7" y="0" width="2" height="1" fill={shirtTrim} />
+          </>
+        )}
+        {p.accessory === 4 && (
+          <>
+            <rect x="4" y="8.8" width="8" height="1.4" fill={p.mug} />
+            <rect x="9.5" y="9.8" width="2" height="2.2" fill={p.mug} />
           </>
         )}
 
@@ -736,6 +766,31 @@ export function PixelPlantSvg({ variant = "autumn", size = 26 }: { variant?: "au
       <rect x="3" y="2" width="8" height="6" fill={leafMid} />
       <rect x="4" y="1" width="6" height="4" fill={leafBright} />
       <rect x="4" y="5" width="3" height="2" fill={leafBright} opacity="0.7" />
+    </svg>
+  );
+}
+
+export function PixelHuddleTableSvg() {
+  return (
+    <svg width="88" height="30" viewBox="0 0 44 15" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+      {/* Soft shadow */}
+      <rect x="4" y="12" width="36" height="2" fill="#1e1b18" opacity="0.12" />
+      {/* Mini whiteboard on left */}
+      <rect x="2" y="1" width="12" height="8" fill="#f8fafc" />
+      <rect x="1" y="0" width="14" height="1" fill="#64748b" />
+      <rect x="3" y="3" width="6" height="1" fill="#6366f1" />
+      <rect x="3" y="5" width="8" height="1" fill="#0d9488" />
+      <rect x="6" y="9" width="2" height="3" fill="#475569" />
+      {/* Round studio huddle table + laptops + stools */}
+      <rect x="19" y="5" width="18" height="6" fill="#d8b892" />
+      <rect x="21" y="4" width="14" height="5" fill="#edd6b9" />
+      <rect x="23" y="5" width="4" height="2.5" fill="#1e293b" />
+      <rect x="24" y="5.5" width="2" height="1.5" fill="#818cf8" />
+      <rect x="30" y="5" width="4" height="2.5" fill="#1e293b" />
+      <rect x="31" y="5.5" width="2" height="1.5" fill="#34d399" />
+      {/* Stools */}
+      <rect x="16" y="7" width="3" height="3" fill="#4f46e5" />
+      <rect x="38" y="7" width="3" height="3" fill="#0d9488" />
     </svg>
   );
 }

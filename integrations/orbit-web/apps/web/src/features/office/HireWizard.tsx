@@ -298,7 +298,7 @@ function Steps({ at, onSelect }: { at: number; onSelect: (step: number) => void 
   );
 }
 
-export function HireWizard({ departments, companyDefaults = null, onClose, onHired }: { departments: Department[]; companyDefaults?: ExecutionDefaults | null; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
+export function HireWizard({ departments, initialDepartmentId = null, companyDefaults = null, onClose, onHired }: { departments: Department[]; initialDepartmentId?: string | null; companyDefaults?: ExecutionDefaults | null; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -311,7 +311,7 @@ export function HireWizard({ departments, companyDefaults = null, onClose, onHir
   const presetsRead = useResource<ResourcePreset[]>(() => office.presets(), []);
   const presets: readonly ResourcePreset[] = presetsRead.data ?? (presetsRead.error ? DEFAULT_PRESETS : []);
   const [at, setAt] = useState(0);
-  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [draft, setDraft] = useState<Draft>(() => ({ ...EMPTY, departmentId: initialDepartmentId }));
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
   const set = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));

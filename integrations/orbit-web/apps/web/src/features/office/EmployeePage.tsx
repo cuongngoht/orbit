@@ -12,6 +12,9 @@ import {
   Link,
   MessageBar,
   MessageBarBody,
+  Popover,
+  PopoverSurface,
+  PopoverTrigger,
   Radio,
   RadioGroup,
   Select,
@@ -39,6 +42,7 @@ import {
   ChevronRight16Regular,
   Clock16Regular,
   Code16Regular,
+  Color16Regular,
   Edit16Regular,
   ErrorCircle16Regular,
   History16Regular,
@@ -62,7 +66,9 @@ import { AREA_TEXT, LEVEL_TEXT, LEVEL_TONE, cpuText, sizeText } from "../resourc
 import { office, useOfficeRead, wholeRoster } from "./api";
 import { AppointmentStateBadge } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
+import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AccessTab } from "./EmployeeAccessTab";
+import { useFloorPrefs } from "./floorPrefs";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { useExecutiveState } from "../executive/api";
 import { DraftWithAi, type DraftFields } from "./DraftWithAi";
@@ -150,6 +156,7 @@ const useStyles = makeStyles({
     flexGrow: 1,
   },
   deskFrame: {
+    position: "relative",
     paddingTop: "8px",
     paddingRight: "12px",
     paddingBottom: "8px",
@@ -158,6 +165,19 @@ const useStyles = makeStyles({
     backgroundColor: "var(--orbit-tool-bg)",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
+  },
+  avatarEditBtn: {
+    position: "absolute",
+    right: "4px",
+    bottom: "4px",
+    minWidth: "24px",
+    height: "24px",
+    paddingLeft: "4px",
+    paddingRight: "4px",
+    borderRadius: "9999px",
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
   },
   kpiStrip: {
     display: "grid",
@@ -1403,6 +1423,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
   const o = useOfficeStyles();
   const s = useStyles();
   const employee = useOfficeRead<EmployeeDetail>(() => office.employee(id), [id], ["roster", "missions", "connections"]);
+  const floorPrefs = useFloorPrefs();
   const [assigning, setAssigning] = useState(false);
   const restore = useRestoreFocusTarget();
   const current: EmployeeTab = (EMPLOYEE_TABS as readonly string[]).includes(tab ?? "") ? (tab as EmployeeTab) : "profile";
@@ -1425,7 +1446,37 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
         <div className={s.heroTop}>
           <div className={s.heroIdentity}>
             <div className={s.deskFrame}>
-              <EmployeeDeskScene name={e.name} workLabel={e.workLabel} compact />
+              <EmployeeDeskScene
+                name={e.name}
+                workLabel={e.workLabel}
+                compact
+                seed={e.id}
+                executive={e.appointment?.role === "ceo"}
+                avatarStyle={floorPrefs.prefs.avatarStyles[e.id]}
+              />
+              <Popover positioning="below-start">
+                <PopoverTrigger disableButtonEnhancement>
+                  <Button
+                    size="small"
+                    appearance="subtle"
+                    className={s.avatarEditBtn}
+                    icon={<Color16Regular />}
+                    aria-label={t("office.floor.customizeLook")}
+                    title={t("office.floor.customizeLook")}
+                  />
+                </PopoverTrigger>
+                <PopoverSurface style={{ maxWidth: "min(92vw, 380px)" }}>
+                  <div className={o.stack} style={{ gap: "8px" }}>
+                    <Text weight="semibold" size={200}>
+                      {t("office.floor.customizeLook")} — {e.name}
+                    </Text>
+                    <AvatarCustomizer
+                      value={floorPrefs.prefs.avatarStyles[e.id]}
+                      onChange={(next) => floorPrefs.setAvatarStyle(e.id, next)}
+                    />
+                  </div>
+                </PopoverSurface>
+              </Popover>
             </div>
             <div className={o.stack}>
               <div className={o.row}>

@@ -6,8 +6,8 @@
 // an AI connection of its own can be used.
 import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
-import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type Roster, type WorkLabel } from "@orbit-web/contracts";
-import { useEffect, useState } from "react";
+import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type ResourceSummary, type Roster, type WorkLabel } from "@orbit-web/contracts";
+import { useEffect, useRef, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import {
   IconBadge,
@@ -26,14 +26,17 @@ import { errorText } from "../../services/api";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { useExecutiveState } from "../executive/api";
+import { useResourceSummary } from "../resources/ComputeStorageSection";
 import { office, useOfficeRead, type RosterQuery } from "./api";
 import { AppointmentDialog, AppointmentHolder, AppointmentMenu, type AppointmentEdit } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
 import { DefaultsDialog, DepartmentDialog, type DefaultsTarget, type DepartmentEdit } from "./DepartmentDialogs";
+import { accentForDepartment, useFloorPrefs, type AvatarCustomization, type FloorPrefs } from "./floorPrefs";
 import { HireWizard } from "./HireWizard";
+import { QuickReviewSheet } from "./QuickReviewSheet";
 import { RecruitDialog } from "./RecruitDialog";
 import { AsOf, Callout, EmployeeAvatar, EmptyState, WorkLabelBadge, useOfficeStyles } from "./parts";
-import { OfficeFloorMap, roomAccentFor } from "./OfficeFloorMap";
+import { OfficeFloorMap } from "./OfficeFloorMap";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -408,7 +411,7 @@ const defaultsSetFor = (d: ExecutionDefaults): string[] => RUNTIME_KINDS.filter(
 
 // LEADERSHIP, compactly: the company's CEO and each department's manager -- or that there is none, which a company may
 // well be -- each with what a person may do about it. Read from the roster the page already holds.
-function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster; go: Go; onAppointment: (edit: AppointmentEdit) => void; onDefaults: (department: Department) => void }) {
+function Leadership({ roster, prefs, go, onAppointment, onDefaults }: { roster: Roster; prefs: FloorPrefs; go: Go; onAppointment: (edit: AppointmentEdit) => void; onDefaults: (department: Department) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -427,7 +430,7 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
       </div>
       <ul className={s.leadList} aria-label={t("office.leadership.listAria")}>
         <li className={s.leadRow} aria-label={t("office.leadership.ceo")}>
-          {roster.ceo ? <EmployeeAvatar name={roster.ceo.name} size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
+          {roster.ceo ? <EmployeeAvatar name={roster.ceo.name} employeeId={roster.ceo.employeeId} avatarStyle={prefs.avatarStyles[roster.ceo.employeeId]} executive size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
           <div className={s.leadWho}>
             <span className={s.leadTitleRow}>
               <span className={s.deptDot} style={{ backgroundColor: "#4f46e5" }} aria-hidden />
@@ -447,10 +450,10 @@ function Leadership({ roster, go, onAppointment, onDefaults }: { roster: Roster;
         </li>
         {liveDepartments(roster.departments).map((d) => {
           const defaults = defaultsSetFor(d.defaults ?? {});
-          const accent = roomAccentFor(d.name);
+          const accent = accentForDepartment(d.id, d.name, prefs);
           return (
             <li key={d.id} className={s.leadRow} aria-label={d.name}>
-              {d.manager ? <EmployeeAvatar name={d.manager.name} size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
+              {d.manager ? <EmployeeAvatar name={d.manager.name} employeeId={d.manager.employeeId} avatarStyle={prefs.avatarStyles[d.manager.employeeId]} size="sm" /> : <span className={s.leadVacantBadge} aria-hidden>—</span>}
               <div className={s.leadWho}>
                 <span className={s.leadTitleRow}>
                   <span className={s.deptDot} style={{ backgroundColor: accent.dot }} aria-hidden />
@@ -486,6 +489,7 @@ function EmployeeListView({
   employees,
   departments,
   ceo,
+  prefs,
   onAssign,
   onOpenEmployee,
   onOpenMission,
@@ -493,6 +497,7 @@ function EmployeeListView({
   employees: EmployeeCard[];
   departments: Department[];
   ceo: AppointmentSummary | null;
+  prefs: FloorPrefs;
   onAssign: (id: string) => void;
   onOpenEmployee: (id: string) => void;
   onOpenMission: (id: string) => void;
@@ -514,12 +519,12 @@ function EmployeeListView({
         {employees.map((e) => {
           const isCeo = isCeoEmployee(e, ceo);
           const deptLabel = isCeo ? t("office.floor.directorsOffice") : (e.departmentId ? (deptNameById.get(e.departmentId) ?? t("office.overview.unassigned")) : t("office.overview.unassigned"));
-          const dotColor = isCeo ? "#4f46e5" : roomAccentFor(deptLabel).dot;
+          const dotColor = isCeo ? "#4f46e5" : accentForDepartment(e.departmentId, deptLabel, prefs).dot;
           const runtimeText = e.execution.model ? `${RUNTIME_LABELS[e.execution.runtime]} · ${e.execution.model}` : RUNTIME_LABELS[e.execution.runtime];
           return (
             <li key={e.id} className={s.listRow}>
               <div className={o.row} style={{ flexWrap: "nowrap" }}>
-                <EmployeeAvatar name={e.name} size="sm" />
+                <EmployeeAvatar name={e.name} employeeId={e.id} avatarStyle={prefs.avatarStyles[e.id]} executive={isCeo} size="sm" />
                 <div className={o.stack} style={{ gap: "1px" }}>
                   <Link as="button" style={{ fontWeight: 600, textAlign: "left" }} onClick={() => onOpenEmployee(e.id)}>
                     {e.name}
@@ -577,11 +582,25 @@ function RosterBody({
   query,
   viewMode,
   account,
+  canHire,
+  resourceSummary,
+  prefs,
+  motionPaused,
+  onToggleMotionPaused,
+  onToggleDensity,
+  onToggleSound,
+  onTogglePulse,
+  onToggleRoomCollapsed,
+  onCycleDeptAccent,
+  onSetAvatarStyle,
   go,
   onAssign,
   onEdit,
   onAppointment,
   onRecruit,
+  onHireInDepartment,
+  onOpenReview,
+  onRosterChanged,
   onClearFilters,
 }: {
   roster: Roster;
@@ -590,11 +609,25 @@ function RosterBody({
   query: RosterQuery;
   viewMode: "floor" | "list";
   account: AuthAccount | null;
+  canHire: boolean;
+  resourceSummary: ResourceSummary | null;
+  prefs: FloorPrefs;
+  motionPaused: boolean;
+  onToggleMotionPaused: () => void;
+  onToggleDensity: () => void;
+  onToggleSound: () => void;
+  onTogglePulse: () => void;
+  onToggleRoomCollapsed: (deptKey: string) => void;
+  onCycleDeptAccent: (deptId: string, label: string) => void;
+  onSetAvatarStyle: (employeeId: string, style: AvatarCustomization | null) => void;
   go: Go;
   onAssign: (id: string) => void;
   onEdit: (e: DepartmentEdit) => void;
   onAppointment: (edit: AppointmentEdit) => void;
   onRecruit: ((departmentId: string) => void) | null;
+  onHireInDepartment: (departmentId: string) => void;
+  onOpenReview: (missionId: string | null) => void;
+  onRosterChanged: () => void;
   onClearFilters: () => void;
 }) {
   const { t } = useI18n();
@@ -642,6 +675,7 @@ function RosterBody({
           employees={employees}
           departments={roster.departments}
           ceo={roster.ceo}
+          prefs={prefs}
           onAssign={onAssign}
           onOpenEmployee={(id) => go("employee", id)}
           onOpenMission={(id) => go("mission", id)}
@@ -649,16 +683,32 @@ function RosterBody({
       ) : (
         <OfficeFloorMap
           groups={groups}
+          departments={roster.departments}
           ceo={roster.ceo}
           ceoEmployee={ceoEmployee}
           filter={filter}
           account={account}
+          inboxCount={roster.counts.inbox}
+          canHire={canHire}
+          resourceSummary={resourceSummary}
+          prefs={prefs}
+          motionPaused={motionPaused}
+          onToggleMotionPaused={onToggleMotionPaused}
+          onToggleDensity={onToggleDensity}
+          onToggleSound={onToggleSound}
+          onTogglePulse={onTogglePulse}
+          onToggleRoomCollapsed={onToggleRoomCollapsed}
+          onCycleDeptAccent={onCycleDeptAccent}
+          onSetAvatarStyle={onSetAvatarStyle}
           onAssign={onAssign}
           onOpenEmployee={(id) => go("employee", id)}
           onOpenMission={(id) => go("mission", id)}
           onEditDepartment={onEdit}
           onAppointment={onAppointment}
           onRecruit={onRecruit}
+          onHireInDepartment={onHireInDepartment}
+          onOpenReview={onOpenReview}
+          onRosterChanged={onRosterChanged}
         />
       )}
       {error && (
@@ -687,15 +737,19 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<WorkLabel | "all">("all");
   const [viewMode, setViewMode] = useState<"floor" | "list">("floor");
-  const [hiring, setHiring] = useState(false);
+  const [motionPaused, setMotionPaused] = useState(false);
+  const floorPrefs = useFloorPrefs();
+  const [hiring, setHiring] = useState<{ departmentId: string | null } | null>(null);
   // A hiring request, for the whole company (null) or one department.
   const [recruiting, setRecruiting] = useState<{ departmentId: string | null } | null>(null);
   const [assigning, setAssigning] = useState<{ employeeId: string | null } | null>(null);
   const [editing, setEditing] = useState<DepartmentEdit | null>(null);
   const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
   const [defaultsOf, setDefaultsOf] = useState<DefaultsTarget | null>(null);
+  const [reviewing, setReviewing] = useState<{ missionId: string | null } | null>(null);
   const [filters, setFilters] = useState(false);
   const [checklistDismissed, setChecklistDismissed] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const restore = useRestoreFocusTarget();
   // A search is asked once typing pauses.
   useEffect(() => {
@@ -705,10 +759,40 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const query: RosterQuery = { department: department === "all" ? null : department, q, status: status === "all" ? null : status };
   const roster = useOfficeRead<Roster>(() => office.roster(query), [department, q, status], ["roster", "connections", "inbox"]);
   const connections = useConnections();
+  const resourceSummary = useResourceSummary();
   const canHire = connections.data?.canHire === true;
   // A hiring request is the CEO's to plan: offered when the CEO answers and a connection can run employees.
   const executiveState = useExecutiveState();
   const recruit = executiveState.data?.recruit ?? null;
+
+  // Virtual workplace keyboard shortcuts (ignored when typing, holding modifiers, or when a modal/sheet is open).
+  const modalOpen = Boolean(hiring || recruiting || assigning || editing || appointing || defaultsOf || reviewing || filters);
+  const hasEmployees = (roster.data?.employees.length ?? 0) > 0;
+  useEffect(() => {
+    if (modalOpen) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      const target = ev.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (ev.key === "/") {
+        ev.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (ev.key === "v" || ev.key === "V") {
+        setViewMode((m) => (m === "floor" ? "list" : "floor"));
+      } else if ((ev.key === "c" || ev.key === "C") && viewMode === "floor") {
+        floorPrefs.toggleDensity();
+      } else if (ev.key === " " && viewMode === "floor" && tag !== "BUTTON" && tag !== "A") {
+        ev.preventDefault();
+        setMotionPaused((p) => !p);
+      } else if ((ev.key === "a" || ev.key === "A") && hasEmployees) {
+        ev.preventDefault();
+        setAssigning({ employeeId: null });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalOpen, viewMode, hasEmployees, floorPrefs]);
 
   if (roster.data === null)
     return roster.error ? (
@@ -841,7 +925,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Button size="small" className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
               {t("office.overview.assignWork")}
             </Button>
-            <Button size="small" className={o.touch} icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring(true)} {...restore}>
+            <Button size="small" className={o.touch} icon={<PersonAdd20Regular />} disabled={!canHire} onClick={() => setHiring({ departmentId: null })} {...restore}>
               {t("office.overview.hireEmployee")}
             </Button>
             <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<PeopleAdd20Regular />} disabled={recruit?.ok !== true} title={recruit !== null && !recruit.ok ? (recruit.reason ?? undefined) : undefined} onClick={() => setRecruiting({ departmentId: null })} {...restore}>
@@ -949,7 +1033,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
       <div className={mergeClasses(s.filterBar, isMobile && s.toolbarMobile)}>
         {isMobile ? (
           <>
-            <SearchBox className={mergeClasses(s.search, s.searchMobile)} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
+            <SearchBox ref={searchInputRef} className={mergeClasses(s.search, s.searchMobile)} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
             {viewSwitch}
             <Button className={o.touch} style={{ justifySelf: "end" }} icon={<Filter20Regular />} onClick={() => setFilters(true)}>
               {t("office.overview.filtersBtn", { on: department !== "all" || status !== "all" ? t("office.overview.filtersOn") : "" })}
@@ -957,7 +1041,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </>
         ) : (
           <>
-            <SearchBox className={s.search} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
+            <SearchBox ref={searchInputRef} className={s.search} placeholder={t("office.overview.searchPlaceholder")} aria-label={t("office.overview.searchPlaceholder")} value={typed} onChange={(_, d) => setTyped(d.value)} />
             {inlinePickers}
             {waitingReviewCount > 0 && (
               <Button
@@ -990,17 +1074,55 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </div>
         </ResponsiveSheet>
       )}
-      <RosterBody key={`${r.asOf}:${r.version}`} roster={r} filter={department} filtered={filtered} query={query} viewMode={viewMode} account={account} go={go} onAssign={(id) => setAssigning({ employeeId: id })} onEdit={setEditing} onAppointment={setAppointing} onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null} onClearFilters={clearFilters} />
-      <Leadership roster={r} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} />
+      <RosterBody
+        key={`${r.asOf}:${r.version}`}
+        roster={r}
+        filter={department}
+        filtered={filtered}
+        query={query}
+        viewMode={viewMode}
+        account={account}
+        canHire={canHire}
+        resourceSummary={resourceSummary.data}
+        prefs={floorPrefs.prefs}
+        motionPaused={motionPaused}
+        onToggleMotionPaused={() => setMotionPaused((p) => !p)}
+        onToggleDensity={floorPrefs.toggleDensity}
+        onToggleSound={floorPrefs.toggleSound}
+        onTogglePulse={floorPrefs.togglePulse}
+        onToggleRoomCollapsed={floorPrefs.toggleRoomCollapsed}
+        onCycleDeptAccent={floorPrefs.cycleDeptAccent}
+        onSetAvatarStyle={floorPrefs.setAvatarStyle}
+        go={go}
+        onAssign={(id) => setAssigning({ employeeId: id })}
+        onEdit={setEditing}
+        onAppointment={setAppointing}
+        onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null}
+        onHireInDepartment={(departmentId) => setHiring({ departmentId })}
+        onOpenReview={(missionId) => setReviewing({ missionId })}
+        onRosterChanged={() => void roster.reload()}
+        onClearFilters={clearFilters}
+      />
+      <Leadership roster={r} prefs={floorPrefs.prefs} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} />
       {hiring && (
         <HireWizard
           departments={r.departments}
+          initialDepartmentId={hiring.departmentId}
           companyDefaults={company.defaults ?? {}}
-          onClose={() => setHiring(false)}
+          onClose={() => setHiring(null)}
           onHired={(e) => {
-            setHiring(false);
+            setHiring(null);
             go("employee", e.id);
           }}
+        />
+      )}
+      {reviewing && (
+        <QuickReviewSheet
+          open
+          focusMissionId={reviewing.missionId}
+          go={go}
+          onClose={() => setReviewing(null)}
+          onChanged={() => void roster.reload()}
         />
       )}
       {recruiting && (

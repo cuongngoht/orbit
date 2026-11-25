@@ -457,4 +457,56 @@ describe("the office: who leads it, and what its employees run on by default", (
     await userEvent.click(floorBtn);
     expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
   });
+
+  test("studio floor controls: density toggle, room collapse, team huddle, live pulse, room jump, and keyboard shortcuts", async () => {
+    window.localStorage.clear();
+    const sharedHolding = { assignmentId: "b1000000-0000-4000-8000-000000000020", missionId: "a1000000-0000-4000-8000-000000000020", title: "Launch Q4 Portal", state: "RUNNING" as const, since: "2026-11-21T08:00:00.000Z" };
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/inbox", () => ({ items: [], open: 0, nextCursor: null, asOf: "2026-11-21T09:00:00.000Z" }))
+      .on("GET", "/api/office/roster", () =>
+        roster({
+          employees: [
+            employeeCard({ workLabel: "working", availability: "busy", holding: sharedHolding }),
+            busyBao({ holding: sharedHolding }),
+          ],
+          counts: { employees: 2, ready: 0, busy: 2, notReady: 0, queued: 1, inbox: 1 },
+        }),
+      );
+    show();
+
+    // Room Jump navigation and Team Huddle banner appear when ≥ 2 departments / shared mission exist
+    expect(await screen.findByRole("navigation", { name: "Jump to room" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Team huddle" })).toHaveTextContent(/2 teammates collaborating on “Launch Q4 Portal”/);
+
+    // Compact / Cozy density toggle
+    const compactBtn = screen.getByRole("button", { name: "Compact view" });
+    await userEvent.click(compactBtn);
+    expect(screen.getByRole("button", { name: "Cozy view" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Cozy view" }));
+
+    // Live pulse toggle
+    await userEvent.click(screen.getByRole("button", { name: "Live pulse" }));
+    expect(screen.getByRole("region", { name: "Live pulse" })).toBeInTheDocument();
+
+    // Collapse & expand Accounting room
+    const accounting = screen.getByRole("region", { name: "Accounting" });
+    expect(within(accounting).getByRole("article", { name: "Ana" })).toBeInTheDocument();
+    await userEvent.click(within(accounting).getByRole("button", { name: "Collapse Accounting" }));
+    expect(within(accounting).queryByRole("article", { name: "Ana" })).toBeNull();
+    await userEvent.click(within(accounting).getByRole("button", { name: "Expand Accounting" }));
+    expect(within(accounting).getByRole("article", { name: "Ana" })).toBeInTheDocument();
+
+    // Review & answer button in Director's Office opens the Review & Q&A Lounge sheet
+    await userEvent.click(within(screen.getByRole("region", { name: "Director's Office" })).getByRole("button", { name: /Review & answer/ }));
+    expect(await screen.findByRole("dialog", { name: "Review & Q&A Lounge" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Review & Q&A Lounge" })).toBeNull());
+
+    // Keyboard shortcut 'v' switches between Floor and List views, and is ignored inside Search input
+    await userEvent.keyboard("v");
+    expect(await screen.findByRole("region", { name: "List" })).toBeInTheDocument();
+    await userEvent.keyboard("v");
+    expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
+  });
 });

@@ -83,7 +83,7 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     flexShrink: 0,
   },
-  subnavMobile: { maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", gap: "4px", overflowX: "auto", minWidth: 0 },
+  subnavMobile: { maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", gap: "2px", overflowX: "auto", minWidth: 0 },
   tab: {
     flexShrink: 0,
     minHeight: "30px",
@@ -91,7 +91,7 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightRegular,
     color: tokens.colorNeutralForeground2,
     "&[data-fui-focus-visible]::after": { borderRadius: "9999px" },
-    "@media (max-width: 639px)": { paddingLeft: "8px", paddingRight: "8px", fontSize: tokens.fontSizeBase200 },
+    "@media (max-width: 639px)": { paddingLeft: "6px", paddingRight: "6px", fontSize: tokens.fontSizeBase200 },
     "@media (pointer: coarse)": { minHeight: "44px" },
   },
   tabOn: {

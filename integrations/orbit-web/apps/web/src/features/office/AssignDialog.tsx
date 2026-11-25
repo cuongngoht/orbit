@@ -34,6 +34,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { useI18n, type I18nContextValue } from "../../i18n";
 import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
+import { readFloorPrefs } from "./floorPrefs";
 import { Disclosure, WorkLabelBadge, useOfficeStyles, when } from "./parts";
 import { RepositoriesPicker } from "./RepositoriesPicker";
 import { NO_SOURCES, SourcesPicker, type PinnedSources } from "./SourcesPicker";
@@ -465,7 +466,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
             <DialogContent className={s.dialogContent}>
               <div className={s.colleagueCard}>
                 <div className={s.portraitFrame}>
-                  <PixelChibiSvg name={who} workLabel={recipient?.workLabel ?? "working"} size={50} />
+                  <PixelChibiSvg name={who} workLabel={recipient?.workLabel ?? "working"} seed={r.employeeId} avatarStyle={readFloorPrefs().avatarStyles[r.employeeId]} executive={recipient?.role === "ceo"} size={50} />
                 </div>
                 <div className={s.colleagueMeta}>
                   <Text weight="semibold" size={400}>
@@ -530,7 +531,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                   <div className={s.colleagueCard}>
                     {employee && (
                       <div className={s.portraitFrame}>
-                        <PixelChibiSvg name={employee.name} workLabel={employee.workLabel} size={38} />
+                        <PixelChibiSvg name={employee.name} workLabel={employee.workLabel} seed={employee.id} avatarStyle={readFloorPrefs().avatarStyles[employee.id]} executive={employee.role === "ceo"} size={38} />
                       </div>
                     )}
                     <div className={s.colleagueMeta}>
@@ -566,7 +567,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 {kind === "employee" && choices.length > 1 && choices.length <= 8 && (
                   <div className={s.seatStrip} role="group" aria-label={t("office.assign.quickDeskSwitch")}>
                     {choices.map((c) => {
-                      const p = personaFor(c.name);
+                      const p = personaFor(c.name, readFloorPrefs().avatarStyles[c.id], c.id);
                       const selected = c.id === target;
                       return (
                         <button

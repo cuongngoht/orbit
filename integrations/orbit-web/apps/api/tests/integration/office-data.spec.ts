@@ -193,10 +193,20 @@ describe("each attempt reads only what it may: shares, per-department rooms, the
     const finRun = byKey(m, "finance").lastRun?.id as string;
     const manifest = await h.sql("SELECT name, origin FROM workforce.attempt_inputs WHERE account_id = $1 AND run_id = $2 ORDER BY name", [accountId, finRun]);
     assert.ok(manifest.length > 0 && manifest.every((r) => r.origin === "share"), JSON.stringify(manifest));
-    // The owner accepts the integrated result: the lead is free again.
+    // The owner accepts the integrated result: the lead is free again, open team rooms freeze, and unused quota returns.
     const root = byKey(m, null);
     const handed = m.handoffs.find((x) => x.assignmentId === root.id);
     assert.equal((await b.send("POST", `/api/assignments/${root.id}/accept`, { handoffDigest: handed?.digest }, ifMatch(root.version))).status, 200);
+    const frozen = await h.sql("SELECT state, frozen_at FROM workforce.team_rooms WHERE account_id = $1 AND mission_id = $2", [accountId, id]);
+    assert.equal(frozen.length, 3);
+    assert.ok(frozen.every((r) => r.state === "frozen" && r.frozen_at !== null), JSON.stringify(frozen));
+    const afterCommit = await h.sql("SELECT COALESCE(SUM(committed_mib), 0)::int AS mib FROM workforce.storage_usage WHERE account_id = $1 AND category = 'team' AND owner_ref IN (SELECT id::text FROM workforce.team_rooms WHERE account_id = $1 AND mission_id = $2)", [accountId, id]);
+    assert.equal(afterCommit[0]?.mib, 0);
+    // Live storage_usage measurement flows through to GET /api/employees/:id sandbox areas.
+    await h.sql("INSERT INTO workforce.storage_usage (account_id, category, owner_ref, committed_mib, used_mib, measured_at) VALUES ($1, 'desk', $2, 512, 41, now()) ON CONFLICT (account_id, category, owner_ref) DO UPDATE SET used_mib = 41, measured_at = now()", [accountId, ids.Rhea]);
+    const rheaDetail = (await b.get(`/api/employees/${ids.Rhea}`)).body as { sandbox: { areas: { area: string; usedMiB: number | null }[] } };
+    const deskArea = rheaDetail.sandbox.areas.find((a) => a.area === "desk");
+    assert.equal(deskArea?.usedMiB, 41);
   });
 
   test("the input reader serves an attempt only what its manifest names: a store's path, a name it was not given and another account's are refused and recorded", async () => {

@@ -113,12 +113,25 @@ export class EmployeeQueries {
     const queue = (await work("'QUEUED'", "a.priority DESC, a.eligible_at, a.id", 100)).map(summaryOf);
     const history = (await work("'COMPLETED', 'CANCELLED', 'FAILED_FINAL'", "a.finished_at DESC NULLS LAST, a.id", 20)).map(summaryOf);
     const published = Number((await this.db.one("SELECT count(*) AS n FROM workforce.desk_publications WHERE account_id = $1 AND employee_id = $2 AND published", [orbitId, id]))?.n ?? 0);
+    const usageRows = await this.db.query("SELECT category, used_mib, level, evidence FROM workforce.storage_usage WHERE account_id = $1 AND owner_ref = $2 AND category IN ('desk', 'cache')", [orbitId, id]);
+    const usageByArea = new Map<string, { usedMiB: number | null; level: string | null; evidence: string | null }>(
+      usageRows.map((u) => [String(u.category), { usedMiB: u.used_mib === null || u.used_mib === undefined ? null : Number(u.used_mib), level: sn(u.level), evidence: sn(u.evidence) }]),
+    );
     const sandboxView: SandboxView = {
       id: sandbox?.id ?? "",
       state: sandbox?.state ?? "FAILED",
       reason: sandbox === null ? "This employee has no Personal Sandbox." : sandbox.reason,
       provider: sandbox?.provider ?? "process",
-      areas: (sandbox?.areas ?? []).map((a) => ({ area: a.area, quotaMiB: a.quotaMiB, usedMiB: a.usedMiB, level: a.level, evidence: a.evidence })),
+      areas: (sandbox?.areas ?? []).map((a) => {
+        const live = usageByArea.get(a.area);
+        return {
+          area: a.area,
+          quotaMiB: a.quotaMiB,
+          usedMiB: live?.usedMiB ?? a.usedMiB,
+          level: (live?.level as SandboxView["areas"][number]["level"] | null) ?? a.level,
+          evidence: live?.evidence ?? a.evidence,
+        };
+      }),
       resourceRevision: e.data.resourceRevision,
       resources: resources ?? { presetId: null, cpuMillis: 0, memoryMiB: 0, deskStorageMiB: 0, scratchStorageMiB: 0, cacheStorageMiB: 0, pidsLimit: 0, timeoutMinutes: 0 },
       version: sandbox?.version ?? 0,

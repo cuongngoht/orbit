@@ -198,4 +198,14 @@ describe("one employee's place in the company", () => {
     expect(runs.textContent).toContain("ModelIts department's, else the company's default");
     expect(runs.textContent).toContain("EffortIts department's, else the company's default");
   });
+
+  test("Sandbox & resources and Employment live in the expandable Advanced menu on the employee tab bar", async () => {
+    fakeApi().on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail());
+    const go = vi.fn();
+    renderLive(<OfficeView page="employee" item={EMP_ANA} tab="profile" go={go} account={authAccount()} />);
+    await screen.findByRole("region", { name: "How it runs" });
+    await userEvent.click(screen.getByRole("button", { name: "Advanced employee settings" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Sandbox & resources/ }));
+    expect(go).toHaveBeenCalledWith("employee", EMP_ANA, "resources");
+  });
 });

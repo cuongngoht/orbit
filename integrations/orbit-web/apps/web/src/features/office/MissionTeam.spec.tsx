@@ -60,30 +60,48 @@ function show(tab: string, go = vi.fn()) {
 const missionReads = (api: ReturnType<typeof fakeApi>) => api.calls.filter((c) => c.path === `/api/missions/${MISSION_ID}`).length;
 
 describe("a team's mission", () => {
-  test("who it was given to, who has to act now and why, and the plan as a tree: who reviews each part, what it asked, and why each attempt started", async () => {
+  test("who it was given to, who has to act now and why, and the plan as a collapsible tree: clean by default with technical details expandable per node", async () => {
     fakeApi().on("GET", `/api/missions/${MISSION_ID}`, () => teamMission({ part: { questionCount: 2, planCount: 0 } }));
     const go = show("overview");
     const wanted = await screen.findByRole("region", { name: "What is wanted" });
-    expect(wanted.textContent).toContain("Given toThe manager of Accounting (appointment revision 3)");
+    expect(wanted.textContent).toContain("Given toManager of Accounting");
+    expect(wanted.textContent).not.toContain("(appointment revision 3)");
+    await userEvent.click(within(wanted).getByRole("button", { name: "Advanced details" }));
+    expect(wanted.textContent).toContain("The manager of Accounting (appointment revision 3)");
     const now = within(screen.getByRole("region", { name: "Responsible now" })).getAllByRole("listitem");
     expect(now.map((r) => r.textContent)).toEqual(["Ana answers its team's questionsWhy: its team asked a question", "You answer BaoWhy: Which contracts count as renewed?"]);
     await userEvent.click(within(now[0] as HTMLElement).getByRole("button", { name: "Ana" }));
     expect(go).toHaveBeenCalledWith("employee", EMP_ANA);
-    const plan = screen.getByRole("list", { name: "Assignments" });
-    const rootRow = within(plan).getAllByRole("listitem")[0] as HTMLElement;
-    expect(rootRow.textContent).toContain("Answering its team");
-    expect(rootRow.textContent).toContain("Reviewed by you · 1 plan(s) given");
-    expect(rootRow.textContent).toContain("Given to Accounting through its manager (appointment revision 3)");
-    expect(rootRow.textContent).toContain("Attempt 1 started: its team asked a question");
-    // The part, under its lead.
-    const parts = within(plan).getByRole("list", { name: "Parts of “Q3 team report”" });
-    const part = within(parts).getByRole("listitem");
+    const plan = screen.getByRole("tree", { name: "Assignments" });
+    const rootNode = within(plan).getByRole("treeitem", { name: "Q3 team report" });
+    expect(rootNode).toHaveAttribute("aria-expanded", "true");
+    expect(rootNode.textContent).toContain("Answering its team");
+    expect(rootNode.textContent).toContain("0/1 done");
+    expect(rootNode.textContent).not.toContain("Attempt 1 started");
+    await userEvent.click(within(rootNode).getByRole("button", { name: "Technical details for “Q3 team report”" }));
+    expect(rootNode.textContent).toContain("Reviewed by you · 1 plan(s) given");
+    expect(rootNode.textContent).toContain("Given to Accounting through its manager (appointment revision 3)");
+    expect(rootNode.textContent).toContain("Attempt 1 started: its team asked a question");
+    // The part, nested under its lead in a tree group.
+    const parts = within(plan).getByRole("group", { name: "Parts of “Q3 team report”" });
+    const part = within(parts).getByRole("treeitem", { name: "Research the contracts" });
     expect(part.textContent).toContain("Research the contracts");
-    expect(part.textContent).toContain("Held by Bao (Legal when claimed)");
+    expect(part.textContent).toContain("Bao");
+    expect(part.textContent).toContain("Legal");
+    expect(part.textContent).not.toContain("(Legal when claimed)");
+    await userEvent.click(within(part).getByRole("button", { name: "Technical details for “Research the contracts”" }));
+    expect(part.textContent).toContain("Bao (Legal when claimed)");
     expect(part.textContent).toContain("Reviewed by its lead Ana · 2 question(s) asked");
     expect(part.textContent).toContain("Part “research” of its manager's plan");
     expect(part.textContent).toContain("Attempt 1 started: a part its lead gave it came up");
     expect(part.textContent).not.toContain("Given to");
+    // Collapse and re-expand the branch via its chevron button.
+    await userEvent.click(within(rootNode).getByRole("button", { name: "Collapse “Q3 team report”" }));
+    expect(rootNode).toHaveAttribute("aria-expanded", "false");
+    expect(within(plan).queryByRole("group", { name: "Parts of “Q3 team report”" })).toBeNull();
+    await userEvent.click(within(rootNode).getByRole("button", { name: "Expand “Q3 team report”" }));
+    expect(rootNode).toHaveAttribute("aria-expanded", "true");
+    expect(within(plan).getByRole("group", { name: "Parts of “Q3 team report”" })).toBeInTheDocument();
   });
 
   test("an employee named by the person is said as such, and nobody to act is said too", async () => {
@@ -199,6 +217,7 @@ describe("a team's mission", () => {
     const rootGroup = await screen.findByRole("region", { name: "Hand-ins of “Q3 team report”" });
     expect(rootGroup.textContent).toContain("Ana · Reviewed by you");
     const r2 = within(rootGroup).getByRole("article", { name: "Revision 2" });
+    await userEvent.click(within(r2).getByRole("button", { name: "Technical details" }));
     expect(r2.textContent).toContain(HANDOFF_DIGEST.slice(0, 12));
     expect(within(r2).getByRole("button", { name: "Accept…" })).toBeInTheDocument();
     expect(within(r2).getByRole("button", { name: "Request revision" })).toBeInTheDocument();
@@ -208,12 +227,14 @@ describe("a team's mission", () => {
     expect(within(partGroup).getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["Revision 2", "Revision 1"]);
     const p2 = within(partGroup).getByRole("article", { name: "Revision 2" });
     expect(within(p2).getByText("Submitted")).toBeInTheDocument();
+    await userEvent.click(within(p2).getByRole("button", { name: "Technical details" }));
     expect(p2.textContent).toContain(PART_DIGEST.slice(0, 12));
     expect(p2.textContent).toContain("Its lead Ana reviews it, not you.");
     expect(within(p2).queryByRole("button", { name: "Accept…" })).toBeNull();
     expect(within(p2).queryByRole("button", { name: "Request revision" })).toBeNull();
     const p1 = within(partGroup).getByRole("article", { name: "Revision 1" });
     expect(within(p1).getByText("Revision requested")).toBeInTheDocument();
+    await userEvent.click(within(p1).getByRole("button", { name: "Technical details" }));
     expect(p1.textContent).toContain(PART_DIGEST_1.slice(0, 12));
     expect(p1.textContent).toMatch(/Reviewed by Ana on .*: Add the renewal dates/);
     expect(r2.textContent).not.toContain("Add the renewal dates");
@@ -227,7 +248,8 @@ describe("a team's mission", () => {
       .on("POST", `/api/assignments/${ASSIGNMENT_ID}/hand-over`, () => (++n === 1 ? withStatus(409, { error: { code: "attempt_live", message: "An attempt of this work is running: pause it first, then hand it over." } }) : done(ASSIGNMENT_ID)));
     show("overview");
     const plan = await screen.findByRole("region", { name: "Plan" });
-    await userEvent.click(within(plan).getByRole("button", { name: "Hand over…" }));
+    await userEvent.click(within(plan).getByRole("button", { name: "More mission actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Hand over…" }));
     const dialog = await screen.findByRole("dialog", { name: "Hand over “Q3 report”" });
     expect(dialog.textContent).toContain("Ana holds it now.");
     const who = await within(dialog).findByRole("combobox", { name: /^Hand it over to/ });
@@ -252,7 +274,8 @@ describe("a team's mission", () => {
       .on("POST", `/api/assignments/${ASSIGNMENT_ID}/repin`, () => done(ASSIGNMENT_ID));
     show("overview");
     const plan = await screen.findByRole("region", { name: "Plan" });
-    await userEvent.click(within(plan).getByRole("button", { name: "Repin…" }));
+    await userEvent.click(within(plan).getByRole("button", { name: "More mission actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Repin…" }));
     const dialog = await screen.findByRole("dialog", { name: "Repin “Q3 report”?" });
     expect(dialog.textContent).toContain("Its next attempt runs on Ana's profile as it is now");
     expect(api.calls.some((c) => c.path.endsWith("/repin"))).toBe(false);
@@ -270,7 +293,7 @@ describe("a team's mission", () => {
       .on("POST", `/api/assignments/${PART_ID}/hand-over`, () => done(PART_ID));
     show("overview");
     await userEvent.click(await screen.findByRole("button", { name: "Actions for “Research the contracts”" }));
-    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Resume", "Cancel the work", "Hand over…", "Repin…"]);
+    expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Resume", "Open Bao's profile", "Inspect last run", "Hand over…", "Repin…", "Cancel the work"]);
     await userEvent.click(screen.getByRole("menuitem", { name: "Hand over…" }));
     const dialog = await screen.findByRole("dialog", { name: "Hand over “Research the contracts”" });
     const who = await within(dialog).findByRole("combobox", { name: /^Hand it over to/ });
@@ -312,7 +335,7 @@ describe("a team's mission", () => {
       });
     fakeApi().on("GET", `/api/missions/${MISSION_ID}`, data);
     const go = show("overview");
-    const parts = await screen.findByRole("list", { name: "Parts of “Q3 team report”" });
+    const parts = await screen.findByRole("group", { name: "Parts of “Q3 team report”" });
     expect(parts.textContent).toContain("Last attempt detail: It ran past its limit of 60 minutes and was stopped.");
     await userEvent.click(within(parts).getByRole("button", { name: "Inspect last run" }));
     expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "run");
@@ -409,10 +432,16 @@ describe("how the mission's people talk", () => {
     const wanted = await screen.findByRole("region", { name: "What is wanted" });
     expect(within(wanted).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Include chart", "Cite ICE US"]);
     expect(wanted.textContent).toContain("Account owner");
-    const partsList = within(screen.getByRole("list", { name: "Assignments" })).getByRole("list", { name: "Parts of “Coffee forecast”" });
-    const partItems = within(partsList).getAllByRole("listitem");
+    const partsList = within(screen.getByRole("tree", { name: "Assignments" })).getByRole("group", { name: "Parts of “Coffee forecast”" });
+    const partItems = within(partsList).getAllByRole("treeitem");
     expect(partItems[0]?.textContent).toContain("Verify USD/BRL");
     expect(partItems[1]?.textContent).toContain("Compile report");
+
+    // Expandable Advanced menu opens Timeline, Team room, and Last run.
+    await userEvent.click(screen.getByRole("button", { name: "Advanced mission views" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Timeline/ }));
+    expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "timeline");
+    go.mockClear();
 
     await userEvent.click(screen.getByRole("tab", { name: /Handoffs/ }));
     expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "handoffs");

@@ -4,8 +4,8 @@
 // shapes the departments: who leads the company (its CEO, each department's manager) and the execution defaults an
 // employee may leave its model and effort to. An account with no company yet is offered to activate it -- empty -- once
 // an AI connection of its own can be used.
-import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { Button, Field, Input, Link, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuList, MenuPopover, MenuTrigger, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
+import { Add16Regular, ChevronDown12Regular, ChevronDown16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, PlugDisconnected16Regular, Settings16Regular, Sparkle16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
 import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type ResourceSummary, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
@@ -33,6 +33,7 @@ import { AssignDialog } from "./AssignDialog";
 import { DefaultsDialog, DepartmentDialog, type DefaultsTarget, type DepartmentEdit } from "./DepartmentDialogs";
 import { accentForDepartment, useFloorPrefs, type AvatarCustomization, type FloorPrefs } from "./floorPrefs";
 import { HireWizard } from "./HireWizard";
+import { ModelSwitcherDialog, type ModelSwitcherTarget } from "./ModelSwitcherDialog";
 import { QuickReviewSheet } from "./QuickReviewSheet";
 import { RecruitDialog } from "./RecruitDialog";
 import { AsOf, Callout, EmployeeAvatar, EmptyState, WorkLabelBadge, useOfficeStyles } from "./parts";
@@ -267,6 +268,32 @@ const useStyles = makeStyles({
     minWidth: 0,
   },
   leadWho: { display: "flex", flexDirection: "column", gap: "2px", flexGrow: 1, minWidth: 0, overflowWrap: "anywhere" },
+  listModelChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    width: "fit-content",
+    marginTop: "2px",
+    paddingTop: "1px",
+    paddingRight: "7px",
+    paddingBottom: "1px",
+    paddingLeft: "6px",
+    borderRadius: "9999px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground2,
+    fontFamily: "inherit",
+    fontSize: "11px",
+    fontWeight: tokens.fontWeightMedium,
+    cursor: "pointer",
+    transitionProperty: "background-color, border-color, color",
+    transitionDuration: "120ms",
+    ":hover": {
+      backgroundColor: tokens.colorBrandBackground2,
+      ...shorthands.borderColor(tokens.colorBrandStroke2),
+      color: tokens.colorBrandForeground1,
+    },
+  },
 });
 
 // The three uses a connection is read for, in the order a card says them.
@@ -424,7 +451,7 @@ function Leadership({ roster, prefs, canHire, go, onAppointment, onDefaults, onH
             {t("office.leadership.title")}
           </Text>
           <Text size={200} className={o.muted}>
-            {t("office.leadership.sub")}
+            {t("office.leadership.subFriendly")}
           </Text>
         </div>
       </div>
@@ -498,6 +525,7 @@ function EmployeeListView({
   onAssign,
   onOpenEmployee,
   onOpenMission,
+  onChangeModel,
 }: {
   employees: EmployeeCard[];
   departments: Department[];
@@ -506,6 +534,7 @@ function EmployeeListView({
   onAssign: (id: string) => void;
   onOpenEmployee: (id: string) => void;
   onOpenMission: (id: string) => void;
+  onChangeModel: (employee: EmployeeCard) => void;
 }) {
   const { t } = useI18n();
   const s = useStyles();
@@ -525,7 +554,11 @@ function EmployeeListView({
           const isCeo = isCeoEmployee(e, ceo);
           const deptLabel = isCeo ? t("office.floor.directorsOffice") : (e.departmentId ? (deptNameById.get(e.departmentId) ?? t("office.overview.unassigned")) : t("office.overview.unassigned"));
           const dotColor = isCeo ? "#4f46e5" : accentForDepartment(e.departmentId, deptLabel, prefs).dot;
-          const runtimeText = e.execution.model ? `${RUNTIME_LABELS[e.execution.runtime]} · ${e.execution.model}` : RUNTIME_LABELS[e.execution.runtime];
+          const runtimeText = e.execution.inherit?.includes("model")
+            ? `${RUNTIME_LABELS[e.execution.runtime]} · ${t("office.floor.defaultModelShort")}`
+            : e.execution.model
+              ? `${RUNTIME_LABELS[e.execution.runtime]} · ${e.execution.model}`
+              : RUNTIME_LABELS[e.execution.runtime];
           return (
             <li key={e.id} className={s.listRow}>
               <div className={o.row} style={{ flexWrap: "nowrap" }}>
@@ -535,8 +568,25 @@ function EmployeeListView({
                     {e.name}
                   </Link>
                   <Text size={100} className={o.muted}>
-                    {e.title} · {runtimeText}
+                    {e.title}
                   </Text>
+                  {e.employment !== "archived" ? (
+                    <button
+                      type="button"
+                      className={s.listModelChip}
+                      aria-label={t("office.floor.changeModelFor", { name: e.name })}
+                      title={t("office.floor.changeModelFor", { name: e.name })}
+                      onClick={() => onChangeModel(e)}
+                    >
+                      <Sparkle16Regular style={{ fontSize: "11px", flexShrink: 0 }} aria-hidden />
+                      <span>{runtimeText}</span>
+                      <ChevronDown12Regular style={{ flexShrink: 0 }} aria-hidden />
+                    </button>
+                  ) : (
+                    <Text size={100} className={o.muted}>
+                      {runtimeText}
+                    </Text>
+                  )}
                 </div>
               </div>
               <span className={s.deptPill}>
@@ -607,6 +657,7 @@ function RosterBody({
   onNewDepartment,
   onHireInDepartment,
   onOpenReview,
+  onChangeModel,
   onRosterChanged,
   onClearFilters,
 }: {
@@ -636,6 +687,7 @@ function RosterBody({
   onNewDepartment: () => void;
   onHireInDepartment: (departmentId: string) => void;
   onOpenReview: (missionId: string | null) => void;
+  onChangeModel: (employee: EmployeeCard) => void;
   onRosterChanged: () => void;
   onClearFilters: () => void;
 }) {
@@ -706,6 +758,7 @@ function RosterBody({
           onAssign={onAssign}
           onOpenEmployee={(id) => go("employee", id)}
           onOpenMission={(id) => go("mission", id)}
+          onChangeModel={onChangeModel}
         />
       ) : (
         <OfficeFloorMap
@@ -736,6 +789,7 @@ function RosterBody({
           onHireCeo={onHireCeo}
           onHireInDepartment={onHireInDepartment}
           onOpenReview={onOpenReview}
+          onChangeModel={onChangeModel}
           onRosterChanged={onRosterChanged}
         />
       )}
@@ -776,6 +830,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [appointing, setAppointing] = useState<AppointmentEdit | null>(null);
   const [defaultsOf, setDefaultsOf] = useState<DefaultsTarget | null>(null);
   const [reviewing, setReviewing] = useState<{ missionId: string | null } | null>(null);
+  const [switchingModel, setSwitchingModel] = useState<ModelSwitcherTarget | null>(null);
   const [filters, setFilters] = useState(false);
   const [checklistDismissed, setChecklistDismissed] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -795,7 +850,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const recruit = executiveState.data?.recruit ?? null;
 
   // Virtual workplace keyboard shortcuts (ignored when typing, holding modifiers, or when a modal/sheet is open).
-  const modalOpen = Boolean(hiring || recruiting || assigning || editing || appointing || defaultsOf || reviewing || filters);
+  const modalOpen = Boolean(hiring || recruiting || assigning || editing || appointing || defaultsOf || reviewing || switchingModel || filters);
   const hasEmployees = (roster.data?.employees.length ?? 0) > 0;
   useEffect(() => {
     if (modalOpen) return;
@@ -965,12 +1020,58 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<PeopleAdd20Regular />} disabled={recruit?.ok !== true} title={recruit !== null && !recruit.ok ? (recruit.reason ?? undefined) : undefined} onClick={() => setRecruiting({ departmentId: null })} {...restore}>
               {t("office.overview.recruit")}
             </Button>
-            <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })} {...restore}>
-              {t("office.overview.newDepartment")}
-            </Button>
-            <Button size="small" appearance="subtle" className={mergeClasses(o.touch, s.secondaryActionBtn)} icon={<Options16Regular />} onClick={() => setDefaultsOf({ kind: "company", office: company })} {...restore}>
-              {t("office.overview.companyDefaults")}
-            </Button>
+            {r.employees.length > 0 && (
+              <Button
+                size="small"
+                appearance="subtle"
+                className={mergeClasses(o.touch, s.secondaryActionBtn)}
+                icon={<Sparkle16Regular />}
+                disabled={!canHire}
+                title={t("office.overview.changeModelsTitle")}
+                onClick={() => setSwitchingModel({ kind: "bulk", initialScope: department === "all" ? "all" : department === "none" ? "unassigned" : department })}
+                {...restore}
+              >
+                {t("office.overview.changeModels")}
+              </Button>
+            )}
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  className={mergeClasses(o.touch, s.secondaryActionBtn)}
+                  icon={<Settings16Regular />}
+                  aria-label={t("office.overview.manageMenuAria")}
+                  {...restore}
+                >
+                  {t("office.overview.manageMenu")}{" "}
+                  <ChevronDown16Regular aria-hidden style={{ verticalAlign: "middle", marginLeft: "2px" }} />
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuGroup>
+                    <MenuGroupHeader>{t("office.overview.manageStructure")}</MenuGroupHeader>
+                    <MenuItem icon={<Add16Regular />} onClick={() => setEditing({ kind: "new" })}>
+                      {t("office.overview.newDepartment")}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<Organization16Regular />}
+                      onClick={() => document.getElementById("office-leadership")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      {t("office.overview.jumpLeadership")}
+                    </MenuItem>
+                  </MenuGroup>
+                  <MenuDivider />
+                  <MenuGroup>
+                    <MenuGroupHeader>{t("office.overview.manageAdvanced")}</MenuGroupHeader>
+                    <MenuItem icon={<Options16Regular />} onClick={() => setDefaultsOf({ kind: "company", office: company })}>
+                      {t("office.overview.companyDefaults")}
+                    </MenuItem>
+                  </MenuGroup>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
           </div>
         </div>
         <div className={o.statGrid}>
@@ -1136,6 +1237,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         onNewDepartment={() => setEditing({ kind: "new" })}
         onHireInDepartment={(departmentId) => setHiring({ departmentId })}
         onOpenReview={(missionId) => setReviewing({ missionId })}
+        onChangeModel={(emp) => setSwitchingModel({ kind: "single", employee: emp })}
         onRosterChanged={() => void roster.reload()}
         onClearFilters={clearFilters}
       />
@@ -1209,6 +1311,15 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         />
       )}
       {defaultsOf && <DefaultsDialog target={defaultsOf} onClose={() => setDefaultsOf(null)} onDone={changed} />}
+      {switchingModel && (
+        <ModelSwitcherDialog
+          target={switchingModel}
+          departments={r.departments}
+          companyDefaults={company.defaults ?? {}}
+          onClose={() => setSwitchingModel(null)}
+          onDone={() => void roster.reload()}
+        />
+      )}
     </div>
   );
 }

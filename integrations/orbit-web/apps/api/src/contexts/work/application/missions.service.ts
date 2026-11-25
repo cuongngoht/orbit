@@ -265,6 +265,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         if (m !== null && m.data.state === "open") {
           m.complete(at);
           await this.missions.save(m);
+          await this.team.freezeRooms(actor.command.orbitId, m.id, at);
         }
       }
       return [];
@@ -654,8 +655,10 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     if (a.data.parentId !== null) return;
     const m = await this.missions.get(actor.command.orbitId, a.data.missionId, true);
     if (m === null || m.data.state !== "open") return;
-    m.end(a.state === "CANCELLED" ? "cancelled" : "failed", new Date().toISOString());
+    const at = new Date().toISOString();
+    m.end(a.state === "CANCELLED" ? "cancelled" : "failed", at);
     await this.missions.save(m);
+    await this.team.freezeRooms(actor.command.orbitId, m.id, at);
   }
 
   async recovering(actor: Actor, assignmentId: string, fence: number, reason: string): Promise<void> {

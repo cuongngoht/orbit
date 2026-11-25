@@ -141,6 +141,7 @@ describe("the work and one mission", () => {
     const r2 = await screen.findByRole("article", { name: "Revision 2" });
     expect(screen.getByRole("article", { name: "Revision 1" }).textContent).toContain("Revision requested");
     expect(within(r2).getByText("Submitted")).toBeInTheDocument();
+    await userEvent.click(within(r2).getByRole("button", { name: "Technical details" }));
     expect(r2.textContent).toContain(HANDOFF_DIGEST.slice(0, 12));
     expect(within(r2).getByRole("link", { name: /q3-report\.pdf/ })).toHaveAttribute("href", "/api/artifacts/a7000000-0000-4000-8000-000000000001/content");
     const claims = within(r2).getByRole("list", { name: "Claims of revision 2" });
@@ -207,11 +208,17 @@ describe("the work and one mission", () => {
       ]);
     const go = vi.fn();
     renderLive(<OfficeView page="mission" item={MISSION_ID} tab="overview" go={go} account={authAccount()} />);
-    const plan = await screen.findByRole("list", { name: "Assignments" });
+    const plan = await screen.findByRole("tree", { name: "Assignments" });
+    expect(plan.textContent).toContain("Waits for: Research");
+    await userEvent.click(within(plan).getByRole("button", { name: "Technical details for “Research”" }));
+    await userEvent.click(within(plan).getByRole("button", { name: "Technical details for “Summary”" }));
     expect(plan.textContent).toContain("Part “research” of its manager's plan");
     expect(plan.textContent).toContain("Part “summary” of its manager's plan · waits for “research”");
-    expect(screen.getByRole("region", { name: "What is wanted" }).textContent).toContain("Research sourcesNone pinned");
-    await userEvent.click(screen.getByRole("tab", { name: "Team room" }));
+    const wanted = screen.getByRole("region", { name: "What is wanted" });
+    await userEvent.click(within(wanted).getByRole("button", { name: "Advanced details" }));
+    expect(wanted.textContent).toContain("Research sourcesNone pinned");
+    await userEvent.click(screen.getByRole("button", { name: "Advanced mission views" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Team room/ }));
     expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "team");
   });
 

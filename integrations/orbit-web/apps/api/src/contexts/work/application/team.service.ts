@@ -318,6 +318,19 @@ export class TeamService implements OnModuleInit {
     if (made !== null) await this.resources.commit(orbitId, "team", String(made.id), TEAM_ROOM_MIB);
   }
 
+  // When a mission ends (completed, cancelled or failed): freeze its open team rooms and release unused quota back into
+  // the account's storage budget (rooms that wrote nothing drop their commitment to 0; rooms with bytes keep only used_mib).
+  async freezeRooms(orbitId: string, missionId: string, at: string): Promise<void> {
+    const rooms = await this.db.query(
+      "UPDATE workforce.team_rooms SET state = 'frozen', frozen_at = $3, version = version + 1 WHERE account_id = $1 AND mission_id = $2 AND state = 'open' RETURNING id",
+      [orbitId, missionId, at],
+    );
+    if (rooms.length === 0) return;
+    const refs = rooms.map((r) => String(r.id));
+    await this.db.query("DELETE FROM workforce.storage_usage WHERE account_id = $1 AND category = 'team' AND owner_ref = ANY($2::text[]) AND COALESCE(used_mib, 0) = 0", [orbitId, refs]);
+    await this.db.query("UPDATE workforce.storage_usage SET committed_mib = COALESCE(used_mib, 0) WHERE account_id = $1 AND category = 'team' AND owner_ref = ANY($2::text[])", [orbitId, refs]);
+  }
+
   private async departmentOf(orbitId: string, employeeId: string): Promise<string | null> {
     const r = await this.db.one("SELECT department_id FROM workforce.employees WHERE account_id = $1 AND id = $2", [orbitId, employeeId]);
     return r === null || r.department_id === null ? null : String(r.department_id);

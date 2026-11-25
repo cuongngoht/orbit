@@ -326,7 +326,7 @@ describe("signed in: the workspace, as in Claude Code", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Office · Employee" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Personal Sandbox" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Sandbox & resources" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: "Advanced employee settings" })).toHaveTextContent("Advanced · Sandbox & resources");
     expect(api.calls.some((c) => c.path === `/api/employees/${EMP_ANA}`)).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(window.location.hash).toBe("#/office"));

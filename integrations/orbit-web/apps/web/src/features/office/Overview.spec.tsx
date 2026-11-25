@@ -6,7 +6,7 @@ import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { pushApp } from "../../testing/events";
 import { FakeEventSource } from "../../testing/fakeEventSource";
 import { authAccount, authSession } from "../../testing/fixtures";
-import { APPOINTMENT_ID, CONN_CLAUDE, CONN_CODEX, DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, EMP_BAO, appointmentSummary, appointmentView, busyBao, capabilities, connection, connectionsView, department, employeeCard, notSetUp, officeRecord, roster } from "../../testing/officeFixtures";
+import { APPOINTMENT_ID, CONN_CLAUDE, CONN_CODEX, DEPT_ACCOUNTING, DEPT_LEGAL, EMP_ANA, EMP_BAO, appointmentSummary, appointmentView, busyBao, capabilities, connection, connectionsView, department, employeeCard, employeeDetail, notSetUp, officeRecord, roster } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { OfficeView } from "./OfficeView";
 
@@ -122,7 +122,8 @@ describe("the office: its overview", () => {
     await waitFor(() => expect(screen.getByText(/Connect an AI CLI first/)).toBeInTheDocument());
     expect(hire).toBeDisabled();
     expect(screen.getByRole("link", { name: "Open Settings → AI Connections" })).toHaveAttribute("href", "#/?settings=ai-connections");
-    expect(screen.getByRole("button", { name: "New department" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Manage office settings and structure" }));
+    expect(await screen.findByRole("menuitem", { name: "New department" })).toBeEnabled();
   });
 
   test("the department picker (with Unassigned), the search and the status filter ask the roster again", async () => {
@@ -147,7 +148,8 @@ describe("the office: its overview", () => {
       .on("POST", "/api/office/departments", () => withStatus(201, department({ id: "d1000000-0000-4000-8000-000000000003", name: "Sales" })))
       .on("POST", `/api/office/departments/${DEPT_ACCOUNTING}/archive`, () => department({ archived: true }));
     show();
-    await userEvent.click(await screen.findByRole("button", { name: "New department" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Manage office settings and structure" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "New department" }));
     let dialog = await screen.findByRole("dialog", { name: "New department" });
     await userEvent.type(within(dialog).getByRole("textbox", { name: /Name/ }), "Sales");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
@@ -323,7 +325,8 @@ describe("the office: who leads it, and what its employees run on by default", (
       .on("PATCH", "/api/office/defaults", () => officeRecord({ version: 8 }))
       .on("PATCH", `/api/office/departments/${DEPT_ACCOUNTING}`, () => department({ version: 2 }));
     show();
-    await userEvent.click(await screen.findByRole("button", { name: "Company defaults" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Manage office settings and structure" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Company defaults" }));
     let dialog = await screen.findByRole("dialog", { name: "Company execution defaults" });
     const claude = await within(dialog).findByRole("group", { name: "Claude Code" });
     // One group a runtime an employee can run on; nothing switches an employee to another runtime.
@@ -544,5 +547,79 @@ describe("the office: who leads it, and what its employees run on by default", (
     hasCeo = true;
     pushApp("office.changed", { areas: ["roster"], missionId: null, version: 2 });
     await waitFor(() => expect(screen.queryByRole("button", { name: "Hire CEO" })).toBeNull());
+  });
+
+  test("each agent card lets the owner switch its AI connection, model, and effort directly on the office floor", async () => {
+    const codex = connection({
+      id: CONN_CODEX,
+      runtime: "codex",
+      label: "ChatGPT",
+      method: "subscription",
+      plugins: null,
+      isDefault: true,
+      catalog: {
+        ...connection().catalog,
+        models: [{ id: "gpt-6.2-sol", label: "GPT-6.2-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }],
+        recommended: "gpt-6.2-sol",
+      },
+      capabilities: capabilities({ webSearch: "yes" }),
+    });
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }))
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("PATCH", `/api/employees/${EMP_ANA}`, () => employeeDetail({ profileRevision: 3 }));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Change AI model for Ana" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change model — Ana" });
+    await userEvent.selectOptions(await within(dialog).findByRole("combobox", { name: /^AI connection/ }), CONN_CODEX);
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: /^Effort/ }), "high");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save model" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const patch = api.calls.find((c) => c.method === "PATCH" && c.path === `/api/employees/${EMP_ANA}`);
+    expect(patch?.headers["if-match"]).toBe('"4"');
+    expect(patch?.body).toMatchObject({
+      profile: {
+        execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.2-sol", effort: "high" },
+      },
+    });
+  });
+
+  test("Change models on the office toolbar switches all active agents at once (or a single department)", async () => {
+    const codex = connection({
+      id: CONN_CODEX,
+      runtime: "codex",
+      label: "ChatGPT",
+      method: "subscription",
+      plugins: null,
+      isDefault: true,
+      catalog: {
+        ...connection().catalog,
+        models: [{ id: "gpt-6.2-sol", label: "GPT-6.2-Sol", description: null, efforts: ["low", "medium", "high"], autoMode: true }],
+        recommended: "gpt-6.2-sol",
+      },
+      capabilities: capabilities({ webSearch: "yes" }),
+    });
+    const baoDetail = { ...employeeDetail(), ...busyBao(), version: 7 };
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView({ connections: [connection(), codex] }))
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", `/api/employees/${EMP_ANA}`, () => employeeDetail())
+      .on("GET", `/api/employees/${EMP_BAO}`, () => baoDetail)
+      .on("PATCH", `/api/employees/${EMP_ANA}`, () => employeeDetail({ profileRevision: 3 }))
+      .on("PATCH", `/api/employees/${EMP_BAO}`, () => ({ ...baoDetail, profileRevision: 3 }));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Change models" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change AI model" });
+    expect(await within(dialog).findByText("Updates 2 agent(s): Ana, Bao")).toBeInTheDocument();
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: /^AI connection/ }), CONN_CODEX);
+    await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: /^Effort/ }), "low");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Apply to 2 agent(s)" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const patches = api.calls.filter((c) => c.method === "PATCH");
+    expect(patches.map((p) => p.path)).toEqual([`/api/employees/${EMP_ANA}`, `/api/employees/${EMP_BAO}`]);
+    expect(patches[0]?.body).toMatchObject({ profile: { execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.2-sol", effort: "low" } } });
+    expect(patches[1]?.body).toMatchObject({ profile: { execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.2-sol", effort: "low" } } });
+    expect(patches[1]?.headers["if-match"]).toBe('"7"');
   });
 });

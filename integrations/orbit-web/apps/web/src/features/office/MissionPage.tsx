@@ -18,6 +18,9 @@ import {
   Input,
   Link,
   Menu,
+  MenuDivider,
+  MenuGroup,
+  MenuGroupHeader,
   MenuItem,
   MenuList,
   MenuPopover,
@@ -38,7 +41,16 @@ import {
   tokens,
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import { ArrowDownload16Regular, MoreHorizontal16Regular, Warning16Regular } from "@fluentui/react-icons";
+import {
+  ArrowDownload16Regular,
+  ChevronDown16Regular,
+  ChevronRight16Regular,
+  ChevronUp16Regular,
+  Info16Regular,
+  MoreHorizontal16Regular,
+  Settings16Regular,
+  Warning16Regular,
+} from "@fluentui/react-icons";
 import { Markdown } from "../../components/Markdown";
 import {
   ASSIGNMENT_STATE_TEXT,
@@ -114,9 +126,40 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground3,
     color: tokens.colorNeutralForeground2,
   },
-  nested: { borderLeftWidth: "3px", borderLeftColor: tokens.colorBrandStroke2 },
-  // A part's own parts, under it: indented a few levels, then flat -- a deep tree never pushes the page sideways.
-  branch: {
+  tabBarRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    flexWrap: "nowrap",
+    minWidth: 0,
+  },
+  tabBarMain: { display: "flex", alignItems: "center", gap: "4px", minWidth: 0 },
+  advancedTabBtn: {
+    flexShrink: 0,
+    borderRadius: "8px",
+    fontWeight: tokens.fontWeightMedium,
+    color: tokens.colorNeutralForeground2,
+  },
+  advancedTabBtnActive: {
+    color: tokens.colorBrandForeground1,
+    backgroundColor: tokens.colorBrandBackground2,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  planTree: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    listStyleType: "none",
+    marginTop: 0,
+    marginRight: 0,
+    marginBottom: 0,
+    marginLeft: 0,
+    paddingLeft: 0,
+    minWidth: 0,
+  },
+  // Nested children branch with vertical guide rail + subtle elbow connectors for clear hierarchy.
+  treeBranch: {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
@@ -124,15 +167,141 @@ const useStyles = makeStyles({
     marginTop: "8px",
     marginRight: 0,
     marginBottom: 0,
-    marginLeft: 0,
-    paddingLeft: "14px",
+    marginLeft: "17px",
+    paddingLeft: "18px",
+    borderLeftWidth: "2px",
+    borderLeftStyle: "solid",
+    borderLeftColor: tokens.colorNeutralStroke2,
     minWidth: 0,
   },
-  branchFlat: { paddingLeft: 0 },
-  node: { minWidth: 0 },
-  // A row's state and title, wrapping as they need; its menu stays at the top right.
+  treeBranchFlat: { marginLeft: "6px", paddingLeft: "10px" },
+  treeNode: { position: "relative", minWidth: 0 },
+  treeNodeChild: {
+    "::before": {
+      content: '""',
+      position: "absolute",
+      left: "-18px",
+      top: "23px",
+      width: "16px",
+      height: "2px",
+      backgroundColor: tokens.colorNeutralStroke2,
+    },
+  },
+  treeCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    paddingTop: "10px",
+    paddingRight: "12px",
+    paddingBottom: "10px",
+    paddingLeft: "10px",
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    transitionProperty: "border-color, background-color, box-shadow",
+    transitionDuration: "140ms",
+    ":hover": {
+      ...shorthands.borderColor(tokens.colorNeutralStroke1Hover),
+      backgroundColor: tokens.colorNeutralBackground1,
+    },
+    minWidth: 0,
+  },
+  treeCardRoot: {
+    backgroundColor: "var(--orbit-card-bg)",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke1),
+  },
+  treeCardAttention: {
+    borderLeftWidth: "3px",
+    borderLeftColor: tokens.colorPaletteRedBorder2,
+  },
+  treeCardActive: {
+    borderLeftWidth: "3px",
+    borderLeftColor: tokens.colorBrandStroke1,
+  },
+  treeCardDone: {
+    borderLeftWidth: "3px",
+    borderLeftColor: tokens.colorPaletteGreenBorder2,
+  },
+  treeRowLayout: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "6px",
+    minWidth: 0,
+  },
+  treeToggleSlot: {
+    width: "24px",
+    height: "24px",
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: "1px",
+  },
+  treeToggleBtn: {
+    minWidth: "24px",
+    width: "24px",
+    height: "24px",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+  },
+  treeLeafDot: {
+    width: "7px",
+    height: "7px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralStroke1,
+  },
+  treeLeafDotDone: { backgroundColor: tokens.colorPaletteGreenBackground3 },
+  treeLeafDotActive: { backgroundColor: tokens.colorBrandBackground },
+  treeLeafDotDanger: { backgroundColor: tokens.colorPaletteRedBackground3 },
+  treeContent: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    flexGrow: 1,
+    minWidth: 0,
+  },
   rowHead: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", minWidth: 0 },
-  rowMain: { flexGrow: 1 },
+  rowMain: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", flexGrow: 1, minWidth: 0 },
+  rowControls: { display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 },
+  metaLine: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", minWidth: 0 },
+  deptChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    paddingTop: "1px",
+    paddingRight: "7px",
+    paddingBottom: "1px",
+    paddingLeft: "7px",
+    borderRadius: "9999px",
+    fontSize: tokens.fontSizeBase100,
+    color: tokens.colorNeutralForeground2,
+    backgroundColor: tokens.colorNeutralBackground3,
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+  },
+  detailsDrawer: {
+    marginTop: "4px",
+    paddingTop: "10px",
+    paddingRight: "12px",
+    paddingBottom: "10px",
+    paddingLeft: "12px",
+    borderRadius: "10px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground1,
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    minWidth: 0,
+  },
+  disclosureToggle: {
+    alignSelf: "flex-start",
+    paddingLeft: "4px",
+    paddingRight: "8px",
+    color: tokens.colorNeutralForeground2,
+    fontWeight: tokens.fontWeightMedium,
+  },
+  menuItemBody: { display: "flex", flexDirection: "column", gap: "1px" },
+  menuItemSub: { fontSize: tokens.fontSizeBase100, color: tokens.colorNeutralForeground3 },
   // What a person or an employee wrote, shown as the plain text it is: line breaks kept, never markup.
   plain: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", minWidth: 0 },
   route: { display: "flex", flexDirection: "column", gap: "2px", marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, paddingLeft: "18px", minWidth: 0 },
@@ -169,6 +338,8 @@ type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 export const MISSION_TABS = ["overview", "communication", "timeline", "handoffs", "team", "run"] as const;
 type MissionTab = (typeof MISSION_TABS)[number];
+const PRIMARY_MISSION_TABS: readonly MissionTab[] = ["overview", "handoffs", "communication"];
+const ADVANCED_MISSION_TABS: readonly MissionTab[] = ["timeline", "team", "run"];
 const TAB_KEYS: Record<MissionTab, MessageKey> = {
   overview: "office.mission.tab.overview",
   communication: "office.mission.tab.communication",
@@ -176,6 +347,11 @@ const TAB_KEYS: Record<MissionTab, MessageKey> = {
   handoffs: "office.mission.tab.handoffs",
   team: "office.mission.tab.team",
   run: "office.mission.tab.run",
+};
+const ADVANCED_TAB_DESC: Record<"timeline" | "team" | "run", MessageKey> = {
+  timeline: "office.mission.tab.timelineDesc",
+  team: "office.mission.tab.teamDesc",
+  run: "office.mission.tab.runDesc",
 };
 
 const HANDOFF_KEYS: Record<HandoffStatus, MessageKey> = {
@@ -281,13 +457,47 @@ const flatten = (nodes: readonly TreeNode[]): AssignmentView[] => nodes.flatMap(
 const reviewText = (t: I18nContextValue["t"], a: AssignmentView): string =>
   a.reviewedBy === "owner" ? t("office.mission.reviewedByYou") : a.leadName ? t("office.mission.reviewedByLead", { name: a.leadName }) : t("office.mission.reviewedByItsLead");
 
-// Who a mission was given to: an employee by name, a department through its manager, the CEO -- and by which slot
-// revision of the appointment that resolved it.
+// Who a mission was given to, in plain non-technical words (appointment revision stays in Advanced details).
+function givenToPlainText(t: I18nContextValue["t"], target: AssignmentTarget): string {
+  if (target.kind === "department") return t("office.mission.givenToDepartmentPlain", { department: target.departmentName ?? t("office.mission.aDepartment") });
+  if (target.kind === "ceo") return t("office.mission.givenToCeoPlain");
+  return t("office.mission.givenToEmployee");
+}
+
 function givenToText(t: I18nContextValue["t"], target: AssignmentTarget): string {
   const revision = target.appointmentRevision === null ? "" : t("office.mission.appointmentRevision", { revision: target.appointmentRevision });
   if (target.kind === "department") return t("office.mission.givenToDepartment", { department: target.departmentName ?? t("office.mission.aDepartment"), revision });
   if (target.kind === "ceo") return t("office.mission.givenToCeo", { revision });
   return t("office.mission.givenToEmployee");
+}
+
+// Count leaf & nested descendants completed under a branch node so collapsed subtrees still show live progress.
+function branchProgress(node: TreeNode): { done: number; total: number } {
+  let done = 0;
+  let total = 0;
+  const walk = (children: readonly TreeNode[]) => {
+    for (const child of children) {
+      total += 1;
+      if (child.a.state === "COMPLETED") done += 1;
+      walk(child.children);
+    }
+  };
+  walk(node.children);
+  return { done, total };
+}
+
+function collectBranchIds(nodes: readonly TreeNode[]): string[] {
+  const ids: string[] = [];
+  const walk = (list: readonly TreeNode[]) => {
+    for (const n of list) {
+      if (n.children.length > 0) {
+        ids.push(n.a.id);
+        walk(n.children);
+      }
+    }
+  };
+  walk(nodes);
+  return ids;
 }
 
 // ---- the commands on one assignment -------------------------------------------------------------------------------
@@ -478,30 +688,59 @@ function AssignmentActions({ a, answerHere, onDone, onLoadLatest }: { a: Assignm
   const c = useCommands(a, onDone);
   const [answer, setAnswer] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const directCommands = c.commands.filter((cmd) => cmd !== "cancel");
+  const canCancel = c.commands.includes("cancel");
+  const hasMore = canCancel || c.handOver || c.repin;
   return (
     <div className={o.stack}>
-      {(c.commands.length > 0 || c.handOver || c.repin) && (
-        <div className={o.row}>
-          {c.commands.map((command) => (
+      {(directCommands.length > 0 || hasMore) && (
+        <div className={o.row} style={{ gap: "6px" }}>
+          {directCommands.map((command) => (
             <Button
               key={command}
               className={o.touch}
               size="small"
+              appearance={command === "retry" || command === "resume" ? "primary" : "secondary"}
               disabled={c.act.busy}
-              onClick={() => (command === "cancel" ? setConfirmCancel(true) : void c.run(command))}
+              onClick={() => void c.run(command)}
             >
               {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
             </Button>
           ))}
-          {c.handOver && (
-            <Button className={o.touch} size="small" disabled={c.act.busy} onClick={() => c.setDialog("hand_over")} {...restore}>
-              {t("office.mission.action.handOver")}
-            </Button>
-          )}
-          {c.repin && (
-            <Button className={o.touch} size="small" disabled={c.act.busy} onClick={() => c.setDialog("repin")} {...restore}>
-              {t("office.mission.action.repin")}
-            </Button>
+          {hasMore && (
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  className={o.touch}
+                  size="small"
+                  appearance="subtle"
+                  icon={<ChevronDown16Regular />}
+                  iconPosition="after"
+                  disabled={c.act.busy}
+                  aria-label={t("office.mission.moreActionsAria")}
+                  {...restore}
+                >
+                  {t("office.mission.moreActions")}
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  {(c.handOver || c.repin) && (
+                    <MenuGroup>
+                      <MenuGroupHeader>{t("office.mission.advancedMenuHeader")}</MenuGroupHeader>
+                      {c.handOver && <MenuItem onClick={() => c.setDialog("hand_over")}>{t("office.mission.action.handOver")}</MenuItem>}
+                      {c.repin && <MenuItem onClick={() => c.setDialog("repin")}>{t("office.mission.action.repin")}</MenuItem>}
+                    </MenuGroup>
+                  )}
+                  {(c.handOver || c.repin) && canCancel && <MenuDivider />}
+                  {canCancel && (
+                    <MenuItem className={o.dangerMenuItem} onClick={() => setConfirmCancel(true)}>
+                      {t("office.mission.action.cancel")}
+                    </MenuItem>
+                  )}
+                </MenuList>
+              </MenuPopover>
+            </Menu>
           )}
         </div>
       )}
@@ -540,12 +779,15 @@ function AssignmentActions({ a, answerHere, onDone, onLoadLatest }: { a: Assignm
   );
 }
 
-// The commands of a part, in a menu on its row.
-function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useCommands> }) {
+// The commands of a part, in a menu on its tree row.
+function PartActions({ a, c, go, onInspectRun }: { a: AssignmentView; c: ReturnType<typeof useCommands>; go: Go; onInspectRun: (assignmentId: string) => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const [confirmCancel, setConfirmCancel] = useState(false);
-  if (c.commands.length === 0 && !c.handOver && !c.repin) return null;
+  const directCommands = c.commands.filter((cmd) => cmd !== "cancel");
+  const canCancel = c.commands.includes("cancel");
+  const hasAdvanced = c.handOver || c.repin || canCancel || a.lastRun !== null;
+  if (directCommands.length === 0 && !hasAdvanced) return null;
   return (
     <>
       <Menu>
@@ -554,17 +796,29 @@ function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useComm
         </MenuTrigger>
         <MenuPopover>
           <MenuList>
-            {c.commands.map((command) => (
-              <MenuItem
-                key={command}
-                className={command === "cancel" ? o.dangerMenuItem : undefined}
-                onClick={() => (command === "cancel" ? setConfirmCancel(true) : void c.run(command))}
-              >
+            {directCommands.map((command) => (
+              <MenuItem key={command} onClick={() => void c.run(command)}>
                 {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
               </MenuItem>
             ))}
-            {c.handOver && <MenuItem onClick={() => c.setDialog("hand_over")}>{t("office.mission.action.handOver")}</MenuItem>}
-            {c.repin && <MenuItem onClick={() => c.setDialog("repin")}>{t("office.mission.action.repin")}</MenuItem>}
+            {directCommands.length > 0 && <MenuDivider />}
+            <MenuItem onClick={() => go("employee", a.employeeId)}>{t("office.mission.openEmployeeProfile", { name: a.employeeName })}</MenuItem>
+            {hasAdvanced && (
+              <>
+                <MenuDivider />
+                <MenuGroup>
+                  <MenuGroupHeader>{t("office.mission.advancedMenuHeader")}</MenuGroupHeader>
+                  {a.lastRun !== null && <MenuItem onClick={() => onInspectRun(a.id)}>{t("office.mission.inspectRunAction")}</MenuItem>}
+                  {c.handOver && <MenuItem onClick={() => c.setDialog("hand_over")}>{t("office.mission.action.handOver")}</MenuItem>}
+                  {c.repin && <MenuItem onClick={() => c.setDialog("repin")}>{t("office.mission.action.repin")}</MenuItem>}
+                  {canCancel && (
+                    <MenuItem className={o.dangerMenuItem} onClick={() => setConfirmCancel(true)}>
+                      {t("office.mission.action.cancel")}
+                    </MenuItem>
+                  )}
+                </MenuGroup>
+              </>
+            )}
           </MenuList>
         </MenuPopover>
       </Menu>
@@ -582,104 +836,229 @@ function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useComm
   );
 }
 
-// ---- the plan: the assignments as a tree --------------------------------------------------------------------------
+// ---- the plan: hierarchical interactive TreeView -----------------------------------------------------------------
 
-function AssignmentRow({ a, nested, go, onInspectRun, onDone, onLoadLatest }: { a: AssignmentView; nested: boolean; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
+function AssignmentTreeItem({
+  node,
+  depth,
+  collapsedIds,
+  onToggleCollapse,
+  titleByUnitKey,
+  go,
+  onInspectRun,
+  onDone,
+  onLoadLatest,
+}: {
+  node: TreeNode;
+  depth: number;
+  collapsedIds: ReadonlySet<string>;
+  onToggleCollapse: (id: string) => void;
+  titleByUnitKey: ReadonlyMap<string, string>;
+  go: Go;
+  onInspectRun: (assignmentId: string) => void;
+  onDone: () => void;
+  onLoadLatest: () => void;
+}) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
+  const a = node.a;
   const c = useCommands(a, onDone);
+  const [showDetails, setShowDetails] = useState(false);
   const part = a.parentId !== null;
+  const hasChildren = node.children.length > 0;
+  const expanded = !collapsedIds.has(a.id);
+  const progress = hasChildren ? branchProgress(node) : null;
+  const isAttention = a.state === "BLOCKED" || a.state === "FAILED_FINAL";
+  const isActive = a.state === "RUNNING" || a.state === "RECOVERING" || a.state === "AWAITING_ACCEPTANCE" || a.state === "REVIEWING";
+  const isDone = a.state === "COMPLETED";
   const runAlert = a.lastRun !== null && (a.state === "BLOCKED" || a.lastRun.state === "failed" || a.lastRun.state === "interrupted");
   const extraRunDetail = runAlert && a.lastRun?.detail && !(a.reason ?? "").includes(a.lastRun.detail) ? a.lastRun.detail : null;
-  const facts = [reviewText(t, a), a.planCount > 0 ? t("office.mission.plansGiven", { count: a.planCount }) : null, a.questionCount > 0 ? t("office.mission.questionsAskedCount", { count: a.questionCount }) : null].filter((f): f is string => f !== null);
+  const facts = [
+    reviewText(t, a),
+    a.planCount > 0 ? t("office.mission.plansGiven", { count: a.planCount }) : null,
+    a.questionCount > 0 ? t("office.mission.questionsAskedCount", { count: a.questionCount }) : null,
+  ].filter((f): f is string => f !== null);
+  const friendlyDeps = a.brief.dependsOn.map((k) => titleByUnitKey.get(k) ?? k);
+  const needsOwnerCallout = a.waitingOn !== null && a.waitingOn !== "team" && a.state !== "WAITING_FOR_SUBORDINATES";
+  const showReasonLine = isAttention || (a.reason !== null && a.state !== "WAITING_FOR_SUBORDINATES" && a.state !== "COMPLETED");
   return (
-    <div className={mergeClasses(o.item, nested && s.nested)}>
-      <div className={s.rowHead}>
-        <div className={mergeClasses(o.row, s.rowMain)}>
-          <StateBadge text={ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
-          <Text weight="semibold" className={o.wrap}>
-            {a.title}
-          </Text>
+    <li
+      role="treeitem"
+      aria-expanded={hasChildren ? expanded : undefined}
+      aria-level={depth + 1}
+      aria-label={a.title}
+      className={mergeClasses(s.treeNode, depth > 0 && depth <= INDENTED && s.treeNodeChild)}
+    >
+      <div
+        className={mergeClasses(
+          s.treeCard,
+          depth === 0 && s.treeCardRoot,
+          isAttention ? s.treeCardAttention : isDone ? s.treeCardDone : isActive ? s.treeCardActive : undefined,
+        )}
+      >
+        <div className={s.treeRowLayout}>
+          <div className={s.treeToggleSlot}>
+            {hasChildren ? (
+              <Button
+                type="button"
+                size="small"
+                appearance="subtle"
+                className={s.treeToggleBtn}
+                icon={expanded ? <ChevronDown16Regular /> : <ChevronRight16Regular />}
+                aria-label={expanded ? t("office.mission.collapseBranch", { title: a.title }) : t("office.mission.expandBranch", { title: a.title })}
+                onClick={() => onToggleCollapse(a.id)}
+              />
+            ) : (
+              <span
+                className={mergeClasses(s.treeLeafDot, isDone && s.treeLeafDotDone, isActive && s.treeLeafDotActive, isAttention && s.treeLeafDotDanger)}
+                aria-hidden
+              />
+            )}
+          </div>
+          <div className={s.treeContent}>
+            <div className={s.rowHead}>
+              <div className={s.rowMain}>
+                <Text weight="semibold" size={300} className={o.wrap}>
+                  {a.title}
+                </Text>
+                {progress !== null && (
+                  <Badge
+                    appearance="tint"
+                    color={progress.done === progress.total ? "success" : "subtle"}
+                    size="small"
+                    style={{ borderRadius: "9999px", flexShrink: 0 }}
+                  >
+                    {t("office.mission.branchProgress", { done: progress.done, total: progress.total })}
+                  </Badge>
+                )}
+              </div>
+              <div className={s.rowControls}>
+                <StateBadge text={ASSIGNMENT_STATE_TEXT[a.state]} state={a.state} />
+                <Button
+                  type="button"
+                  size="small"
+                  appearance="subtle"
+                  icon={<Info16Regular />}
+                  aria-expanded={showDetails}
+                  aria-label={t("office.mission.nodeDetailsAria", { title: a.title })}
+                  title={showDetails ? t("office.mission.nodeHideDetails") : t("office.mission.nodeDetails")}
+                  onClick={() => setShowDetails((prev) => !prev)}
+                />
+                {part && <PartActions a={a} c={c} go={go} onInspectRun={onInspectRun} />}
+              </div>
+            </div>
+            <div className={s.metaLine}>
+              <EmployeeAvatar name={a.employeeName} employeeId={a.employeeId} size="sm" />
+              <Link as="button" onClick={() => go("employee", a.employeeId)} style={{ fontSize: tokens.fontSizeBase200, fontWeight: 600 }}>
+                {a.employeeName}
+              </Link>
+              {a.pinned.departmentName && <span className={s.deptChip}>{a.pinned.departmentName}</span>}
+              {friendlyDeps.length > 0 && a.state !== "COMPLETED" && (
+                <Text size={200} className={o.muted}>
+                  · {t("office.mission.waitsForFriendly", { deps: friendlyDeps.join(", ") })}
+                </Text>
+              )}
+            </div>
+            {(showReasonLine || needsOwnerCallout) && (
+              <Text size={200} className={mergeClasses(isAttention ? o.danger : o.warn, o.wrap)}>
+                {showReasonLine ? (a.reason ?? "") : ""}
+                {showReasonLine && a.reason && needsOwnerCallout ? " · " : ""}
+                {needsOwnerCallout && a.waitingOn ? t("office.mission.waitingOnFriendly", { what: humanizeWaitingOn(a.waitingOn, t) }) : ""}
+              </Text>
+            )}
+            {a.lastRun && (a.lastRun.state === "waiting_for_resources" || a.lastRun.state === "unschedulable") && (
+              <Text size={200} className={mergeClasses(a.lastRun.state === "unschedulable" ? o.danger : o.warn, o.wrap)}>
+                {t(RUN_STATE_KEYS[a.lastRun.state])}: {a.lastRun.waitingReason ?? t("office.run.noReasonGiven")}
+              </Text>
+            )}
+            {extraRunDetail && (
+              <Text size={200} className={mergeClasses(o.danger, o.wrap)}>
+                {t("office.mission.runDetailLabel", { detail: extraRunDetail })}
+              </Text>
+            )}
+            {runAlert && (
+              <div>
+                <Link as="button" onClick={() => onInspectRun(a.id)} style={{ fontSize: tokens.fontSizeBase200 }}>
+                  {t("office.mission.inspectRunAction")}
+                </Link>
+              </div>
+            )}
+            {showDetails && (
+              <div className={s.detailsDrawer} aria-label={t("office.mission.nodeDetailsAria", { title: a.title })}>
+                <dl className={o.dl}>
+                  <dt className={o.dt}>{t("office.mission.detailReviewer")}</dt>
+                  <dd className={o.dd}>{facts.join(" · ")}</dd>
+                  <dt className={o.dt}>{t("office.mission.detailAttempts")}</dt>
+                  <dd className={o.dd}>
+                    {a.employeeName}
+                    {a.pinned.departmentName ? t("office.mission.deptWhenClaimed", { dept: a.pinned.departmentName }) : ""}
+                    {t("office.mission.attemptsAndRevision", { attempts: a.attempts, revision: a.handoffRevision })}
+                  </dd>
+                  {a.target?.kind === "department" && (
+                    <>
+                      <dt className={o.dt}>{t("office.mission.detailRouting")}</dt>
+                      <dd className={o.dd}>
+                        {t("office.mission.givenThroughDepartment", {
+                          department: a.target.departmentName ?? t("office.mission.aDepartment"),
+                          revision: a.target.appointmentRevision === null ? "" : t("office.mission.appointmentRevision", { revision: a.target.appointmentRevision }),
+                        })}
+                      </dd>
+                    </>
+                  )}
+                  {a.unitKey !== null && a.parentId !== null && (
+                    <>
+                      <dt className={o.dt}>{t("office.mission.detailPlanKey")}</dt>
+                      <dd className={o.dd}>
+                        {t("office.mission.partOfPlan", { key: a.unitKey })}
+                        {a.brief.dependsOn.length > 0 ? t("office.mission.waitsForDeps", { deps: a.brief.dependsOn.map((k) => `“${k}”`).join(", ") }) : ""}
+                      </dd>
+                    </>
+                  )}
+                  {a.lastRun?.wakeReason && (
+                    <>
+                      <dt className={o.dt}>{t("office.mission.detailLastStart")}</dt>
+                      <dd className={o.dd}>{t("office.mission.lastWake", { no: a.lastRun.attemptNo, why: a.lastRun.wakeReason })}</dd>
+                    </>
+                  )}
+                </dl>
+                {a.lastRun !== null && (
+                  <div>
+                    <Link as="button" onClick={() => onInspectRun(a.id)} style={{ fontSize: tokens.fontSizeBase200 }}>
+                      {t("office.mission.inspectRunAction")}
+                    </Link>
+                  </div>
+                )}
+              </div>
+            )}
+            {part && (
+              <>
+                <ProblemBar problem={c.act.problem} onLoadLatest={onLoadLatest} />
+                <CommandDialogs a={a} dialog={c.dialog} onClose={() => c.setDialog(null)} onDone={onDone} onLoadLatest={onLoadLatest} />
+              </>
+            )}
+          </div>
         </div>
-        {part && <PartActions a={a} c={c} />}
       </div>
-      <div className={o.row} style={{ gap: "6px" }}>
-        <EmployeeAvatar name={a.employeeName} size="sm" />
-        <Text size={200} className={o.wrap}>
-          {t("office.mission.heldByPrefix")}
-          <Link as="button" onClick={() => go("employee", a.employeeId)}>
-            {a.employeeName}
-          </Link>
-          {a.pinned.departmentName ? t("office.mission.deptWhenClaimed", { dept: a.pinned.departmentName }) : ""}
-          {t("office.mission.attemptsAndRevision", { attempts: a.attempts, revision: a.handoffRevision })}
-        </Text>
-      </div>
-      <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-        {facts.join(" · ")}
-      </Text>
-      {a.target?.kind === "department" && (
-        <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-          {t("office.mission.givenThroughDepartment", {
-            department: a.target.departmentName ?? t("office.mission.aDepartment"),
-            revision: a.target.appointmentRevision === null ? "" : t("office.mission.appointmentRevision", { revision: a.target.appointmentRevision }),
-          })}
-        </Text>
-      )}
-      {a.unitKey !== null && a.parentId !== null && (
-        <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-          {t("office.mission.partOfPlan", { key: a.unitKey })}
-          {a.brief.dependsOn.length > 0 ? t("office.mission.waitsForDeps", { deps: a.brief.dependsOn.map((k) => `“${k}”`).join(", ") }) : ""}
-        </Text>
-      )}
-      {(a.reason || a.waitingOn) && (
-        <Text size={200} className={mergeClasses(o.warn, o.wrap)}>
-          {a.reason ?? ""}
-          {a.waitingOn ? t("office.mission.waitingOn", { what: humanizeWaitingOn(a.waitingOn, t) }) : ""}
-        </Text>
-      )}
-      {a.lastRun && (a.lastRun.state === "waiting_for_resources" || a.lastRun.state === "unschedulable") && (
-        <Text size={200} className={mergeClasses(a.lastRun.state === "unschedulable" ? o.danger : o.warn, o.wrap)}>
-          {t(RUN_STATE_KEYS[a.lastRun.state])}: {a.lastRun.waitingReason ?? t("office.run.noReasonGiven")}
-        </Text>
-      )}
-      {extraRunDetail && (
-        <Text size={200} className={mergeClasses(o.danger, o.wrap)}>
-          {t("office.mission.runDetailLabel", { detail: extraRunDetail })}
-        </Text>
-      )}
-      {a.lastRun?.wakeReason && (
-        <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-          {t("office.mission.lastWake", { no: a.lastRun.attemptNo, why: a.lastRun.wakeReason })}
-        </Text>
-      )}
-      {runAlert && (
-        <div>
-          <Link as="button" onClick={() => onInspectRun(a.id)} style={{ fontSize: tokens.fontSizeBase200 }}>
-            {t("office.mission.inspectRunAction")}
-          </Link>
-        </div>
-      )}
-      {part && (
-        <>
-          <ProblemBar problem={c.act.problem} onLoadLatest={onLoadLatest} />
-          <CommandDialogs a={a} dialog={c.dialog} onClose={() => c.setDialog(null)} onDone={onDone} onLoadLatest={onLoadLatest} />
-        </>
-      )}
-    </div>
-  );
-}
-
-function AssignmentNode({ node, depth, go, onInspectRun, onDone, onLoadLatest }: { node: TreeNode; depth: number; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
-  const { t } = useI18n();
-  const s = useStyles();
-  return (
-    <li className={s.node}>
-      <AssignmentRow a={node.a} nested={depth > 0} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
-      {node.children.length > 0 && (
-        <ul className={mergeClasses(s.branch, depth + 1 > INDENTED && s.branchFlat)} aria-label={t("office.mission.partsOf", { title: node.a.title })}>
+      {hasChildren && expanded && (
+        <ul
+          role="group"
+          className={mergeClasses(s.treeBranch, depth + 1 > INDENTED && s.treeBranchFlat)}
+          aria-label={t("office.mission.partsOf", { title: a.title })}
+        >
           {node.children.map((child) => (
-            <AssignmentNode key={child.a.id} node={child} depth={depth + 1} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
+            <AssignmentTreeItem
+              key={child.a.id}
+              node={child}
+              depth={depth + 1}
+              collapsedIds={collapsedIds}
+              onToggleCollapse={onToggleCollapse}
+              titleByUnitKey={titleByUnitKey}
+              go={go}
+              onInspectRun={onInspectRun}
+              onDone={onDone}
+              onLoadLatest={onLoadLatest}
+            />
           ))}
         </ul>
       )}
@@ -687,14 +1066,44 @@ function AssignmentNode({ node, depth, go, onInspectRun, onDone, onLoadLatest }:
   );
 }
 
-// The plan: the root assignment and, under each, the parts it gave its team.
-function Plan({ assignments, go, onInspectRun, onDone, onLoadLatest }: { assignments: AssignmentView[]; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
+// The plan: interactive collapsible TreeView from root assignment down through department leads and teammates.
+function Plan({
+  assignments,
+  collapsedIds,
+  onToggleCollapse,
+  go,
+  onInspectRun,
+  onDone,
+  onLoadLatest,
+}: {
+  assignments: AssignmentView[];
+  collapsedIds: ReadonlySet<string>;
+  onToggleCollapse: (id: string) => void;
+  go: Go;
+  onInspectRun: (assignmentId: string) => void;
+  onDone: () => void;
+  onLoadLatest: () => void;
+}) {
   const { t } = useI18n();
-  const o = useOfficeStyles();
+  const s = useStyles();
+  const roots = treeOf(assignments);
+  const titleByUnitKey = new Map<string, string>();
+  for (const a of assignments) if (a.unitKey) titleByUnitKey.set(a.unitKey, a.title);
   return (
-    <ul className={o.list} aria-label={t("office.mission.assignmentsAria")}>
-      {treeOf(assignments).map((node) => (
-        <AssignmentNode key={node.a.id} node={node} depth={0} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
+    <ul role="tree" className={s.planTree} aria-label={t("office.mission.assignmentsAria")}>
+      {roots.map((node) => (
+        <AssignmentTreeItem
+          key={node.a.id}
+          node={node}
+          depth={0}
+          collapsedIds={collapsedIds}
+          onToggleCollapse={onToggleCollapse}
+          titleByUnitKey={titleByUnitKey}
+          go={go}
+          onInspectRun={onInspectRun}
+          onDone={onDone}
+          onLoadLatest={onLoadLatest}
+        />
       ))}
     </ul>
   );
@@ -1059,6 +1468,7 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
   const [revising, setRevising] = useState(false);
   const [criteria, setCriteria] = useState("");
   const [accepting, setAccepting] = useState(false);
+  const [showTech, setShowTech] = useState(false);
   const reviewable = h.status === "submitted" && a !== null;
   const submitter = humanizeActor(h.submittedBy, assignments, t);
   const reviewer = h.review ? humanizeActor(h.review.by, assignments, t) : null;
@@ -1083,9 +1493,7 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
           </Badge>
         </div>
         <Text size={200} className={mergeClasses(o.muted, o.wrap)} title={submitter.raw ?? undefined}>
-          {t("office.mission.digestPrefix")}
-          <span className={s.digestPill}>{short(h.digest)}</span>
-          {t("office.mission.handedIn", { at: when(h.submittedAt), by: submitter.label })}
+          {t("office.mission.handedIn", { at: when(h.submittedAt), by: submitter.label }).replace(/^ · /, "")}
         </Text>
       </div>
       <Markdown text={h.summary} />
@@ -1100,7 +1508,8 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
                     {!canPreview && <ArrowDownload16Regular aria-hidden />} {x.name}
                   </Link>
                   <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-                    {x.kind} · {x.mediaType} · {bytesText(x.size)} · sha256 {short(x.sha256)}
+                    {bytesText(x.size)}
+                    {showTech ? ` · ${x.kind} · ${x.mediaType} · sha256 ${short(x.sha256)}` : ""}
                   </Text>
                 </div>
                 {canPreview && (
@@ -1162,18 +1571,44 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
           {a.leadName ? t("office.mission.leadReviewsIt", { name: a.leadName }) : t("office.mission.itsLeadReviewsIt")}
         </Text>
       )}
-      {reviewable && (
-        <div className={o.row}>
-          {a.actions.includes("request_revision") && (
-            <Button className={o.touch} disabled={act.busy} onClick={() => setRevising(!revising)}>
-              {t("office.mission.requestRevision")}
-            </Button>
-          )}
-          {a.actions.includes("accept") && (
-            <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={() => setAccepting(true)} {...restore}>
-              {t("office.mission.acceptEllipsis")}
-            </Button>
-          )}
+      <div className={o.between}>
+        {reviewable ? (
+          <div className={o.row}>
+            {a.actions.includes("request_revision") && (
+              <Button className={o.touch} disabled={act.busy} onClick={() => setRevising(!revising)}>
+                {t("office.mission.requestRevision")}
+              </Button>
+            )}
+            {a.actions.includes("accept") && (
+              <Button className={o.touch} appearance="primary" disabled={act.busy} onClick={() => setAccepting(true)} {...restore}>
+                {t("office.mission.acceptEllipsis")}
+              </Button>
+            )}
+          </div>
+        ) : (
+          <span />
+        )}
+        <Button
+          type="button"
+          size="small"
+          appearance="subtle"
+          className={s.disclosureToggle}
+          icon={showTech ? <ChevronUp16Regular /> : <ChevronDown16Regular />}
+          iconPosition="after"
+          aria-expanded={showTech}
+          onClick={() => setShowTech((v) => !v)}
+        >
+          {showTech ? t("office.mission.hideTechnicalDetails") : t("office.mission.technicalDetails")}
+        </Button>
+      </div>
+      {showTech && (
+        <div className={s.detailsDrawer}>
+          <dl className={o.dl}>
+            <dt className={o.dt}>{t("office.mission.revisionDigestLabel")}</dt>
+            <dd className={o.dd}>
+              <span className={s.digestPill}>{short(h.digest)}</span>
+            </dd>
+          </dl>
         </div>
       )}
       {revising && (
@@ -1318,6 +1753,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const o = useOfficeStyles();
   const mission = useOfficeRead<MissionDetail>(() => office.mission(id), [id], ["missions", "inbox"], id);
   const [runAssignmentId, setRunAssignmentId] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
+  const [showBriefAdvanced, setShowBriefAdvanced] = useState(false);
   const current: MissionTab = (MISSION_TABS as readonly string[]).includes(tab ?? "") ? (tab as MissionTab) : "overview";
   if (mission.data === null)
     return mission.error ? (
@@ -1328,7 +1765,18 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       <Spinner label={t("office.mission.reading")} />
     );
   const m = mission.data;
-  const ordered = flatten(treeOf(m.assignments));
+  const roots = treeOf(m.assignments);
+  const branchIds = collectBranchIds(roots);
+  const allCollapsed = branchIds.length > 0 && branchIds.every((bid) => collapsedIds.has(bid));
+  const toggleCollapse = (assignmentId: string) =>
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assignmentId)) next.delete(assignmentId);
+      else next.add(assignmentId);
+      return next;
+    });
+  const toggleAllBranches = () => setCollapsedIds(allCollapsed ? new Set() : new Set(branchIds));
+  const ordered = flatten(roots);
   const root = m.assignments.find((a) => a.id === m.assignment.id) ?? m.assignments.find((a) => a.parentId === null) ?? null;
   const selectedRunAssignment = (runAssignmentId !== null ? ordered.find((a) => a.id === runAssignmentId) : undefined) ?? root ?? ordered[0] ?? null;
   const inspectRun = (assignmentId: string) => {
@@ -1339,6 +1787,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   // A mission whose work was split into parts has a team room (the tab shows when asked for by its address too).
   const parts = m.assignments.filter((a) => a.parentId !== null);
   const hasTeam = parts.length > 0 || current === "team";
+  const advancedTabs = ADVANCED_MISSION_TABS.filter((tabKey): tabKey is "timeline" | "team" | "run" => tabKey !== "team" || hasTeam);
+  const onAdvancedTab = (ADVANCED_MISSION_TABS as readonly string[]).includes(current);
   // The root's question, when the mission lists it, is answered where the questions are.
   const rootAsked = root !== null && m.clarifications.some((c) => c.askerAssignmentId === root.id && c.state === "open" && c.addressee === "owner");
   const doneCount = parts.filter((p) => p.state === "COMPLETED").length;
@@ -1347,6 +1797,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const queuedCount = parts.filter((p) => p.state === "QUEUED").length;
   const creator = humanizeActor(m.createdBy, m.assignments, t);
   const rootRunWaiting = root?.lastRun && (root.lastRun.state === "waiting_for_resources" || root.lastRun.state === "unschedulable") ? root.lastRun : null;
+  const awaitingOwnerAcceptance = root?.state === "AWAITING_ACCEPTANCE" && root.actions.includes("accept");
   return (
     <div className={o.page}>
       <section className={o.heroCard} aria-label={m.title}>
@@ -1356,13 +1807,13 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           </Text>
           {m.handoffs.length > 0 && current !== "handoffs" && (
             <Button size="small" appearance="primary" onClick={() => go("mission", id, "handoffs")}>
-              {t("office.mission.jumpHandoffs", { count: m.handoffs.length })}
+              {awaitingOwnerAcceptance ? t("office.mission.reviewAndAccept", { count: m.handoffs.length }) : t("office.mission.jumpHandoffs", { count: m.handoffs.length })}
             </Button>
           )}
         </div>
         <div className={o.row}>
           <StateBadge text={ASSIGNMENT_STATE_TEXT[m.assignment.state]} state={m.assignment.state} />
-          <EmployeeAvatar name={m.assignment.employeeName} size="sm" />
+          <EmployeeAvatar name={m.assignment.employeeName} employeeId={m.assignment.employeeId} size="sm" />
           <Text size={200} className={o.wrap}>
             {t("office.mission.heldByPrefix")}
             <Link as="button" onClick={() => go("employee", m.assignment.employeeId)}>
@@ -1422,14 +1873,47 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
         <AsOf at={mission.loadedAt} />
       </section>
       <div className={`${o.tabStrip} orbit-hscroll`}>
-        <TabList selectedValue={current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label={t("office.mission.tabsAria")}>
-          {MISSION_TABS.filter((tabKey) => tabKey !== "team" || hasTeam).map((tabKey) => (
-            <Tab key={tabKey} value={tabKey}>
-              {t(TAB_KEYS[tabKey])}
-              {tabKey === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
-            </Tab>
-          ))}
-        </TabList>
+        <div className={s.tabBarRow}>
+          <div className={s.tabBarMain}>
+            <TabList selectedValue={onAdvancedTab ? "" : current} onTabSelect={(_, d) => go("mission", id, d.value as string)} aria-label={t("office.mission.tabsAria")}>
+              {PRIMARY_MISSION_TABS.map((tabKey) => (
+                <Tab key={tabKey} value={tabKey}>
+                  {t(TAB_KEYS[tabKey])}
+                  {tabKey === "handoffs" && m.handoffs.length > 0 ? ` (${m.handoffs.length})` : ""}
+                </Tab>
+              ))}
+            </TabList>
+            <Menu>
+              <MenuTrigger disableButtonEnhancement>
+                <Button
+                  size="small"
+                  appearance="subtle"
+                  icon={<Settings16Regular />}
+                  className={mergeClasses(s.advancedTabBtn, onAdvancedTab && s.advancedTabBtnActive)}
+                  aria-label={t("office.mission.tab.advancedAria")}
+                >
+                  {onAdvancedTab ? t("office.mission.tab.advancedActive", { tab: t(TAB_KEYS[current]) }) : t("office.mission.tab.advanced")}{" "}
+                  <ChevronDown16Regular aria-hidden style={{ verticalAlign: "middle", marginLeft: "2px" }} />
+                </Button>
+              </MenuTrigger>
+              <MenuPopover>
+                <MenuList>
+                  <MenuGroup>
+                    <MenuGroupHeader>{t("office.mission.advancedMenuHeader")}</MenuGroupHeader>
+                    {advancedTabs.map((tabKey) => (
+                      <MenuItem key={tabKey} onClick={() => go("mission", id, tabKey)}>
+                        <div className={s.menuItemBody}>
+                          <Text weight={current === tabKey ? "semibold" : "regular"}>{t(TAB_KEYS[tabKey])}</Text>
+                          <span className={s.menuItemSub}>{t(ADVANCED_TAB_DESC[tabKey])}</span>
+                        </div>
+                      </MenuItem>
+                    ))}
+                  </MenuGroup>
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+          </div>
+        </div>
       </div>
 
       {current === "overview" && (
@@ -1437,12 +1921,27 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
           <div className={s.colStack}>
             <section className={o.card} aria-label={t("office.mission.plan")}>
               <div className={o.between}>
-                <Text weight="semibold" size={400}>
-                  {t("office.mission.plan")}
-                </Text>
+                <div className={o.row} style={{ gap: "8px" }}>
+                  <Text weight="semibold" size={400}>
+                    {t("office.mission.plan")}
+                  </Text>
+                  {branchIds.length > 0 && (
+                    <Button size="small" appearance="subtle" onClick={toggleAllBranches}>
+                      {allCollapsed ? t("office.mission.expandAll") : t("office.mission.collapseAll")}
+                    </Button>
+                  )}
+                </div>
                 {root && <AssignmentActions a={root} answerHere={!rootAsked} onDone={reload} onLoadLatest={reload} />}
               </div>
-              <Plan assignments={m.assignments} go={go} onInspectRun={inspectRun} onDone={reload} onLoadLatest={reload} />
+              <Plan
+                assignments={m.assignments}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={toggleCollapse}
+                go={go}
+                onInspectRun={inspectRun}
+                onDone={reload}
+                onLoadLatest={reload}
+              />
             </section>
             {m.clarifications.length > 0 && <Questions m={m} onDone={reload} onLoadLatest={reload} />}
             {m.dataShares.length > 0 && <Shares m={m} onDone={reload} />}
@@ -1471,34 +1970,84 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
                 {m.target !== null && (
                   <>
                     <dt className={o.dt}>{t("office.mission.givenTo")}</dt>
-                    <dd className={o.dd}>{givenToText(t, m.target)}</dd>
+                    <dd className={o.dd}>{givenToPlainText(t, m.target)}</dd>
                   </>
                 )}
-                <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
-                <dd className={o.dd}>{m.deliverables.length === 0 ? t("office.mission.noneNamed") : m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
-                <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
-                <dd className={o.dd}>
-                  {m.acceptanceCriteria.length === 0 ? (
-                    t("office.mission.noCriteriaNamed")
-                  ) : (
-                    <ul className={s.criteriaList}>
-                      {m.acceptanceCriteria.map((criterion, idx) => (
-                        <li key={`${idx}:${criterion}`}>{criterion}</li>
-                      ))}
-                    </ul>
-                  )}
-                </dd>
-                <dt className={o.dt}>{t("office.mission.acceptedBy")}</dt>
-                <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? t("office.mission.ownerYou") : t("office.mission.itsManager")}</dd>
-                <dt className={o.dt}>{t("office.sources.title")}</dt>
-                <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? t("office.mission.nonePinned") : t("office.mission.sourcesPinned", { count: m.sourceRevisionIds.length })}</dd>
-                <dt className={o.dt}>{t("office.repos.title")}</dt>
-                <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? t("office.mission.none") : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
+                {m.deliverables.length > 0 && (
+                  <>
+                    <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
+                    <dd className={o.dd}>{m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
+                  </>
+                )}
+                {m.acceptanceCriteria.length > 0 && (
+                  <>
+                    <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
+                    <dd className={o.dd}>
+                      <ul className={s.criteriaList}>
+                        {m.acceptanceCriteria.map((criterion, idx) => (
+                          <li key={`${idx}:${criterion}`}>{criterion}</li>
+                        ))}
+                      </ul>
+                    </dd>
+                  </>
+                )}
+                {(m.repositories ?? []).length > 0 && (
+                  <>
+                    <dt className={o.dt}>{t("office.repos.title")}</dt>
+                    <dd className={o.dd}>{(m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
+                  </>
+                )}
                 <dt className={o.dt}>{t("office.mission.created")}</dt>
                 <dd className={o.dd} title={creator.raw ?? undefined}>
                   {t("office.mission.createdBy", { at: when(m.createdAt), by: creator.label })}
                 </dd>
               </dl>
+              <Button
+                type="button"
+                size="small"
+                appearance="subtle"
+                className={s.disclosureToggle}
+                icon={showBriefAdvanced ? <ChevronUp16Regular /> : <ChevronDown16Regular />}
+                iconPosition="after"
+                aria-expanded={showBriefAdvanced}
+                onClick={() => setShowBriefAdvanced((v) => !v)}
+              >
+                {showBriefAdvanced ? t("office.mission.hideAdvancedDetails") : t("office.mission.advancedDetails")}
+              </Button>
+              {showBriefAdvanced && (
+                <div className={s.detailsDrawer}>
+                  <dl className={o.dl}>
+                    {m.target !== null && (
+                      <>
+                        <dt className={o.dt}>{t("office.mission.detailRouting")}</dt>
+                        <dd className={o.dd}>{givenToText(t, m.target)}</dd>
+                      </>
+                    )}
+                    {m.deliverables.length === 0 && (
+                      <>
+                        <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
+                        <dd className={o.dd}>{t("office.mission.noneNamed")}</dd>
+                      </>
+                    )}
+                    {m.acceptanceCriteria.length === 0 && (
+                      <>
+                        <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
+                        <dd className={o.dd}>{t("office.mission.noCriteriaNamed")}</dd>
+                      </>
+                    )}
+                    <dt className={o.dt}>{t("office.mission.acceptedBy")}</dt>
+                    <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? t("office.mission.ownerYou") : t("office.mission.itsManager")}</dd>
+                    <dt className={o.dt}>{t("office.sources.title")}</dt>
+                    <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? t("office.mission.nonePinned") : t("office.mission.sourcesPinned", { count: m.sourceRevisionIds.length })}</dd>
+                    {(m.repositories ?? []).length === 0 && (
+                      <>
+                        <dt className={o.dt}>{t("office.repos.title")}</dt>
+                        <dd className={o.dd}>{t("office.mission.none")}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+              )}
             </section>
           </div>
         </div>

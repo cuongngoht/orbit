@@ -367,6 +367,8 @@ export function humanizeActor(
 export function humanizeWaitingOn(raw: string, tr: I18nContextValue["t"]): string {
   if (raw === "owner_review") return tr("office.mission.waitingOnReadable.owner_review");
   if (raw === "information") return tr("office.mission.waitingOnReadable.information");
+  if (raw === "team") return tr("office.mission.waitingOnReadable.team");
+  if (raw === "owner") return tr("office.mission.waitingOnReadable.owner");
   return raw;
 }
 

@@ -20,6 +20,7 @@ import {
 import {
   Add16Regular,
   Alert16Regular,
+  ChevronDown12Regular,
   ChevronDown16Regular,
   ChevronUp16Regular,
   Clock16Regular,
@@ -32,6 +33,7 @@ import {
   Pause16Regular,
   Play16Regular,
   Pulse20Regular,
+  Sparkle16Regular,
   Speaker216Regular,
   SpeakerOff16Regular,
   Warning16Regular,
@@ -100,9 +102,10 @@ function dotColorOf(label: WorkLabel): string {
   return "#9ca3af";
 }
 
-function runtimeSummaryOf(e: EmployeeCard): string {
+function runtimeSummaryOf(e: EmployeeCard, defaultWord: string): string {
   const runtime = RUNTIME_LABELS[e.execution.runtime];
   const model = e.execution.model?.trim();
+  if (e.execution.inherit?.includes("model")) return `${runtime} · ${defaultWord}`;
   return model ? `${runtime} · ${model}` : runtime;
 }
 
@@ -823,6 +826,43 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     minWidth: 0,
   },
+  modelChipBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    maxWidth: "100%",
+    width: "fit-content",
+    paddingTop: "2px",
+    paddingRight: "7px",
+    paddingBottom: "2px",
+    paddingLeft: "6px",
+    borderRadius: "9999px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground2,
+    fontFamily: "inherit",
+    fontSize: "11px",
+    fontWeight: tokens.fontWeightMedium,
+    lineHeight: "1.25",
+    cursor: "pointer",
+    transitionProperty: "background-color, border-color, color",
+    transitionDuration: "120ms",
+    ":hover": {
+      backgroundColor: tokens.colorBrandBackground2,
+      ...shorthands.borderColor(tokens.colorBrandStroke2),
+      color: tokens.colorBrandForeground1,
+    },
+    ":focus-visible": {
+      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
+      outlineOffset: "1px",
+    },
+  },
+  modelChipText: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  },
   deskActionsRow: {
     display: "flex",
     alignItems: "center",
@@ -967,6 +1007,7 @@ function EmployeeDeskCard({
   onOpenEmployee,
   onOpenMission,
   onInspect,
+  onChangeModel,
   restore,
 }: {
   employee: EmployeeCard;
@@ -984,6 +1025,7 @@ function EmployeeDeskCard({
   onOpenEmployee: (employeeId: string) => void;
   onOpenMission: (missionId: string) => void;
   onInspect: (employeeId: string) => void;
+  onChangeModel?: (employee: EmployeeCard) => void;
   restore: RestoreProps;
 }) {
   const { t } = useI18n();
@@ -1089,9 +1131,29 @@ function EmployeeDeskCard({
           <WorkLabelBadge label={e.workLabel} />
         </div>
         {!compact && (
-          <span className={s.deskSubtitle} title={`${e.title} · ${runtimeSummaryOf(e)}`}>
-            {e.title} · {runtimeSummaryOf(e)}
+          <span className={s.deskSubtitle} title={e.title}>
+            {e.title}
           </span>
+        )}
+        {onChangeModel && e.employment !== "archived" ? (
+          <button
+            type="button"
+            className={s.modelChipBtn}
+            aria-label={t("office.floor.changeModelFor", { name: e.name })}
+            title={t("office.floor.changeModelFor", { name: e.name })}
+            onClick={() => onChangeModel(e)}
+            {...restore}
+          >
+            <Sparkle16Regular style={{ fontSize: "12px", flexShrink: 0 }} aria-hidden />
+            <span className={s.modelChipText}>{runtimeSummaryOf(e, t("office.floor.defaultModelShort"))}</span>
+            <ChevronDown12Regular style={{ flexShrink: 0, opacity: 0.75 }} aria-hidden />
+          </button>
+        ) : (
+          !compact && (
+            <span className={s.deskSubtitle} title={runtimeSummaryOf(e, t("office.floor.defaultModelShort"))}>
+              {runtimeSummaryOf(e, t("office.floor.defaultModelShort"))}
+            </span>
+          )
         )}
       </div>
 
@@ -1201,6 +1263,7 @@ export function OfficeFloorMap({
   onHireCeo = null,
   onHireInDepartment = null,
   onOpenReview = null,
+  onChangeModel = null,
   onRosterChanged,
 }: {
   groups: FloorGroup[];
@@ -1230,6 +1293,7 @@ export function OfficeFloorMap({
   onHireCeo?: (() => void) | null;
   onHireInDepartment?: ((departmentId: string) => void) | null;
   onOpenReview?: ((missionId: string | null) => void) | null;
+  onChangeModel?: ((employee: EmployeeCard) => void) | null;
   onRosterChanged?: () => void;
 }) {
   const { t } = useI18n();
@@ -1722,6 +1786,7 @@ export function OfficeFloorMap({
                   onOpenEmployee={onOpenEmployee}
                   onOpenMission={onOpenMission}
                   onInspect={toggleInspect}
+                  onChangeModel={onChangeModel ?? undefined}
                   restore={restore}
                 />
               ) : ceo !== null ? (
@@ -1938,6 +2003,7 @@ export function OfficeFloorMap({
                           onOpenEmployee={onOpenEmployee}
                           onOpenMission={onOpenMission}
                           onInspect={toggleInspect}
+                          onChangeModel={onChangeModel ?? undefined}
                           restore={restore}
                         />
                       ))}
@@ -2051,6 +2117,7 @@ export function OfficeFloorMap({
           onOpenEmployee={onOpenEmployee}
           onOpenMission={onOpenMission}
           onOpenReview={onOpenReview ?? undefined}
+          onChangeModel={onChangeModel ?? undefined}
           onRosterChanged={onRosterChanged}
         />
       )}

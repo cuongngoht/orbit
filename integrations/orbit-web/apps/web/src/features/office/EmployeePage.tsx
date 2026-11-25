@@ -10,6 +10,13 @@ import {
   Field,
   Input,
   Link,
+  Menu,
+  MenuGroup,
+  MenuGroupHeader,
+  MenuItem,
+  MenuList,
+  MenuPopover,
+  MenuTrigger,
   MessageBar,
   MessageBarBody,
   Popover,
@@ -39,6 +46,7 @@ import {
   ArrowCounterclockwise16Regular,
   Box16Regular,
   Briefcase16Regular,
+  ChevronDown16Regular,
   ChevronRight16Regular,
   Clock16Regular,
   Code16Regular,
@@ -82,12 +90,18 @@ type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
 export const EMPLOYEE_TABS = ["profile", "work", "access", "resources", "employment"] as const;
 type EmployeeTab = (typeof EMPLOYEE_TABS)[number];
+const PRIMARY_EMPLOYEE_TABS: readonly EmployeeTab[] = ["profile", "work", "access"];
+const ADVANCED_EMPLOYEE_TABS: readonly ("resources" | "employment")[] = ["resources", "employment"];
 const TAB_KEYS: Record<EmployeeTab, MessageKey> = {
   profile: "office.employee.tab.profile",
   work: "office.employee.tab.work",
   access: "office.employee.tab.access",
   resources: "office.employee.tab.resources",
   employment: "office.employee.tab.employment",
+};
+const ADVANCED_EMP_TAB_DESC: Record<"resources" | "employment", MessageKey> = {
+  resources: "office.employee.tab.resourcesDesc",
+  employment: "office.employee.tab.employmentDesc",
 };
 
 const TAB_ICON: Record<EmployeeTab, ReactElement> = {
@@ -421,6 +435,36 @@ const useStyles = makeStyles({
     color: tokens.colorNeutralForeground3,
     flexShrink: 0,
   },
+  tabBarRow: { display: "flex", alignItems: "center", gap: "4px", minWidth: 0 },
+  advancedTabBtn: {
+    flexShrink: 0,
+    borderRadius: "8px",
+    fontWeight: tokens.fontWeightMedium,
+    color: tokens.colorNeutralForeground2,
+  },
+  advancedTabBtnActive: {
+    color: tokens.colorBrandForeground1,
+    backgroundColor: tokens.colorBrandBackground2,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  menuItemBody: { display: "flex", flexDirection: "column", gap: "1px" },
+  menuItemSub: { fontSize: tokens.fontSizeBase100, color: tokens.colorNeutralForeground3 },
+  usageCell: { display: "flex", flexDirection: "column", gap: "4px", minWidth: "88px" },
+  usageTrack: {
+    width: "100%",
+    maxWidth: "96px",
+    height: "5px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    overflow: "hidden",
+  },
+  usageFill: {
+    height: "100%",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorBrandBackground,
+  },
+  usageFillWarn: { backgroundColor: tokens.colorPaletteDarkOrangeBackground3 },
+  usageFillDanger: { backgroundColor: tokens.colorPaletteRedBackground3 },
 });
 
 // What a profile runs on, in words: its runtime, then its own model and effort -- or that it leaves them to its
@@ -1137,9 +1181,16 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
               )}
             </div>
           </div>
-          <Button className={o.touch} icon={<Edit16Regular />} disabled={editing || sb.state === "ARCHIVED"} onClick={() => setEditing(true)}>
-            {t("office.employee.editResources")}
-          </Button>
+          <div className={o.row} style={{ gap: "6px" }}>
+            {(sb.state === "READY" || sb.state === "ARCHIVED") && (
+              <Button as="a" href={`#/governance/desks/${encodeURIComponent(e.id)}`} className={o.touch} appearance="subtle" size="small">
+                {t("office.employee.openDeskFiles")}
+              </Button>
+            )}
+            <Button className={o.touch} icon={<Edit16Regular />} disabled={editing || sb.state === "ARCHIVED"} onClick={() => setEditing(true)}>
+              {t("office.employee.editResources")}
+            </Button>
+          </div>
         </div>
         {sb.reason && (
           <Callout tone="warn" icon={<Warning16Regular />}>
@@ -1180,21 +1231,36 @@ function ResourcesTab({ e, onSaved, onLoadLatest }: { e: EmployeeDetail; onSaved
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sb.areas.map((a) => (
-                <TableRow key={a.area}>
-                  <TableCell>{AREA_TEXT[a.area]}</TableCell>
-                  <TableCell style={{ whiteSpace: "nowrap" }}>{sizeText(a.quotaMiB)}</TableCell>
-                  <TableCell style={{ whiteSpace: "nowrap" }}>{a.usedMiB === null ? t("office.employee.notMeasured") : sizeText(a.usedMiB)}</TableCell>
-                  <TableCell>
-                    <Badge appearance="tint" color={LEVEL_TONE[a.level]} style={{ height: "auto", minHeight: "20px", paddingTop: "3px", paddingBottom: "3px", whiteSpace: "normal", textAlign: "left", lineHeight: "1.3" }}>
-                      {LEVEL_TEXT[a.level]}
-                    </Badge>
-                    <Text size={200} className={o.muted} block style={{ marginTop: "4px", overflowWrap: "anywhere" }}>
-                      {a.evidence}
-                    </Text>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {sb.areas.map((a) => {
+                const pct = a.usedMiB !== null && a.quotaMiB > 0 ? Math.min(100, Math.round((a.usedMiB / a.quotaMiB) * 100)) : null;
+                return (
+                  <TableRow key={a.area}>
+                    <TableCell>{AREA_TEXT[a.area]}</TableCell>
+                    <TableCell style={{ whiteSpace: "nowrap" }}>{sizeText(a.quotaMiB)}</TableCell>
+                    <TableCell style={{ whiteSpace: "nowrap" }}>
+                      <div className={s.usageCell}>
+                        <span>{a.usedMiB === null ? t("office.employee.notMeasured") : sizeText(a.usedMiB)}</span>
+                        {pct !== null && (
+                          <div className={s.usageTrack} aria-hidden>
+                            <div
+                              className={mergeClasses(s.usageFill, pct >= 90 ? s.usageFillDanger : pct >= 70 ? s.usageFillWarn : undefined)}
+                              style={{ width: `${Math.max(pct, a.usedMiB && a.usedMiB > 0 ? 4 : 0)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge appearance="tint" color={LEVEL_TONE[a.level]} style={{ height: "auto", minHeight: "20px", paddingTop: "3px", paddingBottom: "3px", whiteSpace: "normal", textAlign: "left", lineHeight: "1.3" }}>
+                        {LEVEL_TEXT[a.level]}
+                      </Badge>
+                      <Text size={200} className={o.muted} block style={{ marginTop: "4px", overflowWrap: "anywhere" }}>
+                        {a.evidence}
+                      </Text>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -1580,20 +1646,53 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
       </section>
 
       <div className={`${o.tabStrip} orbit-hscroll`}>
-        <TabList selectedValue={current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label={t("office.employee.tabsAria")}>
-          {EMPLOYEE_TABS.map((tabKey) => (
-            <Tab key={tabKey} value={tabKey} icon={TAB_ICON[tabKey]}>
-              <span className={s.tabLabel}>
-                <span>{t(TAB_KEYS[tabKey])}</span>
-                {tabKey === "work" && workCount > 0 && (
-                  <Badge appearance="tint" color="brand" size="small" style={{ borderRadius: "9999px" }}>
-                    {workCount}
-                  </Badge>
-                )}
-              </span>
-            </Tab>
-          ))}
-        </TabList>
+        <div className={s.tabBarRow}>
+          <TabList selectedValue={current === "resources" || current === "employment" ? "" : current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label={t("office.employee.tabsAria")}>
+            {PRIMARY_EMPLOYEE_TABS.map((tabKey) => (
+              <Tab key={tabKey} value={tabKey} icon={TAB_ICON[tabKey]}>
+                <span className={s.tabLabel}>
+                  <span>{t(TAB_KEYS[tabKey])}</span>
+                  {tabKey === "work" && workCount > 0 && (
+                    <Badge appearance="tint" color="brand" size="small" style={{ borderRadius: "9999px" }}>
+                      {workCount}
+                    </Badge>
+                  )}
+                </span>
+              </Tab>
+            ))}
+          </TabList>
+          <Menu>
+            <MenuTrigger disableButtonEnhancement>
+              <Button
+                size="small"
+                appearance="subtle"
+                icon={<Settings16Regular />}
+                className={mergeClasses(s.advancedTabBtn, (current === "resources" || current === "employment") && s.advancedTabBtnActive)}
+                aria-label={t("office.employee.tab.advancedAria")}
+              >
+                {current === "resources" || current === "employment"
+                  ? t("office.employee.tab.advancedActive", { tab: t(TAB_KEYS[current]) })
+                  : t("office.employee.tab.advanced")}{" "}
+                <ChevronDown16Regular aria-hidden style={{ verticalAlign: "middle", marginLeft: "2px" }} />
+              </Button>
+            </MenuTrigger>
+            <MenuPopover>
+              <MenuList>
+                <MenuGroup>
+                  <MenuGroupHeader>{t("office.mission.advancedMenuHeader")}</MenuGroupHeader>
+                  {ADVANCED_EMPLOYEE_TABS.map((tabKey) => (
+                    <MenuItem key={tabKey} icon={TAB_ICON[tabKey]} onClick={() => go("employee", id, tabKey)}>
+                      <div className={s.menuItemBody}>
+                        <Text weight={current === tabKey ? "semibold" : "regular"}>{t(TAB_KEYS[tabKey])}</Text>
+                        <span className={s.menuItemSub}>{t(ADVANCED_EMP_TAB_DESC[tabKey])}</span>
+                      </div>
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+              </MenuList>
+            </MenuPopover>
+          </Menu>
+        </div>
       </div>
 
       {current === "profile" && <ProfileTab key={e.version} e={e} go={go} onSaved={saved} onLoadLatest={reload} />}

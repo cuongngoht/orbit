@@ -5,6 +5,7 @@
 import { Badge, Button, Input, Link, Select, Text, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import {
   Chat16Regular,
+  ChevronDown12Regular,
   ChevronLeft16Regular,
   ChevronRight16Regular,
   Clock16Regular,
@@ -15,6 +16,7 @@ import {
   Location16Regular,
   Person16Regular,
   Send16Regular,
+  Sparkle16Regular,
   TaskListLtr20Regular,
 } from "@fluentui/react-icons";
 import { RUNTIME_LABELS, checkCreateMission, type CreateMissionRequest, type Department, type EmployeeCard } from "@orbit-web/contracts";
@@ -29,9 +31,10 @@ import type { WalkerState } from "./officeSim";
 import { WorkLabelBadge, useOfficeStyles } from "./parts";
 import { EmployeeDeskScene } from "./VirtualDesk";
 
-function runtimeSummaryOf(e: EmployeeCard): string {
+function runtimeSummaryOf(e: EmployeeCard, defaultWord: string): string {
   const runtime = RUNTIME_LABELS[e.execution.runtime];
   const model = e.execution.model?.trim();
+  if (e.execution.inherit?.includes("model")) return `${runtime} · ${defaultWord}`;
   return model ? `${runtime} · ${model}` : runtime;
 }
 
@@ -160,6 +163,35 @@ const useStyles = makeStyles({
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
   },
   muted: { color: tokens.colorNeutralForeground3 },
+  modelChipBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    maxWidth: "100%",
+    paddingTop: "1px",
+    paddingRight: "7px",
+    paddingBottom: "1px",
+    paddingLeft: "6px",
+    borderRadius: "9999px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground2,
+    fontFamily: "inherit",
+    fontSize: tokens.fontSizeBase100,
+    fontWeight: tokens.fontWeightMedium,
+    cursor: "pointer",
+    transitionProperty: "background-color, border-color, color",
+    transitionDuration: "120ms",
+    ":hover": {
+      backgroundColor: tokens.colorBrandBackground2,
+      ...shorthands.borderColor(tokens.colorBrandStroke2),
+      color: tokens.colorBrandForeground1,
+    },
+    ":focus-visible": {
+      ...shorthands.outline("2px", "solid", tokens.colorStrokeFocus2),
+      outlineOffset: "1px",
+    },
+  },
   feedbackOk: { color: tokens.colorPaletteGreenForeground1 },
   feedbackErr: { color: tokens.colorPaletteRedForeground1 },
 });
@@ -181,6 +213,7 @@ export function TeammateSpotlight({
   onOpenEmployee,
   onOpenMission,
   onOpenReview,
+  onChangeModel,
   onRosterChanged,
 }: {
   employee: EmployeeCard;
@@ -199,6 +232,7 @@ export function TeammateSpotlight({
   onOpenEmployee: (employeeId: string) => void;
   onOpenMission: (missionId: string) => void;
   onOpenReview?: (missionId: string | null) => void;
+  onChangeModel?: (employee: EmployeeCard) => void;
   onRosterChanged?: () => void;
 }) {
   const { t } = useI18n();
@@ -304,9 +338,28 @@ export function TeammateSpotlight({
               )}
               <WorkLabelBadge label={e.workLabel} />
             </div>
-            <Text size={200} className={s.muted}>
-              {e.title} · {departmentLabel} · {runtimeSummaryOf(e)}
-            </Text>
+            <div className={o.row} style={{ gap: "6px" }}>
+              <Text size={200} className={s.muted}>
+                {e.title} · {departmentLabel}
+              </Text>
+              {onChangeModel && e.employment !== "archived" ? (
+                <button
+                  type="button"
+                  className={s.modelChipBtn}
+                  aria-label={t("office.floor.changeModelFor", { name: e.name })}
+                  title={t("office.floor.changeModelFor", { name: e.name })}
+                  onClick={() => onChangeModel(e)}
+                >
+                  <Sparkle16Regular style={{ fontSize: "12px", flexShrink: 0 }} aria-hidden />
+                  <span>{runtimeSummaryOf(e, t("office.floor.defaultModelShort"))}</span>
+                  <ChevronDown12Regular style={{ flexShrink: 0 }} aria-hidden />
+                </button>
+              ) : (
+                <Text size={200} className={s.muted}>
+                  · {runtimeSummaryOf(e, t("office.floor.defaultModelShort"))}
+                </Text>
+              )}
+            </div>
             <div className={s.meta}>
               <span className={s.metaItem}>
                 <Location16Regular />

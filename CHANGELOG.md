@@ -38,8 +38,16 @@ compose down -v`); nothing of a release candidate is migrated (the owner's decis
   which beats the company's, and each attempt keeps where each field came from. Changing an employee's provider is a new
   revision of the same employee (its id, desk, history, artifacts and appointment kept). *Hand over* moves open work to
   another employee by a person's act; *Repin* moves blocked or paused work to the profile in effect now.
+  *Change models* on Office → Overview, or the runtime-and-model chip on a desk, a row or a quick preview, changes the
+  connection, model and effort of one employee, or of every employee, the CEO, one department or the unassigned at
+  once -- or leaves model and effort to the defaults. Each is that employee's ordinary profile revision
+  (`PATCH /api/employees/:id`, If-Match) with a note of what changed; work already running finishes on its model, and
+  the employees that could not be updated are named.
 - **Resources, one source of truth.** Reserved scratch is what attempts hold now; observed use (memory now and at peak,
   CPU seconds, sampled when) is shown apart from quota, reservation and committed storage.
+  A mission that ends -- accepted, cancelled or failed -- freezes its team rooms and gives the account's storage budget
+  back what they did not use (a room that wrote nothing commits nothing, one that did keeps what it used); an
+  employee's *Sandbox & resources* shows its desk and cache as last measured (`GET /api/employees/:id`).
 - **Department policies, within what the company delegates** (ADR 0061 §6). The company marks its rules mandatory or a
   default a department may replace, and delegates per action, network and models what departments may decide; a
   department's policy has its own drafts, validation (422 `exceeds_delegation`), simulation by the same `evaluate()`
@@ -55,6 +63,11 @@ compose down -v`); nothing of a release candidate is migrated (the owner's decis
   starts; the sandbox is served only what the attempt's manifest names and the grant still gives (anything else is
   refused and recorded). Team rooms are per department. A share revoked or an employee moved to another department stops
   the attempt holding it (`office.access.revoked`).
+  A lead that holds the mission's repositories may pass them to a part (`share_repositories: true` in `delegate`; a plan
+  asking it of a lead without them is refused whole), and the part gets those its own *Access* grants still allow when
+  it starts; the CEO is given their list to pass on, never the bundles. Work given to the CEO, a department or an
+  appointed lead may name any repository the connector reaches; work given to anyone else, as before, only those its
+  *Access* allows (403 `repository_not_granted`).
 - **Work given to a department or to the CEO** (ADR 0061 §8). *Give work* to an employee, a department (its manager in
   office) or the CEO, shown who is responsible before sending; a slot that moved since is refused (409
   `target_changed`) and nothing is made; `no_ceo`, `no_manager`, `appointment_suspended` say why, and
@@ -123,8 +136,74 @@ compose down -v`); nothing of a release candidate is migrated (the owner's decis
   woken to answer; the asker resumes once. Only a root's own questions reach *Needs me*. A lead reviews its parts by the
   digest of the revision read and hands in only once they all ended; the person reviews the mission's result only. Every revision is kept as handed in (v1 asked to revise beside v2 accepted).
   Bounded: 5 revisions, 3 plans and 3 questions per assignment.
+  A lead woken to review is told first, at the top of its prompt, which parts await its decision and that only
+  `review_unit` records one; it is judged on the hand-ins its attempt was shown, by digest, so a part that hands in
+  while the attempt starts wakes it again instead of blocking it as undecided, and a revision it asks for (or a newer
+  hand-in) no longer stops its own attempt (`office.access.revoked`). `review_unit` naming no part lists the parts
+  awaiting review, and each decision says what is left to do. A review or answering attempt that fails -- past its time
+  limit, a CLI error, a refusal -- blocks the work with that failure, never as a review left undecided or a wake spent
+  on its team's questions. Sources and hand-ins staged in `/input` get plain names that never collide (`-2`, `-3`), and
+  the prompt names each as staged.
 - **An attempt that delegated, asked or answered ends by design** -- a success, its compute given back at once -- so a lead
   and its part never hold one execution slot together; each attempt says why it started.
+- **Hire a CEO in one step** (ADR 0061 §8). While the company has none, *Hire CEO* is offered on Office → Overview (its
+  header, the *Leadership* card, the Director's Office, an empty office), in the dialog that appoints a CEO (*Hire a new
+  CEO*) and on CEO Chat's onboarding. `POST /api/employees` with `appointRole: "ceo"` (and an optional `appointReason`,
+  kept on the appointment) hires the employee and appoints it CEO in one transaction -- authorized as a hire and as an
+  appointment, recorded as both -- or does neither: a CEO slot already held is refused (409 `appointment_conflict`) and
+  nobody is hired, of two at once one wins, and a `departmentId` beside it is refused (the CEO belongs to no
+  department). The wizard asks for no template, department or team lead; its second step, *CEO role*, comes with a
+  title, duties, skills and handoff standard to edit. *Getting started*, shown while the office has no employee, begins
+  with hiring a CEO.
+- **An employee proposes a pull request** (ADR 0061 §9). An employee let write on a connector (*Also write* on its
+  *Access* tab) may propose a pull request beside a comment or a work item's state: `github_create_pull_request` and
+  `azure_devops_create_pull_request` take a new branch, an optional base (the repository's default otherwise), a title,
+  a description, a commit message, whether it is a draft, and a unified diff of at most 512 KiB. Before anyone is asked,
+  Orbit Web checks it on its own side against a one-commit clone of the base: the connector lists the repository, the
+  base exists, the new branch is neither the default, a protected or an existing branch nor the base, and the patch
+  applies cleanly (`git apply --index`); a refusal says which. It is then decided as any `connector.write` is -- bound
+  to the repository, both branches and a digest of everything it would write: at once where the account's policy
+  allows it, by default once the owner approves it in Governance → Approvals, which shows the files and lines it
+  changes -- and Orbit Web makes the branch, commits, pushes with the installation's sign-in and opens the pull
+  request; the employee is never given a credential.
+- **Office → Overview: the floor or a list, and a floor that shows what moves.** The roster shows as the *Floor* or a
+  *List* (department, status, current work, *Assign work*, *Profile*); *Waiting review (n)* narrows it to those with
+  work to review; *New department* and *Company defaults* moved under *Manage*. A click on a teammate opens a quick
+  preview -- where it is, its runtime and model, its current work and for how long, *Review & answer* when it waits for
+  you, a one-line quick task (an ordinary mission, queued when it is busy), a department to move it to, *Full profile*,
+  *Desk files* and, for the CEO, *CEO Chat* -- where ← and → go to the next teammate and Esc closes it. The floor
+  pauses (*Pause floor*), turns compact, narrows to *Needs attention* (waiting for a review, an answer or resources, not
+  ready, or a connection warning), jumps from room to room, and keeps an optional *Live pulse* of who started work,
+  waits for you or is free, with a sound when someone newly waits for you (off until turned on). A room folds, takes a
+  colour and offers *Hire* into its department; teammates on one mission show as a team huddle; a pill shows the
+  account's running attempts and reserved memory against its budget; and the *Review & Q&A Lounge* answers a question,
+  opens a result to review, or retries or cancels blocked work without leaving the floor. `/` searches, `V` switches
+  floor and list, `C` density, `Space` pauses, `A` gives work. Density, sound, folded rooms, room colours and each
+  employee's look (outfit, hair, accessory -- also on its profile) are kept in this browser, never in the account.
+- **A mission page that says where it stands.** Its header counts the parts done, awaiting review, working and queued,
+  offers *Review & accept* when the result waits for you (*View handoffs* otherwise), and says why its work waits for
+  resources, with *Inspect last run*. *Overview*, *Handoffs* and *Communication* are its tabs; *Timeline*, *Team room*
+  and *Last run* moved under *Advanced*. The plan is a tree that folds (*Expand all*), parts ordered by what they wait
+  for (*Waits for: …*), each branch with how many of its parts are done and its technical details behind a toggle; a
+  part whose attempt failed or was interrupted shows that attempt's own detail and *Inspect last run*. *Last run*
+  shows any assignment's last attempt, not only the root's, with its tool calls and its exit code or signal: every run
+  view (`lastRun` in `GET /api/missions/:id`, an employee's `activeRun`) carries `observed.toolCalls`,
+  `observed.webSearches` and `observed.exit`. A hand-in names who handed it in, counts its claims verified and
+  unverified (no pinned source holds the quote -- not that it is false) and opens in the browser the files it can show;
+  the timeline groups repeats (×n); the account owner, employees and Orbit's own workers are named, not shown as ids;
+  the *Communication* pipeline orders parts by what they wait for and says it; and cancelling the mission or a part
+  here asks first.
+- **Across the pages: asked before what cannot be undone, and names instead of ids.** Rejecting an approval,
+  discarding a policy draft and deleting a research note or finding ask first. Governance names employees and
+  departments where it showed ids -- approvals, decisions, the audit timeline (the id on hover); *Decisions* can be
+  searched by action, resource, reason or who, *Findings* filtered (*Open*, *Resolved*, *Risk accepted*), and the audit
+  timeline goes back with *Newer* and folds each record's JSON away. In a chat, four or more finished tool calls in a
+  row fold into one line, a subagent's activity folds under its tool, an answer can be copied, an earlier plan says
+  *Superseded*, *Send* says why it cannot send, ⌘K / Ctrl+K opens *Search*, *Push* waits for the run to end, and a new
+  chat offers three prompts to start from. CEO Chat lists its earlier *Conversations*; a research finding can be
+  written from nothing and edited; Settings groups its sections, hides the access link until *Show link* and offers no
+  *Delete* for a connection employees still run on (the API refused it already, 409 `connection_in_use`); sharing asks
+  for an Orbit account's email, never a Claude account's.
 - **CI's deterministic tier passes as it should.** The two tests that need the real `codex` binary and its sandbox moved,
   unchanged, to a native tier of their own (`npm run test:native -w @orbit-web/api`); `scripts/ci.mjs` says it is not run
   there.

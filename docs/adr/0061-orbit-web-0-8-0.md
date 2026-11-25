@@ -559,7 +559,10 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   company's policy, room and defaults, never one department's. An employee appointed CEO from a department leaves it in
   the appointment's own transaction (recorded; a running attempt that held the department's room is stopped, as after
   any move), and while the appointment is held -- active or suspended -- nobody moves it into one (409 `appointed_ceo`);
-  the database refuses a CEO with a department at commit. Replacing a manager moves none of its open work: a person HANDS OVER open work explicitly (only before
+  the database refuses a CEO with a department at commit. A CEO may also be HIRED as one (`POST /api/employees` with
+  `appointRole: "ceo"`): the hire and the appointment are one transaction, authorized and recorded as both, or neither
+  happens -- a CEO slot already held refuses it (409 `appointment_conflict`) and nobody is hired, and a department named
+  beside it is refused. Replacing a manager moves none of its open work: a person HANDS OVER open work explicitly (only before
   or between attempts; the fence moves, the old holder's late result is refused). The PERSONAL SANDBOX (`PROVISIONING → READY | FAILED`) is
   READY only once its desk, cache and toolbox areas exist with their labels, a write test passed in each and each
   area's enforcement is recorded; no container runs while the employee is idle.
@@ -726,7 +729,8 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   mission reads the mission's sources and, when its employee may read them, its repositories; a PART reads only what its
   lead SHARED with it on purpose (`workforce.data_shares`, each with what, to whom, from where, audited
   `office.data.shared`): a source the lead reads itself, and the ACCEPTED hand-in of a part it waits for -- its summary,
-  or in full; a LEAD reads, by supervision, the latest submitted or accepted hand-in of each DIRECT part. Nothing else: a
+  or in full -- and the mission's repositories when its lead passes them (`share_repositories`) and its own grants still
+  allow them; a LEAD reads, by supervision, the latest submitted or accepted hand-in of each DIRECT part. Nothing else: a
   sibling's work nobody shared, a part of a part, another department's room. ONE function decides it
   (`work/domain/data-authorization.ts`); the attempt's inputs are staged from it alone, written down with why each
   (`workforce.attempt_inputs`, audited `office.run.inputs`) BEFORE it starts, and the provider is given, for each file of
@@ -762,7 +766,13 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   body cannot close the fence) and cut to 256 KiB. Turned off, the next ask is refused.
 - **A write waits for the owner.** An employee reads only, unless a person also checks *Also write* on that connector:
   it may then PROPOSE a comment on a work item, an issue or a pull request, or a work item's new state -- inside what it
-  may read, a work item only under its own project. A write passes every gate a read does first (the grant, its scope,
+  may read, a work item only under its own project -- or a PULL REQUEST: a new branch from a base it names (the
+  repository's default otherwise), one commit of a unified diff of at most 512 KiB, and the pull request. Orbit Web
+  checks a pull request first, against a one-commit clone of the base: the connector lists the repository, the base
+  exists, the new branch is none of the default, a protected or an existing branch, and the patch applies cleanly (a
+  refusal says which); its fingerprint is the repository, both branches and a digest of all it would write, and
+  Governance → Approvals shows the files and lines it changes. Orbit Web makes the branch, commits, pushes with the
+  installation's sign-in and opens it; the employee is never given a credential. A write passes every gate a read does first (the grant, its scope,
   the `tool.connector` decision), then its own: `connector.write` (enforcement `boundary`; fingerprint: the connector,
   the target, the operation and a digest of the text), `require_approval` by default in both deployments. The employee
   is told nothing is written yet; the owner approves that exact write in Governance → Approvals, and Orbit Web writes it
@@ -781,8 +791,12 @@ stays 0.6.0, and its archive is unchanged (`integrations/` is export-ignored). I
   cut. Orbit Web connects only to the public internet (or a range the installation named), never to its own host,
   loopback or a cloud metadata service, to the very address it checked, following no redirect. Removing a server takes
   its tools from every employee at their next ask.
-- **Repositories, as git bundles.** Work may bring up to five repositories, only ones its employee may use on its
-  *Access* tab (any other is refused when the work is given; the mission keeps them as grants of its own). Every
+- **Repositories, as git bundles.** Work may bring up to five repositories: work given to an employee only ones it may
+  use on its *Access* tab (any other is refused when the work is given, 403 `repository_not_granted`), work given to the
+  CEO, a department or an appointed lead any the connector reaches; the mission keeps them as grants of its own. A lead
+  passes them to a part on purpose (`share_repositories: true` in `delegate`; a plan asking it of a lead that holds none
+  is refused whole), and the part's attempt gets those its own *Access* grants still allow; the CEO is given their list
+  to pass on, never the bundles. Every
   attempt gets a snapshot of each at its default branch as a git bundle in `/input` (`repo-<name>.bundle`: one root
   commit holding the branch's files, its message naming the repository, the branch and the commit it was taken at) and
   is told to `git clone` it. Orbit Web clones it itself -- bare, one commit deep, through the source's sign-in, in a

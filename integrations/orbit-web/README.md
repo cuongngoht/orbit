@@ -669,7 +669,8 @@ account is usable -- for Chat, for Research, or to run employees; each connectio
 nothing comes with it (no department, employee, mission or CEO). Losing the connection later only changes what can run.
 
 **Leadership** (Office → Overview): appoint a **CEO** and one **manager** per department (a member of it); replace,
-suspend, reinstate or revoke an appointment -- each numbered, versioned and kept as history. Authority comes from an
+suspend, reinstate or revoke an appointment -- each numbered, versioned and kept as history. While the company has no
+CEO, **Hire CEO** hires one and appoints it in one step, or does neither (a CEO slot already held refuses it). Authority comes from an
 appointment, or from a **grant** you make on an employee's *Access* tab (it may give work to that employee or
 department) -- never from a title or instructions. Replacing a manager moves none of its open work: **Hand over** moves
 work, by your act. A department and the company may set **execution defaults** (connection, model and effort per
@@ -694,8 +695,10 @@ department** (its manager in office takes it) or **the CEO**: the dialog shows w
 if that changes before it arrives the work is refused, saying who is responsible now (`target_changed`), rather than
 given to someone you did not see.
 
-Work may also bring **repositories** (at most five): only ones its employee may use on its *Access* tab -- any other is
-refused when the work is given. Every attempt gets a snapshot of each, at its default branch, as a git bundle in `/input`
+Work may also bring **repositories** (at most five): work given to an employee only ones it may use on its *Access*
+tab -- any other is refused when the work is given (403 `repository_not_granted`) -- and work given to the CEO, a
+department or an appointed lead any the connector reaches. A lead passes them to a part on purpose (`share_repositories`
+when it delegates), and the part gets those its own *Access* grants still allow; the CEO is given their list to pass on. Every attempt gets a snapshot of each, at its default branch, as a git bundle in `/input`
 (`repo-<name>.bundle`: one commit holding the branch's files, its message naming the commit it was taken at), and is
 told to `git clone` it. Orbit Web clones it itself, bare and one commit deep, with the connector's sign-in, on its own
 side -- the sign-in never reaches the sandbox -- and removes its copy once the attempt has it. A repository the employee
@@ -731,7 +734,11 @@ data the employee must not take instructions from, and cut to 256 KiB. Turned of
 
 An employee reads only, unless a person also checks **Also write** on that connector: it may then *propose* a comment on
 a work item, an issue or a pull request, or a work item's new state (in what it may read, a work item only under its own
-project). Each write is the account policy's decision (`connector.write`, bound to the item, the operation and a digest
+project), or a **pull request**: a new branch from a base it names, one commit of a unified diff (at most 512 KiB) and
+the pull request. Orbit Web checks it first against a one-commit clone of the base -- the base exists, the new branch is
+none of the default, a protected or an existing branch, the patch applies cleanly -- and the approval shows the files
+and lines it changes; Orbit Web then makes the branch, commits, pushes with the installation's sign-in and opens it,
+and the employee is never given a credential. Each write is the account policy's decision (`connector.write`, bound to the item, the operation and a digest
 of the text): by default it **waits for the account owner's approval** of that exact write in *Governance → Approvals*
 (the employee is told so, and nothing is written yet); approved, Orbit Web writes it at once with the installation's
 sign-in -- once: the approval is spent before the write, against a fingerprint taken again from what it would write. A

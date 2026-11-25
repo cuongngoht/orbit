@@ -77,7 +77,7 @@ const useStyles = makeStyles({
     gridTemplateColumns: "minmax(0, 1fr)",
     gridAutoRows: "max-content",
     alignContent: "start",
-    gap: "14px",
+    gap: "10px",
     overflowY: "auto",
     minHeight: 0,
     minWidth: 0,
@@ -89,11 +89,11 @@ const useStyles = makeStyles({
   sectionCard: {
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    paddingTop: "14px",
-    paddingRight: "16px",
-    paddingBottom: "14px",
-    paddingLeft: "16px",
+    gap: "10px",
+    paddingTop: "12px",
+    paddingRight: "14px",
+    paddingBottom: "12px",
+    paddingLeft: "14px",
     borderRadius: "14px",
     backgroundColor: tokens.colorNeutralBackground2,
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
@@ -139,9 +139,9 @@ const useStyles = makeStyles({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: "68px",
-    height: "68px",
-    borderRadius: "12px",
+    width: "52px",
+    height: "52px",
+    borderRadius: "10px",
     backgroundColor: "#f6ebd4",
     ...shorthands.border("2px", "solid", "#9e6334"),
     flexShrink: 0,
@@ -516,34 +516,40 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     <Radio value="ceo" label={t("office.assign.toCeo")} />
                   </RadioGroup>
                 </Field>
-                {kind === "employee" && employee && (
+                {kind === "employee" && (
                   <div className={s.colleagueCard}>
-                    <div className={s.portraitFrame}>
-                      <PixelChibiSvg name={employee.name} workLabel={employee.workLabel} size={50} />
-                    </div>
-                    <div className={s.colleagueMeta}>
-                      <div className={o.row}>
-                        <Text weight="semibold" size={400}>
-                          {employee.name}
-                        </Text>
-                        <WorkLabelBadge label={employee.workLabel} />
+                    {employee && (
+                      <div className={s.portraitFrame}>
+                        <PixelChibiSvg name={employee.name} workLabel={employee.workLabel} size={38} />
                       </div>
-                      <Text size={200} className={o.muted}>
-                        {employee.title}
-                      </Text>
-                      {employee.holding && outcome?.kind !== "busy" ? (
-                        <Text size={200} className={o.muted}>
-                          {t("office.assign.workingOnNow", {
-                            name: employee.name,
-                            title: employee.holding.title,
-                            queued: employee.queued > 0 ? t("office.assign.withQueued", { count: employee.queued }) : "",
-                          })}
-                        </Text>
-                      ) : (
-                        <Text size={200} className={o.muted}>
-                          {employee.workLabel === "ready" ? t("office.assign.readyAtDesk") : deskMoodText(employee.workLabel)}
-                        </Text>
-                      )}
+                    )}
+                    <div className={s.colleagueMeta}>
+                      <div className={o.between} style={{ alignItems: "flex-end", gap: "8px" }}>
+                        <Field label={t("office.assign.employeeLabel")} required style={{ flexGrow: 1, minWidth: 0 }}>
+                          <Select ref={select} value={target} onChange={(_, d) => chooseTarget(d.value)}>
+                            {choices.map((e) => (
+                              <option key={e.id} value={e.id}>
+                                {e.name} — {e.title} ({WORK_LABEL_TEXT[e.workLabel]})
+                              </option>
+                            ))}
+                          </Select>
+                        </Field>
+                        {employee && <WorkLabelBadge label={employee.workLabel} />}
+                      </div>
+                      {employee &&
+                        (employee.holding && outcome?.kind !== "busy" ? (
+                          <Text size={200} className={o.muted}>
+                            {t("office.assign.workingOnNow", {
+                              name: employee.name,
+                              title: employee.holding.title,
+                              queued: employee.queued > 0 ? t("office.assign.withQueued", { count: employee.queued }) : "",
+                            })}
+                          </Text>
+                        ) : (
+                          <Text size={200} className={o.muted}>
+                            {employee.workLabel === "ready" ? t("office.assign.readyAtDesk") : deskMoodText(employee.workLabel)}
+                          </Text>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -572,17 +578,6 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                       );
                     })}
                   </div>
-                )}
-                {kind === "employee" && (
-                  <Field label={t("office.assign.employeeLabel")} required>
-                    <Select ref={select} value={target} onChange={(_, d) => chooseTarget(d.value)}>
-                      {choices.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.name} — {e.title} ({WORK_LABEL_TEXT[e.workLabel]})
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
                 )}
                 {kind === "department" &&
                   (roster.data === null ? (
@@ -622,7 +617,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                   <Input value={title} maxLength={120} onChange={(_, d) => setTitle(d.value)} />
                 </Field>
                 <Field label={t("office.assign.goalLabel")} required hint={t("office.assign.goalHint")}>
-                  <Textarea value={goal} resize="vertical" rows={4} onChange={(_, d) => setGoal(d.value)} />
+                  <Textarea value={goal} resize="vertical" rows={3} onChange={(_, d) => setGoal(d.value)} />
                 </Field>
               </div>
 
@@ -696,6 +691,11 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                     <Radio value="enqueue" label={t("office.assign.whenBusyEnqueue")} />
                   </RadioGroup>
                 </Field>
+                {kind === "employee" && employee?.holding && whenBusy === "reject" && outcome?.kind !== "busy" && (
+                  <Text size={200} className={o.warn}>
+                    {t("office.assign.busyInlineHint")}
+                  </Text>
+                )}
               </div>
 
               <Disclosure />

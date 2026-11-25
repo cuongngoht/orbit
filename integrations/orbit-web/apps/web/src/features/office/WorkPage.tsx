@@ -30,7 +30,9 @@ function Row({ m, go }: { m: MissionSummary; go: Go }) {
           <Text size={200} className={o.muted}>
             {t("office.work.updated", { at: when(m.updatedAt) })}
           </Text>
-          <ChevronRight16Regular aria-hidden className={o.muted} />
+          <Button size="small" appearance={a.state === "AWAITING_ACCEPTANCE" || a.state === "REVIEWING" ? "primary" : "subtle"} icon={<ChevronRight16Regular />} iconPosition="after" onClick={() => go("mission", m.id)}>
+            {a.state === "AWAITING_ACCEPTANCE" || a.state === "REVIEWING" ? t("office.work.reviewAction") : t("office.work.openAction")}
+          </Button>
         </div>
       </div>
       <div className={o.row}>

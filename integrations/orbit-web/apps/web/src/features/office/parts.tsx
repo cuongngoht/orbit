@@ -5,7 +5,7 @@ import { Badge, Button, MessageBar, MessageBarActions, MessageBarBody, Text, mak
 import { WORK_LABEL_TEXT, type AssignmentState, type RunState, type WorkLabel } from "@orbit-web/contracts";
 import { useState, type ReactNode } from "react";
 import { IconBadge, type IconTone } from "../../components/SectionIcons";
-import { t, useI18n, type MessageKey } from "../../i18n";
+import { t, useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
 import { errorText, isStale } from "../../services/api";
 import { useAppStream } from "../../services/events/AppEvents";
 
@@ -13,16 +13,17 @@ import { useAppStream } from "../../services/events/AppEvents";
 export const NETWORK_DISCLOSURE = t("office.shared.networkDisclosure");
 
 export const useOfficeStyles = makeStyles({
-  page: { display: "flex", flexDirection: "column", gap: "20px", maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", boxSizing: "border-box", minWidth: 0 },
+  page: { display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1160px", width: "100%", marginLeft: "auto", marginRight: "auto", boxSizing: "border-box", minWidth: 0 },
+  headingReset: { marginTop: 0, marginBottom: 0 },
   heroCard: {
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
-    paddingTop: "20px",
-    paddingRight: "24px",
-    paddingBottom: "20px",
-    paddingLeft: "24px",
-    "@media (max-width: 639px)": { paddingTop: "16px", paddingRight: "14px", paddingBottom: "16px", paddingLeft: "14px" },
+    gap: "12px",
+    paddingTop: "16px",
+    paddingRight: "22px",
+    paddingBottom: "16px",
+    paddingLeft: "22px",
+    "@media (max-width: 639px)": { paddingTop: "14px", paddingRight: "14px", paddingBottom: "14px", paddingLeft: "14px" },
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     borderRadius: "16px",
     backgroundColor: "var(--orbit-card-bg)",
@@ -33,9 +34,9 @@ export const useOfficeStyles = makeStyles({
     display: "flex",
     flexDirection: "column",
     gap: "12px",
-    paddingTop: "18px",
+    paddingTop: "16px",
     paddingRight: "20px",
-    paddingBottom: "18px",
+    paddingBottom: "16px",
     paddingLeft: "20px",
     "@media (max-width: 639px)": { paddingTop: "14px", paddingRight: "14px", paddingBottom: "14px", paddingLeft: "14px" },
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
@@ -58,20 +59,23 @@ export const useOfficeStyles = makeStyles({
   statGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-    gap: "10px",
+    gap: "8px",
     minWidth: 0,
-    "@media (max-width: 780px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
+    "@media (max-width: 900px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
     "@media (max-width: 479px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
   },
   statCard: {
     display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-    paddingTop: "12px",
-    paddingRight: "14px",
-    paddingBottom: "12px",
-    paddingLeft: "14px",
-    borderRadius: "12px",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "8px",
+    minHeight: "42px",
+    paddingTop: "8px",
+    paddingRight: "12px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
+    borderRadius: "10px",
     ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
     backgroundColor: tokens.colorNeutralBackground2,
     minWidth: 0,
@@ -93,6 +97,7 @@ export const useOfficeStyles = makeStyles({
       outlineOffset: "2px",
     },
   },
+  dangerMenuItem: { color: tokens.colorPaletteRedForeground1 },
   row: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", minWidth: 0 },
   between: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", minWidth: 0 },
   stack: { display: "flex", flexDirection: "column", gap: "6px", minWidth: 0 },
@@ -195,7 +200,7 @@ export const useOfficeStyles = makeStyles({
   dd: { marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, overflowWrap: "anywhere", minWidth: 0 },
   disclosure: { display: "flex", flexDirection: "column", gap: "4px" },
   // Tabs that do not fit a narrow screen scroll sideways inside their own strip, never the page.
-  tabStrip: { overflowX: "auto", minWidth: 0, maxWidth: "100%", ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2) },
+  tabStrip: { overflowX: "auto", minWidth: 0, maxWidth: "100%", paddingTop: "2px", paddingRight: "2px", paddingBottom: "2px", paddingLeft: "2px", ...shorthands.borderBottom("1px", "solid", tokens.colorNeutralStroke2) },
   asOfRow: { display: "inline-flex", alignItems: "center", gap: "6px" },
   liveDot: { width: "7px", height: "7px", borderRadius: "9999px", flexShrink: 0, backgroundColor: tokens.colorPaletteGreenForeground1 },
   lostDot: { width: "7px", height: "7px", borderRadius: "9999px", flexShrink: 0, backgroundColor: tokens.colorPaletteDarkOrangeForeground1, animationName: "orbit-pulse", animationDuration: "1.6s", animationIterationCount: "infinite" },
@@ -365,7 +370,33 @@ export const RUN_STATE_KEYS: Record<RunState, MessageKey> = {
 
 export const when = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—");
 
+export const whenSeconds = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }) : "—");
+
 export const short = (hex: string | null | undefined, n = 12): string => (hex ? hex.slice(0, n) : "—");
+
+export function humanizeActor(
+  actor: string | null | undefined,
+  assignments: readonly { employeeId: string; employeeName: string }[],
+  tr: I18nContextValue["t"],
+): { label: string; raw: string | null } {
+  if (!actor) return { label: "—", raw: null };
+  if (actor.startsWith("owner:")) return { label: tr("office.mission.actorOwner"), raw: actor };
+  if (actor.startsWith("agent:employee:")) {
+    const empId = actor.slice("agent:employee:".length);
+    const match = assignments.find((a) => a.employeeId === empId);
+    return { label: match?.employeeName ?? empId.slice(0, 8), raw: actor };
+  }
+  if (actor === "system:admission") return { label: tr("office.mission.actorAdmission"), raw: actor };
+  if (actor === "system:execution-worker") return { label: tr("office.mission.actorWorker"), raw: actor };
+  if (actor === "system:scheduler") return { label: tr("office.mission.actorScheduler"), raw: actor };
+  return { label: actor, raw: null };
+}
+
+export function humanizeWaitingOn(raw: string, tr: I18nContextValue["t"]): string {
+  if (raw === "owner_review") return tr("office.mission.waitingOnReadable.owner_review");
+  if (raw === "information") return tr("office.mission.waitingOnReadable.information");
+  return raw;
+}
 
 // When the page's data was read -- or, once the live connection was open and is not now, that it is reconnecting (the
 // data shown may be behind until it is back).

@@ -341,4 +341,60 @@ describe("how the mission's people talk", () => {
     await userEvent.click(screen.getByRole("button", { name: "Show everything" }));
     await waitFor(() => expect(mailsOf(screen.getByRole("list", { name: "What was said in this mission" }))).toHaveLength(5));
   });
+
+  test("dependency-ordered plan, criteria checklist, humanized actors, claims explanation, and timeline grouping", async () => {
+    const PART_DOC = "a2000000-0000-4000-8000-000000000010";
+    const PART_FX = "a2000000-0000-4000-8000-000000000011";
+    const root = assignmentView({ title: "Coffee forecast", state: "REVIEWING", planCount: 1 });
+    const doc = partView({ id: PART_DOC, unitKey: "document", title: "Compile report", state: "QUEUED", brief: { ...partView().brief, dependsOn: ["fx"] } });
+    const fx = partView({ id: PART_FX, unitKey: "fx", title: "Verify USD/BRL", state: "AWAITING_ACCEPTANCE", employeeId: EMP_BAO, employeeName: "Bao" });
+    fakeApi().on("GET", `/api/missions/${MISSION_ID}`, () =>
+      missionDetail({
+        title: "Coffee forecast",
+        createdBy: "owner:71cfde0b-0295-4414-aaaf-d1d76a2aaa00",
+        acceptanceCriteria: ["Include chart", "Cite ICE US"],
+        assignments: [root, doc, fx],
+        handoffs: [
+          handoff({
+            assignmentId: PART_FX,
+            submittedBy: `agent:employee:${EMP_BAO}`,
+            claims: [{ text: "USD/BRL fell 1.9%", supported: false, sources: [] }],
+            missing: [],
+          }),
+        ],
+        timeline: [
+          { seq: 1, at: "2026-11-25T08:59:00.000Z", type: "mission.created", actor: "owner:71cfde0b-0295-4414-aaaf-d1d76a2aaa00", summary: "Mission created.", assignmentId: ASSIGNMENT_ID },
+          { seq: 2, at: "2026-11-25T08:59:01.000Z", type: "assignment.queued", actor: "system:scheduler", summary: "Queued: the employee was busy.", assignmentId: PART_FX },
+          { seq: 3, at: "2026-11-25T08:59:02.000Z", type: "assignment.queued", actor: "system:scheduler", summary: "Queued: the employee was busy.", assignmentId: PART_FX },
+        ],
+      }),
+    );
+    const go = show("overview");
+    const wanted = await screen.findByRole("region", { name: "What is wanted" });
+    expect(within(wanted).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Include chart", "Cite ICE US"]);
+    expect(wanted.textContent).toContain("Account owner");
+    const partsList = within(screen.getByRole("list", { name: "Assignments" })).getByRole("list", { name: "Parts of “Coffee forecast”" });
+    const partItems = within(partsList).getAllByRole("listitem");
+    expect(partItems[0]?.textContent).toContain("Verify USD/BRL");
+    expect(partItems[1]?.textContent).toContain("Compile report");
+
+    await userEvent.click(screen.getByRole("tab", { name: /Handoffs/ }));
+    expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "handoffs");
+    go.mockClear();
+
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="handoffs" go={go} account={authAccount()} />);
+    const r2 = await screen.findByRole("article", { name: "Revision 2" });
+    expect(r2.textContent).toContain("handed in");
+    expect(r2.textContent).toContain("by Bao");
+    expect(r2.textContent).toContain("Claims (1) · 0 verified · 1 unverified");
+
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="timeline" go={go} account={authAccount()} />);
+    const timeline = await screen.findByRole("region", { name: "Timeline" });
+    expect(within(timeline).getAllByRole("listitem")).toHaveLength(2);
+    expect(timeline.textContent).toContain("×2");
+    expect(timeline.textContent).toContain("Account owner");
+    expect(timeline.textContent).toContain("Scheduler");
+    await userEvent.click(within(timeline).getByRole("button", { name: "All events" }));
+    expect(within(timeline).getAllByRole("listitem")).toHaveLength(3);
+  });
 });

@@ -71,7 +71,7 @@ export function PixelChibiSvg({
       viewBox="-1 0 18 18"
       shapeRendering="crispEdges"
       aria-hidden="true"
-      style={{ display: "block", flexShrink: 0 }}
+      style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}
     >
       {/* Ground shadow */}
       <rect x="4" y="16" width="8" height="1.5" fill="#1e1b18" opacity="0.2" />
@@ -447,7 +447,7 @@ export function PixelQuestBubble({
 
 export function PixelDirectorDeskSvg() {
   return (
-    <svg width="116" height="46" viewBox="0 0 58 23" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <svg width="116" height="46" viewBox="0 0 58 23" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
       {/* Executive high-back chair top behind desk */}
       <rect x="24" y="0" width="10" height="5" fill="#1e3a5f" />
       <rect x="25" y="1" width="8" height="3" fill="#2d5282" />
@@ -545,7 +545,7 @@ export function PixelModernDeskSvg({
           : "#a1a1aa";
 
   return (
-    <svg width="74" height="30" viewBox="0 0 44 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+    <svg width="74" height="30" viewBox="0 0 44 18" shapeRendering="crispEdges" aria-hidden="true" style={{ display: "block", flexShrink: 0, pointerEvents: "none" }}>
       {/* Ergonomic dark swivel chair peeking */}
       <rect x="17" y="1" width="10" height="4" fill="#334155" />
       <rect x="18" y="2" width="8" height="2" fill="#475569" />

@@ -13,12 +13,14 @@ import { office, useOfficeRead } from "./api";
 import { EmployeeAvatar, useOfficeStyles, when } from "./parts";
 
 const useStyles = makeStyles({
-  pipeline: { display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: "8px" },
+  pipeline: { display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: "10px" },
+  partsGroup: { display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: "8px", flexGrow: 1, minWidth: 0 },
   stage: {
     display: "flex",
     flexDirection: "column",
     gap: "4px",
-    minWidth: "160px",
+    minWidth: "168px",
+    maxWidth: "240px",
     padding: "10px 12px",
     borderRadius: "10px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -27,7 +29,7 @@ const useStyles = makeStyles({
     cursor: "pointer",
   },
   chosen: { border: `1px solid ${tokens.colorBrandStroke1}`, backgroundColor: tokens.colorBrandBackground2 },
-  arrow: { alignSelf: "center", color: tokens.colorNeutralForeground3 },
+  arrow: { alignSelf: "center", color: tokens.colorNeutralForeground3, flexShrink: 0 },
   thread: { display: "flex", flexDirection: "column", gap: "10px", margin: 0, padding: 0, listStyleType: "none" },
   mail: { display: "flex", flexDirection: "column", gap: "6px", padding: "10px 12px", borderRadius: "10px", border: `1px solid ${tokens.colorNeutralStroke2}`, backgroundColor: tokens.colorNeutralBackground1 },
   notice: { backgroundColor: tokens.colorNeutralBackground3 },
@@ -71,31 +73,64 @@ function partyText(p: MissionParty): string {
   return p.departmentName !== null ? `${p.name} (${p.departmentName})` : p.name;
 }
 
+// Sort parts so independent / active parts appear before parts that depend on them.
+function sortPartsForPipeline(parts: readonly AssignmentView[]): AssignmentView[] {
+  const rank = (a: AssignmentView): number => {
+    if (a.brief.dependsOn.length === 0) return 0;
+    return 1 + a.brief.dependsOn.length;
+  };
+  return [...parts].sort((a, b) => rank(a) - rank(b));
+}
+
 // The pipeline: the mission's holder, then each part -- its holder, department and stage; a click shows its exchanges.
 export function MissionPipeline({ m, chosen, choose }: { m: MissionDetail; chosen: string | null; choose: (assignmentId: string | null) => void }) {
   const { t } = useI18n();
   const s = useStyles();
+  const o = useOfficeStyles();
   const root = m.assignments.find((a) => a.parentId === null) ?? null;
-  const parts = m.assignments.filter((a) => a.parentId !== null);
+  const parts = sortPartsForPipeline(m.assignments.filter((a) => a.parentId !== null));
   const card = (a: AssignmentView) => (
     <button key={a.id} type="button" className={mergeClasses(s.stage, chosen === a.id && s.chosen)} aria-pressed={chosen === a.id} onClick={() => choose(chosen === a.id ? null : a.id)}>
-      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <EmployeeAvatar name={a.employeeName} size="sm" />
-        <Text weight="semibold">{a.employeeName}</Text>
+      <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", width: "100%" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+          <EmployeeAvatar name={a.employeeName} size="sm" />
+          <Text weight="semibold">{a.employeeName}</Text>
+        </span>
+        {a.unitKey && (
+          <Badge appearance="outline" size="small">
+            {a.unitKey}
+          </Badge>
+        )}
       </span>
       <Text size={200}>{a.parentId === null ? t("office.thread.holder") : a.title}</Text>
-      {a.pinned.departmentName !== null && <Text size={200}>{a.pinned.departmentName}</Text>}
-      <Badge appearance="tint" color={a.state === "BLOCKED" || a.state === "FAILED_FINAL" ? "danger" : a.state === "COMPLETED" ? "success" : "informative"} title={ASSIGNMENT_STATE_TEXT[a.state]}>
-        {t(STAGE[a.state])}
-      </Badge>
+      {a.pinned.departmentName !== null && (
+        <Text size={100} className={o.muted}>
+          {a.pinned.departmentName}
+        </Text>
+      )}
+      <span style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+        <Badge appearance="tint" color={a.state === "BLOCKED" || a.state === "FAILED_FINAL" ? "danger" : a.state === "COMPLETED" ? "success" : "informative"} title={ASSIGNMENT_STATE_TEXT[a.state]}>
+          {t(STAGE[a.state])}
+        </Badge>
+        {a.brief.dependsOn.length > 0 && (
+          <Text size={100} className={o.muted}>
+            ← {a.brief.dependsOn.join(", ")}
+          </Text>
+        )}
+      </span>
     </button>
   );
   if (root === null) return null;
   return (
-    <div className={s.pipeline} role="group" aria-label={t("office.thread.pipelineAria")}>
-      {card(root)}
-      {parts.length > 0 && <ArrowRight16Regular className={s.arrow} aria-hidden />}
-      {parts.map(card)}
+    <div className={o.stack} style={{ gap: "6px" }}>
+      <div className={s.pipeline} role="group" aria-label={t("office.thread.pipelineAria")}>
+        {card(root)}
+        {parts.length > 0 && <ArrowRight16Regular className={s.arrow} aria-hidden />}
+        {parts.length > 0 && <div className={s.partsGroup}>{parts.map(card)}</div>}
+      </div>
+      <Text size={100} className={o.muted}>
+        {t("office.mission.pipelineHint")}
+      </Text>
     </div>
   );
 }
@@ -151,7 +186,9 @@ export function MissionThreadView({ m, chosen, choose }: { m: MissionDetail; cho
         <MessageBarBody>{read.error}</MessageBarBody>
       </MessageBar>
     ) : (
-      <Spinner size="tiny" label={t("office.shared.reading")} />
+      <div className={o.card}>
+        <Spinner size="tiny" label={t("office.shared.reading")} />
+      </div>
     );
   const shown = chosen === null ? read.data.messages : read.data.messages.filter((x) => x.assignmentId === chosen);
   const part = chosen === null ? null : (m.assignments.find((a) => a.id === chosen) ?? null);

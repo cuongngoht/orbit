@@ -38,7 +38,7 @@ import {
   tokens,
   useRestoreFocusTarget,
 } from "@fluentui/react-components";
-import { ArrowDownload16Regular, MoreHorizontal16Regular } from "@fluentui/react-icons";
+import { ArrowDownload16Regular, MoreHorizontal16Regular, Warning16Regular } from "@fluentui/react-icons";
 import {
   ASSIGNMENT_STATE_TEXT,
   DELIVERY_STATE_TEXT,
@@ -57,6 +57,7 @@ import {
   type MissionDetail,
   type Roster,
   type TeamRoomChange,
+  type TimelineEntry,
 } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
@@ -64,11 +65,54 @@ import { useResource } from "../../hooks/useResource";
 import { useI18n, type I18nContextValue, type MessageKey } from "../../i18n";
 import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, wholeRoster, type AssignmentCommand } from "./api";
-import { AsOf, EmployeeAvatar, ProblemBar, RUN_STATE_KEYS, StateBadge, short, useAction, useOfficeStyles, when } from "./parts";
+import { AsOf, Callout, EmployeeAvatar, ProblemBar, RUN_STATE_KEYS, StateBadge, humanizeActor, humanizeWaitingOn, short, useAction, useOfficeStyles, when, whenSeconds } from "./parts";
 import { MissionCommunication } from "./MissionThread";
 import { RunDetails } from "./RunDetails";
 
 const useStyles = makeStyles({
+  overviewGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)",
+    gap: "16px",
+    alignItems: "start",
+    "@media (max-width: 960px)": { gridTemplateColumns: "1fr" },
+  },
+  colStack: { display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 },
+  progressTrack: {
+    width: "100%",
+    height: "6px",
+    borderRadius: "9999px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    overflow: "hidden",
+    display: "flex",
+    gap: "2px",
+  },
+  criteriaList: { marginTop: 0, marginBottom: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "4px" },
+  fileRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    flexWrap: "wrap",
+    paddingTop: "8px",
+    paddingRight: "10px",
+    paddingBottom: "8px",
+    paddingLeft: "12px",
+    borderRadius: "10px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  digestPill: {
+    fontFamily: tokens.fontFamilyMonospace,
+    fontSize: tokens.fontSizeBase100,
+    paddingTop: "1px",
+    paddingRight: "6px",
+    paddingBottom: "1px",
+    paddingLeft: "6px",
+    borderRadius: "6px",
+    backgroundColor: tokens.colorNeutralBackground3,
+    color: tokens.colorNeutralForeground2,
+  },
   nested: { borderLeftWidth: "3px", borderLeftColor: tokens.colorBrandStroke2 },
   // A part's own parts, under it: indented a few levels, then flat -- a deep tree never pushes the page sideways.
   branch: {
@@ -178,6 +222,42 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+// Order sibling parts so prerequisites come before dependents, and active/handed-in work comes before queued work.
+function sortSiblings(siblings: AssignmentView[]): AssignmentView[] {
+  const byKey = new Map<string, AssignmentView>();
+  for (const s of siblings) if (s.unitKey) byKey.set(s.unitKey, s);
+  const depthMemo = new Map<string, number>();
+  const depDepth = (a: AssignmentView, seen = new Set<string>()): number => {
+    if (depthMemo.has(a.id)) return depthMemo.get(a.id)!;
+    if (seen.has(a.id)) return 0;
+    const nextSeen = new Set(seen);
+    nextSeen.add(a.id);
+    let maxParent = 0;
+    for (const key of a.brief.dependsOn) {
+      const target = byKey.get(key);
+      if (target) maxParent = Math.max(maxParent, 1 + depDepth(target, nextSeen));
+    }
+    depthMemo.set(a.id, maxParent);
+    return maxParent;
+  };
+  const stateOrder: Partial<Record<AssignmentView["state"], number>> = {
+    COMPLETED: 0,
+    AWAITING_ACCEPTANCE: 1,
+    REVIEWING: 2,
+    RUNNING: 3,
+    RECOVERING: 3,
+    ASSIGNED: 4,
+    BLOCKED: 5,
+    PAUSED: 6,
+    QUEUED: 7,
+  };
+  return [...siblings].sort((a, b) => {
+    const dd = depDepth(a) - depDepth(b);
+    if (dd !== 0) return dd;
+    return (stateOrder[a.state] ?? 8) - (stateOrder[b.state] ?? 8);
+  });
+}
+
 // The assignments as the tree their parents make: the root and, under each, the parts it gave its team. Anything whose
 // parent is not in the list (or that lies deeper than MAX_DEPTH) is shown at the top, never hidden.
 function treeOf(assignments: readonly AssignmentView[]): TreeNode[] {
@@ -185,7 +265,7 @@ function treeOf(assignments: readonly AssignmentView[]): TreeNode[] {
   const placed = new Set<string>();
   const build = (a: AssignmentView, depth: number): TreeNode => {
     placed.add(a.id);
-    const children = depth < MAX_DEPTH ? assignments.filter((x) => x.parentId === a.id && !placed.has(x.id)) : [];
+    const children = depth < MAX_DEPTH ? sortSiblings(assignments.filter((x) => x.parentId === a.id && !placed.has(x.id))) : [];
     return { a, children: children.map((c) => build(c, depth + 1)) };
   };
   const out: TreeNode[] = [];
@@ -413,7 +493,7 @@ function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useComm
       <MenuPopover>
         <MenuList>
           {c.commands.map((command) => (
-            <MenuItem key={command} onClick={() => void c.run(command)}>
+            <MenuItem key={command} className={command === "cancel" ? o.dangerMenuItem : undefined} onClick={() => void c.run(command)}>
               {ACTION_KEYS[command] ? t(ACTION_KEYS[command]!) : command}
             </MenuItem>
           ))}
@@ -445,14 +525,17 @@ function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentV
         </div>
         {part && <PartActions a={a} c={c} />}
       </div>
-      <Text size={200} className={o.wrap}>
-        {t("office.mission.heldByPrefix")}
-        <Link as="button" onClick={() => go("employee", a.employeeId)}>
-          {a.employeeName}
-        </Link>
-        {a.pinned.departmentName ? t("office.mission.deptWhenClaimed", { dept: a.pinned.departmentName }) : ""}
-        {t("office.mission.attemptsAndRevision", { attempts: a.attempts, revision: a.handoffRevision })}
-      </Text>
+      <div className={o.row} style={{ gap: "6px" }}>
+        <EmployeeAvatar name={a.employeeName} size="sm" />
+        <Text size={200} className={o.wrap}>
+          {t("office.mission.heldByPrefix")}
+          <Link as="button" onClick={() => go("employee", a.employeeId)}>
+            {a.employeeName}
+          </Link>
+          {a.pinned.departmentName ? t("office.mission.deptWhenClaimed", { dept: a.pinned.departmentName }) : ""}
+          {t("office.mission.attemptsAndRevision", { attempts: a.attempts, revision: a.handoffRevision })}
+        </Text>
+      </div>
       <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
         {facts.join(" · ")}
       </Text>
@@ -473,7 +556,7 @@ function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentV
       {(a.reason || a.waitingOn) && (
         <Text size={200} className={mergeClasses(o.warn, o.wrap)}>
           {a.reason ?? ""}
-          {a.waitingOn ? t("office.mission.waitingOn", { what: a.waitingOn }) : ""}
+          {a.waitingOn ? t("office.mission.waitingOn", { what: humanizeWaitingOn(a.waitingOn, t) }) : ""}
         </Text>
       )}
       {a.lastRun && (a.lastRun.state === "waiting_for_resources" || a.lastRun.state === "unschedulable") && (
@@ -679,9 +762,16 @@ function Share({ sh, leadName, onDone }: { sh: DataShareView; leadName: string; 
         <Text size={200} weight="semibold" className={o.wrap}>
           {t("office.mission.shareLine", { lead: leadName, recipient: sh.recipientName, unit: sh.recipientUnit })}
         </Text>
-        <Badge appearance="tint" color={revoked ? "subtle" : "success"} style={{ borderRadius: "9999px", flexShrink: 0 }}>
-          {revoked ? t("office.mission.shareRevoked") : t("office.mission.shareHolds")}
-        </Badge>
+        <div className={o.row} style={{ gap: "6px", flexShrink: 0 }}>
+          <Badge appearance="tint" color={revoked ? "subtle" : "success"} style={{ borderRadius: "9999px", flexShrink: 0 }}>
+            {revoked ? t("office.mission.shareRevoked") : t("office.mission.shareHolds")}
+          </Badge>
+          {!revoked && (
+            <Button className={o.touch} size="small" disabled={act.busy} onClick={() => setConfirming(true)} {...restore}>
+              {t("office.mission.revokeShare")}
+            </Button>
+          )}
+        </div>
       </div>
       <Text size={200} className={o.wrap}>
         {what}
@@ -690,13 +780,6 @@ function Share({ sh, leadName, onDone }: { sh: DataShareView; leadName: string; 
         {t("office.mission.sharedAt", { at: when(sh.sharedAt) })}
         {revoked ? t("office.mission.revokedMeta", { at: when(sh.revokedAt), by: sh.revokedBy ?? "—" }) : ""}
       </Text>
-      {!revoked && (
-        <div>
-          <Button className={o.touch} size="small" disabled={act.busy} onClick={() => setConfirming(true)} {...restore}>
-            {t("office.mission.revokeShare")}
-          </Button>
-        </div>
-      )}
       <ProblemBar problem={act.problem} />
       {confirming && (
         <Dialog open onOpenChange={(_, d) => !d.open && setConfirming(false)}>
@@ -874,7 +957,9 @@ function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose
   );
 }
 
-function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: AssignmentView | null; onDone: () => void; onLoadLatest: () => void }) {
+const SHOWN = /^(text\/(markdown|plain|csv)|application\/(json|pdf)|image\/(png|jpeg))$/;
+
+function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; a: AssignmentView | null; assignments: readonly AssignmentView[]; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -884,6 +969,9 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
   const [criteria, setCriteria] = useState("");
   const [accepting, setAccepting] = useState(false);
   const reviewable = h.status === "submitted" && a !== null;
+  const submitter = humanizeActor(h.submittedBy, assignments, t);
+  const supportedCount = h.claims.filter((c) => c.supported).length;
+  const unverifiedCount = h.claims.length - supportedCount;
   const review = async (command: AssignmentCommand, body: object) => {
     if (a === null) return;
     const ok = await act.run(() => office.command(a.id, a.version, command, { handoffDigest: h.digest, ...body }));
@@ -902,47 +990,69 @@ function Handoff({ h, a, onDone, onLoadLatest }: { h: HandoffView; a: Assignment
             {t(HANDOFF_KEYS[h.status])}
           </Badge>
         </div>
-        <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+        <Text size={200} className={mergeClasses(o.muted, o.wrap)} title={submitter.raw ?? undefined}>
           {t("office.mission.digestPrefix")}
-          <span className={o.mono}>{short(h.digest)}</span>
-          {t("office.mission.handedIn", { at: when(h.submittedAt), by: h.submittedBy })}
+          <span className={s.digestPill}>{short(h.digest)}</span>
+          {t("office.mission.handedIn", { at: when(h.submittedAt), by: submitter.label })}
         </Text>
       </div>
       <Text className={o.wrap}>{h.summary}</Text>
       {h.artifacts.length > 0 && (
         <ul className={o.list} aria-label={t("office.mission.artifactsAria", { revision: h.revision })}>
-          {h.artifacts.map((x) => (
-            <li key={x.id} className={o.row}>
-              <Link className="orbit-target" href={office.artifactHref(x.id)} download={x.name} target="_blank" rel="noopener noreferrer">
-                <ArrowDownload16Regular aria-hidden /> {x.name}
-              </Link>
-              <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-                {x.kind} · {x.mediaType} · {bytesText(x.size)} · sha256 {short(x.sha256)}
-              </Text>
-            </li>
-          ))}
+          {h.artifacts.map((x) => {
+            const canPreview = SHOWN.test(x.mediaType);
+            return (
+              <li key={x.id} className={s.fileRow}>
+                <div className={o.row}>
+                  <Link className="orbit-target" href={office.artifactHref(x.id)} {...(canPreview ? {} : { download: x.name })} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+                    {!canPreview && <ArrowDownload16Regular aria-hidden />} {x.name}
+                  </Link>
+                  <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+                    {x.kind} · {x.mediaType} · {bytesText(x.size)} · sha256 {short(x.sha256)}
+                  </Text>
+                </div>
+                {canPreview && (
+                  <Link className="orbit-target" href={office.artifactHref(x.id)} download={x.name} target="_blank" rel="noopener noreferrer" style={{ fontSize: tokens.fontSizeBase200 }}>
+                    <ArrowDownload16Regular aria-hidden /> {t("office.mission.downloadFile")}
+                  </Link>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {h.claims.length > 0 && (
-        <ul className={o.list} aria-label={t("office.mission.claimsAria", { revision: h.revision })}>
-          {h.claims.map((c, i) => (
-            <li key={`${i}:${c.text}`} className={o.item}>
-              <div className={o.row}>
-                <Badge appearance="tint" color={c.supported ? "success" : "warning"}>
-                  {c.supported ? t("office.mission.supported") : t("office.mission.notSupported")}
-                </Badge>
-              </div>
-              <Text size={200} className={o.wrap}>
-                {c.text}
+        <div className={o.stack} style={{ gap: "8px" }}>
+          <div className={o.stack} style={{ gap: "2px" }}>
+            <Text size={200} weight="semibold">
+              {t("office.mission.claimsSummary", { total: h.claims.length, supported: supportedCount, unverified: unverifiedCount })}
+            </Text>
+            {unverifiedCount > 0 && (
+              <Text size={200} className={o.muted}>
+                {t("office.mission.claimsUnverifiedHint")}
               </Text>
-              {c.sources.map((src) => (
-                <Text key={`${src.label}:${src.revisionId}`} size={200} className={mergeClasses(o.muted, o.wrap)}>
-                  [{src.label}] {src.locator}: “{src.excerpt}”
+            )}
+          </div>
+          <ul className={o.list} aria-label={t("office.mission.claimsAria", { revision: h.revision })}>
+            {h.claims.map((c, i) => (
+              <li key={`${i}:${c.text}`} className={o.item}>
+                <div className={o.row}>
+                  <Badge appearance="tint" color={c.supported ? "success" : "warning"} title={c.supported ? t("office.mission.supported") : t("office.mission.claimsUnverifiedHint")}>
+                    {c.supported ? t("office.mission.supported") : t("office.mission.notSupported")}
+                  </Badge>
+                </div>
+                <Text size={200} className={o.wrap}>
+                  {c.text}
                 </Text>
-              ))}
-            </li>
-          ))}
-        </ul>
+                {c.sources.map((src) => (
+                  <Text key={`${src.label}:${src.revisionId}`} size={200} className={mergeClasses(o.muted, o.wrap)}>
+                    [{src.label}] {src.locator}: “{src.excerpt}”
+                  </Text>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {h.missing.length > 0 && (
         <Text size={200} className={mergeClasses(o.danger, o.wrap)}>
@@ -1027,11 +1137,86 @@ function HandIns({ m, onDone, onLoadLatest }: { m: MissionDetail; onDone: () => 
             </div>
           )}
           {g.list.map((h) => (
-            <Handoff key={`${h.id}:${h.status}`} h={h} a={g.a} onDone={onDone} onLoadLatest={onLoadLatest} />
+            <Handoff key={`${h.id}:${h.status}`} h={h} a={g.a} assignments={m.assignments} onDone={onDone} onLoadLatest={onLoadLatest} />
           ))}
         </section>
       ))}
     </>
+  );
+}
+
+interface TimelineGroup {
+  key: number;
+  at: string;
+  lastAt: string;
+  actor: string;
+  summary: string;
+  count: number;
+}
+
+function collapseTimeline(items: readonly TimelineEntry[]): TimelineGroup[] {
+  const out: TimelineGroup[] = [];
+  for (const item of items) {
+    const prev = out[out.length - 1];
+    if (prev && prev.actor === item.actor && prev.summary === item.summary) {
+      prev.count += 1;
+      prev.lastAt = item.at;
+    } else {
+      out.push({ key: item.seq, at: item.at, lastAt: item.at, actor: item.actor, summary: item.summary, count: 1 });
+    }
+  }
+  return out;
+}
+
+function MissionTimeline({ items, assignments }: { items: readonly TimelineEntry[]; assignments: readonly AssignmentView[] }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const o = useOfficeStyles();
+  const [grouped, setGrouped] = useState(true);
+  if (items.length === 0) return <Text className={o.muted}>{t("office.mission.timelineEmpty")}</Text>;
+  const rows: TimelineGroup[] = grouped
+    ? collapseTimeline(items)
+    : items.map((item) => ({ key: item.seq, at: item.at, lastAt: item.at, actor: item.actor, summary: item.summary, count: 1 }));
+  return (
+    <div className={o.stack} style={{ gap: "12px" }}>
+      <div className={o.between}>
+        <Text weight="semibold" size={300}>
+          {t("office.mission.tab.timeline")} ({items.length})
+        </Text>
+        <div className={o.row} style={{ gap: "4px" }}>
+          <Button size="small" appearance={grouped ? "primary" : "subtle"} onClick={() => setGrouped(true)}>
+            {t("office.mission.timelineCollapse")}
+          </Button>
+          <Button size="small" appearance={!grouped ? "primary" : "subtle"} onClick={() => setGrouped(false)}>
+            {t("office.mission.timelineAll")}
+          </Button>
+        </div>
+      </div>
+      <ol className={s.timelineList}>
+        {rows.map((row) => {
+          const actor = humanizeActor(row.actor, assignments, t);
+          return (
+            <li key={row.key} className={mergeClasses(o.item, s.timelineItem)}>
+              <span className={s.timelineDot} aria-hidden />
+              <div className={o.between}>
+                <Text size={200} className={o.muted} title={actor.raw ?? undefined}>
+                  {whenSeconds(row.at)}
+                  {row.count > 1 && row.lastAt !== row.at ? ` – ${whenSeconds(row.lastAt)}` : ""} · {actor.label}
+                </Text>
+                {row.count > 1 && (
+                  <Badge appearance="tint" color="informative" size="small">
+                    {t("office.mission.timelineRepeated", { count: row.count })}
+                  </Badge>
+                )}
+              </div>
+              <Text size={200} className={o.wrap}>
+                {row.summary}
+              </Text>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -1053,15 +1238,29 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const root = m.assignments.find((a) => a.id === m.assignment.id) ?? m.assignments.find((a) => a.parentId === null) ?? null;
   const reload = () => void mission.reload();
   // A mission whose work was split into parts has a team room (the tab shows when asked for by its address too).
-  const hasTeam = m.assignments.some((a) => a.parentId !== null) || current === "team";
+  const parts = m.assignments.filter((a) => a.parentId !== null);
+  const hasTeam = parts.length > 0 || current === "team";
   // The root's question, when the mission lists it, is answered where the questions are.
   const rootAsked = root !== null && m.clarifications.some((c) => c.askerAssignmentId === root.id && c.state === "open" && c.addressee === "owner");
+  const doneCount = parts.filter((p) => p.state === "COMPLETED").length;
+  const awaitingCount = parts.filter((p) => p.state === "AWAITING_ACCEPTANCE" || p.state === "REVIEWING").length;
+  const workingCount = parts.filter((p) => p.state === "RUNNING" || p.state === "RECOVERING" || p.state === "ASSIGNED" || p.state === "ANSWERING" || p.state === "WAITING_FOR_SUBORDINATES").length;
+  const queuedCount = parts.filter((p) => p.state === "QUEUED").length;
+  const creator = humanizeActor(m.createdBy, m.assignments, t);
+  const rootRunWaiting = root?.lastRun && (root.lastRun.state === "waiting_for_resources" || root.lastRun.state === "unschedulable") ? root.lastRun : null;
   return (
     <div className={o.page}>
       <section className={o.heroCard} aria-label={m.title}>
-        <Text as="h2" weight="semibold" size={600} className={o.wrap}>
-          {m.title}
-        </Text>
+        <div className={o.between} style={{ alignItems: "flex-start" }}>
+          <Text as="h2" weight="semibold" size={600} className={mergeClasses(o.wrap, o.headingReset)}>
+            {m.title}
+          </Text>
+          {m.handoffs.length > 0 && current !== "handoffs" && (
+            <Button size="small" appearance="primary" onClick={() => go("mission", id, "handoffs")}>
+              {t("office.mission.jumpHandoffs", { count: m.handoffs.length })}
+            </Button>
+          )}
+        </div>
         <div className={o.row}>
           <StateBadge text={ASSIGNMENT_STATE_TEXT[m.assignment.state]} state={m.assignment.state} />
           <EmployeeAvatar name={m.assignment.employeeName} size="sm" />
@@ -1074,6 +1273,53 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
             {m.nextAction ? t("office.work.next", { next: m.nextAction }) : ""}
           </Text>
         </div>
+        {parts.length > 0 && (
+          <div className={o.stack} style={{ gap: "6px" }}>
+            <div className={s.progressTrack} aria-hidden>
+              {doneCount > 0 && <div style={{ flexGrow: doneCount, backgroundColor: tokens.colorPaletteGreenBackground3 }} />}
+              {awaitingCount > 0 && <div style={{ flexGrow: awaitingCount, backgroundColor: tokens.colorPaletteMarigoldBackground3 }} />}
+              {workingCount > 0 && <div style={{ flexGrow: workingCount, backgroundColor: tokens.colorBrandBackground }} />}
+              {queuedCount > 0 && <div style={{ flexGrow: queuedCount, backgroundColor: tokens.colorNeutralStroke1 }} />}
+            </div>
+            <div className={o.row} style={{ gap: "8px" }}>
+              <Text size={200} weight="semibold">
+                {t("office.mission.progressParts", { done: doneCount, total: parts.length })}
+              </Text>
+              {awaitingCount > 0 && (
+                <Text size={200} className={o.warn}>
+                  · {t("office.mission.progressAwaiting", { count: awaitingCount })}
+                </Text>
+              )}
+              {workingCount > 0 && (
+                <Text size={200} className={o.muted}>
+                  · {t("office.mission.progressWorking", { count: workingCount })}
+                </Text>
+              )}
+              {queuedCount > 0 && (
+                <Text size={200} className={o.muted}>
+                  · {t("office.mission.progressQueued", { count: queuedCount })}
+                </Text>
+              )}
+            </div>
+          </div>
+        )}
+        {rootRunWaiting && (
+          <Callout tone={rootRunWaiting.state === "unschedulable" ? "danger" : "warn"} icon={<Warning16Regular />}>
+            <div className={o.between}>
+              <div className={o.stack} style={{ gap: "2px", flexGrow: 1 }}>
+                <Text size={200} weight="semibold">
+                  {t(RUN_STATE_KEYS[rootRunWaiting.state])}: {rootRunWaiting.waitingReason ?? t("office.run.noReasonGiven")}
+                </Text>
+                <Text size={200}>{t("office.mission.resourceWaitExplain")}</Text>
+              </div>
+              {current !== "run" && (
+                <Button size="small" onClick={() => go("mission", id, "run")} style={{ flexShrink: 0 }}>
+                  {t("office.mission.inspectLastRun")}
+                </Button>
+              )}
+            </div>
+          </Callout>
+        )}
         <AsOf at={mission.loadedAt} />
       </section>
       <div className={`${o.tabStrip} orbit-hscroll`}>
@@ -1088,78 +1334,80 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       </div>
 
       {current === "overview" && (
-        <>
-          <ResponsibleNowCard m={m} go={go} />
-          <section className={o.card} aria-label={t("office.mission.whatIsWanted")}>
-            <Text weight="semibold" size={400}>
-              {t("office.mission.whatIsWanted")}
-            </Text>
-            <Text className={o.wrap} style={{ whiteSpace: "pre-wrap" }}>
-              {m.goal}
-            </Text>
-            <div className={o.divider} />
-            <dl className={o.dl}>
-              {m.target !== null && (
-                <>
-                  <dt className={o.dt}>{t("office.mission.givenTo")}</dt>
-                  <dd className={o.dd}>{givenToText(t, m.target)}</dd>
-                </>
-              )}
-              <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
-              <dd className={o.dd}>{m.deliverables.length === 0 ? t("office.mission.noneNamed") : m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
-              <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
-              <dd className={o.dd}>{m.acceptanceCriteria.length === 0 ? t("office.mission.noCriteriaNamed") : m.acceptanceCriteria.join("; ")}</dd>
-              <dt className={o.dt}>{t("office.mission.acceptedBy")}</dt>
-              <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? t("office.mission.ownerYou") : t("office.mission.itsManager")}</dd>
-              <dt className={o.dt}>{t("office.sources.title")}</dt>
-              <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? t("office.mission.nonePinned") : t("office.mission.sourcesPinned", { count: m.sourceRevisionIds.length })}</dd>
-              <dt className={o.dt}>{t("office.repos.title")}</dt>
-              <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? t("office.mission.none") : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
-              <dt className={o.dt}>{t("office.mission.created")}</dt>
-              <dd className={o.dd}>
-                {t("office.mission.createdBy", { at: when(m.createdAt), by: m.createdBy })}
-              </dd>
-            </dl>
-          </section>
-          <section className={o.card} aria-label={t("office.mission.plan")}>
-            <Text weight="semibold">{t("office.mission.plan")}</Text>
-            <Plan assignments={m.assignments} go={go} onDone={reload} onLoadLatest={reload} />
-            {root && <AssignmentActions a={root} answerHere={!rootAsked} onDone={reload} onLoadLatest={reload} />}
-          </section>
-          {m.clarifications.length > 0 && <Questions m={m} onDone={reload} onLoadLatest={reload} />}
-          {m.dataShares.length > 0 && <Shares m={m} onDone={reload} />}
-          {m.deliveries.length > 0 && (
-            <section className={o.card} aria-label={t("office.mission.deliveries")}>
-              <Text weight="semibold">{t("office.mission.deliveries")}</Text>
-              <ul className={o.list}>
-                {m.deliveries.map((d) => (
-                  <Delivery key={d.id} d={d} onDone={reload} />
-                ))}
-              </ul>
+        <div className={s.overviewGrid}>
+          <div className={s.colStack}>
+            <section className={o.card} aria-label={t("office.mission.plan")}>
+              <div className={o.between}>
+                <Text weight="semibold" size={400}>
+                  {t("office.mission.plan")}
+                </Text>
+                {root && <AssignmentActions a={root} answerHere={!rootAsked} onDone={reload} onLoadLatest={reload} />}
+              </div>
+              <Plan assignments={m.assignments} go={go} onDone={reload} onLoadLatest={reload} />
             </section>
-          )}
-        </>
+            {m.clarifications.length > 0 && <Questions m={m} onDone={reload} onLoadLatest={reload} />}
+            {m.dataShares.length > 0 && <Shares m={m} onDone={reload} />}
+            {m.deliveries.length > 0 && (
+              <section className={o.card} aria-label={t("office.mission.deliveries")}>
+                <Text weight="semibold">{t("office.mission.deliveries")}</Text>
+                <ul className={o.list}>
+                  {m.deliveries.map((d) => (
+                    <Delivery key={d.id} d={d} onDone={reload} />
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+          <div className={s.colStack}>
+            <ResponsibleNowCard m={m} go={go} />
+            <section className={o.card} aria-label={t("office.mission.whatIsWanted")}>
+              <Text weight="semibold" size={400}>
+                {t("office.mission.whatIsWanted")}
+              </Text>
+              <Text className={o.wrap} style={{ whiteSpace: "pre-wrap" }}>
+                {m.goal}
+              </Text>
+              <div className={o.divider} />
+              <dl className={o.dl}>
+                {m.target !== null && (
+                  <>
+                    <dt className={o.dt}>{t("office.mission.givenTo")}</dt>
+                    <dd className={o.dd}>{givenToText(t, m.target)}</dd>
+                  </>
+                )}
+                <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
+                <dd className={o.dd}>{m.deliverables.length === 0 ? t("office.mission.noneNamed") : m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
+                <dt className={o.dt}>{t("office.mission.acceptedWhen")}</dt>
+                <dd className={o.dd}>
+                  {m.acceptanceCriteria.length === 0 ? (
+                    t("office.mission.noCriteriaNamed")
+                  ) : (
+                    <ul className={s.criteriaList}>
+                      {m.acceptanceCriteria.map((criterion, idx) => (
+                        <li key={`${idx}:${criterion}`}>{criterion}</li>
+                      ))}
+                    </ul>
+                  )}
+                </dd>
+                <dt className={o.dt}>{t("office.mission.acceptedBy")}</dt>
+                <dd className={o.dd}>{m.acceptanceMode === "owner_review" ? t("office.mission.ownerYou") : t("office.mission.itsManager")}</dd>
+                <dt className={o.dt}>{t("office.sources.title")}</dt>
+                <dd className={o.dd}>{m.sourceRevisionIds.length === 0 ? t("office.mission.nonePinned") : t("office.mission.sourcesPinned", { count: m.sourceRevisionIds.length })}</dd>
+                <dt className={o.dt}>{t("office.repos.title")}</dt>
+                <dd className={o.dd}>{(m.repositories ?? []).length === 0 ? t("office.mission.none") : (m.repositories ?? []).map((r) => `${r.fullName}${r.branch === null ? "" : ` (${r.branch})`}`).join(", ")}</dd>
+                <dt className={o.dt}>{t("office.mission.created")}</dt>
+                <dd className={o.dd} title={creator.raw ?? undefined}>
+                  {t("office.mission.createdBy", { at: when(m.createdAt), by: creator.label })}
+                </dd>
+              </dl>
+            </section>
+          </div>
+        </div>
       )}
 
       {current === "timeline" && (
         <section className={o.card} aria-label={t("office.mission.tab.timeline")}>
-          {m.timeline.length === 0 ? (
-            <Text className={o.muted}>{t("office.mission.timelineEmpty")}</Text>
-          ) : (
-            <ol className={s.timelineList}>
-              {m.timeline.map((item) => (
-                <li key={item.seq} className={mergeClasses(o.item, s.timelineItem)}>
-                  <span className={s.timelineDot} aria-hidden />
-                  <Text size={200} className={o.muted}>
-                    {when(item.at)} · {item.actor}
-                  </Text>
-                  <Text size={200} className={o.wrap}>
-                    {item.summary}
-                  </Text>
-                </li>
-              ))}
-            </ol>
-          )}
+          <MissionTimeline items={m.timeline} assignments={m.assignments} />
         </section>
       )}
 

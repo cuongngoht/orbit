@@ -102,6 +102,9 @@ export function AppointmentMenu({ slot, label, onPick, children }: { slot: Appoi
   const o = useOfficeStyles();
   const incumbent = slot.incumbent;
   const pick = (act: AppointmentAct) => onPick(act === "appoint" || incumbent === null ? { act: "appoint", slot } : { act, slot, incumbent });
+  const acts = ACTS[incumbent?.state ?? "empty"];
+  const safeActs = acts.filter((a) => a !== "revoke");
+  const hasRevoke = acts.includes("revoke");
   return (
     <Menu>
       <MenuTrigger disableButtonEnhancement>
@@ -109,11 +112,17 @@ export function AppointmentMenu({ slot, label, onPick, children }: { slot: Appoi
       </MenuTrigger>
       <MenuPopover>
         <MenuList>
-          {ACTS[incumbent?.state ?? "empty"].map((act) => (
+          {safeActs.map((act) => (
             <MenuItem key={act} onClick={() => pick(act)}>
               {t(ACT_KEYS[act])}
             </MenuItem>
           ))}
+          {hasRevoke && safeActs.length > 0 && <MenuDivider />}
+          {hasRevoke && (
+            <MenuItem className={o.dangerMenuItem} onClick={() => pick("revoke")}>
+              {t(ACT_KEYS.revoke)}
+            </MenuItem>
+          )}
           {children !== undefined && <MenuDivider />}
           {children}
         </MenuList>

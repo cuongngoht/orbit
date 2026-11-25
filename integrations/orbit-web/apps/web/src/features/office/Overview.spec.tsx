@@ -433,4 +433,28 @@ describe("the office: who leads it, and what its employees run on by default", (
     await userEvent.click(within(screen.getByRole("region", { name: "Director's Office" })).getByRole("button", { name: "Actions for Director's Office" }));
     expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Appoint"]);
   });
+
+  test("switching between Floor and List views preserves employee profile and assign-work actions", async () => {
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", () => roster());
+    const go = show();
+    await screen.findByRole("region", { name: "Accounting" });
+    const modeGroup = screen.getByRole("group", { name: "Office view mode" });
+    const floorBtn = within(modeGroup).getByRole("button", { name: "Floor" });
+    const listBtn = within(modeGroup).getByRole("button", { name: "List" });
+    expect(floorBtn).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(listBtn);
+    expect(listBtn).toHaveAttribute("aria-pressed", "true");
+    const listRegion = await screen.findByRole("region", { name: "List" });
+    expect(screen.queryByRole("region", { name: "Accounting" })).toBeNull();
+    const anaRow = within(listRegion).getByText("Ana").closest("li") as HTMLElement;
+    await userEvent.click(within(anaRow).getByRole("button", { name: "Profile" }));
+    expect(go).toHaveBeenCalledWith("employee", EMP_ANA);
+    await userEvent.click(within(anaRow).getByRole("button", { name: "Assign work" }));
+    expect(await screen.findByRole("dialog", { name: "Assign work" })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Assign work" })).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(floorBtn);
+    expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
+  });
 });

@@ -132,10 +132,14 @@ const useStyles = makeStyles({
   topWing: {
     position: "relative",
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1fr)",
     alignItems: "stretch",
     gap: "14px",
     minWidth: 0,
+    "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
+  },
+  topWingEmptyPantry: {
+    gridTemplateColumns: "minmax(0, 1.55fr) minmax(0, 1fr)",
     "@media (max-width: 720px)": { gridTemplateColumns: "1fr" },
   },
   execRoom: {
@@ -160,9 +164,9 @@ const useStyles = makeStyles({
     alignItems: "flex-end",
     justifyContent: "space-between",
     columnGap: "18px",
-    rowGap: "44px",
+    rowGap: "24px",
     flexWrap: "wrap",
-    paddingTop: "40px",
+    paddingTop: "20px",
     paddingRight: "14px",
     paddingBottom: "14px",
     paddingLeft: "14px",
@@ -221,10 +225,12 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
     minWidth: 0,
   },
-  // A department room's name and who manages it: one line where they fit, the manager under the name where not -- and
-  // room above the first desks, whose speech bubbles reach a little above them.
-  deptTitleBar: { marginBottom: "10px", alignItems: "flex-start" },
+  // A department room's name and who manages it: consistent 2-row header so room floors always align horizontally.
+  deptTitleBar: { marginBottom: "8px", alignItems: "flex-start" },
   roomHead: { display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: "12px", rowGap: "2px", flexGrow: 1, flexBasis: 0, minWidth: "min(100%, 160px)" },
+  deptHead: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "4px", flexGrow: 1, flexBasis: 0, minWidth: "min(100%, 160px)" },
+  deptNameRow: { display: "flex", alignItems: "center", gap: "8px", minWidth: 0, maxWidth: "100%", flexWrap: "nowrap" },
+  deptNameText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   roomTag: {
     display: "inline-flex",
     alignItems: "center",
@@ -449,7 +455,7 @@ const useStyles = makeStyles({
   chairAnchorWrap: {
     position: "relative",
     width: "100%",
-    height: "56px",
+    height: "76px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -509,8 +515,8 @@ const useStyles = makeStyles({
   empNameBtn: {
     paddingLeft: 0,
     paddingRight: 0,
-    paddingTop: 0,
-    paddingBottom: 0,
+    paddingTop: "2px",
+    paddingBottom: "2px",
     minWidth: 0,
     minHeight: "auto",
     justifyContent: "flex-start",
@@ -523,12 +529,12 @@ const useStyles = makeStyles({
   holdingBox: {
     display: "flex",
     flexDirection: "column",
-    gap: "2px",
+    gap: "4px",
     width: "100%",
-    paddingTop: "4px",
-    paddingRight: "7px",
-    paddingBottom: "4px",
-    paddingLeft: "7px",
+    paddingTop: "6px",
+    paddingRight: "8px",
+    paddingBottom: "6px",
+    paddingLeft: "8px",
     borderRadius: "7px",
     backgroundColor: "var(--orbit-card-bg)",
     borderTopWidth: "1px",
@@ -626,23 +632,25 @@ function EmployeeDeskCard({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          className={s.deskStageBtn}
-          aria-label={t("office.floor.openProfileAria", { name: e.name })}
-          title={t("office.floor.openProfileAria", { name: e.name })}
-          onClick={() => onOpenEmployee(e.id)}
-        >
+        <div className={s.deskStage}>
           <div className={s.chairAnchorWrap}>
-            <span data-wp={`desk-${e.id}`} style={{ position: "absolute", left: "50%", bottom: "-4px", width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
+            <span data-wp={`desk-${e.id}`} style={{ position: "absolute", left: "50%", bottom: "0px", width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
             {!atDeskNow && awayReason && (
               <span className={s.awayNote} aria-hidden>
                 {awayReason}
               </span>
             )}
           </div>
-          {deskArt}
-        </button>
+          <button
+            type="button"
+            className={s.deskStageBtn}
+            aria-label={t("office.floor.openProfileAria", { name: e.name })}
+            title={t("office.floor.openProfileAria", { name: e.name })}
+            onClick={() => onOpenEmployee(e.id)}
+          >
+            {deskArt}
+          </button>
+        </div>
       )}
 
       <div className={o.between} style={{ gap: "6px", width: "100%", alignItems: "center" }}>
@@ -865,7 +873,7 @@ export function OfficeFloorMap({
       </div>
 
       {/* Top Wing: Director's Office (left) & Pantry & Lounge (right) */}
-      <div className={s.topWing}>
+      <div className={mergeClasses(s.topWing, pantryCount === 0 && s.topWingEmptyPantry)}>
         <span data-wp="hall-aisle" style={{ position: "absolute", left: "50%", top: 0, width: 0, height: 0, pointerEvents: "none" }} aria-hidden />
 
         <section className={s.execRoom} aria-label={t("office.floor.directorsOffice")}>
@@ -873,7 +881,7 @@ export function OfficeFloorMap({
             <div className={s.roomHead}>
               <span className={s.roomTag}>
                 <span className={s.dot} style={{ backgroundColor: "#3b82f6" }} aria-hidden />
-                <Text as="h3" weight="semibold" size={200} className={o.wrap}>
+                <Text as="h3" weight="semibold" size={200} className={mergeClasses(o.wrap, o.headingReset)}>
                   {t("office.floor.directorsOffice")}
                 </Text>
               </span>
@@ -940,7 +948,7 @@ export function OfficeFloorMap({
           <div className={s.roomTitleBar}>
             <span className={s.roomTag}>
               <span className={s.dot} style={{ backgroundColor: "#16a34a" }} aria-hidden />
-              <Text as="h3" weight="semibold" size={200} className={o.wrap}>
+              <Text as="h3" weight="semibold" size={200} className={mergeClasses(o.wrap, o.headingReset)}>
                 {t("office.floor.pantryTitle")}
               </Text>
             </span>
@@ -995,13 +1003,13 @@ export function OfficeFloorMap({
               <section key={deptKey} className={s.deptRoom} aria-label={roomName}>
                 <span className={s.doorwayTop} data-wp={`dept-door-${deptKey}`} aria-hidden />
                 <div className={mergeClasses(s.roomTitleBar, s.deptTitleBar)}>
-                  <div className={s.roomHead}>
-                    <div className={o.row}>
+                  <div className={s.deptHead}>
+                    <div className={s.deptNameRow}>
                       <span className={s.dot} style={{ backgroundColor: accent.dot }} aria-hidden />
-                      <Text as="h3" weight="semibold" size={300} className={o.wrap}>
+                      <Text as="h3" weight="semibold" size={300} className={mergeClasses(s.deptNameText, o.headingReset)} title={roomName}>
                         {roomName}
                       </Text>
-                      <Text size={200} className={mergeClasses(s.muted, s.countPill)}>
+                      <Text size={200} className={mergeClasses(s.muted, s.countPill)} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
                         {g.department
                           ? t("office.floor.membersCount", { count: deptMembers, word: deptMembers === 1 ? t("office.floor.memberOne") : t("office.floor.memberMany") })
                           : t("office.floor.shownCount", { count: g.employees.length })}
@@ -1033,7 +1041,7 @@ export function OfficeFloorMap({
                     </Text>
                   </div>
                 ) : (
-                  <div className={s.desksGrid} style={{ padding: "32px 14px 14px", borderRadius: "12px", backgroundColor: accent.tint }}>
+                  <div className={s.desksGrid} style={{ padding: "18px 14px 14px", borderRadius: "12px", backgroundColor: accent.tint }}>
                     {g.employees.map((e) => (
                       <EmployeeDeskCard
                         key={e.id}

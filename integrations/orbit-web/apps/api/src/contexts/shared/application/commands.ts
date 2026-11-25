@@ -1,0 +1,100 @@
+// What every application command of the office does around its domain work: it acts for the account of the session that
+// asked (never an account a request names), is decided under that account's policy before anything changes, and leaves
+// an audit record -- a refusal too, in a transaction of its own so it outlives the rollback of the refused change.
+import { Inject, Injectable } from "@nestjs/common";
+import { RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
+import { currentCorrelation, viewer } from "../../../common/request-scope.js";
+import { Db } from "../../../infra/db/db.js";
+import { contextOf, labelOf, type GovernanceContext, type Owner, type Principal } from "../../../modules/auth/principal.js";
+import { AuditService } from "../../../modules/governance/audit.service.js";
+import { PolicyService } from "../../../modules/governance/policy.service.js";
+import { DomainError, refused } from "../domain.js";
+import type { CommandContext } from "../infrastructure/outbox.js";
+
+export interface Actor {
+  owner: Owner | null;
+  principal: Principal;
+  command: CommandContext;
+  governance: GovernanceContext;
+}
+
+// The person whose browser asked.
+export function ownerActor(): Actor {
+  const owner = viewer();
+  const correlationId = currentCorrelation();
+  return { owner, principal: owner, command: { orbitId: owner.accountId, actor: labelOf(owner), correlationId }, governance: contextOf(owner, correlationId) };
+}
+
+// THE OWNER'S OWN REQUEST, carried out later (a hiring request, once the CEO's plan is in): that person, as they are now
+// (AccountsService.ownerNow), acting -- each action decided under the account's policy as their own click is, and recorded
+// as theirs. The request is the correlation. Never a service standing in for a person.
+export function deferredOwnerActor(owner: Owner, correlationId: string): Actor {
+  return { owner, principal: owner, command: { orbitId: owner.accountId, actor: labelOf(owner), correlationId }, governance: contextOf(owner, correlationId) };
+}
+
+// Orbit Web itself, for an account (a worker, a scheduler, a consumer).
+export function systemActor(orbitId: string, id: string, correlationId: string, causationId: string | null = null): Actor {
+  const principal: Principal = { kind: "system", id, accountId: orbitId };
+  return { owner: null, principal, command: { orbitId, actor: labelOf(principal), correlationId, causationId }, governance: contextOf(principal, correlationId) };
+}
+
+// AN EMPLOYEE'S ATTEMPT as the actor of what it asks through its tools -- a plan, a review of a part, a question, a
+// hand-in: its OWN principal (the run's binding names the employee, its assignment and its department), never a service
+// standing in for it, and decided at the employee's scope. The run is its correlation, so every record says which attempt.
+export function employeeActor(governance: GovernanceContext, runId: string): Actor {
+  const correlationId = `run:${runId}`;
+  const principal = governance.principal;
+  return { owner: null, principal, command: { orbitId: governance.accountId ?? "", actor: labelOf(principal), correlationId }, governance: { ...governance, correlationId } };
+}
+
+// The scope a principal's decisions are at: a run's (an employee's assignment, a chat, research), else the account.
+const scopeOf = (p: Principal): EnforcementScope => (p.kind === "agent" ? RUN_SCOPES[p.binding.kind] : "ACCOUNT");
+
+@Injectable()
+export class OfficeGovernance {
+  constructor(
+    @Inject(Db) private readonly db: Db,
+    @Inject(PolicyService) private readonly policy: PolicyService,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
+
+  // The account's policy decides the action (and records the decision); anything but allow refuses the command. `grant`:
+  // whether the actor holds what the action needs beyond the rules (a lead's room in its quota of assistants), established
+  // by the caller -- one not held is a deny the decision records as NO_GRANT, whatever the rules say.
+  async authorize(actor: Actor, action: string, resource: string, params: Record<string, unknown> = {}, scope: EnforcementScope = scopeOf(actor.principal), grant?: "held" | "not_held"): Promise<void> {
+    const decision = await this.policy.decide(actor.governance, { action, resource, scope, params, ...(grant !== undefined ? { grant } : {}) });
+    if (decision.verdict === "allow") return;
+    const why = decision.verdict === "require_approval" ? "needs an approval the office does not ask for yet" : `is not allowed (${decision.reasonCodes.join(", ")})`;
+    throw refused("policy_denied", `The account's policy ${why}: ${action}. Decision ${decision.decisionId}.`, { decisionId: decision.decisionId, action, reasonCodes: decision.reasonCodes });
+  }
+
+  async recorded(actor: Actor, command: string, aggregate: string, aggregateId: string, version: number, detail = ""): Promise<void> {
+    await this.audit.record(actor.governance, { type: "office.command", outcome: "done", data: { command, aggregate, aggregateId, version, detail: detail.slice(0, 300) } });
+  }
+
+  // A person's look into what an employee keeps (Governance → Employee desks): what was looked at -- the folder or the
+  // file, its size, the desk's version -- never what it holds.
+  async looked(actor: Actor, look: { employeeId: string; path: string; kind: "dir" | "file"; bytes: number; deskVersion: number }): Promise<void> {
+    await this.audit.record(actor.governance, { type: "office.desk.read", outcome: "done", data: { ...look } });
+  }
+
+  // A lead shared data with a part of its team on purpose: what (a source revision, a predecessor's hand-in), to whom,
+  // from where -- never the data itself.
+  async shared(actor: Actor, share: { missionId: string; recipient: string; kind: "source" | "handoff"; ref: string; mode: "summary" | "full"; origin: string }): Promise<void> {
+    await this.audit.record(actor.governance, { type: "office.data.shared", outcome: "done", data: { ...share } });
+  }
+
+  // Runs `work` in one transaction; when it is refused, the refusal is recorded in a transaction of its own.
+  async command<T>(actor: Actor, name: string, aggregateId: string, work: () => Promise<T>): Promise<T> {
+    try {
+      return await this.db.tx(work);
+    } catch (err) {
+      if (err instanceof DomainError && err.code !== "not_found") {
+        await this.db
+          .tx(() => this.audit.record(actor.governance, { type: "office.refused", outcome: "refused", data: { command: name, aggregateId, cause: err.code } }))
+          .catch(() => undefined);
+      }
+      throw err;
+    }
+  }
+}

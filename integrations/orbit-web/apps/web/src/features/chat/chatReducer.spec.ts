@@ -1,10 +1,12 @@
-import type { AnyAppEvent } from "@orbit-web/contracts";
+import type { AnySessionEvent } from "@orbit-web/contracts";
 import { describe, expect, test } from "vitest";
+import { inventory } from "../../testing/fixtures";
 import { chatReducer, childrenOf, emptyChat, type ChatState } from "./chatReducer";
 
 let seq = 0;
-const ev = (type: string, data: unknown, durable = true): AnyAppEvent => ({ type, sessionId: "s", seq: durable ? ++seq : null, runId: "r", at: "t", data }) as AnyAppEvent;
-const apply = (events: AnyAppEvent[], from: ChatState = emptyChat()) => events.reduce(chatReducer, from);
+// One event as the session stream sends it (a transient one carries no sequence number).
+const ev = (type: string, data: unknown, durable = true): AnySessionEvent => ({ id: `e${seq + 1}`, type, stream: "session", sessionId: "s", seq: durable ? ++seq : null, runId: "r", at: "t", data }) as AnySessionEvent;
+const apply = (events: AnySessionEvent[], from: ChatState = emptyChat()) => events.reduce(chatReducer, from);
 
 describe("the chat timeline", () => {
   test("streams a message from deltas, then takes the completed text", () => {
@@ -17,6 +19,19 @@ describe("the chat timeline", () => {
     expect(s.items).toEqual([{ kind: "message", id: "m1", role: "assistant", text: "Hello wor", streaming: true, partial: false, parentToolUseId: null }]);
     const done = chatReducer(s, ev("message.completed", { messageId: "m1", role: "assistant", text: "Hello world", parentToolUseId: null, partial: false, truncated: false }));
     expect(done.items[0]).toMatchObject({ text: "Hello world", streaming: false });
+  });
+
+  test("each move of the working branch is a line of its own, in order", () => {
+    seq = 0;
+    const s = apply([
+      ev("workspace.ready", { repository: "octo/sum-fixture", branch: "main", workBranch: "orbit-web/0b6c2f5e", baseCommit: "a", orbitSeated: true }),
+      ev("workspace.branch", { from: "orbit-web/0b6c2f5e", workBranch: "dev", created: false, baseCommit: "a" }),
+      ev("workspace.branch", { from: "dev", workBranch: "docs/approvers", created: true, baseCommit: "a" }),
+    ]);
+    expect(s.items.filter((i) => i.kind === "branch")).toEqual([
+      { kind: "branch", id: "branch-2", from: "orbit-web/0b6c2f5e", workBranch: "dev", created: false },
+      { kind: "branch", id: "branch-3", from: "dev", workBranch: "docs/approvers", created: true },
+    ]);
   });
 
   test("a durable event replayed after a reconnect changes nothing", () => {
@@ -63,5 +78,31 @@ describe("the chat timeline", () => {
     seq = 0;
     const s = apply([ev("verification.updated", { word: "unknown", label: "Unknown", source: "no task" })]);
     expect(s.verification).toEqual({ word: "unknown", label: "Unknown", source: "no task" });
+  });
+
+  test("a plan proposed in Plan mode is one item of its own, in the order it came", () => {
+    seq = 0;
+    const s = apply([
+      ev("message.completed", { messageId: "u1", role: "user", text: "Plan the fix", parentToolUseId: null, partial: false, truncated: false }),
+      ev("plan.proposed", { toolUseId: "p1", plan: "1. Read\n2. Fix", truncated: true }),
+    ]);
+    expect(s.items.map((i) => i.kind)).toEqual(["message", "plan"]);
+    expect(s.items[1]).toEqual({ kind: "plan", id: "plan-2", plan: "1. Read\n2. Fix", truncated: true });
+  });
+
+  test("what the repository brought is one item, and a plugin's progress updates it in place", () => {
+    seq = 0;
+    const read = inventory();
+    const s = apply([ev("project.inventory", { inventory: read }), ev("project.plugin", { plugin: { ...read.plugins[0], state: "installing" } })]);
+    expect(s.items).toHaveLength(1);
+    expect(s.items[0]).toMatchObject({ kind: "project", inventory: { plugins: [{ id: "lint-kit@acme-tools", state: "installing" }] } });
+    const done = chatReducer(s, ev("project.plugin", { plugin: { ...read.plugins[0], state: "installed" } }));
+    expect(done.items[0]).toMatchObject({ kind: "project", inventory: { plugins: [{ state: "installed" }] } });
+  });
+
+  test("a plugin's progress with nothing read yet changes nothing", () => {
+    seq = 0;
+    const s = apply([ev("project.plugin", { plugin: { ...inventory().plugins[0], state: "failed" } })]);
+    expect(s.items).toEqual([]);
   });
 });

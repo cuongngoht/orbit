@@ -5,14 +5,25 @@ import { Badge, Button, MessageBar, MessageBarBody, Spinner, Text, makeStyles, t
 import { ArrowClockwise16Regular } from "@fluentui/react-icons";
 import type { OrbitPanel as Panel } from "@orbit-web/contracts";
 import { useEffect, useState } from "react";
+import { useI18n } from "../../i18n";
 import { errorText, get } from "../../services/api";
 
 const useStyles = makeStyles({
   root: { display: "flex", flexDirection: "column", gap: "10px" },
   row: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
+  refreshBtn: { "@media (pointer: coarse)": { minWidth: "40px", minHeight: "40px" } },
   muted: { color: tokens.colorNeutralForeground3 },
   grid: { display: "grid", gridTemplateColumns: "max-content 1fr", columnGap: "10px", rowGap: "3px" },
   mono: { fontFamily: tokens.fontFamilyMonospace, fontSize: tokens.fontSizeBase200, overflowWrap: "anywhere" },
+  pre: {
+    fontFamily: tokens.fontFamilyMonospace,
+    fontSize: tokens.fontSizeBase200,
+    maxWidth: "100%",
+    overflowX: "auto",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    margin: 0,
+  },
   section: { display: "flex", flexDirection: "column", gap: "4px" },
   list: { margin: 0, paddingLeft: "18px" },
 });
@@ -26,6 +37,7 @@ const STATE_COLOR = (state: string): "success" | "danger" | "warning" | "informa
 const latest = (a: Panel | null, b: Panel | null): Panel | null => (a === null ? b : b === null ? a : b.checkedAt > a.checkedAt ? b : a);
 
 export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel | null }) {
+  const { t } = useI18n();
   const s = useStyles();
   const [fetched, setFetched] = useState<Panel | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +65,14 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
   }, [sessionId]);
 
   if (error) return <MessageBar intent="error"><MessageBarBody>{error}</MessageBarBody></MessageBar>;
-  if (panel === null) return <Spinner size="tiny" label="Asking Orbit…" />;
+  if (panel === null) return <Spinner size="tiny" label={t("chat.orbit.asking")} />;
   return (
     <div className={s.root}>
       <div className={s.row}>
-        <Badge size="large" appearance="filled" color={VERDICT_COLOR[panel.verdict.word]} aria-label="Orbit verdict">
+        <Badge size="large" appearance="filled" color={VERDICT_COLOR[panel.verdict.word]} aria-label={t("chat.orbit.verdictAria")}>
           {panel.verdict.label}
         </Badge>
-        <Button appearance="subtle" size="small" icon={loading ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={() => void read()} aria-label="Ask Orbit again" />
+        <Button className={s.refreshBtn} appearance="subtle" size="small" icon={loading ? <Spinner size="extra-tiny" /> : <ArrowClockwise16Regular />} onClick={() => void read()} aria-label={t("chat.orbit.refreshAria")} />
       </div>
       <Text size={200} className={s.muted}>
         {panel.verdict.source}
@@ -68,30 +80,30 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       {panel.state !== "available" && <Text size={200}>{panel.reason}</Text>}
       {panel.task && (
         <div className={s.grid}>
-          <Text size={200}>Task</Text>
+          <Text size={200}>{t("chat.orbit.task")}</Text>
           <Text className={s.mono}>{panel.task.id}</Text>
           {panel.task.objective && (
             <>
-              <Text size={200}>Objective</Text>
+              <Text size={200}>{t("chat.orbit.objective")}</Text>
               <Text size={200}>{panel.task.objective}</Text>
             </>
           )}
-          <Text size={200}>Lifecycle</Text>
+          <Text size={200}>{t("chat.orbit.lifecycle")}</Text>
           <Text className={s.mono}>{panel.task.lifecycle ?? "?"}</Text>
-          <Text size={200}>Stage</Text>
+          <Text size={200}>{t("chat.orbit.stage")}</Text>
           <Text className={s.mono}>{panel.task.stage ?? "?"}</Text>
           {panel.task.attempt !== null && (
             <>
-              <Text size={200}>Attempt</Text>
+              <Text size={200}>{t("chat.orbit.attempt")}</Text>
               <Text className={s.mono}>
                 {panel.task.attempt}
-                {panel.task.attemptLimit !== null ? ` of ${panel.task.attemptLimit}` : ""}
+                {panel.task.attemptLimit !== null ? t("chat.orbit.attemptOf", { limit: panel.task.attemptLimit }) : ""}
               </Text>
             </>
           )}
           {panel.task.stopReason && (
             <>
-              <Text size={200}>Stopped</Text>
+              <Text size={200}>{t("chat.orbit.stopped")}</Text>
               <Text className={s.mono}>{panel.task.stopReason}</Text>
             </>
           )}
@@ -99,14 +111,15 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       )}
       {panel.work && (
         <Text size={200}>
-          Work evidence: <strong>{panel.work.evidence ?? "none"}</strong>
+          {t("chat.orbit.workEvidence")}
+          <strong>{panel.work.evidence ?? t("chat.orbit.none")}</strong>
           {panel.work.evidenceSays ? ` — ${panel.work.evidenceSays}` : ""}
         </Text>
       )}
       {panel.checks.length > 0 && (
         <div className={s.section}>
           <Text weight="semibold" size={300}>
-            Checks this change is held to{panel.planWord ? ` (${panel.planWord})` : ""}
+            {t("chat.orbit.checksTitle", { planWord: panel.planWord ? ` (${panel.planWord})` : "" })}
           </Text>
           {panel.checks.map((c) => (
             <div key={c.id} className={s.row}>
@@ -121,7 +134,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       )}
       {panel.missing.length > 0 && (
         <div className={s.section}>
-          <Text weight="semibold" size={300}>Missing checks</Text>
+          <Text weight="semibold" size={300}>{t("chat.orbit.missingChecks")}</Text>
           <ul className={s.list}>
             {panel.missing.map((m) => (
               <li key={m}>
@@ -133,7 +146,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       )}
       {panel.verification.length > 0 && (
         <div className={s.section}>
-          <Text weight="semibold" size={300}>Verification</Text>
+          <Text weight="semibold" size={300}>{t("chat.orbit.verification")}</Text>
           {panel.verification.map((v, i) => (
             <div key={i} className={s.row}>
               <Badge size="small" appearance="tint" color={STATE_COLOR(v.state)}>
@@ -146,7 +159,7 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       )}
       {panel.completion && panel.completion.length > 0 && (
         <div className={s.section}>
-          <Text weight="semibold" size={300}>Not yet complete</Text>
+          <Text weight="semibold" size={300}>{t("chat.orbit.notComplete")}</Text>
           <ul className={s.list}>
             {panel.completion.map((r) => (
               <li key={r.id}>
@@ -161,37 +174,40 @@ export function OrbitPanel({ sessionId, live }: { sessionId: string; live: Panel
       {panel.failure && (
         <div className={s.section}>
           <Text weight="semibold" size={300}>
-            Latest failure ({panel.failure.failureClass ?? "unclassified"})
+            {t("chat.orbit.latestFailure", { failureClass: panel.failure.failureClass ?? t("chat.orbit.unclassified") })}
           </Text>
-          <pre className={s.mono}>{panel.failure.excerpt.join("\n")}</pre>
+          <pre className={s.pre}>{panel.failure.excerpt.join("\n")}</pre>
         </div>
       )}
       {panel.approvals.length > 0 && (
         <MessageBar intent="warning">
           <MessageBarBody>
-            Waiting for a person at a protected boundary: {panel.approvals.map((a) => `${a.title ?? a.id}${a.boundary ? ` (${a.boundary})` : ""}`).join(", ")}. Orbit grants an approval only in Orbit Control, which proves a person with its own token on this container's loopback; Orbit Web shows it and cannot grant it.
+            {t("chat.orbit.approvalsWaiting", {
+              approvals: panel.approvals.map((a) => `${a.title ?? a.id}${a.boundary ? ` (${a.boundary})` : ""}`).join(", "),
+            })}
+            {panel.approvals.some((a) => a.boundary === "GIT_PUSH") && ` ${t("chat.orbit.gitPushHint")}`}
           </MessageBarBody>
         </MessageBar>
       )}
-      {panel.stop && <Text size={200}>Stopped: {panel.stop.says}</Text>}
+      {panel.stop && <Text size={200}>{t("chat.orbit.stoppedSays", { says: panel.stop.says })}</Text>}
       {panel.sessionChecks.length > 0 && (
         <div className={s.section}>
-          <Text weight="semibold" size={300}>Checks Orbit saw this session run</Text>
+          <Text weight="semibold" size={300}>{t("chat.orbit.sessionChecksTitle")}</Text>
           {panel.sessionChecks.map((c, i) => (
             <div key={i} className={s.row}>
               <Badge size="small" appearance="tint" color={c.ok === true ? "success" : c.ok === false ? "danger" : "subtle"}>
-                {c.ok === true ? "exit ok" : c.ok === false ? "exit error" : "unknown"}
+                {c.ok === true ? t("chat.orbit.exitOk") : c.ok === false ? t("chat.orbit.exitError") : t("chat.orbit.unknown")}
               </Badge>
               <Text className={s.mono}>{c.program ?? "?"}</Text>
               <Text size={200} className={s.muted}>
-                named like a {c.kind ?? "check"}
+                {t("chat.orbit.namedLike", { kind: c.kind ?? t("chat.orbit.checkWord") })}
               </Text>
             </div>
           ))}
         </div>
       )}
       <Text size={200} className={s.muted}>
-        Checked {new Date(panel.checkedAt).toLocaleTimeString()}. Claude finishing a run is not a verification; this panel repeats only what Orbit itself recorded.
+        {t("chat.orbit.checkedFooter", { at: new Date(panel.checkedAt).toLocaleTimeString() })}
       </Text>
     </div>
   );

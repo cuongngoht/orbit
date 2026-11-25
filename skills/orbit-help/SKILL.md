@@ -56,7 +56,7 @@ for the viewer to say it is ready, and it always exits 0. Relay its `say` in ONE
 carries a `command`, give the person that command for a second terminal. Then carry on with the task -- a viewer
 that could not open never stops the work. It grants nothing: it does not approve, start a sandbox or run anything,
 and until a task appears it shows what this session's tools read, edit and run, as the plugin's hooks observe them
-(README §4.16).
+(README, "Orbit Live").
 A person switches it off in Orbit Control › Advanced › Automation limits › Live (`live.open`); a headless run (`claude -p`, CI) and a
 host that cannot say a person is at the session (Codex, Antigravity) get the command, never a window. Then say, in
 the same line, that they can ask you to open it: when the PERSON asks ("open Orbit Live", "show me the task"), run
@@ -65,7 +65,7 @@ terminal where it can (a tmux pane, a Windows Terminal pane, an iTerm2 pane, or 
 companion) and relay its `say`; never run it on your own. Never run `live tui` or `live watch` yourself: they need
 your terminal.
 
-# When the person named a concrete task: ONE work follows it (README §4.18)
+# When the person named a concrete task: ONE work follows it (README, "Unified work tracking")
 
 A concrete task -- something to change, fix, find out, verify or finish, named in the invocation -- is ONE work from
 the moment it is asked to what it came to, whoever does it: you, in this session (`developer`), or an engineering task

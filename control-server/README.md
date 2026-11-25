@@ -4,7 +4,7 @@ A local control plane for this plugin, from a browser, on this machine only: **s
 read, edit, delete `skills/*/SKILL.md`), the **prompt router**'s view and an inspector, **MCP**
 servers (the host's, Orbit's catalog, your own) and **CLI tools** (detected, and installed
 privately on request). Router, MCP and Tools read the same Effective Resource Registry the
-prompt router does (README §4.8).
+prompt router does ([Plugin › The prompt router](../docs/plugin.md#the-prompt-router)).
 
 It sits **beside** the Orbit engine, not inside it:
 
@@ -287,7 +287,7 @@ from `GET /api/v1/skills`:
 - what needs attention
 - what changed recently
 
-The second, **Usage**, reads the session trail (`GET /api/v1/analytics/usage`, README §4.8): how
+The second, **Usage**, reads the session trail (`GET /api/v1/analytics/usage`, [Plugin › The session trail](../docs/plugin.md#the-session-trail)): how
 many prompts, Orbit commands and other commands ran, which ones, how prompts flowed through them,
 what failed out of how many runs, and least privilege. A window with nothing recorded says so and
 says what the trail would never keep; nothing is invented to fill it.

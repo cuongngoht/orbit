@@ -1,38 +1,72 @@
-// Chat sessions: one repository, one branch, one model preference, one workspace, one Claude Code conversation.
+// Chat sessions: a workspace (cloned from a repository of either source, or empty), one model, effort and mode
+// preference, one Claude Code conversation. A chat belongs to the ACCOUNT whose owner started it, and is one of the
+// resources that account's governance holds (governed by its policy, audited on its chain). A session publishes what
+// happens to it on the event bus: its own stream (`session.status`) and, for the pages of whoever may open it, the app
+// stream (`session.summary`, `session.removed`).
 import { Inject, Injectable } from "@nestjs/common";
-import { checkCreateSession, checkUpdateSession, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
+import { checkCreateSession, checkUpdateSession, type AccessLevel, type ChatMessage, type ImageRef, type SessionDetail, type SessionSummary } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
+import { AgentFs } from "../../infra/process/agent-fs.js";
+import { MirrorService } from "../sources/mirror.service.js";
 import { join } from "node:path";
 import type { AppConfig } from "../../config/config.js";
-import { EventHub } from "../../core/event-hub.js";
+import { EventBus } from "../../core/events/event-bus.js";
 import { APP_CONFIG } from "../../core/tokens.js";
-import { accepted, badRequest, conflict, notFound } from "../../common/errors.js";
+import { accepted, conflict, notFound } from "../../common/errors.js";
+import { viewer } from "../../common/request-scope.js";
 import { isSessionId } from "../../common/workspace-path.js";
-import { MessageStore, SessionStore, type SessionRecord } from "../../infra/storage/stores.js";
-import { ClaudeAuthService } from "../claude-auth/claude-auth.service.js";
+import { Db } from "../../infra/db/db.js";
+import { redactSecrets } from "../../infra/security/redact.js";
+import { ImageFiles } from "../../infra/storage/image-files.js";
+import { ImageStore, imageRefOf, MessageStore, SessionStore, type SessionRecord, type Viewer } from "../../infra/storage/stores.js";
+import { ImagesService } from "../images/images.service.js";
+import { OwnershipService } from "../access/ownership.service.js";
+import type { GovernanceContext } from "../auth/principal.js";
+import { ClaudeModelsService } from "../connections/claude-models.service.js";
+import { RunConnections } from "../connections/run-connections.js";
 import { ClaudeRunnerService } from "../claude-runner/claude-runner.service.js";
-import { GithubAuthService } from "../github/github-auth.service.js";
-import { OrbitService } from "../orbit/orbit.service.js";
-import { RepositoriesService } from "../repositories/repositories.module.js";
+import { GovernedResources } from "../governance/resources.service.js";
+import { SettingsService } from "../settings/settings.module.js";
+import { SourcesService } from "../sources/sources.module.js";
 import { WorkspaceService } from "./workspace.service.js";
 
-export const summaryOf = (s: SessionRecord): SessionSummary => ({
+// A chat as an account sees it: `access` is that account's (its own, or shared with it).
+export const summaryOf = (s: SessionRecord, access: AccessLevel = "owner"): SessionSummary => ({
   id: s.id,
   title: s.title,
+  source: s.source,
   repository: s.repository,
   branch: s.branch,
   workBranch: s.workBranch,
+  runtime: s.runtime,
+  connectionId: s.connectionId,
   model: s.model,
+  effort: s.effort,
+  mode: s.mode,
   status: s.status,
   statusReason: s.statusReason,
+  access,
+  owner: s.ownerEmail,
   createdAt: s.createdAt,
   updatedAt: s.updatedAt,
 });
 
-const titleFrom = (prompt: string | undefined, repository: string): string => {
-  const line = (prompt ?? "").trim().split("\n")[0]?.trim() ?? "";
-  if (line.length === 0) return `Chat on ${repository}`;
+// How a viewer the gate let through sees a chat: its own account's, or shared with it.
+export const levelFor = (s: SessionRecord, who: Viewer): AccessLevel => (s.accountId === who.accountId ? "owner" : "shared");
+
+// The chat as it is now, to the pages of its owner account (`owner`) and of the people it is shared with (`shared`).
+export async function publishSummary(bus: EventBus, ownership: OwnershipService, s: SessionRecord): Promise<void> {
+  bus.publishApp("session.summary", { session: summaryOf(s, "owner") }, ownership.ownerAudience(s));
+  const shared = await ownership.sharedAudience(s);
+  if (shared !== null) bus.publishApp("session.summary", { session: summaryOf(s, "shared") }, shared);
+}
+
+// The first line of the first message, masked by token shape BEFORE it is cut: a credential cut in half no longer has
+// its shape, and a title is shown everywhere (the sidebar, a shared chat's page).
+export const titleFrom = (prompt: string | undefined, repository: string | null): string => {
+  const line = redactSecrets((prompt ?? "").trim().split("\n")[0]?.trim() ?? "");
+  if (line.length === 0) return repository === null ? "New chat" : `Chat on ${repository}`;
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 };
 
@@ -40,75 +74,145 @@ const titleFrom = (prompt: string | undefined, repository: string): string => {
 export class SessionsService {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(Db) private readonly db: Db,
     @Inject(SessionStore) private readonly sessions: SessionStore,
     @Inject(MessageStore) private readonly messages: MessageStore,
-    @Inject(EventHub) private readonly hub: EventHub,
-    @Inject(ClaudeAuthService) private readonly claude: ClaudeAuthService,
-    @Inject(GithubAuthService) private readonly github: GithubAuthService,
-    @Inject(RepositoriesService) private readonly repositories: RepositoriesService,
+    @Inject(EventBus) private readonly bus: EventBus,
+    @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(SourcesService) private readonly sources: SourcesService,
     @Inject(WorkspaceService) private readonly workspaces: WorkspaceService,
     @Inject(ClaudeRunnerService) private readonly runner: ClaudeRunnerService,
-    @Inject(OrbitService) private readonly orbit: OrbitService,
+    @Inject(GovernedResources) private readonly resources: GovernedResources,
+    @Inject(AgentFs) private readonly files: AgentFs,
+    @Inject(MirrorService) private readonly mirror: MirrorService,
+    @Inject(OwnershipService) private readonly ownership: OwnershipService,
+    @Inject(ClaudeModelsService) private readonly models: ClaudeModelsService,
+    @Inject(ImagesService) private readonly images: ImagesService,
+    @Inject(ImageStore) private readonly imageRows: ImageStore,
+    @Inject(ImageFiles) private readonly imageFiles: ImageFiles,
+    @Inject(RunConnections) private readonly connections: RunConnections,
   ) {}
 
-  list(): SessionSummary[] {
-    return this.sessions.list().map(summaryOf);
+  // The chats of the viewer's account: its own, and those shared with the viewer's share address.
+  async list(): Promise<SessionSummary[]> {
+    const who = viewer();
+    return (await this.ownership.visible(who)).map((s) => summaryOf(s, levelFor(s, who)));
   }
 
-  detail(id: string): SessionDetail {
-    const s = this.record(id);
-    return { ...summaryOf(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages: this.messages.list(id) };
+  async detail(id: string): Promise<SessionDetail> {
+    const s = await this.record(id);
+    const messages = await this.withImages(id, await this.messages.list(id));
+    return { ...this.summary(s), baseCommit: s.baseCommit, claudeSessionId: s.turns > 0 ? s.claudeSessionId : null, turns: s.turns, lastSeq: s.lastSeq, messages };
   }
 
-  // Checks both accounts, the repository (it must be one the account can reach) and the branch, then prepares the
-  // workspace in the background; the first prompt, when given, is sent once the workspace is ready.
+  // Each person's message with the images it carried, in the order they were sent.
+  private async withImages(id: string, messages: ChatMessage[]): Promise<ChatMessage[]> {
+    const byMessage = new Map<string, ImageRef[]>();
+    for (const image of await this.imageRows.sentIn(id)) byMessage.set(image.messageId as string, [...(byMessage.get(image.messageId as string) ?? []), imageRefOf(image)]);
+    return byMessage.size === 0 ? messages : messages.map((m) => (byMessage.has(m.id) ? { ...m, images: byMessage.get(m.id) } : m));
+  }
+
+  // As the viewer of this request sees it.
+  summary(s: SessionRecord): SessionSummary {
+    return summaryOf(s, levelFor(s, viewer()));
+  }
+
+  // With a repository: it must be one its source lists, and the branch one of its branches (its default when none was
+  // named). Without one: an empty workspace. The chat is the viewer's account's -- registered as that account's
+  // governed resource in the same transaction -- and its workspace is prepared in the background; the first prompt,
+  // when given, is sent once it is ready, as the owner who started the chat.
   async create(body: unknown): Promise<SessionSummary> {
     const req = accepted(checkCreateSession(body));
-    if ((await this.claude.account()).state !== "connected") throw conflict("claude_not_connected", "Connect your Claude account first.");
-    if ((await this.github.connection()).state !== "connected") throw conflict("github_not_connected", "Connect GitHub first.");
-    const repo = await this.repositories.authorized(req.repository);
-    const [owner, name] = [repo.owner, repo.name];
-    const branches = await this.repositories.branches(owner, name);
-    if (!branches.branches.some((b) => b.name === req.branch)) throw badRequest(`${req.branch} is not a branch of ${repo.fullName}`);
+    const who = viewer();
+    // A chat runs on the connection it names (the account's own Claude Code or OpenAI Codex), or on the account's
+    // default Claude Code connection: none connected, no chat (409, nothing made).
+    const connectionId = req.connectionId ?? null;
+    const on = await this.connections.requireChat(who.accountId, connectionId);
+    // The first message's images: the creator's own uploads, unsent -- held before anything is made.
+    const imageIds = req.images ?? [];
+    await this.images.owned(imageIds, who, null);
+    const prefs = await this.settings.get(who.accountId);
+    // The model, effort and mode, held to what this account may use.
+    const catalog = await this.models.catalogFor(who.accountId, connectionId === null ? null : on.connection);
+    const run = this.models.settleWith(catalog, { model: req.model, effort: prefs.defaultEffort, mode: prefs.defaultMode }, { ...(req.effort ? { effort: req.effort } : {}), ...(req.mode ? { mode: req.mode } : {}) });
+    const origin = req.repository ? await this.sources.open(req.repository, req.branch ?? null) : null;
     const id = randomUUID();
-    const session = this.sessions.create({
-      id,
-      title: req.title ?? titleFrom(req.prompt, repo.fullName),
-      repository: repo.fullName,
-      branch: req.branch,
-      model: req.model,
-      workspacePath: this.workspaces.pathFor(id),
-      claudeSessionId: randomUUID(),
-      status: "preparing",
-      pendingPrompt: req.prompt ?? null,
+    const session = await this.db.tx(async () => {
+      const created = await this.sessions.create({
+        id,
+        accountId: who.accountId,
+        ownerEmail: who.email,
+        title: req.title ?? titleFrom(req.prompt, origin?.fullName ?? null),
+        source: origin?.source ?? null,
+        repository: origin?.fullName ?? null,
+        repositoryId: origin?.id ?? null,
+        branch: origin?.branch ?? null,
+        model: run.model,
+        effort: run.effort,
+        mode: run.mode ?? prefs.defaultMode,
+        workspacePath: this.workspaces.pathFor(id),
+        runtime: on.connection.runtime === "codex" ? "codex" : "claude",
+        connectionId,
+        claudeSessionId: randomUUID(),
+        status: "preparing",
+        pendingPrompt: req.prompt ?? (imageIds.length > 0 ? "" : null),
+      });
+      await this.resources.register("workspace", { accountId: created.accountId, id: created.id, title: created.title });
+      await this.images.claim(imageIds, who, created);
+      await this.bus.publishSession(id, "session.status", { status: "preparing", reason: null });
+      return created;
     });
-    this.hub.emit(id, "session.status", { status: "preparing", reason: null }, null);
-    void this.workspaces.prepare(session);
-    return summaryOf(session);
+    void this.workspaces.prepare(session, who);
+    return summaryOf(session, "owner");
   }
 
-  update(id: string, body: unknown): SessionSummary {
-    this.record(id);
+  // A rename, or the model, effort or mode of the next message -- held to what the viewer's account may use (an effort
+  // the new model does not take moves to one it does).
+  async update(id: string, body: unknown): Promise<SessionSummary> {
+    const s = await this.record(id);
+    const who = viewer();
     const change = accepted(checkUpdateSession(body));
-    return summaryOf(this.sessions.update(id, change));
+    const runChanged = change.model !== undefined || change.effort !== undefined || change.mode !== undefined;
+    // Held to the chat's own connection's catalog (the account's default Claude Code one when it names none).
+    const named = runChanged && s.connectionId !== null ? await this.connections.chatConnectionOf(s.accountId, s.connectionId) : null;
+    const run = runChanged ? this.models.settleWith(await this.models.catalogFor(who.accountId, named), { model: s.model, effort: s.effort, mode: s.mode }, change) : null;
+    const updated = await this.db.tx(async () => {
+      const next = await this.sessions.update(id, { ...change, ...(run !== null ? { model: run.model, effort: run.effort, mode: run.mode ?? s.mode } : {}) });
+      if (change.title !== undefined) await this.resources.retitle("workspace", next.accountId, next.id, next.title);
+      return next;
+    });
+    await publishSummary(this.bus, this.ownership, updated);
+    return summaryOf(updated, levelFor(updated, who));
   }
 
   // Removes the chat, its events and its workspace. Claude Code's own transcript and Orbit's store keep what they
-  // recorded, as each of them keeps it.
-  delete(id: string): void {
-    const s = this.record(id);
+  // recorded, as each of them keeps it -- and so does governance: the chat stays on its account's record as a resource
+  // that was deleted, with its audit, approvals and decisions, which a chat's deletion never reaches. The deletion
+  // itself is recorded there in the same transaction; if it cannot be, nothing is deleted.
+  async delete(id: string, ctx: GovernanceContext): Promise<void> {
+    const s = await this.record(id);
     if (s.status === "running" || this.runner.isRunning(id)) throw conflict("run_active", "Stop the run before deleting this chat.");
+    if (this.runner.isBusy(id)) throw conflict("workspace_busy", "Wait until the working branch has moved before deleting this chat.");
     if (s.status === "preparing") throw conflict("workspace_preparing", "Wait until the workspace is prepared (or fails) before deleting this chat.");
-    this.orbit.forget(id);
-    this.hub.dropLive(id);
-    this.sessions.delete(id);
-    this.workspaces.remove(id);
-    rmSync(join(this.config.data.sessions, id), { recursive: true, force: true });
+    // Who is told it is gone: read before its sharing goes with it.
+    const audience = await this.ownership.audience(s);
+    const images = await this.imageRows.idsOf(id);
+    // Its images' records go with it (they refer to it); their files are removed here.
+    await this.db.tx(async () => {
+      await this.resources.deleted("workspace", s.accountId, id, ctx);
+      await this.sessions.delete(id);
+    });
+    await this.imageFiles.remove(images);
+    await this.workspaces.remove(id);
+    await this.files.rmrf(join(this.config.data.sessions, id));
+    // The control plane's own copy of the repository: its own to remove.
+    rmSync(this.mirror.path(id), { recursive: true, force: true });
+    this.bus.publishApp("session.removed", { sessionId: id }, audience);
   }
 
-  record(id: string): SessionRecord {
+  async record(id: string): Promise<SessionRecord> {
     if (!isSessionId(id)) throw notFound("Session");
-    const s = this.sessions.get(id);
+    const s = await this.sessions.get(id);
     if (!s) throw notFound("Session");
     return s;
   }

@@ -1,0 +1,208 @@
+// What Execution reports to Work about a run (synchronous port, in the worker's transaction). Execution says what HAPPENED
+// (the run started, a handoff was submitted, a question was asked, the run ended and how); Work decides what it MEANS
+// for the assignment. Work registers its implementation, so Execution imports nothing of Work.
+import type { ClarificationKind, EmployeeProfile, HireAssistantRequest, RunState } from "@orbit-web/contracts";
+import type { Actor } from "../../shared/application/commands.js";
+import type { AttemptRepository } from "./repository-bundles.port.js";
+
+export interface StagedArtifact {
+  name: string;
+  kind: "deliverable" | "attachment";
+  mediaType: string;
+  size: number;
+  sha256: string;
+}
+
+export interface SubmittedHandoff {
+  runId: string;
+  summary: string;
+  artifacts: StagedArtifact[];
+  claims: { text: string; sources: { label: string; sourceId: string; revisionId: string; locator: string; excerpt: string }[]; supported: boolean; web?: { url: string; readAt: string } | null }[];
+  // Idempotency of a submission: the same key never makes a second handoff.
+  submissionKey: string;
+}
+
+export interface RunEnd {
+  state: RunState;
+  // Why, in words (masked).
+  detail: string | null;
+  // The run ended because Orbit stopped it for this reason (a pause, a cancel, a lost lease, a dispatch refusal).
+  // `handed_over`: its work ended by design (it delegated, asked, answered): a success, the assignment already moved on.
+  stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | "handed_over" | null;
+  // When the attempt started running (null: it never did): what it could have been shown.
+  startedAt?: string | null;
+  // The parts in AWAITING_ACCEPTANCE (key + handoff digest) that were actually shown in this attempt's prompt/inputs.
+  reviewedUnits?: { key: string; digest: string }[];
+}
+
+// A research source revision the mission was given (pinned: immutable), with the label the employee cites it by.
+export interface PinnedSource {
+  label: string;
+  revisionId: string;
+  sourceId: string;
+  workspaceId: string;
+  title: string;
+  mediaType: string;
+  contentHash: string;
+  fileName: string | null;
+}
+
+// A source this attempt may read: the mission's own (its root), or one its lead shared with it (the share's id).
+export type GrantedSourceInput = PinnedSource & { origin: "mission" | "share"; ref: string | null };
+
+// A hand-in this attempt may read: one of its direct parts' (supervision: every file), or the accepted hand-in of a part
+// it waits for, shared by its lead -- its summary alone, or in full.
+export interface GrantedHandoffInput {
+  handoffId: string;
+  assignmentId: string;
+  unitKey: string;
+  revision: number;
+  digest: string;
+  summary: string;
+  mode: "summary" | "full";
+  origin: "share" | "supervision";
+  ref: string | null;
+  artifacts: { name: string; sha256: string }[];
+}
+
+// WHAT THIS ATTEMPT MAY READ (ADR 0061 §9), worked out again at every look: what it stages, what each read of an input
+// is held to, what the access watch checks while it runs.
+export interface AttemptData {
+  sources: GrantedSourceInput[];
+  handoffs: GrantedHandoffInput[];
+  // The mission's repositories come with it (its root only, when its employee may read them).
+  repositories: boolean;
+  // A share that gives nothing (yet), and why -- said to the employee.
+  withheld: string[];
+}
+
+// The assignment as an attempt sees it, and the employee it runs as -- re-checked at every dispatch.
+export interface AttemptContext {
+  // This attempt's fence is the current one and the assignment still holds its employee (not paused, not cancelling).
+  current: boolean;
+  missionId: string;
+  // Who gave the work (a person's label, or the lead whose plan made this part): what the run's records name as its
+  // cause -- never the worker that dispatches it.
+  createdBy: string;
+  missionTitle: string;
+  brief: { goal: string; deliverables: { name: string; required: boolean }[]; acceptanceCriteria: string[]; revisions: { criteria: string }[]; answers: { question: string; answer: string }[] };
+  deliverables: { name: string; required: boolean }[];
+  // The research sources THIS attempt may read, in the mission's labelled order (S1, S2 ...): the mission's own for its
+  // root, what its lead shared for a part.
+  sources: GrantedSourceInput[];
+  // The hand-ins it may read, and the shares that give nothing yet.
+  data: Pick<AttemptData, "handoffs" | "withheld">;
+  // The repositories the mission brings in (the root assignment's attempts only).
+  repositories: AttemptRepository[];
+  // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
+  // what each handed in, and the mission's team room (null: none).
+  team: {
+    // What this attempt was woken to do: ordinary work/planning, reviewing its team's hand-ins, or answering its team.
+    phase?: "work" | "review" | "answer";
+    // Its role in this work (Work decides it from the appointment in force and the department's working members): the
+    // CEO, a manager with or without a team, or an employee -- what it is told, and what that role withholds: the tools
+    // never offered (and refused at the door, saying why), and every connector tool when `connectorsDenied` says why.
+    role: "ceo" | "manager_with_team" | "manager_alone" | "employee";
+    denied: { name: string; why: string }[];
+    connectorsDenied: string | null;
+    // Whether it may give parts of the work to anyone: its appointment in force or a person's grant (never a title) --
+    // or, a manager in force, room in its quota to engage an assistant.
+    canDelegate: boolean;
+    // Its temporary assistants, an appointee in force's only (null otherwise): its profile's maxAssistants, how many
+    // are engaged now, and how many more it may engage for this mission.
+    assistants: { max: number; engaged: number; left: number } | null;
+    // Whom: employees (by appointment or grant) and departments (each to its manager in office).
+    scope: { employees: { id: string; name: string; title: string; departmentName: string | null; via: string }[]; departments: { id: string; name: string; managerName: string | null; via: string }[] };
+    units: { key: string; assignmentId: string; employeeId: string; employeeName: string; state: string; dependsOn: string[]; handoff: { revision: number; digest: string; summary: string; artifacts: { name: string; sha256: string }[] } | null }[];
+    // The questions its team asked it, still open (each answered with answer_question, or moved up).
+    questions: { id: string; askerName: string; unitKey: string | null; question: string; askedAt: string }[];
+    // Its lead (null: it reports to the person who gave the work).
+    lead: { name: string } | null;
+    // Plans it gave already (WORKFORCE_LIMITS.replanLimit bounds them).
+    planCount: number;
+    // The room of its data domain (its department's, else the company's) when the mission has a team: null otherwise.
+    room: TeamRoom | null;
+  };
+  employee: {
+    id: string;
+    name: string;
+    // Its department NOW (the dispatch's): whose policy decides with the company's for this attempt.
+    departmentId: string | null;
+    // The profile revision the assignment pinned when it was claimed.
+    profile: EmployeeProfile | null;
+    // The appointment it holds now (CEO, a department's manager) and whether it is in force: what lets it propose a
+    // policy for its scope -- never its title or a profile switch.
+    appointment: { role: "ceo" | "manager"; departmentId: string | null; active: boolean } | null;
+    // May it run now (employment, its Personal Sandbox, its connection): the dispatch check.
+    eligible: boolean;
+    reason: string | null;
+    sandboxId: string | null;
+  };
+}
+
+export interface TeamRoom {
+  id: string;
+  quotaMiB: number;
+  // Whose room it is: one department's members on this mission, or the company's (employees of no department).
+  domain: "department" | "company";
+}
+
+export interface RunOutcomes {
+  // The assignment as the run sees it: may this attempt still act (its fence is the current one, the assignment holds)?
+  current(orbitId: string, assignmentId: string, fence: number): Promise<AttemptContext | null>;
+  // The team room of an attempt's data domain (its department at dispatch, else the company's), opened when the mission
+  // has a team and that domain has no room yet; null when the mission has no team.
+  roomFor(orbitId: string, assignmentId: string, departmentId: string | null): Promise<TeamRoom | null>;
+  started(actor: Actor, assignmentId: string, fence: number): Promise<void>;
+  // Whether this employee may publish a hand-in of this assignment now (artifact.publish, decided as the employee):
+  // asked BEFORE its files are staged.
+  mayPublish(actor: Actor, assignmentId: string, fence: number): Promise<void>;
+  handoff(actor: Actor, assignmentId: string, fence: number, h: SubmittedHandoff): Promise<{ revision: number; digest: string; missing: string[] }>;
+  question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void>;
+  ended(actor: Actor, assignmentId: string, fence: number, end: RunEnd): Promise<void>;
+  recovering(actor: Actor, assignmentId: string, fence: number, reason: string): Promise<void>;
+  // A manager's plan: parts of its assignment given to colleagues -- and the assistants it engaged for them, by name
+  // (refused whole, with why).
+  delegate(actor: Actor, assignmentId: string, fence: number, units: DelegatedUnit[]): Promise<{ parts: number; engaged: string[] }>;
+  // A lead's decision on one part it reviews, naming the digest of the hand-in it looked at.
+  reviewUnit(actor: Actor, assignmentId: string, fence: number, unitKey: string, decision: "accept" | "revise", criteria: string, digest?: string | null): Promise<string>;
+  // A lead answers its team's question, or moves it one level up saying why.
+  answerQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, answer: string): Promise<string>;
+  escalateQuestion(actor: Actor, assignmentId: string, fence: number, clarificationId: string, kind: ClarificationKind, note: string): Promise<string>;
+  // The team room as an attempt left it.
+  teamRoomChanged(orbitId: string, roomId: string, by: { runId: string; assignmentId: string; employeeId: string }, files: { path: string; sha256: string; size: number }[]): Promise<number>;
+}
+
+export interface DelegatedUnit {
+  key: string;
+  // Who takes it: an employee or a department (by id or exact name) its lead's authority reaches.
+  employee?: string;
+  department?: string;
+  // Or a temporary assistant the lead engages for it, within its quota: a manager's joins its department and takes the
+  // part; the CEO's joins the department the part names, whose manager takes the part.
+  hire?: HireAssistantRequest;
+  title: string;
+  goal: string;
+  deliverables: { name: string; required: boolean }[];
+  acceptanceCriteria: string[];
+  dependsOn: string[];
+  // What the lead shares with this part on purpose: source labels it reads itself ("all": every one), and the accepted
+  // hand-in of a part it waits for -- its summary, or in full.
+  shareSources: string[];
+  shareRepositories?: boolean;
+  receives: { from: string; as: "summary" | "full" }[];
+}
+
+export const RUN_OUTCOMES = Symbol("RUN_OUTCOMES");
+
+// WHAT ONE ATTEMPT MAY READ, asked by the input reader and the access watch (Work answers it from its own records). A port
+// of its own, apart from RUN_OUTCOMES: the sandbox provider reads inputs through it, so it must reach nothing that needs
+// the sandbox provider.
+export interface AttemptDataPort {
+  of(orbitId: string, assignmentId: string): Promise<AttemptData | null>;
+  // Every artifact sha256 belonging to any hand-in (any status) of a direct part of this assignment: supervision access
+  // for a live review attempt does not vanish when the lead itself requests a revision or a part submits a newer version.
+  supervisedArtifactSha256s(orbitId: string, assignmentId: string): Promise<Set<string>>;
+}
+
+export const ATTEMPT_DATA = Symbol("ATTEMPT_DATA");

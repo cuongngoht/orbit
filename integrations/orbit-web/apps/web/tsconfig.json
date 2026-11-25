@@ -10,7 +10,8 @@
     "verbatimModuleSyntax": true,
     "types": ["vite/client"],
     "paths": {
-      "@orbit-web/contracts": ["../../packages/contracts/src/index.ts"]
+      "@orbit-web/contracts": ["../../packages/contracts/src/index.ts"],
+      "@orbit-web/governance-core": ["../../packages/governance-core/src/index.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

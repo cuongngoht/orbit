@@ -1,9 +1,12 @@
 # The module map
 
 What every directory and module of this engine is FOR, one entry each. It is reference: read it before you add,
-move or split a module, and when a name in the code needs its context. The rules that bind every change -- the
-dependency direction, who owns what, the rules that are enforced -- stay in [AGENTS.md](../../AGENTS.md), which every
-agent has loaded; this map does not repeat them and they win where the two seem to disagree.
+move or split a module, and when a name in the code needs its context. How the modules fit together -- the system,
+the layers and the dependency direction with the full text of every import boundary, who owns what, the data and the
+main flows -- is [docs/architecture.md](../architecture.md). The rules that bind every change -- the dependency
+direction, who owns what, the rules that are enforced -- stay in [AGENTS.md](../../AGENTS.md), which every agent has
+loaded (the import boundaries' full text, moved to docs/architecture.md, binds as AGENTS.md does); this map does not
+repeat them and they win where the two seem to disagree.
 
 ```
 cli/           composition roots: argv → build a ctx → call src → exit code. No logic.
@@ -529,7 +532,7 @@ src/work/      WORK: what is being done about a requirement, resumable by anothe
                offered again while what answered it is settled and unmoved), a pure fold `context --work=` reads.
                freshness.mjs also invalidates a need settled on a path the index no longer holds (GONE). It never
                names a provider
-src/work/track/  UNIFIED WORK TRACKING (1.8.8, README §4.18): identity, links and a REPORTED lifecycle in the
+src/work/track/  UNIFIED WORK TRACKING (1.8.8, README "Unified work tracking"): identity, links and a REPORTED lifecycle in the
                work journal, and the ONE read model over them -- never a second journal and never the
                doing. vocab.mjs (LIFECYCLE, EVIDENCE, LINKS, LIMITS as tables) · fold.mjs (the fold over
                `created`/`bound`/`handoff`/`linked`/`state`/`report`: an `eid` is folded once, a closed
@@ -1233,7 +1236,11 @@ integrations/  what ANOTHER program installs, never part of this plugin's archiv
                specs are *.spec.ts(x) outside any test/ directory so the root `node --test` never collects them;
                docker/ (Dockerfile, compose.yaml), scripts/ (ci.mjs, build-image.mjs, release.mjs), tests/ (Docker
                smoke, the real acceptance run and its results). Imports nothing of the plugin: it runs the plugin's CLIs
-               as programs. Its README says what it is and how it is secured
+               as programs. apps/api/src/modules/research/ (ADR 0061) is its research domain -- workspaces, sources
+               read in a worker and indexed in SQLite FTS5, sessions answered by a tool-less Claude run from passages
+               the server retrieved, citations the server verifies; modules/access/ holds each Claude account's chats
+               to it; modules/images/ (ADR 0061) takes a chat message's images, read from their bytes and given to
+               Claude Code as stream-json. Its README says what it is and how it is secured
 satellite/     (0.1.1, ADR 0041) ORBIT SATELLITE, a mission journal above Orbit's owners; its own docs are
                satellite/docs/ (README, hosts, invocation, contract-map, adr/0001-0004). src/ imports only Orbit's
                leaves (satellite/test/boundary.test.mjs): store/ (rooms under <storeRoot>/satellite/, the journal

@@ -1,119 +1,331 @@
 // The conversation: messages, tool activity (with what a subagent did inside its Agent call), and what the CLI said
 // about each run -- its version and whether Orbit loaded, how it ended, and anything it refused.
-import { Badge, MessageBar, MessageBarBody, Spinner, Text, makeStyles, tokens } from "@fluentui/react-components";
+import { Badge, Button, MessageBar, MessageBarBody, Spinner, Text, Tooltip, makeStyles, shorthands, tokens } from "@fluentui/react-components";
 import { Markdown } from "../../components/Markdown";
-import { childrenOf, type MessageItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
+import { effortLabel, MODE_LABELS, RUNTIME_LABELS, type RuntimeKind } from "@orbit-web/contracts";
+import { BranchFork16Regular, Checkmark16Regular, ChevronDown16Regular, ChevronRight16Regular, Copy16Regular } from "@fluentui/react-icons";
+import { useState } from "react";
+import { useI18n, type MessageKey } from "../../i18n";
+import { childrenOf, type BranchItem, type MessageItem, type ProjectItem, type RunEndItem, type RunStartItem, type TimelineItem, type WorkspaceItem } from "./chatReducer";
+import { PlanCard } from "./PlanCard";
 import { ToolCard } from "./ToolCard";
 
 const useStyles = makeStyles({
-  list: { display: "flex", flexDirection: "column", gap: "10px" },
-  user: { alignSelf: "flex-end", maxWidth: "80%", backgroundColor: tokens.colorBrandBackground2, padding: "8px 12px", borderRadius: tokens.borderRadiusLarge, whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
-  assistant: { maxWidth: "100%" },
-  meta: { color: tokens.colorNeutralForeground3 },
-  line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" },
-  cursor: { display: "inline-block", width: "8px", height: "14px", backgroundColor: tokens.colorNeutralForeground3, marginLeft: "2px", verticalAlign: "text-bottom" },
+  list: { display: "flex", flexDirection: "column", gap: "12px", paddingTop: "8px", paddingBottom: "12px", minWidth: 0, maxWidth: "100%" },
+  user: {
+    alignSelf: "flex-end",
+    maxWidth: "80%",
+    "@media (max-width: 639px)": { maxWidth: "88%" },
+    backgroundColor: "var(--orbit-user-bubble)",
+    color: tokens.colorNeutralForeground1,
+    paddingTop: "10px",
+    paddingRight: "16px",
+    paddingBottom: "10px",
+    paddingLeft: "16px",
+    borderTopLeftRadius: "20px",
+    borderTopRightRadius: "20px",
+    borderBottomRightRadius: "6px",
+    borderBottomLeftRadius: "20px",
+    marginTop: "6px",
+    fontSize: "15px",
+    lineHeight: "1.55",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  userImages: { alignSelf: "flex-end", display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "6px", maxWidth: "80%", marginTop: "6px", "@media (max-width: 639px)": { maxWidth: "88%" } },
+  userImageLink: { display: "block", borderRadius: "14px", overflow: "hidden", lineHeight: 0, outlineOffset: "2px" },
+  userImage: { display: "block", maxHeight: "220px", maxWidth: "100%", width: "auto", height: "auto", objectFit: "contain", backgroundColor: tokens.colorNeutralBackground3 },
+  assistant: { maxWidth: "100%", minWidth: 0, position: "relative" },
+  assistantFoot: { display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" },
+  copyBtn: { color: tokens.colorNeutralForeground3 },
+  batch: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    paddingTop: "4px",
+    paddingRight: "8px",
+    paddingBottom: "4px",
+    paddingLeft: "8px",
+    backgroundColor: "var(--orbit-tool-bg)",
+  },
+  batchBtn: { justifyContent: "flex-start", color: tokens.colorNeutralForeground2 },
+  runEndRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" },
+  meta: { color: tokens.colorNeutralForeground3, overflowWrap: "anywhere" },
+  line: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" },
+  msgBar: { minWidth: 0, maxWidth: "100%", borderRadius: "12px" },
+  msgBody: { minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" },
+  msgCode: { overflowWrap: "anywhere", wordBreak: "break-word" },
+  cursor: {
+    display: "inline-block",
+    width: "2px",
+    height: "16px",
+    borderRadius: "1px",
+    backgroundColor: tokens.colorBrandForeground1,
+    marginLeft: "3px",
+    verticalAlign: "text-bottom",
+    animationName: "orbit-blink",
+    animationDuration: "1s",
+    animationIterationCount: "infinite",
+  },
 });
 
-const STEPS: Record<string, string> = { clone: "Cloning the repository with GitHub CLI…", branch: "Creating this session's branch…", identity: "Setting the commit identity…", orbit: "Seating the workspace with Orbit…" };
+const STEP_KEYS: Record<string, MessageKey> = {
+  clone: "chat.timeline.step.clone",
+  init: "chat.timeline.step.init",
+  branch: "chat.timeline.step.branch",
+  identity: "chat.timeline.step.identity",
+  orbit: "chat.timeline.step.orbit",
+  project: "chat.timeline.step.project",
+};
+
+const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+// What the repository brought: its skills, commands and agents (loaded as instructions), and its plugins with what
+// became of each. Settings → Skills and Plugins show them whole.
+function Project({ item }: { item: ProjectItem }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const i = item.inventory;
+  const carried = [
+    count(i.skills.length, t("chat.timeline.noun.skill")),
+    count(i.commands.length, t("chat.timeline.noun.command")),
+    count(i.agents.length, t("chat.timeline.noun.agent")),
+  ].join(", ");
+  const plugins = i.plugins.length === 0 ? "" : t("chat.timeline.pluginsSuffix", { plugins: i.plugins.map((p) => `${p.id} (${p.state})`).join(", ") });
+  if (i.skills.length + i.commands.length + i.agents.length + i.plugins.length === 0) return null;
+  return (
+    <Text size={200} className={s.meta}>
+      {i.loaded ? t("chat.timeline.projectLoaded", { carried }) : t("chat.timeline.projectNotLoaded", { carried })}
+      {plugins}.
+    </Text>
+  );
+}
 
 function Workspace({ item }: { item: WorkspaceItem }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (item.state === "preparing") return <Spinner size="tiny" label={STEPS[item.step] ?? "Preparing the workspace…"} labelPosition="after" />;
+  if (item.state === "preparing") return <Spinner size="tiny" label={t(STEP_KEYS[item.step] ?? "chat.timeline.step.default")} labelPosition="after" />;
   if (item.state === "failed")
     return (
-      <MessageBar intent="error">
-        <MessageBarBody>Workspace not prepared ({item.step}): {item.message}</MessageBarBody>
+      <MessageBar intent="error" className={s.msgBar}>
+        <MessageBarBody className={s.msgBody}>{t("chat.timeline.workspaceFailed", { step: item.step, message: item.message ?? "" })}</MessageBarBody>
       </MessageBar>
     );
-  return <Text size={200} className={s.meta}>Workspace ready on branch {item.workBranch}.</Text>;
+  return <Text size={200} className={s.meta}>{t("chat.timeline.workspaceReady", { branch: item.workBranch ?? "" })}</Text>;
+}
+
+// The working branch moved: said in the conversation, where the work before and after it sits.
+function Branch({ item }: { item: BranchItem }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  return (
+    <div className={s.line}>
+      <BranchFork16Regular className={s.meta} />
+      <Text size={200} className={s.meta}>
+        {t("chat.timeline.nowWorkingOn")}
+        <code className={s.msgCode}>{item.workBranch}</code>
+        {item.created
+          ? t("chat.timeline.newBranchFromWork", {
+              what: item.from ? t("chat.timeline.workOnBranch", { branch: item.from }) : t("chat.timeline.workAsItWas"),
+            })
+          : item.from
+            ? t("chat.timeline.switchedFrom", { branch: item.from })
+            : "."}
+      </Text>
+    </div>
+  );
 }
 
 function RunStart({ item }: { item: RunStartItem }) {
+  const { t } = useI18n();
   const s = useStyles();
   const d = item.data;
   return (
     <div className={s.line}>
       <Text size={200} className={s.meta}>
-        {d.resumed ? "Continuing" : "Started"} Claude Code {d.claudeCodeVersion ?? "?"} · {d.model ?? d.requestedModel}
+        {d.resumed ? t("chat.timeline.continuing") : t("chat.timeline.started")}{" "}
+        {d.runtime === "codex" ? RUNTIME_LABELS.codex : t("chat.timeline.claudeCodeVersion", { version: d.claudeCodeVersion ?? "?" })} · {d.model ?? d.requestedModel}
+        {/* A run of an earlier Orbit Web named no effort or mode. */}
+        {d.requestedEffort ? t("chat.timeline.effortSuffix", { effort: effortLabel(d.requestedEffort) }) : ""}
+        {d.requestedMode ? ` · ${MODE_LABELS[d.requestedMode]}` : ""}
+        {/* Where it ran: a sandbox of its own (a container holding this chat's places alone). */}
+        {d.sandboxed ? t("chat.timeline.ownSandbox") : ""}
       </Text>
       {d.orbitLoaded ? (
         <Badge appearance="tint" color="brand" size="small">
-          Orbit {d.orbitVersion ?? ""} loaded
+          {t("chat.timeline.orbitLoaded", { version: d.orbitVersion ?? "" })}
         </Badge>
       ) : (
-        <Badge appearance="tint" color="warning" size="small">
-          Orbit plugin not loaded
-        </Badge>
+        // The Orbit plugin is Claude Code's: a run of another CLI never loads it, which is nothing to warn about.
+        d.runtime !== "codex" && (
+          <Badge appearance="tint" color="warning" size="small">
+            {t("chat.timeline.orbitNotLoaded")}
+          </Badge>
+        )
       )}
     </div>
   );
 }
 
-function RunEnd({ item }: { item: RunEndItem }) {
+function RunEnd({ item, runtime, onOpenOrbit }: { item: RunEndItem; runtime: RuntimeKind; onOpenOrbit?: () => void }) {
+  const { t } = useI18n();
   const s = useStyles();
   const e = item.end;
+  const label = RUNTIME_LABELS[runtime];
   if (e.type === "session.completed") {
     const cost = e.data.costUsd !== null ? ` · $${e.data.costUsd.toFixed(4)}` : "";
+    const turnWord = e.data.turns === 1 ? t("chat.timeline.turnOne") : t("chat.timeline.turnMany");
     return (
-      <Text size={200} className={s.meta}>
-        Claude Code finished ({e.data.turns ?? "?"} turns{cost}). Whether the change is verified is Orbit's to say — see the Orbit panel.
-      </Text>
+      <div className={s.runEndRow}>
+        <Text size={200} className={s.meta}>
+          {t("chat.timeline.turnsCost", { label, turns: e.data.turns ?? "?", turnWord, cost })}
+        </Text>
+        {onOpenOrbit && (
+          <Button appearance="transparent" size="small" onClick={onOpenOrbit}>
+            {t("chat.timeline.openOrbitPanel")}
+          </Button>
+        )}
+      </div>
     );
   }
   if (e.type === "session.interrupted")
     return (
-      <MessageBar intent="warning">
-        <MessageBarBody>{e.data.reason === "user_stop" ? "Stopped. The run was interrupted; it did not complete." : "Orbit Web restarted while this run was active; it was interrupted and is not resumed on its own."}</MessageBarBody>
+      <MessageBar intent="warning" className={s.msgBar}>
+        <MessageBarBody className={s.msgBody}>{t(e.data.reason === "user_stop" ? "chat.timeline.interruptedUser" : "chat.timeline.interruptedRestart")}</MessageBarBody>
       </MessageBar>
     );
+  const message = e.data.message.startsWith(`${label} `) ? e.data.message.slice(label.length + 1) : e.data.message;
   return (
-    <MessageBar intent="error">
-      <MessageBarBody>Claude Code failed: {e.data.message}</MessageBarBody>
+    <MessageBar intent="error" className={s.msgBar}>
+      <MessageBarBody className={s.msgBody}>{t("chat.timeline.failedText", { label, message })}</MessageBarBody>
     </MessageBar>
   );
 }
 
-function Message({ item }: { item: MessageItem }) {
+function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  document.execCommand("copy");
+  document.body.removeChild(area);
+  return Promise.resolve();
+}
+
+function Message({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
+  const { t } = useI18n();
   const s = useStyles();
-  if (item.role === "user") return <div className={s.user}>{item.text}</div>;
+  const [copied, setCopied] = useState(false);
+  if (item.role === "user") return <UserMessage item={item} imageUrl={imageUrl} />;
+  const copy = () => {
+    void copyText(item.text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
   return (
     <div className={s.assistant} data-testid="assistant-message">
       <Markdown text={item.text} />
-      {item.streaming && <span className={s.cursor} aria-label="writing" />}
-      {item.partial && <Text size={200} className={s.meta}>(cut off when the run ended)</Text>}
+      {item.streaming && <span className={s.cursor} aria-label={t("chat.timeline.writingAria")} />}
+      {(item.partial || (!item.streaming && item.text.trim().length > 0)) && (
+        <div className={s.assistantFoot}>
+          {item.partial && <Text size={200} className={s.meta}>{t("chat.timeline.cutOff")}</Text>}
+          {!item.streaming && item.text.trim().length > 0 && (
+            <Tooltip content={copied ? t("chat.timeline.copiedAria") : t("chat.timeline.copyAria")} relationship="label">
+              <Button
+                className={s.copyBtn}
+                appearance="subtle"
+                size="small"
+                icon={copied ? <Checkmark16Regular /> : <Copy16Regular />}
+                aria-label={copied ? t("chat.timeline.copiedAria") : t("chat.timeline.copyAria")}
+                onClick={copy}
+              />
+            </Tooltip>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function Item({ item, items }: { item: TimelineItem; items: TimelineItem[] }) {
+// A person's message: the images it carried (each opens full size), then its words.
+function UserMessage({ item, imageUrl }: { item: MessageItem; imageUrl?: (imageId: string) => string }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const images = imageUrl === undefined ? [] : (item.images ?? []);
+  return (
+    <>
+      {images.length > 0 && (
+        <div className={s.userImages} role="group" aria-label={images.length === 1 ? t("chat.timeline.imageSentOne") : t("chat.timeline.imageSentMany", { count: images.length })}>
+          {images.map((image, n) => {
+            const url = (imageUrl as (imageId: string) => string)(image.id);
+            return (
+              <a key={image.id} className={s.userImageLink} href={url} target="_blank" rel="noopener noreferrer" title={t("chat.timeline.openFullSize")}>
+                <img className={s.userImage} src={url} alt={t("chat.timeline.imageAlt", { index: n + 1 })} loading="lazy" {...(image.width && image.height ? { width: image.width, height: image.height } : {})} />
+              </a>
+            );
+          })}
+        </div>
+      )}
+      {item.text.trim().length > 0 && <div className={s.user}>{item.text}</div>}
+    </>
+  );
+}
+
+export interface TimelineActions {
+  // The AI the chat runs on (its run ends name it): Claude Code unless said.
+  runtime?: RuntimeKind;
+  // Where an image a message carried is read.
+  imageUrl?: (imageId: string) => string;
+  // Carry a proposed plan out: switch to Autonomous and ask for it.
+  onRunPlan?: () => void;
+  canRunPlan?: boolean;
+  onOpenOrbit?: () => void;
+}
+
+function Item({ item, items, actions, superseded }: { item: TimelineItem; items: TimelineItem[]; actions: TimelineActions; superseded?: boolean }) {
+  const { t } = useI18n();
+  const s = useStyles();
   switch (item.kind) {
     case "message":
-      return <Message item={item} />;
+      return <Message item={item} imageUrl={actions.imageUrl} />;
+    case "plan":
+      return <PlanCard plan={item.plan} truncated={item.truncated} onRun={actions.onRunPlan} canRun={actions.canRunPlan === true} superseded={superseded} />;
+    case "project":
+      return <Project item={item} />;
     case "tool": {
       const inner = childrenOf(items, item.id);
       return (
         <ToolCard tool={item}>
-          {inner.length > 0 && inner.map((child) => <Item key={`${child.kind}-${child.id}`} item={child} items={items} />)}
+          {inner.length > 0 && inner.map((child) => <Item key={`${child.kind}-${child.id}`} item={child} items={items} actions={actions} />)}
         </ToolCard>
       );
     }
     case "run-start":
       return <RunStart item={item} />;
     case "run-end":
-      return <RunEnd item={item} />;
+      return <RunEnd item={item} runtime={actions.runtime ?? "claude"} onOpenOrbit={actions.onOpenOrbit} />;
     case "workspace":
       return <Workspace item={item} />;
+    case "branch":
+      return <Branch item={item} />;
     case "notice":
       return (
-        <MessageBar intent="info">
-          <MessageBarBody>{item.notice.message}</MessageBarBody>
+        <MessageBar intent="info" className={s.msgBar}>
+          <MessageBarBody className={s.msgBody}>{item.notice.message}</MessageBarBody>
         </MessageBar>
       );
     case "denied":
       return (
-        <MessageBar intent="warning">
-          <MessageBarBody>
-            Permission denied: {item.denied.toolName} was not allowed. <code>{item.denied.input.slice(0, 200)}</code>
+        <MessageBar intent="warning" className={s.msgBar}>
+          <MessageBarBody className={s.msgBody}>
+            {t("chat.timeline.permissionDenied", { tool: item.denied.toolName })}
+            <code className={s.msgCode}>{item.denied.input.slice(0, 200)}</code>
           </MessageBarBody>
         </MessageBar>
       );
@@ -122,13 +334,64 @@ function Item({ item, items }: { item: TimelineItem; items: TimelineItem[] }) {
   }
 }
 
-export function Timeline({ items }: { items: TimelineItem[] }) {
+// Plan mode's ExitPlanMode call (and its refusal under -p) is shown as the plan it carried, not as a tool.
+const isPlanPlumbing = (item: TimelineItem): boolean => (item.kind === "tool" && item.name === "ExitPlanMode") || (item.kind === "denied" && item.denied.toolName === "ExitPlanMode");
+
+const isCollapsibleTool = (item: TimelineItem, items: TimelineItem[]): boolean =>
+  item.kind === "tool" && item.state === "done" && !item.interrupted && childrenOf(items, item.id).length === 0;
+
+function ToolBatch({ group, items, actions }: { group: TimelineItem[]; items: TimelineItem[]; actions: TimelineActions }) {
+  const { t } = useI18n();
   const s = useStyles();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={s.batch}>
+      <Button
+        className={s.batchBtn}
+        appearance="transparent"
+        size="small"
+        icon={open ? <ChevronDown16Regular /> : <ChevronRight16Regular />}
+        aria-expanded={open}
+        aria-label={open ? t("chat.timeline.toolsCollapseAria") : t("chat.timeline.toolsExpandAria", { count: group.length })}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {t("chat.timeline.toolsCollapsed", { count: group.length })}
+      </Button>
+      {open && group.map((item) => <Item key={`${item.kind}-${item.id}`} item={item} items={items} actions={actions} />)}
+    </div>
+  );
+}
+
+export function Timeline({ items, actions = {} }: { items: TimelineItem[]; actions?: TimelineActions }) {
+  const s = useStyles();
+  const hasPlan = items.some((i) => i.kind === "plan");
+  const top = childrenOf(items, null).filter((item) => !(hasPlan && isPlanPlumbing(item)));
+  const nodes: { key: string; group?: TimelineItem[]; item?: TimelineItem; superseded?: boolean }[] = [];
+  for (let i = 0; i < top.length; i++) {
+    const item = top[i];
+    if (isCollapsibleTool(item, items)) {
+      let end = i + 1;
+      while (end < top.length && isCollapsibleTool(top[end], items)) end++;
+      if (end - i >= 4) {
+        const group = top.slice(i, end);
+        nodes.push({ key: `batch-${group[0].id}`, group });
+        i = end - 1;
+        continue;
+      }
+    }
+    const superseded =
+      item.kind === "plan" && top.slice(i + 1).some((later) => later.kind === "plan" || later.kind === "run-start" || (later.kind === "message" && later.role === "user"));
+    nodes.push({ key: `${item.kind}-${item.id}`, item, superseded });
+  }
   return (
     <div className={s.list}>
-      {childrenOf(items, null).map((item) => (
-        <Item key={`${item.kind}-${item.id}`} item={item} items={items} />
-      ))}
+      {nodes.map((n) =>
+        n.group ? (
+          <ToolBatch key={n.key} group={n.group} items={items} actions={actions} />
+        ) : n.item ? (
+          <Item key={n.key} item={n.item} items={items} actions={actions} superseded={n.superseded} />
+        ) : null,
+      )}
     </div>
   );
 }

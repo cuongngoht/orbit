@@ -26,6 +26,11 @@ test("an assignment of a secret-named variable is masked, ordinary code is not",
   assert.equal(redactShapes("API_KEY=abc"), "API_KEY=abc", "a diff keeps code as written; only token shapes are masked there");
 });
 
+test("headers handed to a client in a variable are masked whatever scheme they use", () => {
+  assert.equal(redactSecrets("OTEL_EXPORTER_OTLP_HEADERS=x-api-key=abc123"), "OTEL_EXPORTER_OTLP_HEADERS=[redacted]");
+  assert.equal(redactSecrets("OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer abcdefghijklmnopqrstuvwxyz0123456789").includes("abcdefghijklmnop"), false);
+});
+
 test("JWTs, cloud keys and private keys are masked", () => {
   assert.equal(redactSecrets("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"), "[redacted-jwt]");
   assert.equal(redactSecrets("AKIAABCDEFGHIJKLMNOP"), "[redacted-access-key]");

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (0.1.0). Extends the architecture memory (README §4.4), ADR 0013, and the knowledge rule that an undeclared
+Proposed (0.1.0). Extends the architecture memory ([Plugin › Project memory](../plugin.md#project-memory)), ADR 0013, and the knowledge rule that an undeclared
 relation is still legal.
 
 ## Context

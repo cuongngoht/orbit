@@ -103,7 +103,7 @@ records the base revision (HEAD — uncommitted changes in the checkout are NOT 
 and `start` says so), and reads the requirement back. Never raise a budget to keep going: a spent
 budget is a stop.
 
-**A task that starts beside a tracked work joins it (README §4.18).** When `/orbit-help` tracked this request, `start`
+**A task that starts beside a tracked work joins it (README, "Unified work tracking").** When `/orbit-help` tracked this request, `start`
 links the task it creates to the session's current work and hands the work over once (its answer carries `tracking`,
 and `node ${CLAUDE_PLUGIN_ROOT}/cli/track.mjs status` shows the work). A session with no tracked work gets nothing
 made. This is identity and a link only: the task's own journal stays the only state it has, and the work reads its
@@ -238,7 +238,7 @@ its words. No step carries a port, a provider or a directory — a sandbox picks
 
 ## 4½ · Watching it: Orbit Live
 
-A person sees the task without opening Orbit Control (README §4.16): in Claude Code's status line, once they
+A person sees the task without opening Orbit Control (README, "Orbit Live"): in Claude Code's status line, once they
 installed it, and in any terminal with `node <engine>/cli/live.mjs watch` -- or full screen with `live tui`, which a
 person runs in a SECOND terminal or pane (never run it yourself: it needs the terminal you are in). When they ask to
 WATCH the task, run `node <engine>/cli/live.mjs open <task>`: it starts that viewer beside this session (a tmux pane,

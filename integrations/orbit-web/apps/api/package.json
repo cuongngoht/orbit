@@ -1,8 +1,8 @@
 {
   "name": "@orbit-web/api",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
-  "description": "Orbit Web's NestJS API: runs the official Claude Code and GitHub CLIs as controlled processes and keeps chat state in SQLite.",
+  "description": "Orbit Web's NestJS API: runs the official Claude Code and GitHub CLIs as controlled processes and keeps its records in PostgreSQL.",
   "type": "module",
   "license": "MIT",
   "main": "./dist/main.js",
@@ -10,21 +10,28 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.spec.json --noEmit",
     "test": "npm run test:compile && npm run test:unit && npm run test:integration",
-    "test:compile": "tsc -p tsconfig.spec.json",
+    "test:compile": "node -e \"require('node:fs').rmSync('.spec-dist', { recursive: true, force: true })\" && tsc -p tsconfig.spec.json",
     "test:unit": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/src/**/*.spec.js\"",
-    "test:integration": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/tests/**/*.spec.js\"",
-    "start": "node --disable-warning=ExperimentalWarning dist/main.js"
+    "test:integration": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-reporter=spec \".spec-dist/tests/integration/**/*.spec.js\"",
+    "start": "node --disable-warning=ExperimentalWarning dist/main.js",
+    "test:sandbox": "npm run test:compile && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-timeout=1800000 --test-reporter=spec \".spec-dist/tests/sandbox/**/*.spec.js\"",
+    "test:native": "npm run test:compile && node --disable-warning=ExperimentalWarning --test --test-concurrency=1 --test-timeout=600000 --test-reporter=spec \".spec-dist/tests/native/**/*.spec.js\""
   },
   "dependencies": {
     "@nestjs/common": "12.5.1",
     "@nestjs/core": "12.5.1",
     "@nestjs/platform-express": "12.5.1",
-    "@orbit-web/contracts": "0.7.0",
+    "@orbit-web/contracts": "0.8.0",
+    "@orbit-web/governance-core": "0.8.0",
+    "parse5": "8.1.1",
+    "pg": "8.23.1",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "unpdf": "2.2.1"
   },
   "devDependencies": {
     "@nestjs/testing": "12.5.1",
-    "@types/express": "5.0.6"
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1"
   }
 }

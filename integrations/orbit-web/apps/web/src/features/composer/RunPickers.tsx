@@ -1,0 +1,431 @@
+// How a chat runs, in the composer's toolbar: the AI it runs on (Claude Code or OpenAI Codex, one of the account's
+// connections) first, then a model of that AI's own and its effort (one menu, the effort a submenu, as in Claude
+// Code), and the mode -- Autonomous (Claude Code's auto mode) or Plan (its plan mode). The models and the efforts each
+// takes are the signed-in account's own (services/models): a model a program gives the account appears for it alone.
+import { Button, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuItemRadio, MenuList, MenuPopover, MenuTrigger, Text, Tooltip, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Checkmark16Regular, ChevronDown12Regular, ClipboardTaskList16Regular, Flash16Regular } from "@fluentui/react-icons";
+import { effortFor, effortLabel, MODE_CHOICES, MODE_LABELS, modelLabel, modelOf, RUNTIME_LABELS, type EffortChoice, type ModeChoice, type ModelCatalog, type ModelChoice, type RuntimeKind } from "@orbit-web/contracts";
+import { useState } from "react";
+import { ResponsiveSheet } from "../../components/ResponsiveSheet";
+import { useViewport } from "../../hooks/useViewport";
+import { t as tr, useI18n, type MessageKey } from "../../i18n";
+import { useModelCatalog } from "../../services/models/ModelCatalog";
+
+const useStyles = makeStyles({
+  trigger: {
+    minWidth: "unset",
+    minHeight: "30px",
+    flexShrink: 0,
+    borderRadius: "9999px",
+    fontWeight: tokens.fontWeightRegular,
+    color: tokens.colorNeutralForeground2,
+    transitionProperty: "background-color, color",
+    transitionDuration: "140ms",
+    ":hover": { backgroundColor: tokens.colorSubtleBackgroundHover },
+  },
+  triggerMobile: {
+    minHeight: "34px",
+    borderRadius: "9999px",
+    paddingTop: "0",
+    paddingRight: "10px",
+    paddingBottom: "0",
+    paddingLeft: "10px",
+    backgroundColor: tokens.colorNeutralBackground2,
+    ...shorthands.border("1px", "solid", "transparent"),
+  },
+  effort: { color: tokens.colorNeutralForeground3, marginLeft: "6px" },
+  note: { display: "block", maxWidth: "260px", paddingTop: "6px", paddingRight: "10px", paddingBottom: "8px", paddingLeft: "10px", color: tokens.colorNeutralForeground3 },
+  noteSheet: { display: "block", color: tokens.colorNeutralForeground3 },
+  recommended: { marginLeft: "8px", paddingTop: 0, paddingRight: "6px", paddingBottom: 0, paddingLeft: "6px", borderRadius: tokens.borderRadiusMedium, backgroundColor: tokens.colorNeutralBackground3, color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase100 },
+  mode: { display: "flex", flexDirection: "column" },
+  modeHint: { color: tokens.colorNeutralForeground3, fontSize: tokens.fontSizeBase200 },
+  section: { display: "flex", flexDirection: "column", gap: "8px" },
+  sectionLabel: { color: tokens.colorNeutralForeground3, textTransform: "uppercase", letterSpacing: "0.04em" },
+  sheetCard: {
+    width: "100%",
+    minHeight: "48px",
+    paddingTop: "10px",
+    paddingRight: "12px",
+    paddingBottom: "10px",
+    paddingLeft: "12px",
+    borderRadius: "14px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: "var(--orbit-card-bg)",
+    color: tokens.colorNeutralForeground1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    textAlign: "left",
+    cursor: "pointer",
+    transitionProperty: "background-color, border-color",
+    transitionDuration: "140ms",
+  },
+  sheetCardSelected: {
+    ...shorthands.borderColor(tokens.colorBrandStroke1),
+    backgroundColor: tokens.colorSubtleBackgroundSelected,
+  },
+  sheetCardTitle: { fontWeight: tokens.fontWeightSemibold, fontSize: tokens.fontSizeBase300 },
+  sheetCardMeta: { display: "flex", flexDirection: "column", gap: "2px", minWidth: 0, flexGrow: 1 },
+  effortGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(64px, 1fr))", gap: "6px" },
+  effortPill: {
+    minHeight: "44px",
+    paddingTop: "4px",
+    paddingRight: "4px",
+    paddingBottom: "4px",
+    paddingLeft: "4px",
+    borderRadius: "12px",
+    ...shorthands.border("1px", "solid", tokens.colorNeutralStroke2),
+    backgroundColor: tokens.colorNeutralBackground2,
+    color: tokens.colorNeutralForeground1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: tokens.fontSizeBase200,
+    fontWeight: tokens.fontWeightSemibold,
+    cursor: "pointer",
+    transitionProperty: "background-color, border-color",
+    transitionDuration: "140ms",
+  },
+  effortPillSelected: {
+    backgroundColor: tokens.colorBrandBackground,
+    ...shorthands.borderColor(tokens.colorBrandBackground),
+    color: tokens.colorNeutralForegroundOnBrand,
+  },
+  effortStar: { fontSize: "10px", opacity: 0.85 },
+});
+
+const MODE_HINT_KEYS: Record<ModeChoice, MessageKey> = {
+  autonomous: "chat.runPickers.modeHint.autonomous",
+  plan: "chat.runPickers.modeHint.plan",
+};
+
+export const MODE_HINTS: Record<ModeChoice, string> = {
+  autonomous: tr(MODE_HINT_KEYS.autonomous),
+  plan: tr(MODE_HINT_KEYS.plan),
+};
+
+// Whether Autonomous may be chosen with this model (the fallback list says yes to all: the CLI decides).
+export const autoModeWith = (catalog: ModelCatalog, model: ModelChoice): boolean => modelOf(catalog, model)?.autoMode ?? true;
+
+// The models to offer: the account's, and -- when it is not among them -- the one chosen now, said to be unavailable.
+function choicesOf(catalog: ModelCatalog, model: ModelChoice, trFn: (k: MessageKey) => string): { id: ModelChoice; label: string; hint: string | null }[] {
+  const listed = catalog.models.map((m) => ({ id: m.id, label: m.label, hint: m.autoMode ? null : trFn("chat.runPickers.planOnly") }));
+  return listed.some((m) => m.id === model) ? listed : [...listed, { id: model, label: modelLabel(model, catalog), hint: catalog.source === "account" ? trFn("chat.runPickers.unavailableAccount") : null }];
+}
+
+export function ModelEffortPicker({ model, effort, onModel, onEffort, disabled = false }: { model: ModelChoice; effort: EffortChoice; onModel: (m: ModelChoice) => void; onEffort: (e: EffortChoice) => void; disabled?: boolean }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const { isMobile } = useViewport();
+  const [open, setOpen] = useState(false);
+  const catalog = useModelCatalog();
+  const option = modelOf(catalog, model);
+  const efforts = option?.efforts ?? ["low", "medium", "high", "xhigh", "max"];
+  const choices = choicesOf(catalog, model, t);
+  const modelText = modelLabel(model, catalog);
+  const effortText = efforts.length === 0 ? t("chat.runPickers.noEffortLevel") : effortLabel(effort);
+  // A model whose efforts do not hold the one chosen now moves it to one it takes.
+  const pick = (m: ModelChoice) => {
+    onModel(m);
+    const next = effortFor(modelOf(catalog, m), effort);
+    if (next !== null && next !== effort) onEffort(next);
+  };
+
+  if (isMobile) {
+    return (
+      <>
+        <Button
+          className={mergeClasses(s.trigger, s.triggerMobile)}
+          appearance="subtle"
+          size="small"
+          disabled={disabled}
+          icon={<ChevronDown12Regular />}
+          iconPosition="after"
+          aria-label={t("chat.runPickers.modelEffortAria", { model: modelText, effort: effortText })}
+          onClick={() => setOpen(true)}
+        >
+          {modelText}
+          <span className={s.effort}>{effortText}</span>
+        </Button>
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.modelEffortTitle")}>
+          <div className={s.section}>
+            <Text size={100} weight="semibold" className={s.sectionLabel}>
+              {t("chat.runPickers.modelSection")}
+            </Text>
+            {choices.map((m, i) => {
+              const selected = model === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-label={m.label}
+                  aria-checked={selected}
+                  className={mergeClasses(s.sheetCard, selected && s.sheetCardSelected)}
+                  onClick={() => pick(m.id)}
+                >
+                  <span className={s.sheetCardMeta}>
+                    <span className={s.sheetCardTitle}>{m.label}</span>
+                    {m.hint && <span className={s.modeHint}>{m.hint}</span>}
+                  </span>
+                  {selected ? <Checkmark16Regular /> : <Text size={200} aria-hidden>{String(i + 1)}</Text>}
+                </button>
+              );
+            })}
+          </div>
+          <div className={s.section}>
+            <Text size={100} weight="semibold" className={s.sectionLabel}>
+              {t("chat.runPickers.effortSection")}
+            </Text>
+            {efforts.length === 0 && (
+              <Text size={200} className={s.noteSheet}>
+                {t("chat.runPickers.takesNoEffort", { model: option?.label ?? t("chat.runPickers.thisModel") })}
+              </Text>
+            )}
+            <div className={s.effortGrid}>
+              {efforts.map((e) => {
+                const selected = effort === e;
+                return (
+                  <button
+                    key={e}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    aria-label={e === "medium" ? t("chat.runPickers.effortRecommended", { effort: effortLabel(e) }) : effortLabel(e)}
+                    className={mergeClasses(s.effortPill, selected && s.effortPillSelected)}
+                    onClick={() => onEffort(e)}
+                  >
+                    <span>{effortLabel(e)}</span>
+                    {e === "medium" && <span className={s.effortStar}>★</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <Text size={200} className={s.noteSheet}>
+              {t("chat.runPickers.effortNote")}
+            </Text>
+          </div>
+        </ResponsiveSheet>
+      </>
+    );
+  }
+
+  return (
+    <Menu checkedValues={{ model: [model] }} onCheckedValueChange={(_, d) => d.name === "model" && d.checkedItems[0] && pick(d.checkedItems[0] as ModelChoice)}>
+      <MenuTrigger disableButtonEnhancement>
+        <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={<ChevronDown12Regular />} iconPosition="after" aria-label={t("chat.runPickers.modelEffortAria", { model: modelText, effort: effortText })}>
+          {modelText}
+          <span className={s.effort}>{effortText}</span>
+        </Button>
+      </MenuTrigger>
+      <MenuPopover>
+        <MenuList>
+          <MenuGroup>
+            <MenuGroupHeader>{t("chat.runPickers.modelSection")}</MenuGroupHeader>
+            {choices.map((m, i) => (
+              <MenuItemRadio key={m.id} name="model" value={m.id} secondaryContent={m.hint ?? String(i + 1)}>
+                {m.label}
+              </MenuItemRadio>
+            ))}
+          </MenuGroup>
+          <MenuDivider />
+          {efforts.length === 0 ? (
+            <MenuItem disabled secondaryContent="—">
+              {t("chat.runPickers.noEffortLevel")}
+            </MenuItem>
+          ) : (
+            <Menu checkedValues={{ effort: [effort] }} onCheckedValueChange={(_, d) => d.name === "effort" && d.checkedItems[0] && onEffort(d.checkedItems[0] as EffortChoice)}>
+              <MenuTrigger disableButtonEnhancement>
+                <MenuItem secondaryContent={effortText}>{t("chat.runPickers.effortSection")}</MenuItem>
+              </MenuTrigger>
+              <MenuPopover>
+                <Text size={200} className={s.note}>
+                  {t("chat.runPickers.effortNote")}
+                </Text>
+                <MenuList>
+                  {efforts.map((e) => (
+                    <MenuItemRadio key={e} name="effort" value={e}>
+                      {effortLabel(e)}
+                      {e === "medium" && <span className={s.recommended}>{t("chat.runPickers.recommended")}</span>}
+                    </MenuItemRadio>
+                  ))}
+                </MenuList>
+              </MenuPopover>
+            </Menu>
+          )}
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+}
+
+// `autoMode` false: Autonomous is not available with the chosen model (the account's catalog says so).
+export function ModePicker({ mode, onMode, disabled = false, autoMode = true }: { mode: ModeChoice; onMode: (m: ModeChoice) => void; disabled?: boolean; autoMode?: boolean }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const { isMobile } = useViewport();
+  const [open, setOpen] = useState(false);
+  const icon = mode === "plan" ? <ClipboardTaskList16Regular /> : <Flash16Regular />;
+  const unavailable = (m: ModeChoice) => m === "autonomous" && !autoMode;
+  const hint = (m: ModeChoice) => (unavailable(m) ? t("chat.runPickers.autonomousUnavailable") : t(MODE_HINT_KEYS[m]));
+
+  if (isMobile) {
+    return (
+      <>
+        <Button
+          className={mergeClasses(s.trigger, s.triggerMobile)}
+          appearance="subtle"
+          size="small"
+          disabled={disabled}
+          icon={icon}
+          aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}
+          onClick={() => setOpen(true)}
+        >
+          {MODE_LABELS[mode]}
+          <ChevronDown12Regular style={{ marginLeft: "4px" }} />
+        </Button>
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.modeTitle")}>
+          {MODE_CHOICES.map((m) => {
+            const selected = mode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={unavailable(m)}
+                className={mergeClasses(s.sheetCard, selected && s.sheetCardSelected)}
+                onClick={() => {
+                  onMode(m);
+                  setOpen(false);
+                }}
+              >
+                {m === "plan" ? <ClipboardTaskList16Regular /> : <Flash16Regular />}
+                <span className={s.sheetCardMeta}>
+                  <span className={s.sheetCardTitle}>{MODE_LABELS[m]}</span>
+                  <span className={s.modeHint}>{hint(m)}</span>
+                </span>
+                {selected && <Checkmark16Regular />}
+              </button>
+            );
+          })}
+        </ResponsiveSheet>
+      </>
+    );
+  }
+
+  return (
+    <Menu checkedValues={{ mode: [mode] }} onCheckedValueChange={(_, d) => d.name === "mode" && d.checkedItems[0] && onMode(d.checkedItems[0] as ModeChoice)}>
+      <MenuTrigger disableButtonEnhancement>
+        <Tooltip content={hint(mode)} relationship="description">
+          <Button className={s.trigger} appearance="subtle" size="small" disabled={disabled} icon={icon} aria-label={t("chat.runPickers.modeAria", { mode: MODE_LABELS[mode] })}>
+            {MODE_LABELS[mode]}
+            <ChevronDown12Regular style={{ marginLeft: "4px" }} />
+          </Button>
+        </Tooltip>
+      </MenuTrigger>
+      <MenuPopover>
+        <MenuList>
+          {MODE_CHOICES.map((m) => (
+            <MenuItemRadio key={m} name="mode" value={m} disabled={unavailable(m)} icon={m === "plan" ? <ClipboardTaskList16Regular /> : <Flash16Regular />}>
+              <span className={s.mode}>
+                {MODE_LABELS[m]}
+                <span className={s.modeHint}>{hint(m)}</span>
+              </span>
+            </MenuItemRadio>
+          ))}
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+}
+
+// One of the account's connections a chat may run on, as the AI picker names it.
+export interface AiChoice {
+  id: string;
+  runtime: RuntimeKind;
+  label: string;
+}
+
+// The AI on the button: its runtime -- and the connection's own label where that runtime has more than one.
+const aiText = (c: AiChoice, all: readonly AiChoice[]): string => (all.filter((x) => x.runtime === c.runtime).length > 1 ? `${RUNTIME_LABELS[c.runtime]} — ${c.label}` : RUNTIME_LABELS[c.runtime]);
+const aiItem = (c: AiChoice): string => `${RUNTIME_LABELS[c.runtime]} — ${c.label}`;
+
+// THE AI A CHAT RUNS ON, chosen before its model: the models offered next are that AI's own. `readOnly`: a chat's AI
+// once it exists (it is the chat's for its whole life).
+export function AiPicker({ choices, value, onChange, readOnly = false }: { choices: readonly AiChoice[]; value: string; onChange?: (id: string) => void; readOnly?: boolean }) {
+  const { t } = useI18n();
+  const s = useStyles();
+  const { isMobile } = useViewport();
+  const [open, setOpen] = useState(false);
+  const current = choices.find((c) => c.id === value) ?? choices[0];
+  if (current === undefined) return null;
+  const text = aiText(current, choices);
+  // Said, not offered: the chat's AI is fixed once the chat exists.
+  if (readOnly || onChange === undefined) {
+    return (
+      <Tooltip content={t("chat.runPickers.aiReadOnlyTitle")} relationship="description">
+        <span style={{ display: "inline-flex" }}>
+          <Button className={s.trigger} appearance="subtle" size="small" disabled aria-label={t("chat.runPickers.aiAria", { ai: text })}>
+            {text}
+          </Button>
+        </span>
+      </Tooltip>
+    );
+  }
+  if (isMobile) {
+    return (
+      <>
+        <Button className={mergeClasses(s.trigger, s.triggerMobile)} appearance="subtle" size="small" aria-label={t("chat.runPickers.aiAria", { ai: text })} onClick={() => setOpen(true)}>
+          {text}
+        </Button>
+        <ResponsiveSheet open={open} onOpenChange={setOpen} title={t("chat.runPickers.aiSessionTitle")}>
+          {choices.map((c) => {
+            const selected = c.id === current.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                className={mergeClasses(s.sheetCard, selected && s.sheetCardSelected)}
+                onClick={() => {
+                  onChange(c.id);
+                  setOpen(false);
+                }}
+              >
+                <span className={s.sheetCardMeta}>
+                  <span className={s.sheetCardTitle}>{aiItem(c)}</span>
+                </span>
+                {selected && <Checkmark16Regular />}
+              </button>
+            );
+          })}
+        </ResponsiveSheet>
+      </>
+    );
+  }
+  return (
+    <Menu checkedValues={{ ai: [current.id] }} onCheckedValueChange={(_, d) => d.name === "ai" && d.checkedItems[0] && onChange(d.checkedItems[0])}>
+      <MenuTrigger disableButtonEnhancement>
+        <Button className={s.trigger} appearance="subtle" size="small" icon={<ChevronDown12Regular />} iconPosition="after" aria-label={t("chat.runPickers.aiAria", { ai: text })}>
+          {text}
+        </Button>
+      </MenuTrigger>
+      <MenuPopover>
+        <MenuList>
+          <MenuGroup>
+            <MenuGroupHeader>{t("chat.runPickers.aiSessionTitle")}</MenuGroupHeader>
+            {choices.map((c) => (
+              <MenuItemRadio key={c.id} name="ai" value={c.id}>
+                {aiItem(c)}
+              </MenuItemRadio>
+            ))}
+          </MenuGroup>
+        </MenuList>
+      </MenuPopover>
+    </Menu>
+  );
+}

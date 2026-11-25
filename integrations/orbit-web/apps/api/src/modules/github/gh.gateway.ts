@@ -73,8 +73,11 @@ export function repositoryFromApi(r: Record<string, unknown>): Repository | null
   const name = strOrNull(r.name);
   if (!fullName || !owner || !name) return null;
   return {
+    source: "github",
+    id: fullName,
     fullName,
     owner,
+    project: null,
     name,
     private: r.private === true,
     defaultBranch: strOrNull(r.default_branch),
@@ -89,7 +92,7 @@ export function repositoryFromList(r: Record<string, unknown>): Repository | nul
   if (!fullName || !fullName.includes("/")) return null;
   const [owner, name] = fullName.split("/") as [string, string];
   const ref = isRecord(r.defaultBranchRef) ? strOrNull(r.defaultBranchRef.name) : null;
-  return { fullName, owner, name, private: r.isPrivate === true, defaultBranch: ref, updatedAt: strOrNull(r.updatedAt), archived: r.isArchived === true, fork: r.isFork === true };
+  return { source: "github", id: fullName, fullName, owner, project: null, name, private: r.isPrivate === true, defaultBranch: ref, updatedAt: strOrNull(r.updatedAt), archived: r.isArchived === true, fork: r.isFork === true };
 }
 
 export function branchFromApi(b: Record<string, unknown>, defaultBranch: string | null): Branch | null {
@@ -107,7 +110,7 @@ export class GhGateway {
     @Inject(PROCESS_PORT) private readonly process: ProcessPort,
   ) {}
 
-  private gh(args: string[], timeoutMs = this.config.limits.commandTimeoutMs, cwd = this.config.data.home): Promise<RunResult> {
+  private gh(args: string[], timeoutMs = this.config.limits.commandTimeoutMs, cwd = this.config.controlHome): Promise<RunResult> {
     return this.process.run(this.config.binaries.gh, args, { cwd, env: ghEnv(this.config), timeoutMs, maxOutputBytes: 32 * 1024 * 1024 });
   }
 
@@ -142,7 +145,7 @@ export class GhGateway {
 
   // `gh repo clone` runs git with gh's own credential helper for this one command: nothing is written to a git
   // config, and the remote is the plain https URL.
-  clone(owner: string, name: string, branch: string, destination: string, cwd: string): Promise<RunResult> {
-    return this.gh(["repo", "clone", `https://${GITHUB_HOST}/${owner}/${name}.git`, destination, "--no-upstream", "--", "--branch", branch, "--no-recurse-submodules"], this.config.limits.cloneTimeoutMs, cwd);
+  clone(owner: string, name: string, branch: string, destination: string, cwd: string, extra: string[] = []): Promise<RunResult> {
+    return this.gh(["repo", "clone", `https://${GITHUB_HOST}/${owner}/${name}.git`, destination, "--no-upstream", "--", "--branch", branch, "--no-recurse-submodules", ...extra], this.config.limits.cloneTimeoutMs, cwd);
   }
 }

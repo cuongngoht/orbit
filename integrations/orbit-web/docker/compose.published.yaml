@@ -1,0 +1,233 @@
+# Orbit Web 0.8.0 for a development machine -- ONE file, no repository, no build.
+# The published images (ghcr.io/cuongngoht/orbit-web*:0.8.0), for a machine without this repository: copy this
+# file alone into an empty directory as compose.yaml (the repository's compose.yaml builds from source instead).
+#
+#   mkdir orbit-web && cd orbit-web          # put this file here as compose.yaml
+#   docker compose pull
+#   docker compose up -d
+#   open http://localhost:3000                # "Set up Orbit Web"
+#
+# The first administrator needs a setup code. Either print a one-time code (30 minutes, used once):
+#
+#   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code
+#
+# or, on a machine nobody else can reach, give a standing one that the setup page fills in itself -- a `.env` beside
+# this file with:   ORBIT_WEB_SETUP_CODE=<8-64 characters>
+#
+# 0.8.0 STARTS FROM AN EMPTY DATABASE: nothing of an earlier Orbit Web is imported, and a database the release
+# candidate 0.8.0-rc01 made (its initial schema is not 0.8.0's) is refused at start with the command that empties it.
+# Nothing is migrated: before you pull 0.8.0 over an rc01 installation, keep what you need, then
+#   docker compose down -v        # or: docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> --with-data
+#
+# Requirements: Docker with Compose 2.23 or newer (Docker Desktop on macOS or Windows, in its default Linux-containers
+# mode with WSL2 on Windows, or Docker Engine on Linux) and about 10 GB of disk for the images. 0.8.0 is published
+# for linux/amd64 and linux/arm64: Docker pulls the one this machine needs.
+#
+# On Windows, if an AI employee's shell is refused because the storage quota cannot be enforced there, add
+# ORBIT_WEB_ACCEPT_SOFT_STORAGE=1 to the `.env` (its storage is then only measured, not limited by the kernel).
+#
+# Optional settings, in a `.env` beside this file (all have defaults that work on a development machine):
+#
+#   ORBIT_WEB_PORT=3000                      the port on 127.0.0.1
+#   ORBIT_WEB_NAME=orbit-web                 the name of every container and volume this file makes (change it to run
+#                                            two installations on one machine)
+#   ORBIT_WEB_TAG=0.8.0                      the images' tag
+#   ORBIT_WEB_DB_PASSWORD / ORBIT_WEB_POSTGRES_PASSWORD   the database's passwords (set them BEFORE the first start;
+#                                            the database is never published, so the defaults are local-only)
+#   ORBIT_WEB_WORKFORCE_POOL_SIZE=20g        the disk the AI employees' storage may take
+#
+# Four services: postgres (PostgreSQL 17 + pgvector, never published), orbit-web (the app), orbit-allocator (the only
+# holder of the Docker socket: it makes the AI employees' containers) and secret-init (runs once: makes the secret the
+# app and the allocator share, kept in a volume). Everything is in named volumes:
+#
+#   docker compose restart | logs -f | down          keep everything
+#   delete everything -- the employees' storage first (the allocator made it), then the rest:
+#     docker compose stop orbit-web orbit-allocator
+#     docker compose run --rm --entrypoint node orbit-allocator /opt/orbit-web/apps/api/dist/allocator/main.js destroy-storage --confirm=orbit-web-workforce
+#     docker compose down -v
+#   (with ORBIT_WEB_NAME set, confirm with <that name>-workforce)
+name: ${ORBIT_WEB_NAME:-orbit-web}
+
+x-employees: &employees
+  ORBIT_WEB_SANDBOX_PREFIX: ${ORBIT_WEB_NAME:-orbit-web}
+  ORBIT_WEB_SANDBOX_HOST: ${ORBIT_WEB_NAME:-orbit-web}
+  ORBIT_WEB_ALLOCATOR_SECRET_FILE: /run/orbit-secret/allocator.secret
+
+services:
+  secret-init:
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
+    container_name: ${ORBIT_WEB_NAME:-orbit-web}-secret-init
+    user: "0:0"
+    entrypoint:
+      - node
+      - -e
+      - >-
+        const fs = require("fs"); const p = "/secret/allocator.secret";
+        if (!fs.existsSync(p)) fs.writeFileSync(p, require("crypto").randomBytes(32).toString("hex"), { mode: 0o640 });
+        fs.chownSync(p, 0, 10001); fs.chmodSync(p, 0o640); console.log("allocator secret ready");
+    volumes:
+      - orbit-web-secret:/secret
+    network_mode: none
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf
+    container_name: ${ORBIT_WEB_NAME:-orbit-web}-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ORBIT_WEB_POSTGRES_PASSWORD:-orbit-postgres-local}
+      POSTGRES_DB: postgres
+      ORBIT_DB_PASSWORD: ${ORBIT_WEB_DB_PASSWORD:-orbit-local}
+    configs:
+      - source: postgres-init
+        target: /docker-entrypoint-initdb.d/10-orbit.sh
+    volumes:
+      - orbit-web-postgres:/var/lib/postgresql/data
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U orbit -d orbit"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: 768m
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  orbit-web:
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
+    container_name: ${ORBIT_WEB_NAME:-orbit-web}
+    hostname: ${ORBIT_WEB_NAME:-orbit-web}
+    ports:
+      - "127.0.0.1:${ORBIT_WEB_PORT:-3000}:3000"
+    volumes:
+      - orbit-web-data:/data
+      - orbit-web-secret:/run/orbit-secret:ro
+    environment:
+      <<: *employees
+      ORBIT_WEB_DATABASE_URL: postgres://orbit:${ORBIT_WEB_DB_PASSWORD:-orbit-local}@postgres:5432/orbit
+      ORBIT_WEB_ALLOWED_HOSTS: ${ORBIT_WEB_ALLOWED_HOSTS:-}
+      ORBIT_WEB_MAX_BUDGET_USD: ${ORBIT_WEB_MAX_BUDGET_USD:-}
+      ORBIT_WEB_SIGN_IN_ON_PAGE: ${ORBIT_WEB_SIGN_IN_ON_PAGE:-1}
+      ORBIT_WEB_SETUP_CODE: ${ORBIT_WEB_SETUP_CODE:-}
+      ORBIT_WEB_SANDBOX: container
+      ORBIT_WEB_ALLOCATOR_URL: http://orbit-allocator:7171
+      ORBIT_WEB_ACCEPT_SOFT_STORAGE: ${ORBIT_WEB_ACCEPT_SOFT_STORAGE:-0}
+      ORBIT_WEB_CONTROL_PLANE_LIMITS: "orbit-web:1.0:2g,postgres:0.5:768m,allocator:0.25:256m"
+    depends_on:
+      secret-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      orbit-allocator:
+        condition: service_started
+    networks:
+      - default
+      - db
+      - control
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 1.0
+    mem_limit: 2g
+    pids_limit: 2048
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  orbit-allocator:
+    image: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
+    container_name: ${ORBIT_WEB_NAME:-orbit-web}-allocator
+    command: ["node", "--disable-warning=ExperimentalWarning", "/opt/orbit-web/apps/api/dist/allocator/main.js"]
+    user: "0:0"
+    environment:
+      <<: *employees
+      ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
+      ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ghcr.io/cuongngoht/orbit-web-workstation:${ORBIT_WEB_TAG:-0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ghcr.io/cuongngoht/orbit-web-model-plane:${ORBIT_WEB_TAG:-0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ghcr.io/cuongngoht/orbit-web-storage-helper:${ORBIT_WEB_TAG:-0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_SESSION: ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_TAG:-0.8.0}
+      ORBIT_WEB_DATA_VOLUME: ${ORBIT_WEB_NAME:-orbit-web}_orbit-web-data
+      ORBIT_WEB_CONTROL_CONTAINER: ${ORBIT_WEB_NAME:-orbit-web}
+      ORBIT_WEB_ATTEMPT_SUBNETS: ${ORBIT_WEB_ATTEMPT_SUBNETS:-}
+      ORBIT_WEB_WORKFORCE_VOLUME: ${ORBIT_WEB_NAME:-orbit-web}-workforce
+      ORBIT_WEB_WORKFORCE_STORE_VOLUME: ${ORBIT_WEB_NAME:-orbit-web}-workforce-store
+      ORBIT_WEB_WORKFORCE_POOL_SIZE: ${ORBIT_WEB_WORKFORCE_POOL_SIZE:-20g}
+      ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE: ${ORBIT_WEB_WORKFORCE_POOL_PREALLOCATE:-1}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - orbit-web-allocator:/var/lib/orbit-allocator
+      - orbit-web-secret:/run/orbit-secret:ro
+    depends_on:
+      secret-init:
+        condition: service_completed_successfully
+    networks:
+      - control
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:7171/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 256
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+networks:
+  db:
+    internal: true
+  control:
+    internal: true
+
+# The database's first start: Orbit Web's own role (never a superuser), its database, and pgvector.
+# ($$ is a literal $ for Compose.)
+configs:
+  postgres-init:
+    content: |
+      #!/bin/sh
+      set -eu
+      : "$${ORBIT_DB_PASSWORD:?ORBIT_DB_PASSWORD must be set}"
+      psql -v ON_ERROR_STOP=1 --username "$$POSTGRES_USER" --dbname "$$POSTGRES_DB" \
+        -v role=orbit -v pw="$$ORBIT_DB_PASSWORD" -v db=orbit <<'SQL'
+      CREATE ROLE :"role" LOGIN PASSWORD :'pw' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+      CREATE DATABASE :"db" OWNER :"role";
+      REVOKE ALL ON DATABASE :"db" FROM PUBLIC;
+      SQL
+      psql -v ON_ERROR_STOP=1 --username "$$POSTGRES_USER" --dbname orbit <<'SQL'
+      CREATE EXTENSION IF NOT EXISTS vector;
+      SQL
+
+volumes:
+  orbit-web-data:
+  orbit-web-postgres:
+  orbit-web-allocator:
+  orbit-web-secret:

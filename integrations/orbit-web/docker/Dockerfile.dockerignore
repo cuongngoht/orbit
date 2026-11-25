@@ -9,3 +9,5 @@ integrations/orbit-web/**/.spec-dist
 integrations/orbit-web/**/coverage
 integrations/orbit-web/**/.env
 integrations/orbit-web/**/.env.*
+# The allocator's shared secret (compose.yaml) is the operator's: never sent to a builder.
+integrations/orbit-web/docker/allocator.secret

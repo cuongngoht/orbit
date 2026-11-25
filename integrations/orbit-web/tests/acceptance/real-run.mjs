@@ -4,16 +4,24 @@
 // turn. Only GitHub is stood in for (tests/acceptance/fake-gh.mjs, mounted and named by ORBIT_WEB_GH_BIN): its sign-in,
 // listing and clone of a real repository need a person, so those steps are reported BLOCKED, never passed.
 //
-// The Claude credential is handed to the container BY NAME only (`docker run -e CLAUDE_CODE_OAUTH_TOKEN`): start this
-// with the CLI's own variable name set, e.g.
+// Orbit Web keeps its records in PostgreSQL: the run starts the pinned pgvector image beside it, on a network of the
+// run's own, and removes both at the end.
 //
-//   CLAUDE_CODE_OAUTH_TOKEN="$ORBIT_CLAUDE_OAUTH_TOKEN" node tests/acceptance/real-run.mjs --image=orbit-web:0.7.0 \
+// Signing in is Orbit Web's own (ADR 0061): the run sets the first administrator up with the one-time code the
+// container's terminal prints, then connects Claude Code for that account, the two ways a person does:
+//   --api-key-env=<NAME>  the person's own Claude Console API key, read from that variable of THIS shell (never printed,
+//                         never written into the evidence) and given to Orbit Web as an API-key connection;
+//   otherwise             a subscription, signed in with Claude Code's own sign-in IN THIS TERMINAL (`docker exec -it …
+//                         connect.js <id>`): the URL and the code are the CLI's and the person's. Without a terminal it
+//                         is BLOCKED and the run stops there.
+//
+//   node tests/acceptance/real-run.mjs [--api-key-env=ANTHROPIC_API_KEY] [--image=orbit-web:<version>] \
 //     [--budget=2] [--ca-file=<pem>] [--out=<dir>] [--keep]
 //
 // Every step is PASS, FAIL, BLOCKED (needs a person) or STAND-IN (GitHub replaced by the fixture), with its evidence.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +31,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const IMAGE = opt("image") ?? "orbit-web:0.7.0";
+const VERSION = JSON.parse(readFileSync(join(HERE, "..", "..", "package.json"), "utf8")).version;
+const IMAGE = opt("image") ?? `orbit-web:${VERSION}`;
+const API_KEY_ENV = opt("api-key-env");
 const BUDGET = opt("budget") ?? "2";
 const PROMPT = "Fix the incorrect addition in sum.mjs so the existing test passes. Do not modify the test.";
 const FOLLOW_UP = "In one sentence, what did you change and why?";
@@ -32,6 +42,10 @@ const OUT = opt("out") ?? join("/tmp", "orbit-web-acceptance", stamp);
 const suffix = randomBytes(4).toString("hex");
 const NAME = `orbit-web-acceptance-${suffix}`;
 const VOLUME = `orbit-web-acceptance-${suffix}`;
+const NETWORK = `orbit-web-acceptance-${suffix}`;
+const DATABASE = `orbit-web-acceptance-db-${suffix}`;
+const DB_IMAGE = "pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf";
+const DB_PASSWORD = randomBytes(12).toString("hex");
 
 const steps = [];
 const evidence = { image: IMAGE, budgetUsdPerTurn: Number(BUDGET), startedAt: new Date().toISOString(), runs: [] };
@@ -53,9 +67,34 @@ const freePort = () =>
     });
   });
 
+// A keep-alive socket the server closed while this process sat in a synchronous docker command (the event loop could
+// not see it close) fails the next request with "other side closed" before the server read it: asked again, on a new one.
+async function fetchFresh(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    if (err?.cause?.code !== "UND_ERR_SOCKET") throw err;
+    return fetch(url, init);
+  }
+}
+
 let PORT = 0;
+// The browser this run is: the cookies Orbit Web sets (its session) and, with a change, the header and the session's
+// CSRF token.
+const browser = { cookies: {}, csrf: "" };
+const cookieHeader = () => Object.entries(browser.cookies).map(([k, v]) => `${k}=${v}`).join("; ");
+function keepCookies(headers) {
+  for (const c of headers.getSetCookie()) {
+    const [pair] = c.split(";");
+    const at = pair.indexOf("=");
+    if (pair.slice(at + 1) === "") delete browser.cookies[pair.slice(0, at)];
+    else browser.cookies[pair.slice(0, at)] = pair.slice(at + 1);
+  }
+}
 const api = async (path, init = {}) => {
-  const res = await fetch(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(init.method && init.method !== "GET" ? { "x-orbit-web": "1" } : {}), ...(init.headers ?? {}) } });
+  const change = init.method !== undefined && init.method !== "GET";
+  const res = await fetchFresh(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { ...(init.body ? { "content-type": "application/json" } : {}), ...(change ? { "x-orbit-web": "1", "x-orbit-csrf": browser.csrf } : {}), ...(Object.keys(browser.cookies).length > 0 ? { cookie: cookieHeader() } : {}), ...(init.headers ?? {}) } });
+  keepCookies(res.headers);
   const text = await res.text();
   let body = text;
   try {
@@ -81,7 +120,7 @@ async function follow(sessionId, afterSeq, endTypes, timeoutMs) {
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const frames = [];
   try {
-    const res = await fetch(`http://127.0.0.1:${PORT}/api/sessions/${sessionId}/events`, { headers: { accept: "text/event-stream", "last-event-id": String(afterSeq) }, signal: controller.signal });
+    const res = await fetchFresh(`http://127.0.0.1:${PORT}/api/sessions/${sessionId}/events`, { headers: { accept: "text/event-stream", "last-event-id": String(afterSeq), cookie: cookieHeader() }, signal: controller.signal });
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -117,17 +156,28 @@ const parsed = (text) => {
   }
 };
 
+// The pinned PostgreSQL with pgvector, its role made by the compose files' own init script.
+async function startDatabase() {
+  docker(["network", "create", NETWORK]);
+  const run = docker(["run", "-d", "--name", DATABASE, "--network", NETWORK, "-e", "POSTGRES_USER=postgres", "-e", `POSTGRES_PASSWORD=${randomBytes(12).toString("hex")}`, "-e", "POSTGRES_DB=postgres", "-e", `ORBIT_DB_PASSWORD=${DB_PASSWORD}`, "-v", `${join(HERE, "..", "..", "docker", "postgres", "init")}:/docker-entrypoint-initdb.d:ro`, DB_IMAGE]);
+  if (run.status !== 0) return { ok: false, detail: run.stderr.trim() };
+  for (let i = 0; i < 90; i += 1) {
+    if (docker(["exec", DATABASE, "pg_isready", "-h", "127.0.0.1", "-U", "orbit", "-d", "orbit", "-q"]).status === 0) return { ok: true, detail: DB_IMAGE.split("@")[0] };
+    await sleep(1000);
+  }
+  return { ok: false, detail: "PostgreSQL was not ready in 90 s" };
+}
+
 function startContainer(fixture) {
   const ca = opt("ca-file");
   const args = [
-    "run", "-d", "--name", NAME, "--hostname", "orbit-web",
+    "run", "-d", "--name", NAME, "--hostname", "orbit-web", "--network", NETWORK,
     "-p", `127.0.0.1:${PORT}:3000`,
     "-v", `${VOLUME}:/data`,
     "-v", `${fixture.served}:/fixture:ro`,
     "-v", `${join(HERE, "fake-gh.mjs")}:/acceptance/fake-gh.mjs:ro`,
     "-e", "ORBIT_WEB_GH_BIN=/acceptance/fake-gh.mjs",
-    // By NAME: docker copies the value from this process's environment; it is never on a command line or in a file.
-    "-e", "CLAUDE_CODE_OAUTH_TOKEN",
+    "-e", `ORBIT_WEB_DATABASE_URL=postgres://orbit:${DB_PASSWORD}@${DATABASE}:5432/orbit`,
     "-e", `ORBIT_WEB_MAX_BUDGET_USD=${BUDGET}`,
     ...(ca ? ["-v", `${ca}:/etc/orbit-web-ca.pem:ro`, "-e", "NODE_EXTRA_CA_CERTS=/etc/orbit-web-ca.pem", "-e", "SSL_CERT_FILE=/etc/orbit-web-ca.pem"] : []),
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
@@ -159,10 +209,6 @@ const summarise = (frames) => {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  if (!process.env.CLAUDE_CODE_OAUTH_TOKEN && !process.env.ANTHROPIC_API_KEY) {
-    step(0, "a Claude credential for the run", "BLOCKED", "neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set (checked by name)");
-    return finish();
-  }
   if (docker(["image", "inspect", IMAGE]).status !== 0) {
     step(0, "the image to run", "FAIL", `${IMAGE} is not built (node scripts/build-image.mjs)`);
     return finish();
@@ -174,39 +220,65 @@ async function main() {
     await run(fixture);
   } finally {
     if (!flag("keep")) {
-      docker(["rm", "-f", NAME]);
+      docker(["rm", "-f", NAME, DATABASE]);
       docker(["volume", "rm", VOLUME]);
+      docker(["network", "rm", NETWORK]);
     }
     rmSync(fixture.root, { recursive: true, force: true });
   }
   return finish();
 }
 
+// ORBIT WEB'S OWN SIGN-IN, then the account's Claude Code connection -- the address of the identity is never written
+// into the evidence.
+async function signIn() {
+  const printed = exec("node", "/opt/orbit-web/apps/api/dist/cli/governance.js", "owner", "setup-code");
+  const code = (printed.stdout.match(/^ {4}(\S+)$/m) ?? [])[1] ?? null;
+  if (printed.status !== 0 || code === null) return { status: "FAIL", detail: `no setup code: ${(printed.stderr || printed.stdout).trim().slice(0, 200)}` };
+  const password = `Acceptance-${randomBytes(12).toString("base64url")}`;
+  const setUp = await api("/api/auth/setup", { method: "POST", body: JSON.stringify({ code, username: "admin", password, fullName: "Acceptance Owner", timezone: "UTC" }) });
+  browser.csrf = setUp.body?.session?.csrfToken ?? "";
+  if (setUp.status !== 200 || browser.csrf === "") return { status: "FAIL", detail: `the first administrator was not set up: HTTP ${setUp.status} ${JSON.stringify(setUp.body).slice(0, 200)}` };
+  const key = API_KEY_ENV ? process.env[API_KEY_ENV] : undefined;
+  if (API_KEY_ENV && !key) return { status: "BLOCKED", detail: `--api-key-env names ${API_KEY_ENV}, which this shell does not set` };
+  if (!key && !process.stdin.isTTY) return { status: "BLOCKED", detail: "a subscription is signed in by a person in a terminal: run this at one, or name an API key's variable with --api-key-env" };
+  const made = await api("/api/connections", { method: "POST", body: JSON.stringify(key ? { runtime: "claude", method: "api_key", label: "Acceptance (API key)", apiKey: key } : { runtime: "claude", method: "subscription", label: "Acceptance (subscription)" }) });
+  if (made.status !== 201) return { status: "FAIL", detail: `the connection was not made: HTTP ${made.status} ${JSON.stringify(made.body).slice(0, 200)}` };
+  const id = made.body.id;
+  if (!key) {
+    process.stdout.write("\nClaude Code's own sign-in, in this terminal, for the acceptance connection:\n\n");
+    spawnSync("docker", ["exec", "-it", NAME, "node", "/opt/orbit-web/apps/api/dist/cli/connect.js", id], { stdio: "inherit" });
+  }
+  const checked = await api(`/api/connections/${id}/check`, { method: "POST", body: "{}" });
+  const c = checked.body;
+  if (checked.status !== 200 || c?.auth !== "connected") return { status: "FAIL", detail: `the connection is ${c?.auth ?? `HTTP ${checked.status}`}: ${c?.reason ?? ""}` };
+  return { status: "PASS", detail: `signed in to Orbit Web with its own setup code and password; Claude Code connected by ${key ? "an API key" : "its own sign-in in a terminal"}, its models read from the account (${c.catalog?.models?.length ?? 0})` };
+}
+
 async function run(fixture) {
-  const started = startContainer(fixture);
+  const database = await startDatabase();
+  const started = database.ok ? startContainer(fixture) : { status: 1, stderr: `PostgreSQL: ${database.detail}` };
   const up = started.status === 0 && (await healthy());
-  step(1, "Start Orbit Web Docker", up ? "PASS" : "FAIL", up ? `${IMAGE} healthy on 127.0.0.1:${PORT}` : started.stderr.trim());
+  step(1, "Start Orbit Web Docker", up ? "PASS" : "FAIL", up ? `${IMAGE} healthy on 127.0.0.1:${PORT}, beside ${database.detail}` : started.stderr.trim());
   if (!up) return;
-  const index = await fetch(`http://127.0.0.1:${PORT}/`);
+  const index = await fetchFresh(`http://127.0.0.1:${PORT}/`);
   step(2, "Open the application", index.status === 200 ? "PASS" : "FAIL", `GET / -> ${index.status}`);
 
+  const signedIn = await signIn();
+  step(3, "Sign in to Orbit Web, and connect Claude Code", signedIn.status, signedIn.detail);
+  if (signedIn.status !== "PASS") return;
   const setup = (await api("/api/setup/status")).body;
   evidence.versions = setup.versions;
-  step(3, "Sign in to Claude Code", "BLOCKED", `the browser sign-in needs a person; this run used Claude Code's own environment credential (Orbit Web reads it as: ${setup.claude.state}, source ${setup.claude.source}, method ${setup.claude.method})`);
   step(4, "Click Connect GitHub", "BLOCKED", "the device flow needs a person at github.com/login/device (the real gh in the image was seen to print a real one-time code)");
   step(5, "Authenticate using GitHub CLI's browser flow", "BLOCKED", `needs a person; GitHub is stood in for by the acceptance fake (connected as ${setup.github.account?.login ?? "?"})`);
-  if (setup.claude.state !== "connected") {
-    step(6, "the Claude credential works", "FAIL", JSON.stringify(setup.claude));
-    return;
-  }
-  const repos = (await api("/api/repositories")).body;
+  const repos = (await api("/api/repositories?source=github")).body;
   const listed = repos.repositories?.some((r) => r.fullName === FIXTURE_REPOSITORY);
   step(6, "Select the fixture GitHub repository", listed ? "STAND-IN" : "FAIL", `listed through Orbit Web's own code from the stand-in: ${JSON.stringify(repos.repositories?.map((r) => r.fullName))}`);
-  const branches = (await api(`/api/repositories/${FIXTURE_REPOSITORY}/branches`)).body;
+  const branches = (await api(`/api/repositories/branches?source=github&id=${encodeURIComponent(FIXTURE_REPOSITORY)}`)).body;
   step(7, "Select the branch", branches.branches?.[0]?.name === "main" ? "PASS" : "FAIL", `branches: ${JSON.stringify(branches.branches?.map((b) => b.name))}`);
-  step(8, "Choose Sonnet", "PASS", "model: sonnet");
+  step(8, "Choose Sonnet 5.5, Medium effort, Autonomous", "PASS", "model: sonnet, effort: medium, mode: autonomous (--permission-mode auto)");
 
-  const created = await api("/api/sessions", { method: "POST", body: JSON.stringify({ repository: FIXTURE_REPOSITORY, branch: "main", model: "sonnet", prompt: PROMPT }) });
+  const created = await api("/api/sessions", { method: "POST", body: JSON.stringify({ repository: { source: "github", id: FIXTURE_REPOSITORY }, branch: "main", model: "sonnet", effort: "medium", mode: "autonomous", prompt: PROMPT }) });
   step(9, "Create a new chat", created.status === 201 ? "PASS" : "FAIL", `HTTP ${created.status} ${JSON.stringify(created.body).slice(0, 200)}`);
   if (created.status !== 201) return;
   const id = created.body.id;
@@ -268,7 +340,7 @@ function finish() {
   writeFileSync(join(OUT, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   const counts = steps.reduce((m, s) => ({ ...m, [s.status]: (m[s.status] ?? 0) + 1 }), {});
   const md = [
-    "# Orbit Web 0.7.0 -- real acceptance run",
+    `# Orbit Web ${VERSION} -- real acceptance run`,
     "",
     `Image ${IMAGE}; Claude Code ${evidence.versions?.claude ?? "?"}; Orbit ${evidence.versions?.orbit ?? "?"} (${evidence.versions?.orbitCommit ?? "?"}); budget $${BUDGET} per turn.`,
     "",

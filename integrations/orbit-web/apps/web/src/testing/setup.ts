@@ -17,7 +17,10 @@ Object.defineProperty(window, "matchMedia", {
 });
 Object.defineProperty(window, "EventSource", { writable: true, value: FakeEventSource });
 Object.defineProperty(globalThis, "EventSource", { writable: true, value: FakeEventSource });
-Element.prototype.scrollIntoView = () => {};
+// jsdom does not scroll. Answer as browsers do now (CSSOM View: a scroll method answers a promise), so an effect that
+// returns what scrolling answered fails here as it fails in a browser: React keeps an effect's return as its clean-up,
+// calls it on the next run, and with no boundary the whole page comes down.
+Element.prototype.scrollIntoView = () => Promise.resolve();
 
 // jsdom has no layout: offsetParent is always null and every rectangle is empty. Fluent UI's focus manager (tabster)
 // reads both to decide what is visible, so under jsdom nothing is focusable: a dialog then focuses its own surface, a

@@ -94,7 +94,7 @@ function writeProblem(masked) {
 // A ${PARAM} spliced OUTSIDE a quoted value changes the STATEMENT rather than
 // the question: `WHERE Id = ${ID}` with ID = "1 OR 1=1" asks something else
 // entirely. Inside a literal, doubling the quote (escape.mjs) keeps it one value
-// -- which is escaping, not binding, and the README says so.
+// -- which is escaping, not binding.
 export function unquotedPlaceholders(sql) {
   const masked = maskSql(sql);
   const found = [...String(sql ?? "").matchAll(PLACEHOLDER)];

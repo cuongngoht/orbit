@@ -5,11 +5,12 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 const contracts = fileURLToPath(new URL("../../packages/contracts/src/index.ts", import.meta.url));
+const governance = fileURLToPath(new URL("../../packages/governance-core/src/index.ts", import.meta.url));
 const API = process.env.ORBIT_WEB_API ?? "http://127.0.0.1:3000";
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { "@orbit-web/contracts": contracts } },
+  resolve: { alias: { "@orbit-web/contracts": contracts, "@orbit-web/governance-core": governance } },
   build: { outDir: "dist", emptyOutDir: true, sourcemap: false, chunkSizeWarningLimit: 2000 },
   server: {
     host: "127.0.0.1",

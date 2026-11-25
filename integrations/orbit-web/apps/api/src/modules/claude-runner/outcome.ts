@@ -15,6 +15,8 @@ export interface OutcomeFacts {
   exit: ExitInfo;
   result: ResultInfo | null;
   stderrTail: string;
+  // The CLI the run was, as its messages name it.
+  cli?: string;
 }
 
 export function decideOutcome(f: OutcomeFacts): Outcome {
@@ -22,19 +24,20 @@ export function decideOutcome(f: OutcomeFacts): Outcome {
   const denials = f.result?.permissionDenials ?? 0;
   if (f.stoppedBy !== null) return { status: "interrupted", type: "session.interrupted", data: { reason: f.stoppedBy, exitCode: f.exit.code, signal: f.exit.signal } };
   if (f.exit.spawnError !== null) {
-    return { status: "failed", type: "session.failed", data: { reason: "spawn", subtype: null, message: `Claude Code could not be started (${f.exit.spawnError}).`, exitCode: null, signal: null, permissionDenials: 0, ...usage } };
+    return { status: "failed", type: "session.failed", data: { reason: "spawn", subtype: null, message: `${f.cli ?? "Claude Code"} could not be started (${f.exit.spawnError}).`, exitCode: null, signal: null, permissionDenials: 0, ...usage } };
   }
   if (f.result !== null && !f.result.isError && f.result.subtype === "success" && f.exit.code === 0) {
     return { status: "completed", type: "session.completed", data: { subtype: f.result.subtype, result: f.result.text, permissionDenials: denials, ...usage } };
   }
   if (f.result !== null) {
-    const message = f.result.text.trim() || `Claude Code ended with ${f.result.subtype}.`;
+    const message = f.result.text.trim() || `${f.cli ?? "Claude Code"} ended with ${f.result.subtype}.`;
     return { status: "failed", type: "session.failed", data: { reason: "cli_error", subtype: f.result.subtype, message, exitCode: f.exit.code, signal: f.exit.signal, permissionDenials: denials, ...usage } };
   }
   const how = f.exit.signal !== null ? `was stopped by ${f.exit.signal}` : `exited with code ${f.exit.code}`;
-  const message = f.stderrTail.trim() ? `Claude Code ${how}: ${f.stderrTail.trim()}` : `Claude Code ${how} without a result.`;
+  const message = f.stderrTail.trim() ? `${f.cli ?? "Claude Code"} ${how}: ${f.stderrTail.trim()}` : `${f.cli ?? "Claude Code"} ${how} without a result.`;
   return { status: "failed", type: "session.failed", data: { reason: f.exit.code === 0 ? "no_result" : "exit", subtype: null, message, exitCode: f.exit.code, signal: f.exit.signal, permissionDenials: 0, ...usage } };
 }
 
 // The CLI could not find the conversation to resume (it was never stored): the next turn must start a new one.
-export const lostConversation = (text: string): boolean => /No conversation found/i.test(text);
+// Claude Code: "No conversation found"; OpenAI Codex: "no rollout found for thread id".
+export const lostConversation = (text: string): boolean => /No conversation found|no rollout found for thread id/i.test(text);

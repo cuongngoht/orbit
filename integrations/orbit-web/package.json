@@ -1,6 +1,6 @@
 {
   "name": "orbit-web",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "Orbit Web: a self-hosted, browser-based Claude Code experience with the Orbit plugin, shipped as one Docker image.",
   "type": "module",
@@ -9,15 +9,16 @@
     "node": ">=22.13"
   },
   "workspaces": [
+    "packages/governance-core",
     "packages/contracts",
     "apps/api",
     "apps/web"
   ],
   "scripts": {
-    "build": "npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api && npm run build -w @orbit-web/web",
-    "typecheck": "npm run build -w @orbit-web/contracts && npm run typecheck -w @orbit-web/api && npm run typecheck -w @orbit-web/web",
+    "build": "npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run build -w @orbit-web/api && npm run build -w @orbit-web/web",
+    "typecheck": "npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run typecheck -w @orbit-web/api && npm run typecheck -w @orbit-web/web",
     "lint": "eslint --max-warnings=0 .",
-    "test": "npm run build -w @orbit-web/contracts && npm run test -w @orbit-web/contracts && npm run test -w @orbit-web/api && npm run test -w @orbit-web/web",
+    "test": "npm run build -w @orbit-web/governance-core && npm run build -w @orbit-web/contracts && npm run test -w @orbit-web/governance-core && npm run test -w @orbit-web/contracts && npm run test -w @orbit-web/api && npm run test -w @orbit-web/web",
     "ci": "node scripts/ci.mjs"
   },
   "devDependencies": {

@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { applyDelta } from "./events.js";
+import { applyDelta, DURABLE_EVENT_TYPES, EVENT_CATALOG, isDurableType, isEventType, streamOf } from "./events/index.js";
+import { EFFORT_CHOICES, MODEL_CHOICES, MODE_PERMISSION } from "./models.js";
 import {
+  checkChangeBranch,
+  checkShareRequest,
   checkCreateSession,
-  checkLoginCode,
+  isRepositoryRef,
+  splitAzureId,
   checkSendMessage,
   checkUpdateSession,
   checkUpdateSettings,
@@ -22,13 +26,32 @@ test("a branch name follows git's rules and never starts like an option", () => 
   for (const bad of ["", "-rf", "a..b", "a b", "a~1", "a^", "a:b", "x.lock", "x/", "/x", "@", "a@{1}", ".hidden", "a//b", "a\u0000"]) assert.equal(isBranchName(bad), false, bad);
 });
 
-test("a new session needs a repository, a branch and a model, and refuses fields it does not know", () => {
-  const ok = checkCreateSession({ repository: "o/r", branch: "main", model: "sonnet", title: "  Fix it  ", prompt: "hello" });
-  assert.deepEqual(ok, { ok: true, value: { repository: "o/r", branch: "main", model: "sonnet", title: "Fix it", prompt: "hello" } });
-  const bad = checkCreateSession({ repository: "o", branch: "-x", model: "gpt", extra: 1 });
+const AZURE_REPO = "Fabrikam/278d5cd2-584d-4b63-824a-2ba458937249";
+
+test("a new chat has a model, and a repository of either source -- or none -- and refuses fields it does not know", () => {
+  const github = checkCreateSession({ repository: { source: "github", id: "o/r" }, branch: "main", model: "sonnet", effort: "xhigh", mode: "plan", title: "  Fix it  ", prompt: "hello" });
+  assert.deepEqual(github, { ok: true, value: { repository: { source: "github", id: "o/r" }, branch: "main", model: "sonnet", effort: "xhigh", mode: "plan", title: "Fix it", prompt: "hello" } });
+  const azure = checkCreateSession({ repository: { source: "azure", id: AZURE_REPO }, model: "fable" });
+  assert.deepEqual(azure, { ok: true, value: { repository: { source: "azure", id: AZURE_REPO }, branch: null, model: "fable" } });
+  assert.deepEqual(checkCreateSession({ model: "opus", prompt: "no repository" }), { ok: true, value: { repository: null, branch: null, model: "opus", prompt: "no repository" } });
+  assert.deepEqual(checkCreateSession({ repository: null, branch: null, model: "haiku" }), { ok: true, value: { repository: null, branch: null, model: "haiku" } });
+  // Which models and efforts an account may use is its catalog's, held by the API; here only their shape: never an
+  // option, never whitespace.
+  const bad = checkCreateSession({ repository: { source: "github", id: "o" }, branch: "-x", model: "--dangerously-skip-permissions", effort: "Huge effort", mode: "dontAsk", extra: 1 });
   assert.equal(bad.ok, false);
-  assert.equal(bad.ok ? 0 : bad.errors.length, 4);
+  assert.equal(bad.ok ? 0 : bad.errors.length, 6);
+  assert.equal(checkCreateSession({ branch: "main", model: "sonnet" }).ok, false, "a branch needs a repository");
+  assert.equal(checkCreateSession({ repository: "o/r", model: "sonnet" }).ok, false, "a bare string is not a repository reference");
   assert.equal(checkCreateSession([]).ok, false);
+});
+
+test("a repository reference is a known source and an id of that source's shape", () => {
+  assert.equal(isRepositoryRef({ source: "github", id: "cuongngoht/orbit" }), true);
+  assert.equal(isRepositoryRef({ source: "azure", id: AZURE_REPO }), true);
+  for (const bad of [{ source: "gitlab", id: "o/r" }, { source: "azure", id: "o/r" }, { source: "github", id: "o/r/x" }, { source: "github", id: "o/r", url: "x" }, { source: "azure", id: "-org/278d5cd2-584d-4b63-824a-2ba458937249" }, null, "o/r"])
+    assert.equal(isRepositoryRef(bad), false, JSON.stringify(bad));
+  assert.deepEqual(splitAzureId("Fabrikam/278D5CD2-584D-4B63-824A-2BA458937249"), { organization: "Fabrikam", repositoryId: "278d5cd2-584d-4b63-824a-2ba458937249" });
+  assert.equal(splitAzureId("Fabrikam/project/repo"), null);
 });
 
 test("a message is non-empty text of a bounded length", () => {
@@ -38,17 +61,84 @@ test("a message is non-empty text of a bounded length", () => {
   assert.equal(checkSendMessage({ text: "go", command: "rm" }).ok, false);
 });
 
-test("an update names something to change", () => {
-  assert.equal(checkUpdateSession({}).ok, false);
-  assert.deepEqual(checkUpdateSession({ model: "opus" }), { ok: true, value: { model: "opus" } });
-  assert.equal(checkUpdateSettings({ webTools: "yes" }).ok, false);
-  assert.deepEqual(checkUpdateSettings({ theme: "dark" }), { ok: true, value: { theme: "dark" } });
+const IMG_A = "aaaaaaaa-1111-4222-8333-444444444444";
+const IMG_B = "bbbbbbbb-1111-4222-8333-444444444444";
+
+test("a message may carry images by id: with one, the words may be none; never a name twice, never more than six", () => {
+  assert.deepEqual(checkSendMessage({ text: "what is wrong here?", images: [IMG_A, IMG_B] }), { ok: true, value: { text: "what is wrong here?", images: [IMG_A, IMG_B] } });
+  assert.deepEqual(checkSendMessage({ text: "", images: [IMG_A] }), { ok: true, value: { text: "", images: [IMG_A] } });
+  assert.deepEqual(checkSendMessage({ text: "go", images: [] }), { ok: true, value: { text: "go" } }, "no images is no images");
+  assert.equal(checkSendMessage({ text: "", images: [] }).ok, false, "nothing at all is not a message");
+  assert.equal(checkSendMessage({ text: "x", images: [IMG_A, IMG_A] }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: ["../../etc/passwd"] }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: Array.from({ length: 7 }, (_, i) => `aaaaaaaa-1111-4222-8333-44444444444${i}`) }).ok, false);
+  assert.equal(checkSendMessage({ text: "x", images: IMG_A }).ok, false, "a list, not one id");
 });
 
-test("a sign-in code is printable and has no whitespace", () => {
-  assert.deepEqual(checkLoginCode({ code: " abc#DEF-123 " }), { ok: true, value: { code: "abc#DEF-123" } });
-  assert.equal(checkLoginCode({ code: "a b" }).ok, false);
-  assert.equal(checkLoginCode({ code: "" }).ok, false);
+test("a new chat's first message may be images, words, or both", () => {
+  assert.deepEqual(checkCreateSession({ model: "sonnet", images: [IMG_A] }), { ok: true, value: { repository: null, branch: null, model: "sonnet", images: [IMG_A] } });
+  assert.deepEqual(checkCreateSession({ model: "sonnet", prompt: "look", images: [IMG_A] }), { ok: true, value: { repository: null, branch: null, model: "sonnet", prompt: "look", images: [IMG_A] } });
+  assert.equal(checkCreateSession({ model: "sonnet", images: ["x"] }).ok, false);
+});
+
+test("sharing names only whether the tools' doings come along, and they do not unless asked", () => {
+  assert.deepEqual(checkShareRequest(undefined), { ok: true, value: { includeTools: false } });
+  assert.deepEqual(checkShareRequest({}), { ok: true, value: { includeTools: false } });
+  assert.deepEqual(checkShareRequest({ includeTools: true }), { ok: true, value: { includeTools: true } });
+  for (const bad of [{ includeTools: "yes" }, { public: true }, "x"]) assert.equal(checkShareRequest(bad).ok, false, JSON.stringify(bad));
+});
+
+test("a working branch is a valid branch name, an existing one or -- with create -- a new one", () => {
+  assert.deepEqual(checkChangeBranch({ branch: "feature/approvers" }), { ok: true, value: { branch: "feature/approvers", create: false } });
+  assert.deepEqual(checkChangeBranch({ branch: "docs/x", create: true }), { ok: true, value: { branch: "docs/x", create: true } });
+  for (const bad of [{}, { branch: "" }, { branch: "-f" }, { branch: "a..b" }, { branch: "x", create: "yes" }, { branch: "x", force: true }, "x"]) assert.equal(checkChangeBranch(bad).ok, false, JSON.stringify(bad));
+});
+
+test("an update names something to change: the title, or the model, effort or mode of the next message", () => {
+  assert.equal(checkUpdateSession({}).ok, false);
+  assert.deepEqual(checkUpdateSession({ model: "opus" }), { ok: true, value: { model: "opus" } });
+  assert.deepEqual(checkUpdateSession({ effort: "max", mode: "autonomous" }), { ok: true, value: { effort: "max", mode: "autonomous" } });
+  assert.equal(checkUpdateSession({ mode: "bypassPermissions" }).ok, false);
+  assert.equal(checkUpdateSettings({ webTools: "yes" }).ok, false);
+  assert.equal(checkUpdateSettings({ projectPlugins: 1 }).ok, false);
+  assert.equal(checkUpdateSettings({ githubForClaude: "on" }).ok, false);
+  assert.deepEqual(checkUpdateSettings({ githubForClaude: true }), { ok: true, value: { githubForClaude: true } });
+  assert.deepEqual(checkUpdateSettings({ theme: "dark" }), { ok: true, value: { theme: "dark" } });
+  assert.deepEqual(checkUpdateSettings({ defaultEffort: "low", defaultMode: "plan", projectPlugins: false }), { ok: true, value: { defaultEffort: "low", defaultMode: "plan", projectPlugins: false } });
+});
+
+test("a new chat's default AI is one a chat runs on: Claude Code or OpenAI Codex, nothing else", () => {
+  assert.deepEqual(checkUpdateSettings({ defaultRuntime: "codex" }), { ok: true, value: { defaultRuntime: "codex" } });
+  assert.deepEqual(checkUpdateSettings({ defaultRuntime: "claude", defaultModel: "opus" }), { ok: true, value: { defaultRuntime: "claude", defaultModel: "opus" } });
+  for (const bad of ["agy", "gpt", "", null, 1]) assert.deepEqual(checkUpdateSettings({ defaultRuntime: bad }), { ok: false, errors: ["defaultRuntime must be one of claude, codex"] }, JSON.stringify(bad));
+});
+
+test("the models, efforts and modes are the CLI's own words", () => {
+  assert.deepEqual([...MODEL_CHOICES], ["opus", "fable", "sonnet", "haiku"]);
+  assert.deepEqual([...EFFORT_CHOICES], ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(MODE_PERMISSION, { autonomous: "auto", plan: "plan" });
+});
+
+test("the event catalog is the one list of what exists, which stream it travels on, and whether it is kept", () => {
+  for (const [type, spec] of Object.entries(EVENT_CATALOG)) {
+    assert.equal(isEventType(type), true, type);
+    assert.ok(spec.summary.length > 0, type);
+    if (spec.stream === "app") assert.equal(spec.durable, false, `${type}: the app stream is notifications`);
+  }
+  assert.equal(isDurableType("message.delta"), false);
+  assert.equal(isDurableType("session.summary"), false);
+  assert.equal(isDurableType("tool.started"), true);
+  assert.equal(isEventType("constructor"), false);
+  assert.equal(streamOf("connector.flow"), "app");
+  // Only a chat's, a research session's and a CEO Chat conversation's streams keep anything (each its own journal);
+  // the app stream never does.
+  assert.equal(DURABLE_EVENT_TYPES.every((t) => streamOf(t) === "session" || streamOf(t) === "research" || streamOf(t) === "executive"), true);
+  assert.equal(isDurableType("research.message.delta"), false);
+  assert.equal(isDurableType("research.citation.recorded"), true);
+  assert.equal(isDurableType("executive.response.delta"), false, "the answer being written is transient");
+  assert.equal(isDurableType("executive.response.completed"), true);
+  assert.equal(streamOf("executive.conversation.created"), "app");
+  assert.equal(isDurableType("executive.conversation.created"), false, "the app stream says ids only, and keeps nothing");
 });
 
 test("a delta never doubles text a client already holds, and a gap waits", () => {

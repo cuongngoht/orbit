@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { LoginSnapshot } from "@orbit-web/contracts";
 import { FakeChild, FakeProcessPort } from "../testing/fake-process.js";
-import { LoginFlow, lastWords, type LoginDriver } from "./login-flow.js";
+import { LoginFlow, lastWords, type LoginDriver, type LoginFields } from "./login-flow.js";
 import { readGhLogin } from "../modules/github/github-auth.service.js";
-import { readClaudeLogin } from "../modules/claude-auth/claude-auth.service.js";
+
+// A CLI whose sign-in asks for a code pasted back (what LoginFlow supports for any driver that says needsCode).
+const readCodeLogin = (output: string): LoginFields => ({ url: [...output.matchAll(/visit:\s*(https:\/\/\S+)/g)].at(-1)?.[1] ?? null, needsCode: /paste code here/i.test(output) });
 
 const until = async (flow: LoginFlow, state: LoginSnapshot["state"]): Promise<LoginSnapshot> => {
   for (let i = 0; i < 200; i += 1) {
@@ -80,12 +82,12 @@ test("a sign-in nobody finishes times out", async () => {
   assert.match((await until(flow, "timed_out")).message ?? "", /timed out/);
 });
 
-test("Claude's flow: the code a person pastes goes to the CLI's stdin, and a second prompt asks again", async () => {
+test("a flow that asks for a code: the code a person pastes goes to the CLI's stdin, and a second prompt asks again", async () => {
   let child: FakeChild | null = null;
   const { flow, driver } = setup((c) => {
     child = c;
     c.stdout("If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?x=1\nPaste code here if prompted > ");
-  }, undefined, 2_000, readClaudeLogin);
+  }, undefined, 2_000, readCodeLogin);
   flow.start(driver);
   const waiting = await until(flow, "awaiting_user");
   assert.equal(waiting.needsCode, true);

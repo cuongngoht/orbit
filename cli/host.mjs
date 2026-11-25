@@ -4,7 +4,7 @@
 // node cli/host.mjs inspect|render --host=claude --kind=statusline
 // node cli/host.mjs apply --host=claude --kind=statusline --revision=<sha> [--replace | --keep-existing] --human
 // node cli/host.mjs remove --host=claude --kind=statusline --revision=<sha> --human
-//   Orbit Live's status line (README §4.16): ONE owned key, `statusLine`, in the user's own Claude Code settings,
+//   Orbit Live's status line (README, "Orbit Live"): ONE owned key, `statusLine`, in the user's own Claude Code settings,
 //   naming a shim Orbit keeps in its store. A status line the person already has is refused unless they choose
 //   --replace (theirs comes back on remove) or --keep-existing (theirs runs first, then Orbit's; not on Windows).
 //   The revision is the one `render` printed; apply and remove are a person's, and say so with --human.

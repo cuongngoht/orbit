@@ -19,7 +19,7 @@ an MCP runtime, set up a report connection, its credential or its Microsoft sign
 router would pick. It starts the server on loopback only and never adds, enables or approves
 anything itself; the person does.
 
-Orbit Control is a server that sits **beside** the engine (`control-server/`, README §8.1). It
+Orbit Control is a server that sits **beside** the engine (`control-server/`; README, "Orbit Control"). It
 needs Node **>= 24.15**, while the engine and the shell running this session may be on 20 or 22.
 `start.mjs` settles that for you. It tries, in order:
 
@@ -114,7 +114,7 @@ plugin's own store (`<store>/control-runtime/`). The system Node, nvm, PATH and 
 |---|---|---|
 | `could not be installed` (exit 3) | offline, a proxy nodejs.org cannot be reached through, or a checksum that did not match (then nothing was installed) | install Node 24 themselves (`nvm install 24`), or set `ORBIT_CONTROL_NODE` to a node binary that is new enough, then ask again |
 | `no official build for …` (exit 3) | an OS or CPU nodejs.org publishes no build for | the same: a Node they install, pointed at by `ORBIT_CONTROL_NODE` |
-| `ORBIT_MEMORY_DIR: retired`, or a path `is inside the repository` (exit 2) | the backup room resolved somewhere unsafe | fix `ORBIT_STORE_DIR` (README §4.2); backups never go inside a repository |
+| `ORBIT_MEMORY_DIR: retired`, or a path `is inside the repository` (exit 2) | the backup room resolved somewhere unsafe | fix `ORBIT_STORE_DIR` (README, "Where your data lives"); backups never go inside a repository |
 | `the Control Panel has not been built` (in the page) | a checkout whose `control-server/public/` is empty | only a development checkout: `cd control-panel && npm ci && npm run build` |
 
 To see which Node it would use without starting anything:

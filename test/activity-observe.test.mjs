@@ -347,8 +347,8 @@ test("an observation's file is the action's own, inside the task's room, and a l
   assert.deepEqual(ACTIVITY_SOURCE.observedOf({ actions: [{ id: "act-1", type: "plan" }, { id: "act-2", type: "build" }, { id: "act-3", type: "test" }, { id: "act-4", type: "verify" }] }), ["act-2", "act-3", "act-4"]);
 });
 
-test("the README's adapter table names exactly the adapters the engine binds, with the cases each can show", () => {
-  const readme = readFileSync(join(ROOT, "README.md"), "utf8");
+test("the plugin documentation's adapter table names exactly the adapters the engine binds, with the cases each can show", () => {
+  const readme = readFileSync(join(ROOT, "docs", "plugin.md"), "utf8");
   const rows = [...readme.matchAll(/^ {2}\| `([a-z-]+)` \|[^|]*\| ([^|]+) \|/gm)].map((m) => m[1]);
   assert.deepEqual(rows, CAPABILITY_MATRIX.map((r) => r.id));
 });

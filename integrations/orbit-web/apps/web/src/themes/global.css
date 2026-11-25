@@ -1,12 +1,344 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 html,
 body,
 #root {
   height: 100%;
+  height: 100dvh;
   margin: 0;
+  overscroll-behavior: none;
+}
+
+html[data-orbit-shell="fixed"],
+html[data-orbit-shell="fixed"] body,
+html[data-orbit-shell="fixed"] #root {
+  overflow: hidden;
+  height: 100%;
+  height: 100dvh;
 }
 
 body {
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"],
+[role="tab"] {
+  touch-action: manipulation;
+}
+
+/* Prevent iOS Safari automatic zoom when focusing form fields on small or touch viewports. */
+@media (max-width: 639px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+  textarea,
+  select,
+  .fui-Input__input,
+  .fui-Textarea__textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* A form control never pushes its field -- or the card and the page around it -- wider than the screen: a field is a
+   one-column grid whose track would otherwise never shrink below the control's own text (a native select's longest
+   option, an input's default size and the buttons beside it). */
+.fui-Field {
+  min-width: 0;
+}
+
+.fui-Field > .fui-Input,
+.fui-Field > .fui-Select,
+.fui-Field > .fui-Textarea,
+.fui-Field > .fui-SpinButton,
+.fui-Field > .fui-Combobox,
+.fui-Field > .fui-Dropdown {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fui-Select__select {
+  min-width: 0;
+  text-overflow: ellipsis;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+
+.fui-Select__select::picker-icon {
+  display: none;
+}
+
+/* Touch targets of the office, the sign-in pages and the account's settings: 44 px on a coarse pointer, said once here
+   rather than on each control. A link inside a sentence keeps its line's height: it is part of the text. */
+@media (pointer: coarse) {
+  .orbit-touch .fui-Button,
+  .orbit-touch .fui-ToggleButton,
+  .orbit-touch .fui-MenuButton,
+  .orbit-touch .fui-Tab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .orbit-touch .fui-Checkbox,
+  .orbit-touch .fui-Radio,
+  .orbit-touch .fui-Switch {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .orbit-touch .orbit-target {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+.orbit-hscroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.orbit-hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+.orbit-hscroll-fade {
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 20px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 20px), transparent 100%);
+}
+
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(120, 115, 105, 0.24);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 115, 105, 0.42);
+  }
+}
+
+@keyframes orbit-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes orbit-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes orbit-chibi-bob {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-2.5px);
+  }
+}
+
+@keyframes orbit-chibi-wave {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-2px) rotate(2deg);
+  }
+}
+
+@keyframes orbit-roam-a {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  12% {
+    transform: translate(7px, -2.5px);
+  }
+  25% {
+    transform: translate(14px, 0px);
+  }
+  37% {
+    transform: translate(7px, -2.5px);
+  }
+  50% {
+    transform: translate(0px, 0px);
+  }
+  62% {
+    transform: translate(-7px, -2.5px);
+  }
+  75% {
+    transform: translate(-14px, 0px);
+  }
+  87% {
+    transform: translate(-7px, -2.5px);
+  }
+}
+
+@keyframes orbit-roam-b {
+  0%,
+  100% {
+    transform: translate(0px, 0px);
+  }
+  15% {
+    transform: translate(-8px, -2.5px);
+  }
+  30% {
+    transform: translate(-14px, 0px);
+  }
+  45% {
+    transform: translate(-6px, -2.5px);
+  }
+  60% {
+    transform: translate(4px, 0px);
+  }
+  75% {
+    transform: translate(14px, -2.5px);
+  }
+  90% {
+    transform: translate(6px, 0px);
+  }
+}
+
+@keyframes orbit-thought-float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes orbit-load-bar {
+  0% {
+    transform: translateX(-14px);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translateX(12px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-14px);
+    opacity: 0.45;
+  }
+}
+
+@keyframes orbit-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit-pen-spin {
+  0% {
+    transform: rotate(0deg) translateY(0px);
+  }
+  50% {
+    transform: rotate(180deg) translateY(-1.5px);
+  }
+  100% {
+    transform: rotate(360deg) translateY(0px);
+  }
+}
+
+@keyframes orbit-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translateY(-1px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes orbit-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0px) scale(0.85);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-1.5px) scale(1.1);
+  }
+}
+
+@keyframes orbit-inspector-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* highlight.js token colours, one set per theme (the app sets data-theme on <html>). */
@@ -49,6 +381,29 @@ body {
 }
 
 :root {
+  --orbit-card-bg: #ffffff;
+  --orbit-header-bg: rgba(252, 251, 249, 0.86);
+  --orbit-fade-bg: #fcfbf9;
+  --orbit-composer-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px -8px rgba(28, 25, 23, 0.08);
+  --orbit-composer-shadow-focus: 0 0 0 3px rgba(75, 72, 201, 0.12), 0 2px 6px rgba(28, 25, 23, 0.05), 0 12px 30px -8px rgba(28, 25, 23, 0.12);
+  --orbit-soft-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 4px 12px -4px rgba(28, 25, 23, 0.06);
+  --orbit-user-bubble: #efede7;
+  --orbit-tool-bg: #f6f5f0;
+  --orbit-tool-hover: #eeece5;
+  --orbit-floor-wood: #f6f1e7;
+  --orbit-floor-plank: rgba(172, 144, 108, 0.11);
+  --orbit-floor-sheen: rgba(255, 253, 248, 0.55);
+  --orbit-wall-outer: #d9d3c7;
+  --orbit-wall-inner: #ebe5d9;
+  --orbit-rug-exec: #eef2fb;
+  --orbit-rug-exec-border: rgba(99, 102, 241, 0.16);
+  --orbit-rug-pantry: #faf2e6;
+  --orbit-rug-pantry-border: rgba(217, 119, 6, 0.16);
+  --orbit-floor-room-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 6px 18px -6px rgba(28, 25, 23, 0.07);
+  --orbit-hallway-bg: rgba(255, 252, 246, 0.68);
+  --orbit-inspector-bg: rgba(255, 255, 255, 0.96);
+  --orbit-desk-bay: #f8f7f4;
+  --orbit-lounge-panel: rgba(255, 255, 255, 0.52);
   --code-keyword: #8250df;
   --code-string: #0a3069;
   --code-comment: #6e7781;
@@ -60,9 +415,35 @@ body {
   --diff-add-bg: #e6ffec;
   --diff-del-bg: #ffebe9;
   --diff-hunk-bg: #ddf4ff;
+  --orbit-cited-bg: #fff8d6;
+  --orbit-cited-border: #eab308;
+  --orbit-cited-accent: #ca8a04;
 }
 
 html[data-theme="dark"] {
+  --orbit-card-bg: #252421;
+  --orbit-header-bg: rgba(28, 27, 25, 0.86);
+  --orbit-fade-bg: #1c1b19;
+  --orbit-composer-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 10px 28px -8px rgba(0, 0, 0, 0.42);
+  --orbit-composer-shadow-focus: 0 0 0 3px rgba(143, 141, 231, 0.2), 0 12px 30px -8px rgba(0, 0, 0, 0.48);
+  --orbit-soft-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --orbit-user-bubble: #2d2c28;
+  --orbit-tool-bg: #242320;
+  --orbit-tool-hover: #2c2b27;
+  --orbit-floor-wood: #1e1c19;
+  --orbit-floor-plank: rgba(255, 236, 208, 0.045);
+  --orbit-floor-sheen: rgba(255, 255, 255, 0.025);
+  --orbit-wall-outer: #3c3934;
+  --orbit-wall-inner: #2e2c28;
+  --orbit-rug-exec: #1e2433;
+  --orbit-rug-exec-border: rgba(129, 140, 248, 0.22);
+  --orbit-rug-pantry: #29231c;
+  --orbit-rug-pantry-border: rgba(251, 191, 36, 0.18);
+  --orbit-floor-room-shadow: 0 2px 10px rgba(0, 0, 0, 0.34);
+  --orbit-hallway-bg: rgba(38, 36, 33, 0.72);
+  --orbit-inspector-bg: rgba(37, 36, 33, 0.96);
+  --orbit-desk-bay: #2b2926;
+  --orbit-lounge-panel: rgba(255, 255, 255, 0.045);
   --code-keyword: #d2a8ff;
   --code-string: #a5d6ff;
   --code-comment: #8b949e;
@@ -74,4 +455,7 @@ html[data-theme="dark"] {
   --diff-add-bg: #12261e;
   --diff-del-bg: #25171c;
   --diff-hunk-bg: #121d2f;
+  --orbit-cited-bg: rgba(234, 179, 8, 0.14);
+  --orbit-cited-border: rgba(234, 179, 8, 0.45);
+  --orbit-cited-accent: #eab308;
 }

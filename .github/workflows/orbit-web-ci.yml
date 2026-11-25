@@ -21,7 +21,25 @@ jobs:
   checks:
     name: Typecheck, lint, tests, builds
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
+    # The API's integration tests run against a real PostgreSQL with pgvector: the same pinned image Orbit Web runs on
+    # (scripts/test-db.mjs starts the same one outside GitHub). Each test makes and drops a database of its own on it.
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg17-trixie@sha256:137f044b0efe3d57f39b972b9b53641b1f2045b99d879e298bbf514a25787dcf
+        env:
+          POSTGRES_USER: orbit
+          POSTGRES_PASSWORD: orbit-test
+          POSTGRES_DB: orbit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U orbit -d orbit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ORBIT_WEB_TEST_DATABASE_URL: postgres://orbit:orbit-test@127.0.0.1:5432/orbit
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -29,7 +47,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
-      - name: Orbit Web checks (unit, mocked-process integration, web, builds)
+      - name: Orbit Web checks (unit, integration on PostgreSQL, web, builds)
         run: node integrations/orbit-web/scripts/ci.mjs
 
   orbit:

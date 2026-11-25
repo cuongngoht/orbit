@@ -1,20 +1,34 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post } from "@nestjs/common";
-import type { SessionDetail, SessionSummary } from "@orbit-web/contracts";
+import { Body, Controller, Delete, Get, HttpCode, Inject, Module, Param, Patch, Post, Req } from "@nestjs/common";
+import type { SessionDetail, SessionSummary, WorkBranches } from "@orbit-web/contracts";
+import type { Request } from "express";
+import { AccessModule } from "../access/access.module.js";
+import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
-import { ClaudeAuthModule } from "../claude-auth/claude-auth.module.js";
+import { ConnectionsModule } from "../connections/connections.module.js";
 import { ClaudeRunnerModule } from "../claude-runner/claude-runner.module.js";
 import { GithubModule } from "../github/github.module.js";
+import { GovernanceModule } from "../governance/governance.module.js";
+import { ImagesModule } from "../images/images.module.js";
+import { PrincipalResolver } from "../auth/principals.js";
 import { OrbitModule } from "../orbit/orbit.module.js";
-import { RepositoriesModule } from "../repositories/repositories.module.js";
+import { ProjectModule } from "../project/project.module.js";
+import { SettingsModule } from "../settings/settings.module.js";
+import { SourcesModule } from "../sources/sources.module.js";
+import { BranchService } from "./branch.service.js";
+import { SessionDirectory } from "./session-directory.js";
 import { SessionsService } from "./sessions.service.js";
 import { WorkspaceService } from "./workspace.service.js";
 
 @Controller("sessions")
 export class SessionsController {
-  constructor(@Inject(SessionsService) private readonly sessions: SessionsService) {}
+  constructor(
+    @Inject(SessionsService) private readonly sessions: SessionsService,
+    @Inject(BranchService) private readonly branches: BranchService,
+    @Inject(PrincipalResolver) private readonly principals: PrincipalResolver,
+  ) {}
 
   @Get()
-  list(): SessionSummary[] {
+  list(): Promise<SessionSummary[]> {
     return this.sessions.list();
   }
 
@@ -25,25 +39,37 @@ export class SessionsController {
   }
 
   @Get(":id")
-  detail(@Param("id") id: string): SessionDetail {
+  detail(@Param("id") id: string): Promise<SessionDetail> {
     return this.sessions.detail(id);
   }
 
   @Patch(":id")
-  update(@Param("id") id: string, @Body() body: unknown): SessionSummary {
+  update(@Param("id") id: string, @Body() body: unknown): Promise<SessionSummary> {
     return this.sessions.update(id, body);
+  }
+
+  // The working branch (branch.service.ts): the branches a chat can work on, and moving it to one.
+  @Get(":id/branches")
+  async workBranches(@Param("id") id: string): Promise<WorkBranches> {
+    return this.branches.list(await this.sessions.record(id));
+  }
+
+  @Post(":id/branch")
+  @HttpCode(200)
+  async moveBranch(@Param("id") id: string, @Body() body: unknown): Promise<SessionSummary> {
+    return this.branches.change(await this.sessions.record(id), body);
   }
 
   @Delete(":id")
   @HttpCode(204)
-  remove(@Param("id") id: string): void {
-    this.sessions.delete(id);
+  remove(@Req() req: Request, @Param("id") id: string): Promise<void> {
+    return this.sessions.delete(id, this.principals.context(req));
   }
 }
 
 @Module({
-  imports: [ClaudeAuthModule, GithubModule, RepositoriesModule, ChangesModule, ClaudeRunnerModule, OrbitModule],
-  providers: [SessionsService, WorkspaceService],
+  imports: [AccessModule, ConnectionsModule, GithubModule, AzureAuthModule, SourcesModule, ChangesModule, ClaudeRunnerModule, OrbitModule, ProjectModule, SettingsModule, GovernanceModule, ImagesModule],
+  providers: [SessionsService, WorkspaceService, BranchService, SessionDirectory],
   controllers: [SessionsController],
   exports: [SessionsService],
 })

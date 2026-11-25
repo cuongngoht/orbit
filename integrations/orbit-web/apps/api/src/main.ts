@@ -13,6 +13,7 @@ async function main(): Promise<void> {
   const app = await createApp(config);
   await app.listen(config.port, config.bind);
   new Logger("OrbitWeb").log(`listening on http://${config.bind}:${config.port}`);
+  if (config.identity.setupCode !== null) new Logger("OrbitWeb").warn("ORBIT_WEB_SETUP_CODE is set: the setup page shows the standing setup code, filled in, until the first administrator exists (a test installation's convenience; unset it to need a printed one-time code).");
 }
 
 main().catch((err: unknown) => {

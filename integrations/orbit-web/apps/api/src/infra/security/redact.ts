@@ -21,9 +21,10 @@ const TOKEN_SHAPES: { re: RegExp; as: string }[] = [
   { re: /\b(https?:\/\/)[^\s/@:]+:[^\s/@]+@/g, as: "$1[redacted]@" },
 ];
 
-// An environment assignment of a secret-named variable (`GH_TOKEN=…`, `ANTHROPIC_API_KEY: …`), the likeliest way a
-// credential reaches a shell's output.
-const ASSIGNMENT = /\b([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIALS?))(\s*[:=]\s*)(?!\[redacted)("[^"\n]*"|'[^'\n]*'|[^\s"',;}]+)/g;
+// An environment assignment of a secret-named variable (`GH_TOKEN=…`, `ANTHROPIC_API_KEY: …`), or of headers handed to a
+// client (`…_HEADERS=…`, which carry a credential in whatever scheme), the likeliest way a credential reaches a shell's
+// output.
+const ASSIGNMENT = /\b([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_KEY|PRIVATE_KEY|CREDENTIALS?|HEADERS))(\s*[:=]\s*)(?!\[redacted)("[^"\n]*"|'[^'\n]*'|[^\s"',;}]+)/g;
 
 // For code shown as code (a diff): only what is unmistakably a credential, so the file reads as it is.
 export function redactShapes(text: string): string {

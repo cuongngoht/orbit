@@ -360,6 +360,10 @@ export interface HireEmployeeRequest {
   // A candidate works a trial first. Skipping it is the owner's explicit choice, recorded with its reason.
   skipProbation?: boolean;
   skipReason?: string;
+  // Optional explicit appointment created atomically with the hire (only "ceo" is supported;
+  // authority still comes strictly from the appointment record, never from profile.title).
+  appointRole?: "ceo" | null;
+  appointReason?: string;
 }
 
 // PATCH /api/employees/:id/resources (If-Match): a new resource revision, for FUTURE attempts (an admitted attempt keeps
@@ -1273,12 +1277,13 @@ const optionalId = (v: unknown): boolean => v === undefined || v === null || isW
 
 export function checkHireEmployee(body: unknown): Checked<HireEmployeeRequest> {
   if (!isRecord(body)) return NOT_OBJECT;
-  const errors = unknownFields(body, ["name", "departmentId", "managerId", "templateId", "profile", "resources", "skipProbation", "skipReason"]);
+  const errors = unknownFields(body, ["name", "departmentId", "managerId", "templateId", "profile", "resources", "skipProbation", "skipReason", "appointRole", "appointReason"]);
   const resources = checkResourceProfile(body.resources);
   if (!resources.ok) errors.push(...resources.errors);
   const name = line(body.name, WORKFORCE_LIMITS.nameLength);
   const profile = checkEmployeeProfile(body.profile);
   const skipReason = body.skipReason === undefined ? "" : text(body.skipReason, WORKFORCE_LIMITS.noteLength, true);
+  const appointReason = body.appointReason === undefined ? "" : text(body.appointReason, WORKFORCE_LIMITS.noteLength, true);
   if (name === null) errors.push(`name must be 1-${WORKFORCE_LIMITS.nameLength} printable characters`);
   if (!optionalId(body.departmentId)) errors.push("departmentId must be an id or null");
   if (!optionalId(body.managerId)) errors.push("managerId must be an id or null");
@@ -1287,6 +1292,10 @@ export function checkHireEmployee(body: unknown): Checked<HireEmployeeRequest> {
   if (body.skipProbation !== undefined && typeof body.skipProbation !== "boolean") errors.push("skipProbation must be true or false");
   if (skipReason === null) errors.push("skipReason is too long");
   if (body.skipProbation === true && (skipReason ?? "").length === 0) errors.push("skipReason says why the trial is skipped: it is recorded with the decision");
+  if (body.appointRole !== undefined && body.appointRole !== null && body.appointRole !== "ceo") errors.push("appointRole must be ceo or null");
+  if (appointReason === null) errors.push("appointReason is too long");
+  if (body.appointRole === "ceo" && body.departmentId !== undefined && body.departmentId !== null) errors.push("the CEO belongs to no department: departmentId must be null when appointRole is ceo");
+  if (body.appointRole !== "ceo" && (appointReason ?? "").length > 0) errors.push("appointReason applies only when appointRole is ceo");
   return checked(errors, () => ({
     name: name as string,
     departmentId: (body.departmentId as string | null | undefined) ?? null,
@@ -1296,6 +1305,7 @@ export function checkHireEmployee(body: unknown): Checked<HireEmployeeRequest> {
     resources: (resources as { ok: true; value: ResourceProfile }).value,
     skipProbation: body.skipProbation === true,
     skipReason: skipReason as string,
+    ...(body.appointRole === "ceo" ? { appointRole: "ceo" as const, ...(appointReason ? { appointReason } : {}) } : {}),
   }));
 }
 

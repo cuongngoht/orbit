@@ -1198,6 +1198,7 @@ export function OfficeFloorMap({
   onEditDepartment,
   onAppointment,
   onRecruit = null,
+  onHireCeo = null,
   onHireInDepartment = null,
   onOpenReview = null,
   onRosterChanged,
@@ -1226,6 +1227,7 @@ export function OfficeFloorMap({
   onEditDepartment: (edit: DepartmentEdit) => void;
   onAppointment?: (edit: AppointmentEdit) => void;
   onRecruit?: ((departmentId: string) => void) | null;
+  onHireCeo?: (() => void) | null;
   onHireInDepartment?: ((departmentId: string) => void) | null;
   onOpenReview?: ((missionId: string | null) => void) | null;
   onRosterChanged?: () => void;
@@ -1693,6 +1695,11 @@ export function OfficeFloorMap({
               <Text size={100} className={s.muted} aria-hidden>
                 {directorCount > 0 ? t("office.floor.askingOpinion", { count: directorCount }) : t("office.floor.askOpinionReview")}
               </Text>
+              {ceo === null && canHire && onHireCeo && (
+                <Button className={o.touch} size="small" appearance="outline" icon={<Add16Regular />} onClick={onHireCeo}>
+                  {t("office.floor.hireCeo")}
+                </Button>
+              )}
               <AppointmentMenu slot={{ role: "ceo", incumbent: ceo }} label={t("office.floor.actionsForDirector")} onPick={pickAppointment} />
             </div>
           </div>

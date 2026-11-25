@@ -43,6 +43,8 @@ export interface Brief {
   answers: { question: string; answer: string; at: string }[];
   // A part of a manager's assignment: the other parts (their unit keys) it waits for before it can be claimed.
   dependsOn?: string[];
+  // Whether its lead shared the mission's attached repositories with this part (recipient Access grants still checked at attempt start).
+  shareRepositories?: boolean;
 }
 
 // What the assignment pinned when its employee claimed it.

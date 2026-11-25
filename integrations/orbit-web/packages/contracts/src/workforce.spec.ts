@@ -116,6 +116,19 @@ test("a hire: a name, a profile and the sandbox's resources; skipping the trial 
   const e = errorsOf(checkHireEmployee({ name: "", departmentId: "sales", managerId: 3, templateId: "", profile: { ...PROFILE, title: "" }, resources: { ...RESOURCES, cpuMillis: 10 }, skipProbation: "no" }));
   for (const needle of ["resources.cpuMillis must be a whole number", "name must be 1-80 printable characters", "departmentId must be an id or null", "managerId must be an id or null", "templateId must be a template's id", "profile.title must be 1-120", "skipProbation must be true or false"]) has(e, needle);
   assert.deepEqual(errorsOf(checkHireEmployee({ name: "Ada", profile: PROFILE })), ["resources must be an object"]);
+  // Optional atomic CEO appointment at hire: departmentId must be null, reason optional.
+  assert.deepEqual(checkHireEmployee({ name: "Ada", profile: PROFILE, resources: RESOURCES, appointRole: "ceo", appointReason: " Founding CEO " }), {
+    ok: true,
+    value: { name: "Ada", departmentId: null, managerId: null, templateId: null, profile: PROFILE, resources: RESOURCES, skipProbation: false, skipReason: "", appointRole: "ceo", appointReason: "Founding CEO" },
+  });
+  assert.deepEqual(checkHireEmployee({ name: "Ada", departmentId: null, profile: PROFILE, resources: RESOURCES, appointRole: "ceo" }), {
+    ok: true,
+    value: { name: "Ada", departmentId: null, managerId: null, templateId: null, profile: PROFILE, resources: RESOURCES, skipProbation: false, skipReason: "", appointRole: "ceo" },
+  });
+  has(errorsOf(checkHireEmployee({ name: "Ada", departmentId: id(2), profile: PROFILE, resources: RESOURCES, appointRole: "ceo" })), "departmentId must be null when appointRole is ceo");
+  has(errorsOf(checkHireEmployee({ name: "Ada", profile: PROFILE, resources: RESOURCES, appointRole: "manager" })), "appointRole must be ceo or null");
+  has(errorsOf(checkHireEmployee({ name: "Ada", profile: PROFILE, resources: RESOURCES, appointReason: "founder" })), "appointReason applies only when appointRole is ceo");
+  has(errorsOf(checkHireEmployee({ name: "Ada", profile: PROFILE, resources: RESOURCES, appointRole: "ceo", appointReason: "x".repeat(2001) })), "appointReason is too long");
 });
 
 test("a change of an employee names what changes, and a restore the revision it copies; resources, employment and assistants likewise", () => {

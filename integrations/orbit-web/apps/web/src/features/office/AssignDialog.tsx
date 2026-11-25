@@ -676,7 +676,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 {recipientId !== "" && (
                   <>
                     <div className={o.divider} />
-                    <RepositoriesPicker employeeId={recipientId} employeeName={recipientName ?? ""} value={chosenRepositories} onChange={(list) => setRepositories({ for: recipientId, list })} />
+                    <RepositoriesPicker employeeId={recipientId} employeeName={recipientName ?? ""} delegating={kind === "ceo" || kind === "department"} value={chosenRepositories} onChange={(list) => setRepositories({ for: recipientId, list })} />
                   </>
                 )}
               </div>

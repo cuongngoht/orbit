@@ -153,7 +153,7 @@ describe("the office: its overview", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.calls.find((c) => c.path === "/api/office/departments")?.body).toEqual({ name: "Sales" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await userEvent.click(screen.getByRole("button", { name: "Actions for Accounting" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Actions for Accounting" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     dialog = await screen.findByRole("dialog", { name: "Archive Accounting?" });
     await userEvent.selectOptions(within(dialog).getByRole("combobox", { name: /Move its member to/ }), DEPT_LEGAL);
@@ -226,7 +226,7 @@ describe("the office: who leads it, and what its employees run on by default", (
     await waitFor(() => expect(appointment("/api/office/appointments")(api)?.body).toEqual({ role: "ceo", employeeId: EMP_ANA, reason: "Founder" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // The roster is read again: the CEO now, with how the appointment stands.
-    const now = await within(screen.getByRole("region", { name: "Leadership" })).findByRole("listitem", { name: "CEO" });
+    const now = await within(await screen.findByRole("region", { name: "Leadership" })).findByRole("listitem", { name: "CEO" });
     await waitFor(() => expect(within(now).getByRole("button", { name: "Ana" })).toBeInTheDocument());
     expect(within(now).getByText("Active")).toBeInTheDocument();
   });
@@ -311,7 +311,7 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(appointment(`/api/office/appointments/${LEGAL_APPOINTMENT}/suspend`)(api)?.headers["if-match"]).toBe('"5"');
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // An empty slot is appointed to from the same menu.
-    await userEvent.click(within(screen.getByRole("region", { name: "Accounting" })).getByRole("button", { name: "Actions for Accounting" }));
+    await userEvent.click(within(await screen.findByRole("region", { name: "Accounting" })).getByRole("button", { name: "Actions for Accounting" }));
     expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Appoint", "Rename", "Archive"]);
   });
 
@@ -343,7 +343,7 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(company?.headers["if-match"]).toBe('"7"');
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // A department's own: what it leaves unset falls to the company's.
-    await userEvent.click(within(screen.getByRole("region", { name: "Leadership" })).getByRole("button", { name: "Leadership actions for Accounting" }));
+    await userEvent.click(within(await screen.findByRole("region", { name: "Leadership" })).getByRole("button", { name: "Leadership actions for Accounting" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Execution defaults" }));
     dialog = await screen.findByRole("dialog", { name: "Execution defaults of Accounting" });
     const model = within(await within(dialog).findByRole("group", { name: "Claude Code" })).getByRole("combobox", { name: /^Model/ });
@@ -508,5 +508,41 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(await screen.findByRole("region", { name: "List" })).toBeInTheDocument();
     await userEvent.keyboard("v");
     expect(await screen.findByRole("region", { name: "Accounting" })).toBeInTheDocument();
+  });
+
+  test("when the company has no CEO, Hire CEO appears across the Hero bar, Director's Office, Leadership, Empty state, and Appoint CEO fallback — and disappears once a CEO exists", async () => {
+    let hasCeo = false;
+    fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/resources", () => ({ budget: { cpuMillis: 6000, memoryMiB: 12288, storageMiB: 102400, maxConcurrent: 4, perEmployee: { cpuMillis: 4000, memoryMiB: 4096, deskStorageMiB: 51200, scratchStorageMiB: 10240, cacheStorageMiB: 10240, pidsLimit: 512, timeoutMinutes: 120 } }, capacity: { total: { cpuMillis: 8000, memoryMiB: 16384 }, usable: { cpuMillis: 6000, memoryMiB: 12288 } }, available: { cpuMillis: 6000, memoryMiB: 12288 }, reserved: { cpuMillis: 0, memoryMiB: 0, running: 0 }, storage: { budgetMiB: 102400, committedMiB: 0, usedMiB: 0, breakdown: [] }, modelPlane: [] }))
+      .on("GET", "/api/office/resource-presets", () => [])
+      .on("GET", "/api/office/roster", () =>
+        hasCeo
+          ? roster({
+              ceo: appointmentSummary({ appointmentId: APPOINTMENT_ID, employeeId: EVE, name: "Eve", version: 1 }),
+              departments: [],
+              employees: [employeeCard({ id: EVE, name: "Eve", title: "Chief Executive Officer", departmentId: null, role: "ceo" })],
+            })
+          : roster({ ceo: null, departments: [], employees: [] }),
+      );
+    show();
+    expect(await screen.findByText("No departments or employees yet")).toBeInTheDocument();
+    // Hero bar + Empty state + Leadership CEO row all offer Hire CEO when vacant.
+    const hireCeoButtons = screen.getAllByRole("button", { name: "Hire CEO" });
+    expect(hireCeoButtons.length).toBeGreaterThanOrEqual(3);
+    // Appointing CEO when no employees exist offers "Hire a new CEO" fallback.
+    const leadership = screen.getByRole("region", { name: "Leadership" });
+    await userEvent.click(within(leadership).getByRole("button", { name: "CEO appointment actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Appoint" }));
+    const appointDialog = await screen.findByRole("dialog", { name: "Appoint the CEO" });
+    const hireInstead = await within(appointDialog).findByRole("button", { name: "Hire a new CEO" });
+    await userEvent.click(hireInstead);
+    const ceoWizard = await screen.findByRole("dialog", { name: "Hire CEO" });
+    expect(ceoWizard).toBeInTheDocument();
+    await userEvent.click(within(ceoWizard).getByRole("button", { name: "Cancel" }));
+    // Once a CEO exists, all Hire CEO buttons vanish.
+    hasCeo = true;
+    pushApp("office.changed", { areas: ["roster"], missionId: null, version: 2 });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Hire CEO" })).toBeNull());
   });
 });

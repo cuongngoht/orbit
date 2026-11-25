@@ -7,7 +7,10 @@
 //   GET /api/repositories/branches?source=<s>&id=<id>    a listed repository's branches, the default first
 import { Controller, Get, Inject, Injectable, Module, Query } from "@nestjs/common";
 import { isRepositorySource, type BranchList, type Repository, type RepositoryList, type RepositoryRef, type RepositorySource, type SourcesStatus } from "@orbit-web/contracts";
+import type { AppConfig } from "../../config/config.js";
+import { APP_CONFIG } from "../../core/tokens.js";
 import { badRequest } from "../../common/errors.js";
+import { azureGitEnv, githubGitEnv } from "../../infra/process/env.js";
 import type { RunResult } from "../../infra/process/process.port.js";
 import { AzureAuthModule } from "../azure-auth/azure-auth.module.js";
 import { ChangesModule } from "../changes/changes.module.js";
@@ -27,6 +30,7 @@ export interface RepositoryOrigin {
 @Injectable()
 export class SourcesService {
   constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(GithubSource) private readonly github: GithubSource,
     @Inject(AzureSource) private readonly azure: AzureSource,
   ) {}
@@ -48,6 +52,30 @@ export class SourcesService {
     if (source === "github") return this.github.authorized(id);
     const { cloneUrl: _kept, ...repo } = await this.azure.authorized(id);
     return repo;
+  }
+
+  // Locate an authorized repository by owner, optional Azure project, and repository name (case-insensitive).
+  async find(source: RepositorySource, target: { owner: string; project: string | null; name: string }): Promise<Repository | null> {
+    if (source === "github") {
+      try {
+        return await this.github.authorized(`${target.owner}/${target.name}`);
+      } catch {
+        return null;
+      }
+    }
+    const eq = (a: string | null, b: string | null) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+    const match = (list: RepositoryList) => list.repositories.find((r) => eq(r.owner, target.owner) && eq(r.project, target.project) && eq(r.name, target.name)) ?? null;
+    return match(await this.azure.list(false)) ?? match(await this.azure.list(true));
+  }
+
+  // Control-plane push target (URL + credential env + helper flags): never leaves the control plane.
+  async pushRemote(source: RepositorySource, id: string): Promise<{ url: string; env: Record<string, string>; helper: string[] }> {
+    if (source === "github") {
+      const repo = await this.github.authorized(id);
+      return { url: `${this.config.githubUrl}/${repo.fullName}.git`, env: githubGitEnv(this.config), helper: [] };
+    }
+    const repo = await this.azure.authorized(id);
+    return { url: repo.cloneUrl, env: azureGitEnv(this.config), helper: ["-c", "credential.helper=", "-c", `credential.helper=${this.config.binaries.azureGitHelper}`] };
   }
 
   // The repository a chat asked for, if the source lists it, and the branch to start from: the one asked for if the

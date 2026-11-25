@@ -81,6 +81,7 @@ const DELEGATE: ToolSpec = {
             criteria: { type: "array", items: { type: "string" } },
             waits_for: { type: "array", items: { type: "string" } },
             share_sources: { type: "array", items: { type: "string" }, description: "Labels of the sources you were given that this part may read (S1, S2 ...), or [\"all\"]. Nothing is shared unless you say." },
+            share_repositories: { type: "boolean", description: "Set true to pass the mission's attached repositories to this part so the department or engineer receives their git bundles (each recipient still only receives repositories enabled on its Access tab)." },
             receives: { type: "array", items: obj({ from: str("The key of a part this one waits for"), as: { type: "string", enum: ["summary", "full"] } }, ["from", "as"]), description: "The accepted hand-in of a part it waits for: its summary alone, or in full (its files too)." },
           },
           ["key", "title", "goal"],
@@ -313,6 +314,7 @@ export class ToolsService {
         acceptanceCriteria: list(x.criteria),
         dependsOn: list(x.waits_for),
         shareSources: list(x.share_sources),
+        ...(x.share_repositories === true ? { shareRepositories: true } : {}),
         receives: (Array.isArray(x.receives) ? x.receives : []).slice(0, 20).flatMap((r) => {
           const y = (typeof r === "object" && r !== null ? r : {}) as Record<string, unknown>;
           return typeof y.from === "string" ? [{ from: y.from.trim().slice(0, 64), as: y.as === "full" ? ("full" as const) : ("summary" as const) }] : [];

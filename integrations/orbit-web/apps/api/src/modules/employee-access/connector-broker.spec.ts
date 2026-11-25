@@ -43,3 +43,51 @@ test("a resource the policy lets the employee use: the work item's project is ch
   assert.equal(runs.length, 1);
   assert.deepEqual(proposed, [{ connector: "azure", operation: "comment", owner: "Fabrikam", container: "Fiber", item: 42, value: COMMENT.text }]);
 });
+
+test("github_create_pull_request checks grant scope and tool.connector policy before proposing a pull_request write", async () => {
+  const proposed: unknown[] = [];
+  const config = { binaries: { az: "az", gh: "gh" }, controlHome: "/tmp/control", sourceEnv: {}, governance: { deployment: "single" }, data: { home: "/tmp/home", azure: "/tmp/azure" } } as unknown as AppConfig;
+  const process = { run: async () => ({ code: 0, signal: null, stdout: "{}", stderr: "", timedOut: false, truncated: false, spawnError: null }) } as unknown as ProcessPort;
+  const grants = {
+    live: async () => new Map([["github", { repositories: [{ owner: "octo", project: null, name: "toolkit" }], write: true, grantedAt: "2026-11-22T00:00:00.000Z" }]]),
+  } as unknown as ConnectionGrantStore;
+  const policy = { decide: async () => ({ verdict: "allow", reasonCodes: ["RULE_MATCHED"], decisionId: "dec-pr" }) } as unknown as PolicyService;
+  const writes = { propose: async (_ctx: unknown, w: unknown) => (proposed.push(w), { text: "proposed pr", isError: false }) } as unknown as ConnectorWrites;
+  const broker = new ConnectorBroker(config, process, grants, policy, writes);
+  const tools = await broker.tools("acct", "emp");
+  assert.ok(tools.some((t) => t.name === "github_create_pull_request"));
+  const denied = await broker.call({} as GovernanceContext, "acct", "emp", "github_create_pull_request", {
+    repository: "octo/other",
+    headBranch: "orbit/feat",
+    title: "Add feature",
+    patch: "diff --git a/a.txt b/a.txt\n",
+  });
+  assert.equal(denied.isError, true);
+  assert.match(denied.text, /not among the repositories/);
+  const ok = await broker.call({} as GovernanceContext, "acct", "emp", "github_create_pull_request", {
+    repository: "octo/toolkit",
+    headBranch: "orbit/feat",
+    baseBranch: "main",
+    title: "Add feature",
+    body: "Details",
+    patch: "diff --git a/a.txt b/a.txt\n",
+    draft: true,
+  });
+  assert.deepEqual([ok.isError, ok.text], [false, "proposed pr"]);
+  assert.deepEqual(proposed, [
+    {
+      connector: "github",
+      operation: "pull_request",
+      owner: "octo",
+      container: "toolkit",
+      repository: "toolkit",
+      baseBranch: "main",
+      headBranch: "orbit/feat",
+      title: "Add feature",
+      body: "Details",
+      commitMessage: "Add feature",
+      patch: "diff --git a/a.txt b/a.txt\n",
+      draft: true,
+    },
+  ]);
+});

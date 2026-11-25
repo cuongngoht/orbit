@@ -191,6 +191,7 @@ export interface TeamPrompt {
   wakeReason?: string | null;
   // Its role in the work (Work's roles.ts); absent: an employee.
   role?: "ceo" | "manager_with_team" | "manager_alone" | "employee";
+  connectorsDenied?: string | null;
   canDelegate: boolean;
   // Its temporary assistants (an appointee in force's): its quota, how many are engaged, how many more it may engage.
   assistants?: { max: number; engaged: number; left: number } | null;
@@ -283,7 +284,7 @@ function teamText(t: TeamPrompt | undefined): string {
     const people = t.scope.employees.map((e) => `- ${e.name} (${e.id})${e.title ? ` -- ${e.title}` : ""}${e.departmentName ? `, ${e.departmentName}` : ""}`);
     const departments = t.scope.departments.map((d) => `- department ${d.name} (${d.id}): ${d.managerName === null ? "no manager in office -- it takes nothing" : `its manager ${d.managerName} takes it`}`);
     const whom = [...people, ...departments];
-    out.push(`You may give parts of this work with the delegate tool (you stay responsible for the result)${whom.length > 0 ? ` -- to these, and nobody else:\n${whom.join("\n")}\n` : ". "}A part reads only what you share with it (share_sources, receives). Plans given so far: ${t.planCount}.`);
+    out.push(`You may give parts of this work with the delegate tool (you stay responsible for the result)${whom.length > 0 ? ` -- to these, and nobody else:\n${whom.join("\n")}\n` : ". "}A part reads only what you share with it (share_sources, share_repositories, receives). Plans given so far: ${t.planCount}.`);
     const engage = assistantsText(role, t.assistants ?? null);
     if (engage !== "") out.push(engage);
   }
@@ -305,7 +306,9 @@ export function promptOf(o: { repositories?: string[]; goal: string; deliverable
     o.criteria.length > 0 ? `Acceptance criteria:\n${o.criteria.map((c) => `- ${c}`).join("\n")}` : "",
     o.inputs.length > 0 ? `What you were given to read (read-only, in /input), and why:\n${o.inputs.map((i) => `- ${i.name}${i.why ? ` -- ${i.why}` : ""}`).join("\n")}` : "",
     (o.withheld ?? []).length > 0 ? `Not given to you (yet):\n${(o.withheld ?? []).map((w) => `- ${w}`).join("\n")}` : "",
-    (o.repositories ?? []).length > 0 ? `Repositories you were given (a git bundle of each in /input: clone it, then work in your clone):\n${(o.repositories ?? []).join("\n")}` : "",
+    (o.repositories ?? []).length > 0
+      ? `${o.team?.connectorsDenied !== null && o.team?.connectorsDenied !== undefined ? "Repositories attached to this mission (set share_repositories: true when delegating to departments or teammates who need them):" : "Repositories you were given (a git bundle of each in /input: clone it, then work in your clone; if delegating, set share_repositories: true to pass them to your team):"}\n${(o.repositories ?? []).join("\n")}`
+      : "",
     o.revisions.length > 0 ? `The reviewer asked for these changes to your previous hand-in (most recent last):\n${o.revisions.map((r, i) => `${i + 1}. ${r.criteria}`).join("\n")}` : "",
     o.answers.length > 0 ? `Answers you were given:\n${o.answers.map((a) => `Q: ${a.question}\nA: ${a.answer}`).join("\n")}` : "",
     teamText(o.team),

@@ -278,3 +278,57 @@ describe("hiring an employee whose model and effort follow the defaults", () => 
     expect(await within(dialog).findByText(/neither names one for claude/)).toBeInTheDocument();
   });
 });
+
+describe("hiring a CEO in one step", () => {
+  test("opens Hire CEO with company-wide defaults, sends appointRole ceo with optional reason, and stays on the office overview", async () => {
+    const a = api(() => withStatus(201, employeeDetail({ id: HIRED, name: "Minh", departmentId: null, role: "ceo" })));
+    const go = vi.fn();
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={go} account={authAccount()} />);
+    const heroHireCeo = (await screen.findAllByRole("button", { name: "Hire CEO" }))[0] as HTMLElement;
+    await waitFor(() => expect(heroHireCeo).toBeEnabled());
+    await userEvent.click(heroHireCeo);
+    const dialog = await screen.findByRole("dialog", { name: "Hire CEO" });
+    expect(within(dialog).getByRole("list", { name: "Steps" }).textContent).toContain("1Identity2CEO role3AI runtime, model & effort4Personal sandbox & resources5Review & hire");
+    expect(within(dialog).queryByRole("combobox", { name: /Start from a template/ })).toBeNull();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Minh");
+    await next(dialog);
+    expect(within(dialog).getByRole("textbox", { name: /Role title/ })).toHaveValue("Chief Executive Officer");
+    expect(within(dialog).getByRole("textbox", { name: /^Department/ })).toBeDisabled();
+    expect(within(dialog).queryByRole("switch", { name: /Team lead/ })).toBeNull();
+    await next(dialog);
+    await within(dialog).findByRole("radio", { name: "Claude Code — Claude subscription" });
+    await next(dialog);
+    await next(dialog);
+    const choices = within(dialog).getByLabelText("Your choices");
+    expect(choices.textContent).toContain("AppointmentCEO (appointed at hire)");
+    expect(choices.textContent).toContain("DepartmentNone — company-wide (CEO)");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Appointment reason/ }), "Founding CEO");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hire & appoint CEO" }));
+    await waitFor(() => expect(posted(a)).toBeDefined());
+    expect(posted(a)).toMatchObject({
+      name: "Minh",
+      departmentId: null,
+      appointRole: "ceo",
+      appointReason: "Founding CEO",
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Hire CEO" })).toBeNull());
+    expect(go).not.toHaveBeenCalled();
+  });
+
+  test("shows 409 appointment_conflict refusal inside the Hire CEO wizard", async () => {
+    api(() => withStatus(409, { error: { code: "appointment_conflict", message: "This CEO slot has an incumbent already: replace it, or end it first." } }));
+    renderLive(<OfficeView page="overview" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    const heroHireCeo = (await screen.findAllByRole("button", { name: "Hire CEO" }))[0] as HTMLElement;
+    await waitFor(() => expect(heroHireCeo).toBeEnabled());
+    await userEvent.click(heroHireCeo);
+    const dialog = await screen.findByRole("dialog", { name: "Hire CEO" });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Name/ }), "Minh");
+    await next(dialog);
+    await next(dialog);
+    await within(dialog).findByRole("radio", { name: "Claude Code — Claude subscription" });
+    await next(dialog);
+    await next(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hire & appoint CEO" }));
+    expect(await within(dialog).findByText(/This CEO slot has an incumbent already/)).toBeInTheDocument();
+  });
+});

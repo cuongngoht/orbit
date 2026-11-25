@@ -44,10 +44,50 @@ const AZURE_TOOLS: ToolSpec[] = [
 // What an employee let WRITE may also propose: each write decided by the account's policy (by default, the owner approves
 // that exact write first -- connector-writes.ts).
 const WRITE_TOOLS: Record<AccessConnector, ToolSpec[]> = {
-  github: [{ name: "github_comment", description: "Propose a comment on a GitHub issue or pull request of a repository you were let write to. It is written once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ repository: str("owner/name"), number: int("The issue's or pull request's number"), text: str("The comment (Markdown)") }, ["repository", "number", "text"]) }],
+  github: [
+    { name: "github_comment", description: "Propose a comment on a GitHub issue or pull request of a repository you were let write to. It is written once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ repository: str("owner/name"), number: int("The issue's or pull request's number"), text: str("The comment (Markdown)") }, ["repository", "number", "text"]) },
+    {
+      name: "github_create_pull_request",
+      description:
+        "Propose creating a new feature branch, applying a unified git diff patch, committing, pushing, and opening a GitHub pull request on a repository you were let write to. Generate the patch from your local clone with `git add -N . && git diff` (or `git diff HEAD~1` if committed) so new files are included. Orbit Web validates the patch on the control plane and creates the PR once the account's policy allows it -- by default after the owner approves it in Governance → Approvals.",
+      inputSchema: obj(
+        {
+          repository: str("owner/name"),
+          headBranch: str("New feature branch name to create (e.g. orbit/add-feature), never the default or a protected branch"),
+          baseBranch: str("Base branch to branch from and target (optional; defaults to the repository's default branch)"),
+          title: str("Pull request title"),
+          body: str("Pull request description (Markdown)"),
+          commitMessage: str("Git commit message (optional; defaults to title)"),
+          patch: str("Unified git diff patch text (output of `git diff`, max 512 KiB; must apply cleanly against baseBranch)"),
+          draft: { type: "boolean", description: "Open as a draft pull request (optional; defaults to false)" },
+        },
+        ["repository", "headBranch", "title", "patch"],
+      ),
+    },
+  ],
   azure: [
     { name: "azure_devops_comment", description: "Propose a comment on an Azure DevOps work item of a project you were let write to, by its URL or by organization, project and id. It is written once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ url: str("The work item's URL"), organization: str("The organization (without a URL)"), project: str("The project (without a URL)"), id: int("The work item's id (without a URL)"), text: str("The comment (HTML or plain text)") }, ["text"]) },
     { name: "azure_devops_set_state", description: "Propose a new state for an Azure DevOps work item of a project you were let write to (e.g. Active, Resolved, Closed). It is set once the account's policy allows it -- by default after a person approves it.", inputSchema: obj({ url: str("The work item's URL"), organization: str("The organization (without a URL)"), project: str("The project (without a URL)"), id: int("The work item's id (without a URL)"), state: str("The state's name, as the work item's process names it") }, ["state"]) },
+    {
+      name: "azure_devops_create_pull_request",
+      description:
+        "Propose creating a new feature branch, applying a unified git diff patch, committing, pushing, and opening an Azure DevOps pull request on a repository you were let write to. Generate the patch from your local clone with `git add -N . && git diff` so new files are included. Orbit Web validates the patch on the control plane and creates the PR once approved in Governance → Approvals.",
+      inputSchema: obj(
+        {
+          organization: str("The organization"),
+          project: str("The project"),
+          repository: str("The repository's name"),
+          headBranch: str("New feature branch name to create (e.g. orbit/add-feature), never the default or a protected branch"),
+          baseBranch: str("Base branch to branch from and target (optional; defaults to the repository's default branch)"),
+          title: str("Pull request title"),
+          body: str("Pull request description (Markdown)"),
+          commitMessage: str("Git commit message (optional; defaults to title)"),
+          patch: str("Unified git diff patch text (output of `git diff`, max 512 KiB; must apply cleanly against baseBranch)"),
+          draft: { type: "boolean", description: "Open as a draft pull request (optional; defaults to false)" },
+        },
+        ["organization", "project", "repository", "headBranch", "title", "patch"],
+      ),
+    },
   ],
 };
 
@@ -120,7 +160,7 @@ export class ConnectorBroker implements ConnectorTools {
       if (WRITE_NAMES.has(name)) {
         if (grant?.write !== true) refuse(`You were let read ${label}, not write to it: a person lets you write on your Access page.`);
         const write = this.writeOf(name, args, target);
-        if (write.connector === "azure") await this.ownItem(write.owner, write.container, write.item);
+        if (write.connector === "azure" && write.operation !== "pull_request") await this.ownItem(write.owner, write.container, write.item);
         return await this.writes.propose(ctx, write);
       }
       return answer(await this.ask(name, args, target));
@@ -137,8 +177,21 @@ export class ConnectorBroker implements ConnectorTools {
     if (own.toLowerCase() !== project.toLowerCase()) refuse(`Work item ${id} is not a work item of ${org}/${project}.`);
   }
 
-  // What a write tool proposes: on which item, and what.
+  // What a write tool proposes: on which item or repository, and what.
   private writeOf(name: string, args: Json, t: Target): ConnectorWrite {
+    if (name === "github_create_pull_request" || name === "azure_devops_create_pull_request") {
+      const title = text(args.title, "title", 200);
+      const body = args.body === undefined || args.body === null ? "" : typeof args.body === "string" && args.body.length <= 16_000 ? args.body : refuse("body must be text of at most 16000 characters.");
+      const commitMessage = args.commitMessage === undefined || args.commitMessage === null || args.commitMessage === "" ? title : text(args.commitMessage, "commitMessage", 1000);
+      const patch = typeof args.patch === "string" && args.patch.trim() !== "" && Buffer.byteLength(args.patch, "utf8") <= 512 * 1024 ? args.patch : refuse("patch must be non-empty unified diff text (max 512 KiB).");
+      const headBranch = text(args.headBranch, "headBranch", 200);
+      const baseBranch = args.baseBranch === undefined || args.baseBranch === null || args.baseBranch === "" ? null : text(args.baseBranch, "baseBranch", 200);
+      const draft = args.draft === true;
+      if (name === "github_create_pull_request") {
+        return { connector: "github", operation: "pull_request", owner: t.owner, container: t.name ?? "", repository: t.name ?? "", baseBranch, headBranch, title, body, commitMessage, patch, draft };
+      }
+      return { connector: "azure", operation: "pull_request", owner: t.owner, container: t.project ?? "", repository: t.name ?? "", baseBranch, headBranch, title, body, commitMessage, patch, draft };
+    }
     if (name === "github_comment") return { connector: "github", operation: "comment", owner: t.owner, container: t.name ?? "", item: number(args.number, "number"), value: text(args.text, "text", 8000) };
     const id = typeof args.url === "string" ? (parseWorkItemUrl(args.url)?.id ?? 0) : number(args.id, "id");
     if (name === "azure_devops_set_state") return { connector: "azure", operation: "state", owner: t.owner, container: t.project ?? "", item: id, value: named(args.state, "state") };
@@ -162,7 +215,7 @@ export class ConnectorBroker implements ConnectorTools {
       return { owner: ref.organization, project: ref.project };
     }
     const base = { owner: named(args.organization, "organization", ORGANIZATION), project: named(args.project, "project") };
-    return name === "azure_devops_file" ? { ...base, name: named(args.repository, "repository") } : base;
+    return name === "azure_devops_file" || name === "azure_devops_create_pull_request" ? { ...base, name: named(args.repository, "repository") } : base;
   }
 
   private async ask(name: string, args: Json, t: Target): Promise<string> {

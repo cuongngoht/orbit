@@ -133,16 +133,25 @@ export function AppointmentMenu({ slot, label, onPick, children }: { slot: Appoi
 
 // Whom a slot may be given to: an employee on trial or active, of the department for its manager, never the incumbent.
 // One who holds another appointment is shown but cannot be chosen (the API refuses it: end that one first).
-function Candidates({ roster, slot, value, onChange }: { roster: Roster; slot: AppointmentSlot; value: string; onChange: (employeeId: string) => void }) {
+function Candidates({ roster, slot, value, onChange, onHireCeo }: { roster: Roster; slot: AppointmentSlot; value: string; onChange: (employeeId: string) => void; onHireCeo?: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const department = slot.role === "manager" ? slot.department : null;
   const people = roster.employees.filter((e) => WORKING.includes(e.employment) && (department === null || e.departmentId === department.id) && e.id !== slot.incumbent?.employeeId);
   if (people.length === 0)
     return (
-      <Text size={200} className={o.muted}>
-        {department === null ? t("office.appointment.noCandidate") : t("office.appointment.noMember", { department: department.name })}
-      </Text>
+      <div className={o.stack}>
+        <Text size={200} className={o.muted}>
+          {department === null ? t("office.appointment.noCandidate") : t("office.appointment.noMember", { department: department.name })}
+        </Text>
+        {slot.role === "ceo" && onHireCeo && (
+          <div>
+            <Button appearance="primary" size="small" onClick={onHireCeo}>
+              {t("office.appointment.hireCeoInstead")}
+            </Button>
+          </div>
+        )}
+      </div>
     );
   // The CEO belongs to no department: one appointed CEO leaves theirs, and the dialog says so before it is done.
   const chosen = slot.role === "ceo" ? (people.find((e) => e.id === value) ?? null) : null;
@@ -164,11 +173,18 @@ function Candidates({ roster, slot, value, onChange }: { roster: Roster; slot: A
           {t("office.appointment.ceoLeaves", { name: chosen.name, department: leaves })}
         </Text>
       )}
+      {slot.role === "ceo" && onHireCeo && (
+        <div>
+          <Button appearance="subtle" size="small" onClick={onHireCeo}>
+            {t("office.appointment.hireCeoInstead")}
+          </Button>
+        </div>
+      )}
     </>
   );
 }
 
-export function AppointmentDialog({ edit, onClose, onDone }: { edit: AppointmentEdit; onClose: () => void; onDone: () => void }) {
+export function AppointmentDialog({ edit, onClose, onDone, onHireCeo }: { edit: AppointmentEdit; onClose: () => void; onDone: () => void; onHireCeo?: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const slot = edit.slot;
@@ -231,7 +247,7 @@ export function AppointmentDialog({ edit, onClose, onDone }: { edit: Appointment
                     <Spinner size="tiny" label={t("office.appointment.reading")} />
                   )
                 ) : (
-                  <Candidates roster={people.data} slot={slot} value={employeeId} onChange={setEmployeeId} />
+                  <Candidates roster={people.data} slot={slot} value={employeeId} onChange={setEmployeeId} onHireCeo={edit.act === "appoint" ? onHireCeo : undefined} />
                 ))}
               <Field label={t("office.appointment.reasonLabel")} hint={t("office.appointment.reasonHint")}>
                 <Input value={reason} maxLength={1000} onChange={(_, d) => setReason(d.value)} />

@@ -5,7 +5,7 @@
 // employee may leave its model and effort to. An account with no company yet is offered to activate it -- empty -- once
 // an AI connection of its own can be used.
 import { Button, Field, Input, Link, MenuItem, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { Add16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, PlugDisconnected16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
 import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type ResourceSummary, type Roster, type WorkLabel } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
@@ -411,7 +411,7 @@ const defaultsSetFor = (d: ExecutionDefaults): string[] => RUNTIME_KINDS.filter(
 
 // LEADERSHIP, compactly: the company's CEO and each department's manager -- or that there is none, which a company may
 // well be -- each with what a person may do about it. Read from the roster the page already holds.
-function Leadership({ roster, prefs, go, onAppointment, onDefaults }: { roster: Roster; prefs: FloorPrefs; go: Go; onAppointment: (edit: AppointmentEdit) => void; onDefaults: (department: Department) => void }) {
+function Leadership({ roster, prefs, canHire, go, onAppointment, onDefaults, onHireCeo }: { roster: Roster; prefs: FloorPrefs; canHire: boolean; go: Go; onAppointment: (edit: AppointmentEdit) => void; onDefaults: (department: Department) => void; onHireCeo: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -446,6 +446,11 @@ function Leadership({ roster, prefs, go, onAppointment, onDefaults }: { roster: 
               </Text>
             )}
           </div>
+          {roster.ceo === null && (
+            <Button size="small" appearance="outline" disabled={!canHire} onClick={onHireCeo}>
+              {t("office.overview.hireCeo")}
+            </Button>
+          )}
           <AppointmentMenu slot={{ role: "ceo", incumbent: roster.ceo ?? null }} label={t("office.leadership.ceoActions")} onPick={onAppointment} />
         </li>
         {liveDepartments(roster.departments).map((d) => {
@@ -598,6 +603,8 @@ function RosterBody({
   onEdit,
   onAppointment,
   onRecruit,
+  onHireCeo,
+  onNewDepartment,
   onHireInDepartment,
   onOpenReview,
   onRosterChanged,
@@ -625,12 +632,15 @@ function RosterBody({
   onEdit: (e: DepartmentEdit) => void;
   onAppointment: (edit: AppointmentEdit) => void;
   onRecruit: ((departmentId: string) => void) | null;
+  onHireCeo: (() => void) | null;
+  onNewDepartment: () => void;
   onHireInDepartment: (departmentId: string) => void;
   onOpenReview: (missionId: string | null) => void;
   onRosterChanged: () => void;
   onClearFilters: () => void;
 }) {
   const { t } = useI18n();
+  const o = useOfficeStyles();
   const [more, setMore] = useState<EmployeeCard[]>([]);
   const [cursor, setCursor] = useState(roster.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -665,7 +675,24 @@ function RosterBody({
         }
       />
     ) : (
-      <EmptyState icon={<RosterIcon size={22} />} tone="brand" title={t("office.overview.emptyTitle")} body={t("office.overview.emptyBody")} />
+      <EmptyState
+        icon={<RosterIcon size={22} />}
+        tone="brand"
+        title={t("office.overview.emptyTitle")}
+        body={t("office.overview.emptyBody")}
+        action={
+          <div className={o.row}>
+            {roster.ceo === null && onHireCeo !== null && (
+              <Button appearance="primary" icon={<PersonStar20Regular />} disabled={!canHire} onClick={onHireCeo}>
+                {t("office.overview.hireCeo")}
+              </Button>
+            )}
+            <Button icon={<Add16Regular />} onClick={onNewDepartment}>
+              {t("office.overview.newDepartment")}
+            </Button>
+          </div>
+        }
+      />
     );
   }
   return (
@@ -706,6 +733,7 @@ function RosterBody({
           onEditDepartment={onEdit}
           onAppointment={onAppointment}
           onRecruit={onRecruit}
+          onHireCeo={onHireCeo}
           onHireInDepartment={onHireInDepartment}
           onOpenReview={onOpenReview}
           onRosterChanged={onRosterChanged}
@@ -739,7 +767,8 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [viewMode, setViewMode] = useState<"floor" | "list">("floor");
   const [motionPaused, setMotionPaused] = useState(false);
   const floorPrefs = useFloorPrefs();
-  const [hiring, setHiring] = useState<{ departmentId: string | null } | null>(null);
+  const [hiring, setHiring] = useState<{ departmentId: string | null; appointRole?: "ceo" | null } | null>(null);
+  const openHireCeo = () => setHiring({ departmentId: null, appointRole: "ceo" });
   // A hiring request, for the whole company (null) or one department.
   const [recruiting, setRecruiting] = useState<{ departmentId: string | null } | null>(null);
   const [assigning, setAssigning] = useState<{ employeeId: string | null } | null>(null);
@@ -922,6 +951,11 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
             </Text>
           </div>
           <div className={s.heroActions}>
+            {r.ceo === null && (
+              <Button size="small" className={o.touch} appearance={r.employees.length === 0 ? "primary" : "secondary"} icon={<PersonStar20Regular />} disabled={!canHire} onClick={openHireCeo} {...restore}>
+                {t("office.overview.hireCeo")}
+              </Button>
+            )}
             <Button size="small" className={o.touch} appearance="primary" icon={<TaskListLtr20Regular />} disabled={r.employees.length === 0} onClick={() => setAssigning({ employeeId: null })} {...restore}>
               {t("office.overview.assignWork")}
             </Button>
@@ -1023,7 +1057,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
               </Text>
               <Text size={200}>{t("office.overview.gettingStartedBody")}</Text>
               <Text size={200} className={o.muted}>
-                1. {t("office.overview.stepDept")} → 2. {t("office.overview.stepHire")} → 3. {t("office.overview.stepAssign")}
+                1. {t("office.overview.stepCeo")} → 2. {t("office.overview.stepHire")} → 3. {t("office.overview.stepAssign")}
               </Text>
             </div>
             <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={t("office.overview.dismissChecklistAria")} onClick={() => setChecklistDismissed(true)} />
@@ -1098,21 +1132,30 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         onEdit={setEditing}
         onAppointment={setAppointing}
         onRecruit={recruit?.ok === true ? (departmentId) => setRecruiting({ departmentId }) : null}
+        onHireCeo={r.ceo === null ? openHireCeo : null}
+        onNewDepartment={() => setEditing({ kind: "new" })}
         onHireInDepartment={(departmentId) => setHiring({ departmentId })}
         onOpenReview={(missionId) => setReviewing({ missionId })}
         onRosterChanged={() => void roster.reload()}
         onClearFilters={clearFilters}
       />
-      <Leadership roster={r} prefs={floorPrefs.prefs} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} />
+      <Leadership roster={r} prefs={floorPrefs.prefs} canHire={canHire} go={go} onAppointment={setAppointing} onDefaults={(d) => setDefaultsOf({ kind: "department", department: d, company: company.defaults ?? {} })} onHireCeo={openHireCeo} />
       {hiring && (
         <HireWizard
           departments={r.departments}
           initialDepartmentId={hiring.departmentId}
+          appointRole={hiring.appointRole ?? null}
           companyDefaults={company.defaults ?? {}}
           onClose={() => setHiring(null)}
           onHired={(e) => {
+            const wasCeo = hiring.appointRole === "ceo";
             setHiring(null);
-            go("employee", e.id);
+            if (wasCeo) {
+              void roster.reload();
+              void executiveState.reload();
+            } else {
+              go("employee", e.id);
+            }
           }}
         />
       )}
@@ -1150,7 +1193,21 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           }}
         />
       )}
-      {appointing && <AppointmentDialog edit={appointing} onClose={() => setAppointing(null)} onDone={changed} />}
+      {appointing && (
+        <AppointmentDialog
+          edit={appointing}
+          onClose={() => setAppointing(null)}
+          onDone={changed}
+          onHireCeo={
+            canHire
+              ? () => {
+                  setAppointing(null);
+                  openHireCeo();
+                }
+              : undefined
+          }
+        />
+      )}
       {defaultsOf && <DefaultsDialog target={defaultsOf} onClose={() => setDefaultsOf(null)} onDone={changed} />}
     </div>
   );

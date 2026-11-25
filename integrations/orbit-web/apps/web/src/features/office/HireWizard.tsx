@@ -147,12 +147,14 @@ interface Draft {
   canDelegate: boolean;
   // How many temporary assistants it may engage while it leads a mission (as the CEO or a manager).
   maxAssistants: number;
+  // Optional reason recorded on the CEO appointment created at hire.
+  appointReason: string;
 }
 
 // What a new profile allows by default: a lead (the CEO, a manager) may engage two temporary assistants per mission.
 export const DEFAULT_ASSISTANTS = 2;
 
-const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, inherit: false, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false, maxAssistants: DEFAULT_ASSISTANTS };
+const EMPTY: Draft = { name: "", templateId: null, languages: "", departmentId: null, title: "", duties: "", instructions: "", skills: "", handoffStandard: "", reportingRule: "", connectionId: null, model: null, effort: null, inherit: false, webSearch: false, orbitPlugin: false, resources: null, skipProbation: false, skipReason: "", canDelegate: false, maxAssistants: DEFAULT_ASSISTANTS, appointReason: "" };
 
 const list = (text: string): string[] =>
   text
@@ -270,12 +272,12 @@ function reasonsOf(err: unknown): string[] {
   return [];
 }
 
-function Steps({ at, onSelect }: { at: number; onSelect: (step: number) => void }) {
+function Steps({ steps, at, onSelect }: { steps: readonly string[]; at: number; onSelect: (step: number) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   return (
     <ol className={s.steps} aria-label={t("office.hire.stepsAria")}>
-      {HIRE_STEPS.map((label, i) => (
+      {steps.map((label, i) => (
         <li key={label} aria-current={i === at ? "step" : undefined}>
           {i < at ? (
             <button type="button" className={mergeClasses(s.step, s.stepBtn)} onClick={() => onSelect(i)}>
@@ -298,20 +300,35 @@ function Steps({ at, onSelect }: { at: number; onSelect: (step: number) => void 
   );
 }
 
-export function HireWizard({ departments, initialDepartmentId = null, companyDefaults = null, onClose, onHired }: { departments: Department[]; initialDepartmentId?: string | null; companyDefaults?: ExecutionDefaults | null; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
+export function HireWizard({ departments, initialDepartmentId = null, appointRole = null, companyDefaults = null, onClose, onHired }: { departments: Department[]; initialDepartmentId?: string | null; appointRole?: "ceo" | null; companyDefaults?: ExecutionDefaults | null; onClose: () => void; onHired: (e: EmployeeDetail) => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const { isMobile } = useViewport();
+  const isCeo = appointRole === "ceo";
+  const steps = isCeo
+    ? ([t("office.hire.step.identity"), t("office.hire.step.ceoRole"), t("office.hire.step.runtime"), t("office.hire.step.resources"), t("office.hire.step.review")] as const)
+    : HIRE_STEPS;
   const connections = useConnections();
   const summary = useResourceSummary();
   // Whether the CEO can draft a profile for this form now.
   const executiveState = useExecutiveState();
-  const templates = useResource<EmployeeTemplate[]>(() => office.templates(), []);
+  const templates = useResource<EmployeeTemplate[]>(isCeo ? null : () => office.templates(), [isCeo]);
   const presetsRead = useResource<ResourcePreset[]>(() => office.presets(), []);
   const presets: readonly ResourcePreset[] = presetsRead.data ?? (presetsRead.error ? DEFAULT_PRESETS : []);
   const [at, setAt] = useState(0);
-  const [draft, setDraft] = useState<Draft>(() => ({ ...EMPTY, departmentId: initialDepartmentId }));
+  const [draft, setDraft] = useState<Draft>(() =>
+    isCeo
+      ? {
+          ...EMPTY,
+          departmentId: null,
+          title: t("office.hire.ceoDefaultTitle"),
+          duties: t("office.hire.ceoDefaultDuties"),
+          skills: t("office.hire.ceoDefaultSkills"),
+          handoffStandard: t("office.hire.ceoDefaultHandoff"),
+        }
+      : { ...EMPTY, departmentId: initialDepartmentId },
+  );
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
   const set = (change: Partial<Draft>) => setDraft((d) => ({ ...d, ...change }));
@@ -326,7 +343,7 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
   const orbitPlugin = connection !== null && pluginAllowed(connection) && draft.orbitPlugin;
   const resources = draft.resources ?? presets[0]?.profile ?? DEFAULT_PRESETS[0]?.profile ?? null;
   const live = departments.filter((d) => !d.archived);
-  const department = live.find((d) => d.id === draft.departmentId) ?? null;
+  const department = isCeo ? null : (live.find((d) => d.id === draft.departmentId) ?? null);
   const inherits = draft.inherit;
   // Left to the defaults: no model and no effort of its own -- the department's, else the company's, apply when it runs.
   const execution: ExecutionProfile | null =
@@ -343,9 +360,9 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
     execution && resources
       ? {
           name: draft.name.trim(),
-          departmentId: department?.id ?? null,
+          departmentId: isCeo ? null : (department?.id ?? null),
           managerId: null,
-          templateId: draft.templateId,
+          templateId: isCeo ? null : draft.templateId,
           profile: {
             title: draft.title.trim(),
             duties: draft.duties.trim(),
@@ -356,12 +373,13 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
             execution,
             handoffStandard: draft.handoffStandard.trim(),
             reportingRule: draft.reportingRule.trim(),
-            canDelegate: draft.canDelegate,
+            canDelegate: isCeo ? false : draft.canDelegate,
             maxAssistants: draft.maxAssistants,
             canHirePermanent: false,
           },
           resources,
           ...(draft.skipProbation ? { skipProbation: true, skipReason: draft.skipReason.trim() } : {}),
+          ...(isCeo ? { appointRole: "ceo" as const, ...(draft.appointReason.trim() !== "" ? { appointReason: draft.appointReason.trim() } : {}) } : {}),
         }
       : null;
 
@@ -399,58 +417,77 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
 
   const subscriptionNote = connection?.method === "subscription" ? (connection.runtime === "claude" ? null : (connections.data?.methods.find((m) => m.runtime === connection.runtime && m.method === "subscription")?.note ?? t("office.hire.subscriptionDefaultNote"))) : null;
 
+  const dialogTitle = isCeo ? t("office.hire.ceoTitle") : t("office.hire.title");
+
   return (
     <Dialog open onOpenChange={(_, d) => !d.open && onClose()}>
-      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label={t("office.hire.title")}>
+      <DialogSurface className={mergeClasses("orbit-touch", isMobile ? s.surfaceMobile : s.surface)} aria-label={dialogTitle}>
         <DialogBody className={s.dialogBody}>
-          <DialogTitle>{t("office.hire.title")}</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogContent className={s.body}>
-            <Steps at={at} onSelect={setAt} />
+            <Steps steps={steps} at={at} onSelect={setAt} />
             <Text weight="semibold" size={400} as="h3">
-              {t("office.hire.stepHeading", { step: at + 1, total: HIRE_STEPS.length, label: HIRE_STEPS[at] })}
+              {t("office.hire.stepHeading", { step: at + 1, total: steps.length, label: steps[at] })}
             </Text>
 
             {at === 0 && (
-              <div className={o.formGrid}>
-                <Field label={t("office.hire.nameLabel")} required hint={t("office.hire.nameHint")}>
-                  <Input value={draft.name} maxLength={80} onChange={(_, d) => set({ name: d.value })} />
-                </Field>
-                <Field label={t("office.hire.templateLabel")} hint={t("office.hire.templateHint")}>
-                  <Select value={draft.templateId ?? ""} onChange={(_, d) => template(d.value)}>
-                    <option value="">{t("office.hire.noTemplate")}</option>
-                    {(templates.data ?? []).map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label={t("office.hire.languagesLabel")} hint={t("office.hire.languagesHint")}>
-                  <Input value={draft.languages} onChange={(_, d) => set({ languages: d.value })} />
-                </Field>
+              <div className={o.form}>
+                {isCeo && (
+                  <MessageBar intent="info" layout="multiline">
+                    <MessageBarBody>{t("office.hire.ceoBanner")}</MessageBarBody>
+                  </MessageBar>
+                )}
+                <div className={o.formGrid}>
+                  <Field label={t("office.hire.nameLabel")} required hint={t("office.hire.nameHint")}>
+                    <Input value={draft.name} maxLength={80} onChange={(_, d) => set({ name: d.value })} />
+                  </Field>
+                  {!isCeo && (
+                    <Field label={t("office.hire.templateLabel")} hint={t("office.hire.templateHint")}>
+                      <Select value={draft.templateId ?? ""} onChange={(_, d) => template(d.value)}>
+                        <option value="">{t("office.hire.noTemplate")}</option>
+                        {(templates.data ?? []).map((tpl) => (
+                          <option key={tpl.id} value={tpl.id}>
+                            {tpl.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+                  <Field label={t("office.hire.languagesLabel")} hint={t("office.hire.languagesHint")}>
+                    <Input value={draft.languages} onChange={(_, d) => set({ languages: d.value })} />
+                  </Field>
+                </div>
               </div>
             )}
 
             {at === 1 && (
               <div className={o.form}>
-                <DraftWithAi
-                  form={{ title: draft.title, duties: draft.duties, instructions: draft.instructions, skills: draft.skills, languages: draft.languages, handoffStandard: draft.handoffStandard }}
-                  departmentId={department?.id ?? null}
-                  departmentName={department?.name ?? null}
-                  state={executiveState.data}
-                  onFill={(f) => set({ title: f.title, duties: f.duties, instructions: f.instructions, skills: f.skills, languages: f.languages, handoffStandard: f.handoffStandard })}
-                />
+                {!isCeo && (
+                  <DraftWithAi
+                    form={{ title: draft.title, duties: draft.duties, instructions: draft.instructions, skills: draft.skills, languages: draft.languages, handoffStandard: draft.handoffStandard }}
+                    departmentId={department?.id ?? null}
+                    departmentName={department?.name ?? null}
+                    state={executiveState.data}
+                    onFill={(f) => set({ title: f.title, duties: f.duties, instructions: f.instructions, skills: f.skills, languages: f.languages, handoffStandard: f.handoffStandard })}
+                  />
+                )}
                 <div className={o.formGrid}>
-                  <Field label={t("office.hire.choiceDept")}>
-                    <Select value={draft.departmentId ?? ""} onChange={(_, d) => set({ departmentId: d.value === "" ? null : d.value })}>
-                      <option value="">{t("office.overview.unassigned")}</option>
-                      {live.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
+                  {isCeo ? (
+                    <Field label={t("office.hire.choiceDept")} hint={t("office.hire.ceoDepartmentHint")}>
+                      <Input value={t("office.hire.ceoDepartmentValue")} readOnly disabled />
+                    </Field>
+                  ) : (
+                    <Field label={t("office.hire.choiceDept")}>
+                      <Select value={draft.departmentId ?? ""} onChange={(_, d) => set({ departmentId: d.value === "" ? null : d.value })}>
+                        <option value="">{t("office.overview.unassigned")}</option>
+                        {live.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
                   <Field label={t("office.hire.roleTitleLabel")} required>
                     <Input value={draft.title} maxLength={120} onChange={(_, d) => set({ title: d.value })} />
                   </Field>
@@ -469,12 +506,18 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
                     <Input value={draft.handoffStandard} onChange={(_, d) => set({ handoffStandard: d.value })} />
                   </Field>
                 </div>
-                <div className={s.option}>
-                  <Switch label={t("office.hire.teamLeadLabel")} checked={draft.canDelegate} onChange={(_, d) => set({ canDelegate: d.checked })} />
-                  <Text size={200}>
-                    {t("office.hire.teamLeadDesc")}
+                {isCeo ? (
+                  <Text size={200} className={o.muted}>
+                    {t("office.hire.ceoAuthorityNote")}
                   </Text>
-                </div>
+                ) : (
+                  <div className={s.option}>
+                    <Switch label={t("office.hire.teamLeadLabel")} checked={draft.canDelegate} onChange={(_, d) => set({ canDelegate: d.checked })} />
+                    <Text size={200}>
+                      {t("office.hire.teamLeadDesc")}
+                    </Text>
+                  </div>
+                )}
                 <AssistantsField value={draft.maxAssistants} onChange={(v) => set({ maxAssistants: v })} />
               </div>
             )}
@@ -498,7 +541,7 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
                         <Link href={settingsHref("ai-connections")}>{t("office.hire.connectInSettings")}</Link>.
                       </Text>
                     )}
-                    {connection && <Checkbox checked={inherits} onChange={(_, d) => set({ inherit: d.checked === true })} label={t("office.hire.inheritLabel")} />}
+                    {connection && <Checkbox checked={inherits} onChange={(_, d) => set({ inherit: d.checked === true })} label={t(isCeo ? "office.hire.ceoInheritLabel" : "office.hire.inheritLabel")} />}
                     {connection && inherits && <DefaultsThatApply connection={connection} department={department} company={companyDefaults} />}
                     {connection && !inherits && (
                       <div className={o.formGrid}>
@@ -556,9 +599,18 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
                   <dt className={o.dt}>{t("office.hire.choiceRole")}</dt>
                   <dd className={o.dd}>{body.profile.title}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceDept")}</dt>
-                  <dd className={o.dd}>{department?.name ?? t("office.overview.unassigned")}</dd>
-                  <dt className={o.dt}>{t("office.hire.choiceTeamLead")}</dt>
-                  <dd className={o.dd}>{draft.canDelegate ? t("office.hire.teamLeadYes") : t("office.hire.teamLeadNo")}</dd>
+                  <dd className={o.dd}>{isCeo ? t("office.hire.ceoDepartmentValue") : (department?.name ?? t("office.overview.unassigned"))}</dd>
+                  {isCeo ? (
+                    <>
+                      <dt className={o.dt}>{t("office.hire.choiceAppointment")}</dt>
+                      <dd className={o.dd}>{t("office.hire.choiceAppointmentCeo")}</dd>
+                    </>
+                  ) : (
+                    <>
+                      <dt className={o.dt}>{t("office.hire.choiceTeamLead")}</dt>
+                      <dd className={o.dd}>{draft.canDelegate ? t("office.hire.teamLeadYes") : t("office.hire.teamLeadNo")}</dd>
+                    </>
+                  )}
                   <dt className={o.dt}>{t("office.hire.choiceAssistants")}</dt>
                   <dd className={o.dd}>{draft.maxAssistants === 0 ? t("office.hire.assistantsNone") : String(draft.maxAssistants)}</dd>
                   <dt className={o.dt}>{t("office.hire.choiceRuntime")}</dt>
@@ -620,6 +672,11 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
                     </MessageBarBody>
                   </MessageBar>
                 )}
+                {isCeo && (
+                  <Field label={t("office.hire.appointReasonLabel")} hint={t("office.hire.appointReasonHint")}>
+                    <Input value={draft.appointReason} maxLength={WORKFORCE_LIMITS.noteLength} placeholder={t("office.hire.appointReasonPlaceholder")} onChange={(_, d) => set({ appointReason: d.value })} />
+                  </Field>
+                )}
                 <Checkbox checked={draft.skipProbation} onChange={(_, d) => set({ skipProbation: d.checked === true })} label={t("office.hire.skipProbationLabel")} />
                 {draft.skipProbation && (
                   <Field label={t("office.hire.skipReasonLabel")} required hint={t("office.hire.skipReasonHint")}>
@@ -660,13 +717,13 @@ export function HireWizard({ departments, initialDepartmentId = null, companyDef
           <DialogActions className={s.dialogActions}>
             <Button onClick={onClose}>{t("office.assign.cancel")}</Button>
             {at > 0 && <Button onClick={() => setAt(at - 1)}>{t("office.hire.back")}</Button>}
-            {at < HIRE_STEPS.length - 1 ? (
+            {at < steps.length - 1 ? (
               <Button appearance="primary" disabled={blocked.length > 0} onClick={() => setAt(at + 1)}>
                 {t("office.hire.next")}
               </Button>
             ) : (
               <Button appearance="primary" disabled={busy || blocked.length > 0} onClick={() => void hire()}>
-                {busy ? t("office.hire.hiring") : t("office.hire.hire")}
+                {busy ? t(isCeo ? "office.hire.hiringCeo" : "office.hire.hiring") : t(isCeo ? "office.hire.hireCeo" : "office.hire.hire")}
               </Button>
             )}
           </DialogActions>

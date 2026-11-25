@@ -14,6 +14,7 @@ interface AssignmentRow {
   id: string;
   parentId: string | null;
   dependsOn: string[];
+  shareRepositories: boolean;
   workspaceId: string | null;
   sourceRevisionIds: string[];
 }
@@ -65,6 +66,7 @@ export class AttemptDataService {
       id: String(r.id),
       parentId: r.parent_id === null ? null : String(r.parent_id),
       dependsOn: ((r.brief as { dependsOn?: string[] }).dependsOn ?? []).map(String),
+      shareRepositories: (r.brief as { shareRepositories?: boolean }).shareRepositories === true,
       workspaceId: r.research_workspace_id === null ? null : String(r.research_workspace_id),
       sourceRevisionIds: (r.source_revision_ids as string[]).map(String),
     };
@@ -72,12 +74,14 @@ export class AttemptDataService {
 
   private async grant(orbitId: string, a: AssignmentRow, depth: number): Promise<DataGrant> {
     const lead = a.parentId === null || depth > WORKFORCE_LIMITS.delegationDepth ? null : await this.row(orbitId, a.parentId);
-    const leadSources = lead === null ? [] : (await this.grant(orbitId, lead, depth + 1)).sources.map((s) => s.revisionId);
+    const leadGrant = lead === null ? null : await this.grant(orbitId, lead, depth + 1);
     return grantOf({
       leadId: a.parentId,
       missionSources: a.sourceRevisionIds,
       repositories: a.parentId === null,
-      leadSources,
+      leadSources: leadGrant === null ? [] : leadGrant.sources.map((s) => s.revisionId),
+      leadRepositories: leadGrant?.repositories ?? false,
+      shareRepositories: a.shareRepositories,
       shares: await this.shares(orbitId, a.id),
       waitsFor: a.parentId === null ? [] : await this.waitsFor(orbitId, a.parentId, a.dependsOn),
       parts: await this.parts(orbitId, a.id),

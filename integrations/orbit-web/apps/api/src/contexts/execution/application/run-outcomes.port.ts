@@ -189,6 +189,7 @@ export interface DelegatedUnit {
   // What the lead shares with this part on purpose: source labels it reads itself ("all": every one), and the accepted
   // hand-in of a part it waits for -- its summary, or in full.
   shareSources: string[];
+  shareRepositories?: boolean;
   receives: { from: string; as: "summary" | "full" }[];
 }
 

@@ -78,7 +78,7 @@ describe("CEO Chat", () => {
     const go = vi.fn();
     show({ ...available, state: "no_ceo", ceo: null, converse: { ok: false, code: "no_ceo", reason: "The company has no CEO yet." }, assign: { ok: false, code: "no_ceo", reason: "No CEO." } }, null, go);
     expect(screen.getByText("Your company has no CEO yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Hire an AI employee/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Hire CEO$/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Appoint the CEO/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Company status/ }));
     await waitFor(() => expect(go).toHaveBeenCalledWith(CONV));

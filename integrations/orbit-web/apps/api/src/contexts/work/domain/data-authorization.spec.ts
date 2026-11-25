@@ -12,9 +12,15 @@ describe("what one attempt may read", () => {
     assert.deepEqual(g.handoffs, [{ handoffId: "h1", assignmentId: "p1", unitKey: "scan", mode: "full", origin: "supervision", ref: null }]);
   });
 
-  test("a part reads only what its lead shared: never the mission's sources by default, never a repository", () => {
+  test("a part reads only what its lead shared: never the mission's sources by default, never a repository unless explicitly shared by a lead that holds it", () => {
     const g = grantOf({ ...base, leadId: "lead", missionSources: ["r1", "r2"], repositories: true, leadSources: ["r1", "r2"] });
     assert.deepEqual([g.sources, g.handoffs, g.repositories], [[], [], false]);
+    const shared = grantOf({ ...base, leadId: "lead", leadRepositories: true, shareRepositories: true });
+    assert.equal(shared.repositories, true);
+    assert.deepEqual(shared.withheld, []);
+    const unauthorized = grantOf({ ...base, leadId: "lead", leadRepositories: false, shareRepositories: true });
+    assert.equal(unauthorized.repositories, false);
+    assert.equal(unauthorized.withheld.length, 1);
   });
 
   test("a source share gives a source the lead reads; one beyond the lead's is withheld and said", () => {

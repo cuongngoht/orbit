@@ -21,15 +21,15 @@ export class MissionRepositoryGrants implements MissionRepositories {
     @Inject(SourcesService) private readonly sources: SourcesService,
   ) {}
 
-  async resolve(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[]): Promise<MissionRepository[]> {
-    const live = await this.grants.live(orbitId, employeeId);
+  async resolve(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[], allowDelegated = false): Promise<MissionRepository[]> {
+    const live = allowDelegated ? null : await this.grants.live(orbitId, employeeId);
     const out: MissionRepository[] = [];
     for (const r of asked) {
       const label = ACCESS_CONNECTOR_LABELS[r.source];
-      const grant = live.get(r.source);
-      if (grant === undefined) throw new ApiError(HttpStatus.FORBIDDEN, "repository_not_granted", `This employee may not use ${label}: let it on its Access page (Office → the employee → Access) first.`);
+      const grant = live?.get(r.source);
+      if (!allowDelegated && grant === undefined) throw new ApiError(HttpStatus.FORBIDDEN, "repository_not_granted", `This employee may not use ${label}: let it on its Access page (Office → the employee → Access) first.`);
       const repo = await this.sources.authorized(r.source, r.id);
-      if (!inScope(grant.repositories, { owner: repo.owner, project: repo.project, name: repo.name })) throw new ApiError(HttpStatus.FORBIDDEN, "repository_not_granted", `${repo.fullName} is not among the repositories this employee may use on ${label}: change that on its Access page first.`);
+      if (!allowDelegated && grant !== undefined && !inScope(grant.repositories, { owner: repo.owner, project: repo.project, name: repo.name })) throw new ApiError(HttpStatus.FORBIDDEN, "repository_not_granted", `${repo.fullName} is not among the repositories this employee may use on ${label}: change that on its Access page first.`);
       out.push({ source: r.source, id: repo.id, fullName: repo.fullName, owner: repo.owner, project: repo.project, name: repo.name, branch: r.branch });
     }
     return out;

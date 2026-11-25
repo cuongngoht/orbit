@@ -139,7 +139,7 @@ export function CeoChatView({ state, conversationId, go, onOpenNav }: CeoChatVie
           <div className={s.body}>
             <div className={s.main}>
               {data.state === "no_ceo" && conversationId === null ? (
-                <CeoOnboarding state={data} onReport={(id) => go(id)} />
+                <CeoOnboarding state={data} onReport={(id) => go(id)} onRefresh={() => void state.reload()} />
               ) : conversationId === null ? (
                 <CeoHome state={data} go={go} />
               ) : (

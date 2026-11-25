@@ -58,6 +58,7 @@ export interface UnitPlan {
   acceptanceCriteria: string[];
   dependsOn: string[];
   shareSources?: string[];
+  shareRepositories?: boolean;
   receives?: { from: string; as: ShareMode }[];
 }
 
@@ -235,7 +236,7 @@ export class TeamService implements OnModuleInit {
         parentId: manager.id,
         unitKey: u.key,
         employeeId: u.employeeId,
-        brief: { goal: `${u.title}\n\n${u.goal}`, deliverables: u.deliverables, acceptanceCriteria: u.acceptanceCriteria, revisions: [], answers: [], dependsOn: u.dependsOn },
+        brief: { goal: `${u.title}\n\n${u.goal}`, deliverables: u.deliverables, acceptanceCriteria: u.acceptanceCriteria, revisions: [], answers: [], dependsOn: u.dependsOn, ...(u.shareRepositories === true ? { shareRepositories: true } : {}) },
         execution: null,
         priority: manager.data.priority,
         eligibleAt: u.dependsOn.length === 0 ? at : NOT_YET,
@@ -327,14 +328,19 @@ export class TeamService implements OnModuleInit {
   // The source revisions each part is given, held to what the lead reads itself (a label it does not read refuses the
   // plan whole, with the others' problems: added to `problems`).
   private async sharesOf(orbitId: string, manager: Assignment, units: readonly ResolvedPart[], problems: string[]): Promise<Map<string, string[]>> {
-    const asked = units.filter((u) => (u.shareSources ?? []).length > 0);
+    const askedSources = units.filter((u) => (u.shareSources ?? []).length > 0);
+    const askedRepos = units.filter((u) => u.shareRepositories === true);
     const out = new Map<string, string[]>();
-    if (asked.length === 0) return out;
-    const held = (await this.data.of(orbitId, manager.id))?.sources ?? [];
-    for (const u of asked) {
+    if (askedSources.length === 0 && askedRepos.length === 0) return out;
+    const data = await this.data.of(orbitId, manager.id);
+    const held = data?.sources ?? [];
+    for (const u of askedSources) {
       const r = sharedSourcesOf(u.shareSources ?? [], held);
       problems.push(...r.problems.map((p) => `"${u.key}": ${p}`));
       out.set(u.key, r.revisionIds);
+    }
+    if (askedRepos.length > 0 && data?.repositories !== true) {
+      for (const u of askedRepos) problems.push(`"${u.key}": you cannot share repositories because your assignment does not hold mission repository access.`);
     }
     return out;
   }

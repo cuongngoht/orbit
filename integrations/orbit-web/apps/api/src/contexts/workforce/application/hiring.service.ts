@@ -34,6 +34,7 @@ import { EMPLOYEE_RUNTIMES } from "../../execution/infrastructure/employee-runti
 import { OfficeGovernance, type Actor } from "../../shared/application/commands.js";
 import { conflictWith, DomainError, missing, refused, stale, unprocessable } from "../../shared/domain.js";
 import { Outbox } from "../../shared/infrastructure/outbox.js";
+import { Appointment } from "../domain/appointment.js";
 import { Employee, managerCycle, type EmploymentMove } from "../domain/employee.js";
 import { resolveExecution } from "../domain/execution-precedence.js";
 import { AppointmentRepository } from "../infrastructure/appointments.repository.js";
@@ -122,9 +123,17 @@ export class HiringService {
     const req = accepted(checkHireEmployee(body));
     const orbitId = actor.command.orbitId;
     const id = randomUUID();
+    const appointCeo = req.appointRole === "ceo";
     return this.governance.command(actor, "employee.hire", id, async () => {
       if ((await this.offices.get(orbitId)) === null) throw conflictWith("office_not_set_up", "Set up the office first.");
       await this.governance.authorize(actor, "employee.hire", id, { employee: id });
+      const ceoSlot = { role: "ceo" as const, departmentId: null };
+      if (appointCeo) {
+        await this.governance.authorize(actor, "office.roster.manage", "appointment:ceo", { employee: id, role: "ceo", department: null });
+        if (!(await this.appointments.lockSlot(orbitId, ceoSlot, "update"))) throw conflictWith("office_not_set_up", "Set up the office first.");
+        const holder = await this.appointments.incumbent(orbitId, ceoSlot);
+        if (holder !== null) throw conflictWith("appointment_conflict", "This CEO slot has an incumbent already: replace it, or end it first.", { appointmentId: holder.id });
+      }
       const departmentId = req.departmentId ?? null;
       const managerId = req.managerId ?? null;
       if (departmentId !== null) await this.liveDepartment(orbitId, departmentId);
@@ -138,6 +147,15 @@ export class HiringService {
       );
       await this.employ(actor, e, { ...req.profile, execution }, req.resources, req.templateId ? `from template ${req.templateId}` : "", at);
       await this.governance.recorded(actor, "employee.hire", "employee", id, 1, `${req.name} on ${execution.runtime} ${execution.model}${execution.effort ? ` (${execution.effort})` : ""}`);
+      if (appointCeo) {
+        const appointmentId = randomUUID();
+        const slotRevision = await this.appointments.nextSlotRevision(orbitId, ceoSlot);
+        const a = Appointment.appoint({ id: appointmentId, orbitId, role: "ceo", departmentId: null, employeeId: id, slotRevision, replaces: null, reason: req.appointReason ?? "", by: actor.command.actor, at });
+        await this.appointments.insert(a);
+        await this.outbox.append(actor.command, a.pullEvents());
+        await this.governance.recorded(actor, "appointment.appoint", "appointment", appointmentId, 1, `CEO: ${id} (slot revision ${a.data.slotRevision})`);
+      }
+      await this.outbox.touched(orbitId, ["roster"]);
       return id;
     });
   }
@@ -160,7 +178,6 @@ export class HiringService {
       ...e.pullEvents().map((x) => ({ ...x, aggregateVersion: 1 })),
       { type: "SandboxProvisionRequested", aggregateType: "sandbox", aggregateId: sandboxId, aggregateVersion: 1, payload: { employeeId: id, deskMiB: resources.deskStorageMiB, cacheMiB: resources.cacheStorageMiB } },
     ]);
-    await this.outbox.touched(orbitId, ["roster"]);
   }
 
   // ---- temporary assistants (ADR 0061 §8) ------------------------------------------------------------------------
@@ -225,6 +242,7 @@ export class HiringService {
     const at = new Date().toISOString();
     const e = Employee.engage({ id: g.id, orbitId, name: g.name, departmentId: g.departmentId, managerId: g.managerId, connectionId: g.profile.execution.connectionId, missionScope: g.missionId, engagedBy: g.leadId, expiresAt: g.expiresAt, createdBy: actor.command.actor, createdAt: at });
     await this.employ(actor, e, g.profile, g.resources, `engaged by ${g.leadId} for mission ${g.missionId}`, at);
+    await this.outbox.touched(orbitId, ["roster"]);
     await this.governance.recorded(actor, "employee.hire_assistant", "employee", g.id, 1, `${g.name} for mission ${g.missionId}, engaged by ${g.leadId} until ${g.expiresAt}`);
     return g.id;
   }

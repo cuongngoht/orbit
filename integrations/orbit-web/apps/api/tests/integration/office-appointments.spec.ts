@@ -285,4 +285,56 @@ describe("the company's authority: appointments, delegation grants, execution de
     const vy = await employee(ids.vy as string);
     assert.deepEqual([vy.departmentId, vy.appointment?.role], [null, "ceo"]);
   });
+
+  test("hiring with appointRole ceo atomically creates the employee and CEO appointment, rolls back on conflict, and handles concurrent races", async () => {
+    const model = connection.catalog.models[0];
+    assert.ok(model !== undefined);
+    const ceoBody = (name: string, extra: Record<string, unknown> = {}) => ({
+      name,
+      departmentId: null,
+      profile: {
+        title: "Chief Executive Officer",
+        duties: "Lead company strategy.",
+        instructions: "Coordinate departments.",
+        skills: ["strategy"],
+        languages: ["en"],
+        knowledge: [],
+        execution: { runtime: "claude", connectionId: connection.id, model: model.id, effort: model.efforts[0] ?? null, webSearch: false, orbitPlugin: false },
+        handoffStandard: "",
+        reportingRule: "",
+        canDelegate: false,
+        maxAssistants: 2,
+        canHirePermanent: false,
+      },
+      resources: DEFAULT_PRESETS[0]?.profile,
+      appointRole: "ceo",
+      appointReason: "Founding CEO",
+      ...extra,
+    });
+    // Non-null departmentId with appointRole ceo is refused before any write.
+    assert.equal((await b.send("POST", "/api/employees", ceoBody("BadDept", { departmentId: ids.Research }))).status, 400);
+    // While Vy holds the CEO slot, hiring a CEO returns 409 appointment_conflict and leaves zero orphan employee.
+    const beforeCount = ((await b.get("/api/office/roster")).body as Roster).employees.length;
+    const conflictRes = await b.send("POST", "/api/employees", ceoBody("Orphan"));
+    assert.equal(conflictRes.status, 409, JSON.stringify(conflictRes.body));
+    assert.equal(code(conflictRes), "appointment_conflict");
+    assert.equal(((await b.get("/api/office/roster")).body as Roster).employees.length, beforeCount, "rolled back completely: no orphaned employee");
+    // Revoke Vy so the CEO slot is vacant, then race two atomic Hire CEO calls: exactly one wins, one rolls back.
+    const vyCeo = (await appointments()).ceo as AppointmentView;
+    assert.equal((await b.send("POST", `/api/office/appointments/${vyCeo.id}/revoke`, { reason: "vacate for hire-ceo test" }, ifMatch(vyCeo.version))).status, 200);
+    const [r1, r2] = await Promise.all([b.send("POST", "/api/employees", ceoBody("FounderOne")), b.send("POST", "/api/employees", ceoBody("FounderTwo"))]);
+    assert.deepEqual([r1.status, r2.status].sort(), [201, 409], JSON.stringify([r1.body, r2.body]));
+    const winner = (r1.status === 201 ? r1.body : r2.body) as EmployeeDetail;
+    const loser = r1.status === 409 ? r1 : r2;
+    assert.equal(code(loser), "appointment_conflict");
+    assert.equal(winner.departmentId, null);
+    assert.equal(winner.role, "ceo");
+    assert.equal(winner.appointment?.role, "ceo");
+    assert.equal(winner.appointment?.state, "active");
+    assert.equal(winner.appointment?.reason, "Founding CEO");
+    assert.equal(((await b.get("/api/office/roster")).body as Roster).employees.length, beforeCount + 1, "only the winning CEO was created");
+    const ceoEvents = await h.sql("SELECT type FROM workforce.events WHERE account_id = $1 AND aggregate_id IN ($2, $3) ORDER BY seq", [h.accountId as string, winner.id, winner.appointment.id]);
+    assert.ok(ceoEvents.some((x) => x.type === "EmployeeHired"));
+    assert.ok(ceoEvents.some((x) => x.type === "AppointmentChanged"));
+  });
 });

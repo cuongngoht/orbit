@@ -228,7 +228,7 @@ export function CeoDetails({ state, records }: { state: ExecutiveState; records:
 }
 
 // A company without a CEO: said so, with the Office's own ways to hire one and appoint one; Orbit's records still answer.
-export function CeoOnboarding({ onReport }: { state: ExecutiveState; onReport: (conversationId: string) => void }) {
+export function CeoOnboarding({ onReport, onRefresh }: { state: ExecutiveState; onReport: (conversationId: string) => void; onRefresh?: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const [hiring, setHiring] = useState(false);
@@ -249,7 +249,7 @@ export function CeoOnboarding({ onReport }: { state: ExecutiveState; onReport: (
   return (
     <div className={s.center}>
       <EmptyState
-        icon={<PersonAdd20Regular />}
+        icon={<PersonStar20Regular />}
         title={t("executive.onboarding.title")}
         body={t("executive.onboarding.body")}
         action={
@@ -269,8 +269,32 @@ export function CeoOnboarding({ onReport }: { state: ExecutiveState; onReport: (
           <MessageBarBody>{problem}</MessageBarBody>
         </MessageBar>
       )}
-      {hiring && roster.data !== null && <HireWizard departments={roster.data.departments as Department[]} companyDefaults={(roster.data.office?.defaults ?? null) as ExecutionDefaults | null} onClose={() => setHiring(false)} onHired={() => setHiring(false)} />}
-      {appointing && <AppointmentDialog edit={{ act: "appoint", slot: { role: "ceo", incumbent: null } }} onClose={() => setAppointing(false)} onDone={() => setAppointing(false)} />}
+      {hiring && roster.data !== null && (
+        <HireWizard
+          departments={roster.data.departments as Department[]}
+          appointRole="ceo"
+          companyDefaults={(roster.data.office?.defaults ?? null) as ExecutionDefaults | null}
+          onClose={() => setHiring(false)}
+          onHired={() => {
+            setHiring(false);
+            onRefresh?.();
+          }}
+        />
+      )}
+      {appointing && (
+        <AppointmentDialog
+          edit={{ act: "appoint", slot: { role: "ceo", incumbent: null } }}
+          onClose={() => setAppointing(false)}
+          onDone={() => {
+            setAppointing(false);
+            onRefresh?.();
+          }}
+          onHireCeo={() => {
+            setAppointing(false);
+            setHiring(true);
+          }}
+        />
+      )}
     </div>
   );
 }

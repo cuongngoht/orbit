@@ -26,7 +26,7 @@ export interface CeoForTurn {
   execution: { runtime: string; connectionId: string | null; model: string; effort: string | null };
 }
 
-export const NO_CEO = "The company has no CEO yet: hire an AI employee (or choose one), then appoint them CEO in the Office.";
+export const NO_CEO = "The company has no CEO yet: hire a CEO, or appoint an existing employee as CEO in the Office.";
 
 @Injectable()
 export class ExecutiveTurns {

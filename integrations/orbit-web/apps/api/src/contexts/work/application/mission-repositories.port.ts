@@ -10,8 +10,9 @@ export const MISSION_REPOSITORIES = Symbol("MISSION_REPOSITORIES");
 export type MissionRepository = AttemptRepository;
 
 export interface MissionRepositories {
-  // Each repository asked, as the connector lists it, if the employee may use it -- else refused, saying why.
-  resolve(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[]): Promise<MissionRepository[]>;
+  // Each repository asked, as the connector lists it, if the employee may use it (or when a lead delegates the mission
+  // down to teammates whose own Access grants are verified at attempt start) -- else refused, saying why.
+  resolve(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[], allowDelegated?: boolean): Promise<MissionRepository[]>;
   keep(orbitId: string, missionId: string, repositories: readonly MissionRepository[], by: string): Promise<void>;
   of(orbitId: string, missionId: string): Promise<MissionRepository[]>;
 }

@@ -285,9 +285,17 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   // What of the mission's repositories this attempt brings in, and what its employee is told of them (a failure is said
-  // there, never a reason the attempt does not start).
-  private async repositoryInputs(run: { orbitId: string; employeeId: string; id: string }, repositories: readonly AttemptRepository[]): Promise<RepositoryInputs> {
-    if (this.bundles === null || repositories.length === 0) return { inputs: [], lines: [] };
+  // there, never a reason the attempt does not start). A role denied connectors (the CEO) never receives bundles -- only
+  // the list of attached repositories so it can pass `share_repositories: true` when delegating to departments.
+  private async repositoryInputs(run: { orbitId: string; employeeId: string; id: string }, repositories: readonly AttemptRepository[], connectorsDenied: string | null): Promise<RepositoryInputs> {
+    if (repositories.length === 0) return { inputs: [], lines: [] };
+    if (connectorsDenied !== null) {
+      return {
+        inputs: [],
+        lines: repositories.map((r) => `- ${r.fullName} (${r.source}${r.branch ? `, branch ${r.branch}` : ""})`),
+      };
+    }
+    if (this.bundles === null) return { inputs: [], lines: [] };
     try {
       return await this.bundles.prepare(run.orbitId, run.employeeId, run.id, repositories);
     } catch (err) {
@@ -347,7 +355,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     let handle: AttemptHandle;
     // The mission's repositories, as git bundles: read by the provider as it starts the attempt, then released.
-    const repositories = await this.repositoryInputs(run, ctx.repositories);
+    const repositories = await this.repositoryInputs(run, ctx.repositories, ctx.team.connectorsDenied);
     // What it may read (ADR 0061 §9): staged from its grant alone, written down with why each, recorded -- before it starts.
     const staged: StagedInput[] = [...this.inputs.stagedOf(run.orbitId, { sources: ctx.sources, handoffs: ctx.data.handoffs }), ...repositories.inputs.map((i) => ({ ...i, origin: "repository" as const, ref: null, why: "a repository of the mission" }))];
     try {

@@ -148,7 +148,8 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
         // The CEO gives work only to departments (roles.ts): by its slot or by its name, work for it waits for nobody.
         if (el.appointment?.role === "ceo" && el.appointment.active && (await this.org.departmentsManaged(orbitId)) === 0) throw conflictWith("ceo_needs_departments", CEO_NEEDS_DEPARTMENTS, { target: req.target });
         if (req.workspaceId !== null) await this.sources.check(orbitId, req.workspaceId, req.sourceRevisionIds);
-        const repositories = await this.repositoriesFor(orbitId, employeeId, req.repositories);
+        const allowDelegatedRepos = req.target.kind === "ceo" || req.target.kind === "department" || (el.appointment !== null && el.appointment.active);
+        const repositories = await this.repositoriesFor(orbitId, employeeId, req.repositories, allowDelegatedRepos);
         const execution = req.execution === undefined ? el.execution : await this.hiring.executionFor(orbitId, { ...el.execution, ...(req.execution.model !== undefined ? { model: req.execution.model } : {}), ...(req.execution.effort !== undefined ? { effort: req.execution.effort } : {}) }, el.departmentId);
         const held = await this.assignments.heldBy(orbitId, employeeId);
         if ((held !== null || !el.eligible) && req.whenBusy === "reject") throw await this.busy(orbitId, employeeId, held, el, actor.command.correlationId);
@@ -459,7 +460,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       deliverables: b.deliverables,
       sources: data?.sources ?? [],
       data: { handoffs: data?.handoffs ?? [], withheld: data?.withheld ?? [] },
-      // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
+      // The mission's repositories come to the root and to delegated parts whose lead shared them (each employee's own Access grants are still checked when staging bundles).
       repositories: data?.repositories === true && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
         phase: a.state === "REVIEWING" ? "review" : a.state === "ANSWERING" ? "answer" : "work",
@@ -484,11 +485,12 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     return a === null ? null : this.team.roomFor(orbitId, a.data.missionId, departmentId);
   }
 
-  // The repositories a new mission asks for, each held to what its employee may use (none bound: none may be asked).
-  private async repositoriesFor(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[]): Promise<ResolvedRepository[]> {
+  // The repositories a new mission asks for, each held to what its employee may use (or authorized on the connector
+  // when assigned to a delegating lead whose teammates' Access grants are checked at attempt start).
+  private async repositoriesFor(orbitId: string, employeeId: string, asked: readonly MissionRepositoryRequest[], allowDelegated = false): Promise<ResolvedRepository[]> {
     if (asked.length === 0) return [];
     if (this.repositories === null) throw invalid("repositories_unavailable", "This installation brings no repository into an employee's work.");
-    return this.repositories.resolve(orbitId, employeeId, asked);
+    return this.repositories.resolve(orbitId, employeeId, asked, allowDelegated);
   }
 
   async started(actor: Actor, assignmentId: string, fence: number): Promise<void> {

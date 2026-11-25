@@ -145,11 +145,16 @@ export function RunDetails({ run }: { run: RunView }) {
           {run.state === "unschedulable" ? t("office.run.unschedulablePrefix") : t("office.run.waitingPrefix")}: {run.waitingReason ?? t("office.run.noReasonGiven")}
         </Callout>
       )}
-      {run.detail && (
-        <Text size={200} className={o.wrap}>
-          {run.detail}
-        </Text>
-      )}
+      {run.detail &&
+        (run.state === "failed" || run.state === "interrupted" ? (
+          <Callout tone="danger" icon={<ErrorCircle16Regular />}>
+            {run.detail}
+          </Callout>
+        ) : (
+          <Text size={200} className={o.wrap}>
+            {run.detail}
+          </Text>
+        ))}
       <Rows
         label={t("office.run.modelAndEffort")}
         secondCol={t("office.run.colResolved")}
@@ -172,6 +177,10 @@ export function RunDetails({ run }: { run: RunView }) {
             cost: run.modelUsage.costUsd === null ? t("office.run.notReported") : `$${run.modelUsage.costUsd.toFixed(2)}`,
             turns: run.modelUsage.turns ?? t("office.run.notReported"),
           })}
+          {typeof run.observed.toolCalls === "number" ? t("office.run.metaToolCalls", { count: run.observed.toolCalls }) : ""}
+          {run.observed.exit && (run.observed.exit.code !== null || run.observed.exit.signal !== null)
+            ? t("office.run.metaExit", { exit: run.observed.exit.signal ?? String(run.observed.exit.code) })
+            : ""}
         </Text>
       </div>
       {r && (

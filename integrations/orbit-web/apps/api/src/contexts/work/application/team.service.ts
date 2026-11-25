@@ -449,7 +449,11 @@ export class TeamService implements OnModuleInit {
     const orbitId = manager.orbitId;
     if (manager.state !== "REVIEWING" && manager.state !== "ANSWERING") throw conflictWith("invalid_transition", "Reviewing your team's parts happens when they have handed in.");
     const row = await this.db.one("SELECT id FROM workforce.assignments WHERE account_id = $1 AND parent_id = $2 AND unit_key = $3", [orbitId, manager.id, unitKey]);
-    if (row === null) throw missing(`The part "${unitKey}"`);
+    if (row === null) {
+      const awaiting = (await this.units(orbitId, manager.id)).filter((u) => u.state === "AWAITING_ACCEPTANCE").map((u) => u.key);
+      if (awaiting.length > 0) throw new DomainError("not_found", "not_found", `There is no part "${unitKey}". Parts awaiting your review: ${awaiting.join(", ")}.`);
+      throw missing(`The part "${unitKey}"`);
+    }
     const part = (await this.assignments.get(orbitId, String(row.id), true)) as Assignment;
     if (part.state !== "AWAITING_ACCEPTANCE") throw conflictWith("invalid_transition", `The part "${unitKey}" is ${part.state.toLowerCase().replace(/_/g, " ")}: there is nothing of it to review now.`);
     const h = await this.handoffs.latest(orbitId, part.id);
@@ -475,6 +479,11 @@ export class TeamService implements OnModuleInit {
     await this.assignments.save(part);
     events.push(...part.pullEvents());
     if (decision === "accept") events.push(...(await this.release(orbitId, manager.id, at)));
+    const after = await this.units(orbitId, manager.id);
+    const remaining = after.filter((u) => u.state === "AWAITING_ACCEPTANCE").map((u) => u.key);
+    if (remaining.length > 0) text += ` Still awaiting your review (${remaining.length}): ${remaining.join(", ")}. Call review_unit for each before finishing.`;
+    else if (allEnded(after)) text += " Every part has ended: integrate their results into /output and call submit_handoff now.";
+    else text += " No other parts await your review now (others are still in progress): end this attempt now and you will be woken when they hand in.";
     return { events, text };
   }
 
@@ -490,13 +499,23 @@ export class TeamService implements OnModuleInit {
     return events;
   }
 
-  // A review attempt that ended without handing in. A part's result that arrived while it ran (it was never shown it):
-  // the manager reviews again. Parts still being worked on: back to waiting. A result it was shown and left undecided, or
-  // nothing left to wait for and no hand-in: blocked, with why.
-  async reviewEnded(manager: Assignment, at: string, attemptStartedAt: string | null): Promise<{ kind: "blocked"; why: string } | { kind: "waiting" } | { kind: "again" }> {
+  // A review attempt that ended cleanly without handing in. A part's result that arrived after this attempt's prompt was
+  // snapshotted (never shown to it, or superseded by a newer revision): the manager reviews again. Parts still being
+  // worked on: back to waiting. A result it was actually shown and left undecided, or nothing left to wait for and no
+  // hand-in: blocked, with why.
+  async reviewEnded(
+    manager: Assignment,
+    at: string,
+    attempt: { startedAt: string | null; reviewedUnits?: readonly { key: string; digest: string }[] },
+  ): Promise<{ kind: "blocked"; why: string } | { kind: "waiting" } | { kind: "again" }> {
     const units = await this.units(manager.orbitId, manager.id);
     const awaiting = units.filter((u) => u.state === "AWAITING_ACCEPTANCE");
-    const seen = (u: UnitView) => attemptStartedAt === null || (u.handoff !== null && Date.parse(u.handoff.submittedAt) <= Date.parse(attemptStartedAt));
+    const shown = attempt.reviewedUnits === undefined ? null : new Map(attempt.reviewedUnits.map((u) => [u.key, u.digest]));
+    const seen = (u: UnitView): boolean => {
+      if (u.handoff === null) return false;
+      if (shown !== null) return shown.get(u.key) === u.handoff.digest;
+      return attempt.startedAt !== null && Date.parse(u.handoff.submittedAt) <= Date.parse(attempt.startedAt);
+    };
     const undecided = awaiting.filter(seen).map((u) => u.key);
     if (undecided.length > 0) return { kind: "blocked", why: `The lead ended its review without deciding on ${undecided.join(", ")}.` };
     // Every part ended and nothing handed in: blocked while it is still the review that ended (a waiting lead has no

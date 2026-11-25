@@ -584,12 +584,14 @@ function PartActions({ a, c }: { a: AssignmentView; c: ReturnType<typeof useComm
 
 // ---- the plan: the assignments as a tree --------------------------------------------------------------------------
 
-function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentView; nested: boolean; go: Go; onDone: () => void; onLoadLatest: () => void }) {
+function AssignmentRow({ a, nested, go, onInspectRun, onDone, onLoadLatest }: { a: AssignmentView; nested: boolean; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
   const c = useCommands(a, onDone);
   const part = a.parentId !== null;
+  const runAlert = a.lastRun !== null && (a.state === "BLOCKED" || a.lastRun.state === "failed" || a.lastRun.state === "interrupted");
+  const extraRunDetail = runAlert && a.lastRun?.detail && !(a.reason ?? "").includes(a.lastRun.detail) ? a.lastRun.detail : null;
   const facts = [reviewText(t, a), a.planCount > 0 ? t("office.mission.plansGiven", { count: a.planCount }) : null, a.questionCount > 0 ? t("office.mission.questionsAskedCount", { count: a.questionCount }) : null].filter((f): f is string => f !== null);
   return (
     <div className={mergeClasses(o.item, nested && s.nested)}>
@@ -641,10 +643,22 @@ function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentV
           {t(RUN_STATE_KEYS[a.lastRun.state])}: {a.lastRun.waitingReason ?? t("office.run.noReasonGiven")}
         </Text>
       )}
+      {extraRunDetail && (
+        <Text size={200} className={mergeClasses(o.danger, o.wrap)}>
+          {t("office.mission.runDetailLabel", { detail: extraRunDetail })}
+        </Text>
+      )}
       {a.lastRun?.wakeReason && (
         <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
           {t("office.mission.lastWake", { no: a.lastRun.attemptNo, why: a.lastRun.wakeReason })}
         </Text>
+      )}
+      {runAlert && (
+        <div>
+          <Link as="button" onClick={() => onInspectRun(a.id)} style={{ fontSize: tokens.fontSizeBase200 }}>
+            {t("office.mission.inspectRunAction")}
+          </Link>
+        </div>
       )}
       {part && (
         <>
@@ -656,16 +670,16 @@ function AssignmentRow({ a, nested, go, onDone, onLoadLatest }: { a: AssignmentV
   );
 }
 
-function AssignmentNode({ node, depth, go, onDone, onLoadLatest }: { node: TreeNode; depth: number; go: Go; onDone: () => void; onLoadLatest: () => void }) {
+function AssignmentNode({ node, depth, go, onInspectRun, onDone, onLoadLatest }: { node: TreeNode; depth: number; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   return (
     <li className={s.node}>
-      <AssignmentRow a={node.a} nested={depth > 0} go={go} onDone={onDone} onLoadLatest={onLoadLatest} />
+      <AssignmentRow a={node.a} nested={depth > 0} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
       {node.children.length > 0 && (
         <ul className={mergeClasses(s.branch, depth + 1 > INDENTED && s.branchFlat)} aria-label={t("office.mission.partsOf", { title: node.a.title })}>
           {node.children.map((child) => (
-            <AssignmentNode key={child.a.id} node={child} depth={depth + 1} go={go} onDone={onDone} onLoadLatest={onLoadLatest} />
+            <AssignmentNode key={child.a.id} node={child} depth={depth + 1} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
           ))}
         </ul>
       )}
@@ -674,13 +688,13 @@ function AssignmentNode({ node, depth, go, onDone, onLoadLatest }: { node: TreeN
 }
 
 // The plan: the root assignment and, under each, the parts it gave its team.
-function Plan({ assignments, go, onDone, onLoadLatest }: { assignments: AssignmentView[]; go: Go; onDone: () => void; onLoadLatest: () => void }) {
+function Plan({ assignments, go, onInspectRun, onDone, onLoadLatest }: { assignments: AssignmentView[]; go: Go; onInspectRun: (assignmentId: string) => void; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   return (
     <ul className={o.list} aria-label={t("office.mission.assignmentsAria")}>
       {treeOf(assignments).map((node) => (
-        <AssignmentNode key={node.a.id} node={node} depth={0} go={go} onDone={onDone} onLoadLatest={onLoadLatest} />
+        <AssignmentNode key={node.a.id} node={node} depth={0} go={go} onInspectRun={onInspectRun} onDone={onDone} onLoadLatest={onLoadLatest} />
       ))}
     </ul>
   );
@@ -1303,6 +1317,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const s = useStyles();
   const o = useOfficeStyles();
   const mission = useOfficeRead<MissionDetail>(() => office.mission(id), [id], ["missions", "inbox"], id);
+  const [runAssignmentId, setRunAssignmentId] = useState<string | null>(null);
   const current: MissionTab = (MISSION_TABS as readonly string[]).includes(tab ?? "") ? (tab as MissionTab) : "overview";
   if (mission.data === null)
     return mission.error ? (
@@ -1313,7 +1328,13 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
       <Spinner label={t("office.mission.reading")} />
     );
   const m = mission.data;
+  const ordered = flatten(treeOf(m.assignments));
   const root = m.assignments.find((a) => a.id === m.assignment.id) ?? m.assignments.find((a) => a.parentId === null) ?? null;
+  const selectedRunAssignment = (runAssignmentId !== null ? ordered.find((a) => a.id === runAssignmentId) : undefined) ?? root ?? ordered[0] ?? null;
+  const inspectRun = (assignmentId: string) => {
+    setRunAssignmentId(assignmentId);
+    go("mission", id, "run");
+  };
   const reload = () => void mission.reload();
   // A mission whose work was split into parts has a team room (the tab shows when asked for by its address too).
   const parts = m.assignments.filter((a) => a.parentId !== null);
@@ -1390,8 +1411,8 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
                 </Text>
                 <Text size={200}>{t("office.mission.resourceWaitExplain")}</Text>
               </div>
-              {current !== "run" && (
-                <Button size="small" onClick={() => go("mission", id, "run")} style={{ flexShrink: 0 }}>
+              {current !== "run" && root && (
+                <Button size="small" onClick={() => inspectRun(root.id)} style={{ flexShrink: 0 }}>
                   {t("office.mission.inspectLastRun")}
                 </Button>
               )}
@@ -1421,7 +1442,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
                 </Text>
                 {root && <AssignmentActions a={root} answerHere={!rootAsked} onDone={reload} onLoadLatest={reload} />}
               </div>
-              <Plan assignments={m.assignments} go={go} onDone={reload} onLoadLatest={reload} />
+              <Plan assignments={m.assignments} go={go} onInspectRun={inspectRun} onDone={reload} onLoadLatest={reload} />
             </section>
             {m.clarifications.length > 0 && <Questions m={m} onDone={reload} onLoadLatest={reload} />}
             {m.dataShares.length > 0 && <Shares m={m} onDone={reload} />}
@@ -1501,7 +1522,23 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
 
       {current === "run" && (
         <section className={o.card} aria-label={t("office.mission.tab.run")}>
-          {root?.lastRun ? <RunDetails run={root.lastRun} /> : <Text className={o.muted}>{t("office.mission.runEmpty")}</Text>}
+          {ordered.length > 1 && selectedRunAssignment && (
+            <Field label={t("office.mission.runForAssignment")}>
+              <Select
+                aria-label={t("office.mission.runAssignmentAria")}
+                value={selectedRunAssignment.id}
+                onChange={(_, d) => setRunAssignmentId(d.value)}
+              >
+                {ordered.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.employeeName} — {a.title} ({ASSIGNMENT_STATE_TEXT[a.state]}
+                    {a.lastRun ? ` · ${t(RUN_STATE_KEYS[a.lastRun.state])}` : ""})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {selectedRunAssignment?.lastRun ? <RunDetails run={selectedRunAssignment.lastRun} /> : <Text className={o.muted}>{t("office.mission.runEmpty")}</Text>}
         </section>
       )}
     </div>

@@ -25,7 +25,22 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MIN_QUOTE = 12;
 
 // A plain file name the sandbox accepts (letters, digits, dots, dashes, underscores): `S1-invoices-q3`.
-const fileTitle = (t: string): string => t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 60) || "source";
+const fileTitle = (t: string): string => t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, (c) => (c === "đ" ? "d" : "D")).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 60) || "source";
+
+// Sanitize a staged /input file name so it always matches INPUT_NAME and never collides with an earlier input.
+function uniqueInputName(used: Set<string>, raw: string): string {
+  const ascii = raw.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, (c) => (c === "đ" ? "d" : "D"));
+  const clean = ascii.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "input";
+  const dot = clean.lastIndexOf(".");
+  const hasExt = dot > 0 && clean.length - dot <= 16;
+  const ext = hasExt ? clean.slice(dot) : "";
+  const stem = hasExt ? clean.slice(0, dot) : clean;
+  const fit = (suffix: string): string => `${stem.slice(0, Math.max(1, 120 - ext.length - suffix.length))}${suffix}${ext}`;
+  let candidate = fit("");
+  for (let i = 2; used.has(candidate); i += 1) candidate = fit(`-${i}`);
+  used.add(candidate);
+  return candidate;
+}
 const extensionOf = (s: PinnedSource): string => {
   const fromName = s.fileName?.match(/\.([A-Za-z0-9]{1,8})$/)?.[1];
   if (fromName !== undefined) return fromName.toLowerCase();
@@ -73,9 +88,10 @@ export class ResearchInputs {
   // hand-ins of the parts it supervises (`unit-<key>-<file>`, as before), and what its lead shared of a part it waits for
   // (`from-<key>-summary.md`, and `from-<key>-<file>` when shared in full).
   stagedOf(orbitId: string, data: Pick<AttemptData, "sources" | "handoffs">): StagedInput[] {
-    const sources = data.sources.flatMap((s) => this.inputsOf(orbitId, [s]).map((i) => ({ ...i, origin: s.origin, ref: s.ref, why: s.origin === "mission" ? "a source of the mission" : "a source your lead shared with you" })));
+    const used = new Set<string>();
+    const sources = data.sources.flatMap((s) => this.inputsOf(orbitId, [s]).map((i) => ({ ...i, name: uniqueInputName(used, i.name), origin: s.origin, ref: s.ref, why: s.origin === "mission" ? "a source of the mission" : "a source your lead shared with you" })));
     const handoffs = data.handoffs.flatMap((h): StagedInput[] => {
-      const file = (prefix: string, name: string) => `${prefix}-${h.unitKey}-${name.replace(/[^A-Za-z0-9._-]+/g, "-")}`.slice(0, 120);
+      const file = (prefix: string, name: string) => uniqueInputName(used, `${prefix}-${h.unitKey}-${name}`);
       if (h.origin === "supervision") return h.artifacts.map((a) => ({ name: file("unit", a.name), storePath: `artifact:${orbitId}/${a.sha256}`, origin: "supervision", ref: null, why: `what "${h.unitKey}" handed in (revision ${h.revision}) for your review` }));
       const why = `"${h.unitKey}"'s accepted hand-in (revision ${h.revision}), shared by your lead`;
       const summary: StagedInput = { name: file("from", "summary.md"), storePath: `handoff-summary:${orbitId}/${h.handoffId}`, origin: "share", ref: h.ref, why: `${why}: its summary` };

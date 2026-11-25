@@ -29,6 +29,7 @@ describe("questions up the tree, stopping below the CEO: a manager decides, one 
   const ids: Record<string, string> = {};
   const said: Record<string, string[]> = {};
   const note = (k: string, v: string) => (said[k] ??= []).push(v);
+  let answerFailOnce = 0;
   // Holds the escalating lead until the test has tried to answer in its place.
   let release: () => void = () => undefined;
   const gate = new Promise<void>((r) => (release = r));
@@ -90,6 +91,12 @@ describe("questions up the tree, stopping below the CEO: a manager decides, one 
         }
         if (p.includes("[lead:silent]") && q !== undefined) {
           note("silent", "woken, did not answer");
+          return;
+        }
+        if (p.includes("[lead:crash]") && q !== undefined) {
+          answerFailOnce += 1;
+          if (answerFailOnce === 1) throw new Error("answering_provider_down");
+          await t.call("answer_question", { question_id: q, answer: "Enterprise tier." });
           return;
         }
         if (p.includes("[lead:")) return;
@@ -205,6 +212,22 @@ describe("questions up the tree, stopping below the CEO: a manager decides, one 
     assert.deepEqual([m.clarifications[0]?.addressee, m.clarifications[0]?.answer], ["lead", DECIDE_YOURSELF]);
     const inbox = ((await b.get("/api/inbox?state=open")).body as Inbox).items.filter((i) => i.missionId === id && i.kind === "information");
     assert.deepEqual(inbox, []);
+    await cancelRoot(id);
+  });
+
+  test("a technical failure during ANSWERING blocks the lead with the real error instead of consuming a wake or auto-answering", async () => {
+    await eventually(async () => (await b.get(`/api/employees/${ids.Minh}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    await eventually(async () => (await b.get(`/api/employees/${ids.Lan}`)).body as EmployeeDetail, (e) => e.availability === "available", 30_000);
+    const made = await give("Minh", "[lead:crash] Price it with a flaky provider.");
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = (made.body as MissionAccepted).missionId;
+    const blocked = await eventually(() => mission(id), (x) => root(x).state === "BLOCKED", 30_000);
+    assert.match(root(blocked).reason ?? "", /answering_provider_down/);
+    assert.equal(blocked.clarifications[0]?.state, "open", "the question stays open for the retried lead");
+    const retried = await b.send("POST", `/api/assignments/${root(blocked).id}/retry`, {}, ifMatch(root(blocked).version));
+    assert.equal(retried.status, 200, JSON.stringify(retried.body));
+    const answered = await eventually(() => mission(id), (x) => x.clarifications[0]?.state === "answered", 30_000);
+    assert.equal(answered.clarifications[0]?.answer, "Enterprise tier.");
     await cancelRoot(id);
   });
 });

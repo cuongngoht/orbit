@@ -462,6 +462,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       // The mission's repositories come to the employee it was given to, never to a colleague given a part of it.
       repositories: data?.repositories === true && this.repositories !== null ? await this.repositories.of(orbitId, a.data.missionId) : [],
       team: {
+        phase: a.state === "REVIEWING" ? "review" : a.state === "ANSWERING" ? "answer" : "work",
         role,
         denied: rules.denied,
         connectorsDenied: rules.connectorsDenied,
@@ -588,28 +589,38 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       // Its work ended by design (it delegated, asked, answered): the assignment moved on already.
       if (e.stoppedFor === "handed_over") return [];
       const interrupted = e.stoppedFor === "recover" || e.stoppedFor === "pause" || e.stoppedFor === "cancel";
+      if (interrupted) return [];
+      if (!["ASSIGNED", "RUNNING", "RECOVERING", "REVIEWING", "ANSWERING"].includes(a.state)) return [];
+      // A technical failure (timeout, OOM, CLI error, auth/sandbox refusal, access revoked, worker crash) is always
+      // reported as itself -- never masked as a lead leaving parts undecided or a question unanswered.
+      if (e.state !== "succeeded") {
+        const why =
+          e.stoppedFor === "timeout"
+            ? `The attempt ran past its time limit. ${e.detail ?? ""}`.trim()
+            : `The attempt ${e.state}${e.detail ? `: ${e.detail}` : "."}`;
+        a.block(why, "owner", at);
+        await this.openBlocked(actor.command.orbitId, a, why);
+        return [];
+      }
       // A lead's answering attempt that left its team's questions unanswered: counted, moved up after the last wake.
-      if (a.state === "ANSWERING" && !interrupted) return this.clarifications.answeringEnded(a, at);
-      if (a.state === "REVIEWING" && !interrupted) {
-        const next = await this.team.reviewEnded(a, at, e.startedAt ?? null);
+      if (a.state === "ANSWERING") return this.clarifications.answeringEnded(a, at);
+      if (a.state === "REVIEWING") {
+        const next = await this.team.reviewEnded(a, at, { startedAt: e.startedAt ?? null, reviewedUnits: e.reviewedUnits });
         if (next.kind === "waiting") return this.team.next(a, at);
         if (next.kind === "again") return [await this.team.wakeAgain(a, at)];
         a.block(next.why, "owner", at);
-        await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: next.why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
+        await this.openBlocked(actor.command.orbitId, a, next.why);
         return [];
       }
-      if (a.state !== "RUNNING" && a.state !== "ASSIGNED" && a.state !== "RECOVERING") return [];
-      if (e.stoppedFor === "recover") return [];
-      const why =
-        e.state === "succeeded"
-          ? "The employee ended its run without handing in a result."
-          : e.stoppedFor === "timeout"
-            ? `The attempt ran past its time limit. ${e.detail ?? ""}`.trim()
-            : `The attempt ${e.state}${e.detail ? `: ${e.detail}` : "."}`;
+      const why = "The employee ended its run without handing in a result.";
       a.block(why, "owner", at);
-      await this.decisions.open({ orbitId: actor.command.orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason: why, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
+      await this.openBlocked(actor.command.orbitId, a, why);
       return [];
     }, true);
+  }
+
+  private async openBlocked(orbitId: string, a: Assignment, reason: string): Promise<void> {
+    await this.decisions.open({ orbitId, kind: "blocked", missionId: a.data.missionId, assignmentId: a.id, title: "Work is blocked", reason, waiting: null, deadline: a.data.deadline, pin: { assignmentVersion: a.nextVersion, handoffDigest: null, deliveryId: null }, dedupKey: `blocked:${a.id}` });
   }
 
   // A lead that ended (cancelled, failed): its open parts end with it, and the question it asked is withdrawn -- as is

@@ -29,6 +29,7 @@ export interface StagedInput {
 
 const ATTEMPT_INPUT = /^attempt:([0-9a-f-]{36})\/([0-9a-f-]{36})\/([A-Za-z0-9._-]{1,160})$/;
 const ACCOUNT_IN = /^[a-z-]+:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//;
+const ARTIFACT_PATH = /^artifact:([0-9a-f-]{36})\/([0-9a-f]{64})$/;
 const LIVE = ["starting", "running"];
 
 export const attemptInputPath = (orbitId: string, runId: string, name: string): string => `attempt:${orbitId}/${runId}/${name}`;
@@ -68,8 +69,20 @@ export class AttemptInputs {
     const data = await this.data.of(orbitId, assignmentId);
     if (data === null) return rows[0]?.name ?? null;
     const now = new Set(this.stagedOf(orbitId, data).map((i) => `${i.name}\n${i.storePath}`));
+    let supervised: Set<string> | null = null;
     for (const r of rows) {
-      if (r.origin === "repository" ? !data.repositories : !now.has(`${r.name}\n${r.storePath}`)) return r.name;
+      if (r.origin === "repository") {
+        if (!data.repositories) return r.name;
+        continue;
+      }
+      if (r.origin === "supervision") {
+        const m = ARTIFACT_PATH.exec(r.storePath);
+        if (m === null || m[1] !== orbitId) return r.name;
+        if (supervised === null) supervised = await this.data.supervisedArtifactSha256s(orbitId, assignmentId);
+        if (!supervised.has(m[2] as string)) return r.name;
+        continue;
+      }
+      if (!now.has(`${r.name}\n${r.storePath}`)) return r.name;
     }
     return null;
   }

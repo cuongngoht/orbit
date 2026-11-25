@@ -289,6 +289,42 @@ describe("a team's mission", () => {
     const run = await screen.findByRole("region", { name: "Last run" });
     expect(within(run).getByText("Why it started: the person who gave the work asked for a revision")).toBeInTheDocument();
   });
+
+  test("a blocked nested lead shows its run detail and can be inspected on the Last run tab with tool calls and exit status", async () => {
+    const failedRun = runView({
+      attemptNo: 3,
+      state: "failed",
+      wakeReason: "retried by a person",
+      detail: "It ran past its limit of 60 minutes and was stopped.",
+      observed: { model: "claude-sonnet", effort: "unknown", plugins: [], runtimeVersion: "2.1.330", nativeSession: null, toolCalls: 7, exit: { code: 1, signal: null } },
+    });
+    const data = () =>
+      teamMission({
+        root: { state: "WAITING_FOR_SUBORDINATES", lastRun: runView({ attemptNo: 1, state: "succeeded", detail: "Ended by design: it gave its work to its team." }) },
+        part: {
+          employeeName: "Khoa",
+          title: "Soạn AI Security Policy hoàn chỉnh",
+          state: "BLOCKED",
+          reason: "The lead ended its review without deciding on ngoc-data-supply.",
+          waitingOn: "owner",
+          lastRun: failedRun,
+        },
+      });
+    fakeApi().on("GET", `/api/missions/${MISSION_ID}`, data);
+    const go = show("overview");
+    const parts = await screen.findByRole("list", { name: "Parts of “Q3 team report”" });
+    expect(parts.textContent).toContain("Last attempt detail: It ran past its limit of 60 minutes and was stopped.");
+    await userEvent.click(within(parts).getByRole("button", { name: "Inspect last run" }));
+    expect(go).toHaveBeenCalledWith("mission", MISSION_ID, "run");
+
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="run" go={go} account={authAccount()} />);
+    const runTab = await screen.findByRole("region", { name: "Last run" });
+    const selector = within(runTab).getByRole("combobox", { name: "Choose whose last run to inspect" });
+    await userEvent.selectOptions(selector, PART_ID);
+    expect(within(runTab).getByText("It ran past its limit of 60 minutes and was stopped.")).toBeInTheDocument();
+    expect(runTab.textContent).toContain("tool calls 7");
+    expect(runTab.textContent).toContain("exit 1");
+  });
 });
 
 // The thread's own messages (a message's files are a list of their own inside it).

@@ -303,6 +303,9 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
     if (ctx === null || !ctx.current || run.stopRequested !== null) return this.unstarted(run, actor, null, { state: "cancelled", detail: "The assignment no longer waits for this attempt (paused, cancelled or replaced).", stoppedFor: notWanted(run.stopRequested) });
     if (!ctx.employee.eligible || ctx.employee.sandboxId === null || ctx.employee.profile === null) return this.unstarted(run, actor, null, { state: "failed", detail: ctx.employee.reason ?? "The employee cannot run work now.", stoppedFor: "refused" });
+    // Snapshot the exact awaiting hand-ins shown to this attempt at dispatch (T0) so parts arriving during container
+    // start or attestation are never falsely marked undecided when the review ends.
+    const shownUnits = ctx.team.units.filter((u) => u.state === "AWAITING_ACCEPTANCE" && u.handoff !== null).map((u) => ({ key: u.key, digest: u.handoff!.digest }));
     // Bound as the EMPLOYEE (its own principal), for this work, in its department now; started by whoever gave the work.
     const prep = await this.governance.prepareAssignment(
       { accountId: run.orbitId, employeeId: run.employeeId, title: ctx.employee.name, assignmentId: run.assignmentId, missionId: ctx.missionId, departmentId: ctx.employee.departmentId },
@@ -396,9 +399,41 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     const args = rt.args({ model: resolved.profile.model, effort: resolved.profile.effort, webSearch: resolved.profile.webSearch, bridge: { command: handle.bridgeCommand.command, args: handle.bridgeCommand.args, env: { ORBIT_TOOL_URL: spec.bridge.url, ORBIT_RUN_TOKEN: prep.token } }, systemPrompt, sessionId: randomUUID(), modelFile });
     const env = rt.env(this.modelPlaneBase(handle), handle.modelPlaneHome, apiKey);
-    const watched = await this.watched(entry, run, () => this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: staged.filter((i) => i.origin !== "repository"), withheld: ctx.data.withheld, team: { ...ctx.team, room: room?.domain ?? null } }), resolved.profile.webSearch, profile.timeoutMinutes));
+    const promptUnits = this.withStagedNames(run.orbitId, ctx.team.units, staged);
+    const watched = await this.watched(entry, run, () => this.watch(entry, handle, rt, args, env, promptOf({ repositories: repositories.lines, goal: ctx.brief.goal, deliverables: ctx.brief.deliverables, criteria: ctx.brief.acceptanceCriteria, revisions: ctx.brief.revisions, answers: ctx.brief.answers, inputs: staged.filter((i) => i.origin !== "repository"), withheld: ctx.data.withheld, team: { ...ctx.team, units: promptUnits, room: room?.domain ?? null, wakeReason: run.wakeReason } }), resolved.profile.webSearch, profile.timeoutMinutes));
     if (room !== null) await this.roomAfter(handle, run, room.id);
-    await this.settle(entry, run, actor, prep.plan, watched, this.endOf(entry, watched, profile));
+    await this.settle(entry, run, actor, prep.plan, watched, { ...this.endOf(entry, watched, profile), reviewedUnits: shownUnits });
+  }
+
+  // Pair each supervision unit's artifacts with the exact staged /input file names written for this attempt.
+  private withStagedNames(orbitId: string, units: AttemptContext["team"]["units"], staged: readonly StagedInput[]) {
+    const byLength = [...units].sort((a, b) => b.key.length - a.key.length);
+    const queues = new Map<string, string[]>();
+    for (const i of staged) {
+      if (i.origin !== "supervision") continue;
+      const prefix = `artifact:${orbitId}/`;
+      if (!i.storePath.startsWith(prefix)) continue;
+      const sha = i.storePath.slice(prefix.length);
+      const owner = byLength.find((u) => i.name.startsWith(`unit-${u.key}-`));
+      if (owner === undefined) continue;
+      const k = `${owner.key}:${sha}`;
+      const list = queues.get(k) ?? [];
+      list.push(i.name);
+      queues.set(k, list);
+    }
+    return units.map((u) => ({
+      ...u,
+      handoff:
+        u.handoff === null
+          ? null
+          : {
+              ...u.handoff,
+              artifacts: u.handoff.artifacts.map((a) => {
+                const stagedName = queues.get(`${u.key}:${a.sha256}`)?.shift();
+                return stagedName === undefined ? a : { ...a, stagedName };
+              }),
+            },
+    }));
   }
 
   // The CLI's end, and -- when its work ended by design (it delegated, asked, answered) while it still ran -- that reason,

@@ -38,6 +38,21 @@ export class AttemptDataService {
     return { sources, handoffs: await this.handoffsOf(orbitId, grant), repositories: grant.repositories, withheld: grant.withheld };
   }
 
+  // Every artifact hash belonging to any hand-in (any status) of this assignment's direct parts: used by the access
+  // watch so a live review attempt is never stopped as ACCESS_REVOKED when the lead itself requests a revision or a
+  // subordinate hands in a newer revision.
+  async supervisedArtifactSha256s(orbitId: string, assignmentId: string): Promise<Set<string>> {
+    const rows = await this.db.query(
+      `SELECT DISTINCT ar.sha256
+       FROM workforce.assignments p
+       JOIN workforce.handoffs h ON h.account_id = p.account_id AND h.assignment_id = p.id
+       JOIN workforce.artifacts ar ON ar.account_id = h.account_id AND ar.handoff_id = h.id
+       WHERE p.account_id = $1 AND p.parent_id = $2`,
+      [orbitId, assignmentId],
+    );
+    return new Set(rows.map((r) => String(r.sha256)));
+  }
+
   private async row(orbitId: string, assignmentId: string): Promise<AssignmentRow | null> {
     const r = await this.db.one(
       `SELECT a.id, a.parent_id, a.brief, m.research_workspace_id, m.source_revision_ids FROM workforce.assignments a

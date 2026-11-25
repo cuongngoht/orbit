@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BRIDGE_PREFIX, closedTools, emptyFacts, employeeArgs, employeeEnv, foldLine, initViolation } from "./claude-employee.adapter.js";
+import { BRIDGE_PREFIX, closedTools, emptyFacts, employeeArgs, employeeEnv, foldLine, initViolation, promptOf } from "./claude-employee.adapter.js";
 
 const input = (webSearch = false) => ({ model: "sonnet", effort: "medium", webSearch, bridge: { command: "node", args: ["/opt/orbit-web/bridge/main.js"], env: { ORBIT_TOOL_URL: "http://orbit-web/api/runtime/tools", ORBIT_RUN_TOKEN: "t" } }, systemPrompt: "You are Ana.", sessionId: "11111111-2222-3333-4444-555555555555" });
 const after = (args: string[], flag: string): string | undefined => args[args.indexOf(flag) + 1];
@@ -73,4 +73,69 @@ test("the stream is folded into facts: Orbit's tool calls and searches counted, 
   f = foldLine(f, { type: "result", subtype: "success", is_error: false, total_cost_usd: 0.5, num_turns: 3, duration_ms: 1000, result: "done" }, true);
   assert.deepEqual(f.result, { costUsd: 0.5, turns: 3, durationMs: 1000, isError: false, subtype: "success", text: "done" });
   assert.equal(f.init?.version, "2.1.330");
+});
+
+test("a review prompt puts review_unit requirements at the top, uses exact staged /input filenames, and notes a retry", () => {
+  const digest = "a".repeat(64);
+  const p = promptOf({
+    goal: "Draft AI Security Policy",
+    deliverables: [{ name: "policy.md", required: true }],
+    criteria: ["Covers all areas"],
+    revisions: [],
+    answers: [],
+    inputs: [{ name: "unit-ngoc-data-supply-Bao-ve-du-lieu.md", why: 'what "ngoc-data-supply" handed in' }],
+    team: {
+      phase: "review",
+      wakeReason: "retried by a person",
+      role: "manager_with_team",
+      canDelegate: true,
+      scope: { employees: [], departments: [] },
+      units: [
+        {
+          key: "ngoc-data-supply",
+          employeeName: "Ngọc",
+          state: "AWAITING_ACCEPTANCE",
+          handoff: {
+            revision: 1,
+            digest,
+            summary: "Data protection policy",
+            artifacts: [{ name: "Bảo vệ dữ liệu.md", stagedName: "unit-ngoc-data-supply-Bao-ve-du-lieu.md" }],
+          },
+        },
+      ],
+      questions: [],
+      lead: { name: "Cường" },
+      planCount: 1,
+      room: "department",
+    },
+  });
+  assert.ok(p.startsWith("ACTION REQUIRED — REVIEW YOUR TEAM'S HAND-INS (1 awaiting decision: ngoc-data-supply):"), p.slice(0, 200));
+  assert.match(p, /review_unit/);
+  assert.match(p, /this review attempt was retried/);
+  assert.match(p, /files in \/input: unit-ngoc-data-supply-Bao-ve-du-lieu\.md/);
+  assert.ok(!p.includes("unit-ngoc-data-supply-Bảo vệ dữ liệu.md"));
+  assert.match(p, new RegExp(`^- ngoc-data-supply: Ngọc, awaiting acceptance -- handed in revision 1 \\(digest ${digest}\\):`, "m"));
+});
+
+test("an integration prompt (all parts ended) directs the lead to integrate into /output and call submit_handoff", () => {
+  const p = promptOf({
+    goal: "Draft AI Security Policy",
+    deliverables: [{ name: "policy.md", required: true }],
+    criteria: [],
+    revisions: [],
+    answers: [],
+    inputs: [],
+    team: {
+      phase: "review",
+      role: "manager_with_team",
+      canDelegate: true,
+      scope: { employees: [], departments: [] },
+      units: [{ key: "part-1", employeeName: "Ngọc", state: "COMPLETED", handoff: null }],
+      questions: [],
+      lead: null,
+      planCount: 1,
+      room: "department",
+    },
+  });
+  assert.ok(p.startsWith("ACTION REQUIRED — INTEGRATE AND HAND IN:"), p.slice(0, 120));
 });

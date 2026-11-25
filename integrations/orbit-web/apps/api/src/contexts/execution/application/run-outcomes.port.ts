@@ -31,6 +31,8 @@ export interface RunEnd {
   stoppedFor: "pause" | "cancel" | "recover" | "timeout" | "refused" | "handed_over" | null;
   // When the attempt started running (null: it never did): what it could have been shown.
   startedAt?: string | null;
+  // The parts in AWAITING_ACCEPTANCE (key + handoff digest) that were actually shown in this attempt's prompt/inputs.
+  reviewedUnits?: { key: string; digest: string }[];
 }
 
 // A research source revision the mission was given (pinned: immutable), with the label the employee cites it by.
@@ -95,6 +97,8 @@ export interface AttemptContext {
   // Its team: whether this employee may give parts of the work to colleagues (and who they are), the parts it gave and
   // what each handed in, and the mission's team room (null: none).
   team: {
+    // What this attempt was woken to do: ordinary work/planning, reviewing its team's hand-ins, or answering its team.
+    phase?: "work" | "review" | "answer";
     // Its role in this work (Work decides it from the appointment in force and the department's working members): the
     // CEO, a manager with or without a team, or an employee -- what it is told, and what that role withholds: the tools
     // never offered (and refused at the door, saying why), and every connector tool when `connectorsDenied` says why.
@@ -195,6 +199,9 @@ export const RUN_OUTCOMES = Symbol("RUN_OUTCOMES");
 // the sandbox provider.
 export interface AttemptDataPort {
   of(orbitId: string, assignmentId: string): Promise<AttemptData | null>;
+  // Every artifact sha256 belonging to any hand-in (any status) of a direct part of this assignment: supervision access
+  // for a live review attempt does not vanish when the lead itself requests a revision or a part submits a newer version.
+  supervisedArtifactSha256s(orbitId: string, assignmentId: string): Promise<Set<string>>;
 }
 
 export const ATTEMPT_DATA = Symbol("ATTEMPT_DATA");

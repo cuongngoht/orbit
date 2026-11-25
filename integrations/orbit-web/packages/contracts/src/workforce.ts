@@ -582,7 +582,17 @@ export interface RunView {
   // What was asked, what the backend resolved, what the runtime itself reported -- three records, never merged.
   requested: Partial<ExecutionProfile>;
   resolved: ExecutionProfile | null;
-  observed: { model: string | null; effort: string | null | "unknown"; plugins: string[] | "unknown"; runtimeVersion: string | null; nativeSession: string | null };
+  observed: {
+    model: string | null;
+    effort: string | null | "unknown";
+    plugins: string[] | "unknown";
+    runtimeVersion: string | null;
+    nativeSession: string | null;
+    // Operational counts and CLI exit status reported by the worker (never prompt or file content).
+    toolCalls?: number | null;
+    webSearches?: number | null;
+    exit?: { code: number | null; signal: string | null } | null;
+  };
   // What the runtime reported about the model (null: it did not say -- never estimated as if it had).
   modelUsage: { costUsd: number | null; turns: number | null; durationMs: number | null };
   sandbox: SandboxAttestation | null;

@@ -92,8 +92,16 @@ const DELEGATE: ToolSpec = {
 };
 const REVIEW_UNIT: ToolSpec = {
   name: "review_unit",
-  description: "Decide on a part your team handed in: accept it, or ask for a revision saying what must change (its colleague works on it again). Name the digest of the revision you reviewed. Their files are in /input as unit-<key>-<file>.",
-  inputSchema: obj({ part: str("The part's key"), decision: { type: "string", enum: ["accept", "revise"] }, digest: str("The digest of the hand-in you reviewed"), criteria: str("What must change (for a revision), or a note") }, ["part", "decision"]),
+  description: "Record your decision on a part your team handed in: accept it, or ask for a revision saying what must change (its colleague works on it again). Call this tool once for each part awaiting acceptance — writing review comments in text does not record a decision. Name the digest of the revision you reviewed. Their files are in /input.",
+  inputSchema: obj(
+    {
+      part: str("The part's key (e.g. research or ngoc-data-supply), not the employee's name"),
+      decision: { type: "string", enum: ["accept", "revise"] },
+      digest: str("The 64-character hex digest of the hand-in you reviewed"),
+      criteria: str("Required when decision is revise: specific changes required. Optional note when decision is accept"),
+    },
+    ["part", "decision"],
+  ),
 };
 const ANSWER_QUESTION: ToolSpec = {
   name: "answer_question",

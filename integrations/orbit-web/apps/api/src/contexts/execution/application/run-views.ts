@@ -5,7 +5,12 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { RunView } from "@orbit-web/contracts";
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 
-type Observed = { cli?: { model?: string | null; version?: string | null; plugins?: string[] } | null } | null;
+type Observed = {
+  cli?: { model?: string | null; version?: string | null; plugins?: string[] } | null;
+  toolCalls?: number | null;
+  webSearches?: number | null;
+  exit?: { code?: number | null; signal?: string | null } | null;
+} | null;
 
 export function runView(r: RunRecord): RunView {
   const observed = r.observed as Observed;
@@ -23,6 +28,9 @@ export function runView(r: RunRecord): RunView {
       plugins: observed?.cli ? (observed.cli.plugins ?? []) : "unknown",
       runtimeVersion: observed?.cli?.version ?? null,
       nativeSession: null,
+      toolCalls: typeof observed?.toolCalls === "number" ? observed.toolCalls : null,
+      webSearches: typeof observed?.webSearches === "number" ? observed.webSearches : null,
+      exit: observed?.exit ? { code: typeof observed.exit.code === "number" ? observed.exit.code : null, signal: typeof observed.exit.signal === "string" ? observed.exit.signal : null } : null,
     },
     modelUsage: r.modelUsage ?? { costUsd: null, turns: null, durationMs: null },
     sandbox: r.sandbox,

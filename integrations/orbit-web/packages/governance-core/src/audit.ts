@@ -71,6 +71,18 @@ export const AUDIT_EVENTS = {
   "office.access.revoked": row("An employee attempt was stopped because something it had been given to read is no longer its to read.", "runId", "assignmentId", "cause"),
   "office.data.shared": row("A lead shared data with a part of its team: a source revision or a predecessor's hand-in (summary or full), by revision, recipient and origin.", "missionId", "recipient", "kind", "ref", "mode", "origin"),
   "office.run.network": row("What an employee's attempt reached on the network, summed up from the egress proxy's log of it (its digest seals the log).", "runId", "connections", "allowed", "refused", "limited", "hosts", "bytesIn", "bytesOut", "digest"),
+  // Runtime security (runtime.ts, ADR 0063): the DECISIONS about an attempt's protection -- never a kernel event, which is
+  // telemetry and stays in its own bounded store.
+  "runtime_security.protection.verified": row("An employee attempt's runtime protection was installed, read back and proven by a probe before anything it runs started.", "runId", "mode", "policy", "digest", "backend", "controls", "checks"),
+  "runtime_security.protection.lost": row("An attempt's required runtime protection could no longer be proven while it ran.", "runId", "mode", "cause", "contained"),
+  "runtime_security.admission.refused": row("An attempt that required runtime protection did not start: the protection could not be established.", "runId", "mode", "cause"),
+  "runtime_security.incident.opened": row("A runtime security incident was opened for an attempt of the account.", "incidentId", "runId", "category", "severity", "employeeId"),
+  "runtime_security.incident.reviewed": row("A person reviewed a runtime security incident.", "incidentId", "state", "decision"),
+  "runtime_security.containment.requested": row("Containment of one attempt (that attempt's containers, no other) was requested.", "incidentId", "runId", "reason"),
+  "runtime_security.containment.confirmed": row("An attempt's containment was verified from outside it.", "incidentId", "runId", "outcome"),
+  "runtime_security.retry.authorized": row("A person allowed an assignment held by a security incident to be retried.", "incidentId", "assignmentId"),
+  "runtime_security.sensor.changed": row("The deployment's runtime security sensor changed state (healthy, degraded, unavailable, restarted).", "state", "generation", "cause"),
+  "runtime_security.capability.probed": row("The host's runtime security capabilities were probed, each by a test it ran.", "backend", "version", "observation", "prevention", "scope", "hostKind"),
 } as const satisfies Record<string, { summary: string; data: readonly string[] }>;
 
 export type AuditEventType = keyof typeof AUDIT_EVENTS;

@@ -22,6 +22,7 @@
 import { checked, isRecord, unknownFields, type Checked } from "./canonical.js";
 import { API_VERSION, employeeModelsErrors, LIMITS, rulesErrors, type Constitution, type EmployeeModels, type Rule } from "./constitution.js";
 import { allowListed, EMPLOYEE_NETWORK_MODES, employeeNetworkOf, isAllowEntry, NETWORK_LIMIT_KEYS, type EmployeeNetwork, type EmployeeNetworkMode, type NetworkLimitKey, type NetworkLimits } from "./network.js";
+import { departmentRuntimeErrors, departmentRuntimeSecurityErrors, type DepartmentRuntimeSecurity } from "./runtime.js";
 import { rankOf, type Effect } from "./vocabulary.js";
 
 export const DEPARTMENT_POLICY_KIND = "DepartmentPolicy";
@@ -40,6 +41,8 @@ export interface DepartmentPolicy {
   rules: Rule[];
   employeeNetwork?: DepartmentNetwork;
   employeeModels?: EmployeeModels;
+  // Runtime security for its employees' attempts: only ever stricter than the company's (runtime.ts).
+  runtimeSecurity?: DepartmentRuntimeSecurity;
 }
 
 // The limit the account counts across all its employees (one UTC day): the company's alone.
@@ -66,7 +69,7 @@ function departmentNetworkErrors(n: unknown): string[] {
 // The document's own shape (what it may say at all). What it may say for THIS company is departmentPolicyErrors.
 export function checkDepartmentPolicy(body: unknown): Checked<DepartmentPolicy> {
   if (!isRecord(body)) return { ok: false, errors: ["a department policy is a JSON object"] };
-  const errors = unknownFields(body, ["apiVersion", "kind", "metadata", "rules", "employeeNetwork", "employeeModels"]);
+  const errors = unknownFields(body, ["apiVersion", "kind", "metadata", "rules", "employeeNetwork", "employeeModels", "runtimeSecurity"]);
   if (body.apiVersion !== API_VERSION) errors.push(`apiVersion must be ${API_VERSION}`);
   if (body.kind !== DEPARTMENT_POLICY_KIND) errors.push(`kind must be ${DEPARTMENT_POLICY_KIND}`);
   const m = body.metadata;
@@ -77,7 +80,7 @@ export function checkDepartmentPolicy(body: unknown): Checked<DepartmentPolicy> 
     if (!isText(m.departmentId, LIMITS.idLength)) errors.push("metadata.departmentId must name the department");
     if (!isText(m.name, LIMITS.nameLength)) errors.push(`metadata.name must be text of at most ${LIMITS.nameLength} characters`);
   }
-  errors.push(...rulesErrors(body.rules, "rules"), ...departmentNetworkErrors(body.employeeNetwork), ...employeeModelsErrors(body.employeeModels));
+  errors.push(...rulesErrors(body.rules, "rules"), ...departmentNetworkErrors(body.employeeNetwork), ...employeeModelsErrors(body.employeeModels), ...departmentRuntimeSecurityErrors(body.runtimeSecurity));
   if (Array.isArray(body.rules)) for (const [i, r] of body.rules.entries()) if (isRecord(r) && r.principalType !== undefined && r.principalType !== "agent") errors.push(`rules[${i}].principalType: a department's policy decides for its employees (agent) alone`);
   return checked(errors, () => body as unknown as DepartmentPolicy);
 }
@@ -135,6 +138,7 @@ export function departmentPolicyErrors(dept: DepartmentPolicy, company: Constitu
   }
   const models = modelCapOf(company);
   if (dept.employeeModels?.allow !== undefined && models !== null) for (const m of dept.employeeModels.allow) if (!models.includes(m)) errors.push(`employeeModels.allow: ${m} is not a model the company lets a department choose`);
+  errors.push(...departmentRuntimeErrors(dept, company));
   return errors;
 }
 

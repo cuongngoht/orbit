@@ -11,6 +11,7 @@
 // so that the same content always has the same digest.
 import { checked, isRecord, unknownFields, type Checked } from "./canonical.js";
 import { EMPLOYEE_NETWORK_MODES, employeeNetworkErrors, isAllowEntry, NETWORK_LIMIT_KEYS, type EmployeeNetwork, type EmployeeNetworkMode, type NetworkLimits } from "./network.js";
+import { runtimeSecurityErrors, type RuntimeSecurity } from "./runtime.js";
 import {
   ACTIONS,
   CLAUDE_ACCOUNT_HOSTS,
@@ -101,6 +102,8 @@ export interface Constitution {
   delegation?: { departments?: DepartmentDelegation };
   // Which models employees may run on. Not said: any the connection's catalog offers.
   employeeModels?: EmployeeModels;
+  // What an employee's attempt is held to while its programs run (runtime.ts). Not said: disabled, no control.
+  runtimeSecurity?: RuntimeSecurity;
   rules: Rule[];
 }
 
@@ -247,7 +250,7 @@ export function delegationErrors(d: unknown): string[] {
 export function checkConstitution(body: unknown): Checked<Constitution> {
   if (!isRecord(body)) return { ok: false, errors: ["a policy is a JSON object"] };
   const errors = [
-    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "employeeNetwork", "delegation", "employeeModels", "rules"]),
+    ...unknownFields(body, ["apiVersion", "kind", "metadata", "defaults", "obligations", "employeeNetwork", "delegation", "employeeModels", "runtimeSecurity", "rules"]),
     ...headErrors(body, POLICY_KIND),
     ...constitutionMetadataErrors(body.metadata),
     ...defaultsErrors(body.defaults),
@@ -255,6 +258,7 @@ export function checkConstitution(body: unknown): Checked<Constitution> {
     ...employeeNetworkErrors(body.employeeNetwork),
     ...delegationErrors(body.delegation),
     ...employeeModelsErrors(body.employeeModels),
+    ...runtimeSecurityErrors(body.runtimeSecurity),
     ...rulesErrors(body.rules, "rules", true),
   ];
   return checked(errors, () => body as unknown as Constitution);
@@ -323,7 +327,9 @@ export type PolicyDeployment = "single" | "governed";
 //             isolation REQUIRED.
 //
 // In both, an employee's assignment reaches every public host on ports 80 and 443 (employee network access AUTONOMOUS,
-// no limit): its owner restricts it to an allow-list, or sets limits, through the policy's lifecycle.
+// no limit): its owner restricts it to an allow-list, or sets limits, through the policy's lifecycle. Runtime security
+// starts DISABLED -- Orbit Web 0.8.0's behaviour, until its owner (or the deployment's floor) raises it -- with the
+// shared-areas control chosen, so that observe or enforce mean something the moment they are turned on.
 export function defaultAccountPolicy(accountId: string, deployment: PolicyDeployment, name = "default"): Constitution {
   const single = deployment === "single";
   return {
@@ -333,6 +339,7 @@ export function defaultAccountPolicy(accountId: string, deployment: PolicyDeploy
     defaults: { decision: "deny" },
     obligations: { auditDecisions: "all", dailyReport: true, isolation: single ? "optional" : "required" },
     employeeNetwork: { mode: "AUTONOMOUS", allow: [] },
+    runtimeSecurity: { mode: "disabled", controls: ["exec.shared-areas"] },
     rules: [
       { id: "run-start", action: "agent.run.start", effect: "allow" },
       { id: "workspace-read", action: "repository.read", effect: "allow" },

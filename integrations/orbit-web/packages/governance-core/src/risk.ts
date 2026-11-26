@@ -14,6 +14,7 @@
 // an assignment's run: every host:port a rule or an allow-list names, and a host nobody names, on ports 80 and 443. The
 // employee network access itself is compared field by field (network.ts): RESTRICTED to AUTONOMOUS, an allow-list that
 // lets in a host it did not, a limit raised or removed WEAKEN it, and are high risk; the reverse narrows.
+import { composeRuntimeSecurity, runtimeSecurityChanges, runtimeSecurityOf } from "./runtime.js";
 import type { Constitution, Obligations, Rule } from "./constitution.js";
 import { composeEmployeeModels, composeEmployeeNetwork, type DepartmentPolicy } from "./department.js";
 import { evaluate } from "./evaluate.js";
@@ -40,7 +41,7 @@ export interface ImpactCell {
 export interface ObligationChange {
   // An obligation, the default decision, a field of the employee network access, of what the company delegates to its
   // departments, or of the models employees may run on.
-  field: keyof Obligations | "defaults.decision" | EmployeeNetworkField | `delegation.${string}` | `employeeModels.${string}`;
+  field: keyof Obligations | "defaults.decision" | EmployeeNetworkField | `delegation.${string}` | `employeeModels.${string}` | `runtimeSecurity.${string}`;
   before: string;
   after: string;
   weakened: boolean;
@@ -227,7 +228,8 @@ export function impactOf(base: Constitution, candidate: Constitution): Impact {
   const narrowed = cells.filter((c) => rankOf(c.after) > rankOf(c.before));
   const network = employeeNetworkChanges(employeeNetworkOf(base), employeeNetworkOf(candidate));
   const delegation = delegationChanges(base, candidate);
-  const obligations: ObligationChange[] = [...obligationChanges(base, candidate), ...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...delegation];
+  const runtime = runtimeSecurityChanges(runtimeSecurityOf(base), runtimeSecurityOf(candidate));
+  const obligations: ObligationChange[] = [...obligationChanges(base, candidate), ...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...delegation, ...runtime];
   const delegated = delegation.filter((c) => c.weakened).map((c) => `It lets departments go further: ${c.field} from ${c.before} to ${c.after}.`);
   return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base.rules, candidate.rules), reasons: [...reasonsOf(widened, obligations, network), ...delegated] };
 }
@@ -264,6 +266,8 @@ export function departmentImpactOf(company: Constitution, base: DepartmentPolicy
   const mb = composeEmployeeModels(company, base).allow ?? undefined;
   const mc = composeEmployeeModels(company, candidate).allow ?? undefined;
   const models: ObligationChange[] = listOf(mb) === listOf(mc) ? [] : [{ field: "employeeModels.allow", before: listOf(mb), after: listOf(mc), weakened: opens(mb, mc) }];
-  const obligations: ObligationChange[] = [...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...models];
+  // What its employees' attempts are held to, composed with the company's (the deployment's floor is the same on both sides).
+  const runtime = runtimeSecurityChanges(composeRuntimeSecurity(company, base, "disabled"), composeRuntimeSecurity(company, candidate, "disabled"));
+  const obligations: ObligationChange[] = [...network.map((c): ObligationChange => ({ field: c.field, before: c.before, after: c.after, weakened: c.weakened })), ...models, ...runtime];
   return { risk: riskOf(widened, obligations), widened, narrowed, obligations, rules: ruleChanges(base?.rules ?? [], candidate.rules), reasons: reasonsOf(widened, obligations, network) };
 }

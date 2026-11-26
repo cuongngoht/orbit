@@ -11,5 +11,6 @@ export * from "./lifecycle.js";
 export * from "./network.js";
 export * from "./report.js";
 export * from "./risk.js";
+export * from "./runtime.js";
 export * from "./table.js";
 export * from "./vocabulary.js";

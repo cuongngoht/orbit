@@ -1,5 +1,5 @@
 // What the API answers, for the web app's tests.
-import { composeEmployeeModels, composeEmployeeNetwork, defaultAccountPolicy, departmentTableOf, type AccountPolicy, type AuditEvent, type DepartmentPolicy, type Rule } from "@orbit-web/governance-core";
+import { composeEmployeeModels, composeEmployeeNetwork, composeRuntimeSecurity, defaultAccountPolicy, departmentTableOf, runtimeSecurityOf, type AccountPolicy, type AuditEvent, type DepartmentPolicy, type Rule } from "@orbit-web/governance-core";
 import {
   ORBIT_WEB_VERSION,
   type ApprovalView,
@@ -448,6 +448,7 @@ export function departmentPolicyOverview(effective: DepartmentRevisionView | nul
     network: composeEmployeeNetwork(company, dept),
     models: composeEmployeeModels(company, dept),
     delegation: company.delegation?.departments ?? null,
+    runtimeSecurity: { company: runtimeSecurityOf(company), effective: composeRuntimeSecurity(company, dept, "disabled") },
     ...over,
   };
 }

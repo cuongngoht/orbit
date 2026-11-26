@@ -14,6 +14,7 @@ import {
   type DailyReport,
   type DepartmentRow,
   type EffectiveEmployeeNetwork,
+  type EffectiveRuntimeSecurity,
   type EnforcementPoint,
   type EnforcementScope,
   type Environment,
@@ -26,6 +27,7 @@ import {
   type RevisionState,
   type RiskLevel,
   type RunKind,
+  type RuntimeSecurity,
 } from "@orbit-web/governance-core";
 
 // What the Governance pages say about the employee network access (`employeeNetwork` of the account's policy), and the
@@ -249,6 +251,9 @@ export interface DepartmentPolicyOverview {
   models: { allow: string[] | null; capped: boolean };
   // What the company delegates to its departments (null: nothing -- a department only narrows).
   delegation: unknown;
+  // Runtime security (ADR 0063): the company's section, and what holds this department's employees -- the strictest of
+  // the deployment's floor, the company's and the department's own (which may only raise it). Null: no company policy.
+  runtimeSecurity: { company: RuntimeSecurity; effective: EffectiveRuntimeSecurity } | null;
 }
 
 // A department's publication: the company's confirmation, plus the company revision in effect that was read.

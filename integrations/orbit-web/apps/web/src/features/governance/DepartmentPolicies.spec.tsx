@@ -163,6 +163,29 @@ describe("Governance → Departments: a department's policy, under the company's
     });
   });
 
+  test("runtime security: what holds its employees is said with where it comes from, and a draft may only raise it", async () => {
+    const draft = departmentDraftView();
+    const company = { mode: "observe" as const, controls: ["exec.shared-areas" as const] };
+    const api = fakeApi()
+      .on("GET", POLICY, () => ({ ...withDraft(draft), runtimeSecurity: { company, effective: { ...company, floor: "disabled" as const, from: { mode: "company" as const } } } }))
+      .on("GET", `${POLICY}/revisions/dpr-2`, () => draft)
+      .on("PUT", `${POLICY}/revisions/dpr-2`, () => draft);
+    openDepartment();
+    expect(await screen.findByText("observe, from your policy")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Accounting next" }));
+    const mode = await screen.findByRole("combobox", { name: "Department: runtime security" });
+    // Only higher than yours: inheriting yours, or enforce.
+    expect(within(mode).getAllByRole("option").map((o) => o.textContent)).toEqual(["Inherits yours: observe", "enforce"]);
+    const control = screen.getByRole("checkbox", { name: /No program runs from a shared area -- required by your policy/ });
+    expect(control).toBeChecked();
+    expect(control).toBeDisabled();
+    await userEvent.selectOptions(mode, "enforce");
+    await userEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(nonGets(api)).toEqual([`PUT ${POLICY}/revisions/dpr-2`]));
+    const sent = api.calls.find((c) => c.method === "PUT")?.body as { document: DepartmentPolicy };
+    expect(sent.document).toEqual({ ...departmentDocument(), runtimeSecurity: { mode: "enforce" } });
+  });
+
   test("validating a draft the company's delegation does not allow shows the API's own words and each problem it found", async () => {
     const problems = ['rules.web: the company lets a department give tool.web at most "require_approval"', "employeeNetwork.mode: the company lets a department choose at most RESTRICTED"];
     const draft = departmentDraftView();

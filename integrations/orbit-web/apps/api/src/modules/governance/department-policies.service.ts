@@ -9,12 +9,13 @@
 // it is checked again against the company's policy in effect at that moment. Simulation asks the same evaluate() the
 // decisions use. Nothing here applies to a chat, a research question or a person: the company's policy alone decides
 // those.
-import { HttpStatus, Inject, Injectable } from "@nestjs/common";
+import { HttpStatus, Inject, Injectable, Optional } from "@nestjs/common";
 import {
   canonicalJson,
   checkDepartmentPolicy,
   composeEmployeeModels,
   composeEmployeeNetwork,
+  composeRuntimeSecurity,
   confirmationRefusal,
   departmentImpactOf,
   departmentPolicyErrors,
@@ -24,11 +25,13 @@ import {
   evaluate,
   lintRules,
   move,
+  runtimeSecurityOf,
   type Constitution,
   type DepartmentPolicy,
   type GovernanceRequest,
   type Impact,
   type LifecycleOp,
+  type RuntimeMode,
 } from "@orbit-web/governance-core";
 import {
   checkCreateRevision,
@@ -43,6 +46,9 @@ import {
   type RevisionSummary,
   type SimulateResult,
 } from "@orbit-web/contracts";
+import type { AppConfig } from "../../config/config.js";
+import { loadSandboxConfig } from "../../config/sandbox-config.js";
+import { APP_CONFIG } from "../../core/tokens.js";
 import { randomUUID } from "node:crypto";
 import { accountAudience, EventBus } from "../../core/events/event-bus.js";
 import { accepted, ApiError, conflict, notFound } from "../../common/errors.js";
@@ -110,6 +116,7 @@ export class DepartmentPoliciesService {
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(EventBus) private readonly bus: EventBus,
     @Inject(AccessHooks) private readonly hooks: AccessHooks,
+    @Optional() @Inject(APP_CONFIG) private readonly config: AppConfig | null = null,
   ) {}
 
   // ---- reading --------------------------------------------------------------------------------------------------------
@@ -129,7 +136,18 @@ export class DepartmentPoliciesService {
       network: company === null ? null : composeEmployeeNetwork(company.constitution, current),
       models: company === null ? { allow: null, capped: false } : composeEmployeeModels(company.constitution, current),
       delegation: company?.constitution.delegation?.departments ?? null,
+      runtimeSecurity: company === null ? null : { company: runtimeSecurityOf(company.constitution), effective: composeRuntimeSecurity(company.constitution, current, this.runtimeFloor()) },
     };
+  }
+
+  // The deployment's floor for employees' runtime security (ORBIT_WEB_RUNTIME_SECURITY_FLOOR), as run governance reads it;
+  // a sandbox configuration that does not load is said where the sandbox is made, and holds nothing here.
+  private runtimeFloor(): RuntimeMode {
+    try {
+      return this.config === null ? "disabled" : loadSandboxConfig(this.config.sourceEnv).runtimeSecurity.floor;
+    } catch {
+      return "disabled";
+    }
   }
 
   async view(accountId: string, departmentId: string, id: string): Promise<DepartmentRevisionView> {

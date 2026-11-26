@@ -72,8 +72,9 @@ services:
     volumes:
       - orbit-web-runtime-security:/run/orbit-runtime-security/events:ro
     depends_on:
+      # Healthy, not merely started: the allocator's first proof of the host runs against a sensor that answers.
       orbit-tetragon:
-        condition: service_started
+        condition: service_healthy
     # The allocator now also reads the sensor's export and watches every protected attempt.
     cpus: ${ORBIT_WEB_ALLOCATOR_CPUS:-0.5}
     mem_limit: ${ORBIT_WEB_ALLOCATOR_MEMORY:-512m}

@@ -110,6 +110,8 @@ export interface AllocatorOptions {
   now?: () => Date;
   // The runtime security backend (ADR 0063): from the configuration unless a test hands one in.
   securityBackend?: RuntimeSecurityBackend;
+  // Where the allocator says what went wrong in the background (its log).
+  log?: (line: string) => void;
 }
 
 export class Allocator implements AllocatorApi {
@@ -131,7 +133,7 @@ export class Allocator implements AllocatorApi {
     this.engine = o.engine ?? new DockerEngine(o.config.allocatorServer.dockerSocket);
     this.now = o.now ?? (() => new Date());
     this.storage = new WorkforceStorage(this.engine, this.config, this.now);
-    this.security = new HostSecurity({ engine: this.engine, config: this.config, now: this.now, backend: o.securityBackend });
+    this.security = new HostSecurity({ engine: this.engine, config: this.config, now: this.now, backend: o.securityBackend, log: o.log });
   }
 
   private get prefix(): string {
@@ -144,14 +146,20 @@ export class Allocator implements AllocatorApi {
 
   // ---- the probe -----------------------------------------------------------------------------------------------------
 
+  // What this host can do. A cached probe still says what runtime security proved SINCE (the canary every 30 s): a
+  // sensor that was not ready at start is not held against the host, and one that failed since is not said to hold.
   probe(force = false): Promise<HostCapabilities> {
-    if (!force && this.caps !== null) return Promise.resolve(this.caps);
+    if (!force && this.caps !== null) return Promise.resolve(this.current(this.caps));
     if (this.probing === null) {
       this.probing = this.probeNow(force).finally(() => {
         this.probing = null;
       });
     }
     return this.probing;
+  }
+
+  private current(caps: HostCapabilities): HostCapabilities {
+    return caps.runtimeSecurity === undefined ? caps : { ...caps, runtimeSecurity: this.security.current(caps.runtimeSecurity) };
   }
 
   private async probeNow(force: boolean): Promise<HostCapabilities> {

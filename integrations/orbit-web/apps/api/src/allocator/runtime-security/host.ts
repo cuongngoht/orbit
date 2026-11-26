@@ -22,7 +22,7 @@ import { TOOL_PLANE } from "../../contexts/execution/infrastructure/sandbox/layo
 import { execIn, text } from "../containers.js";
 import type { ContainerInspect, DockerEngine } from "../docker/engine.js";
 import { LOGS } from "../specs.js";
-import { DisabledBackend, type RuntimeSecurityBackend } from "./backend.js";
+import { DisabledBackend, type RuntimeSecurityBackend, type SensorStatus } from "./backend.js";
 import { CANARY_PATH, CANARY_POLICY, compileCanaryPolicy } from "./policy.js";
 import { RuntimeSecurityService, type PersistedRecord, type PlaneRuntime, type ProtectRequest } from "./service.js";
 import { TetragonBackend } from "./tetragon.js";
@@ -43,6 +43,8 @@ export interface HostSecurityOptions {
   config: SandboxConfig;
   now: () => Date;
   backend?: RuntimeSecurityBackend;
+  // Where what went wrong is said (the allocator's log).
+  log?: (line: string) => void;
 }
 
 export class HostSecurity {
@@ -56,6 +58,14 @@ export class HostSecurity {
   private hostKind: HostKind = "unknown";
   private kernel: string | null = null;
   private arch: string | null = null;
+  // The namespace the host canary's policy was compiled for: a canary container that started again has a new one.
+  private canaryBoundTo: string | null = null;
+  // One proof at a time: a probe and the 30 s loop never remove and apply the canary's policy under each other.
+  private proving: Promise<unknown> = Promise.resolve();
+  // What the latest proofs established, by capability, and the sensor as they last read it.
+  private latest = new Map<CapabilityResult["capability"], CapabilityResult>();
+  private lastStatus: SensorStatus | null = null;
+  private readonly log: (line: string) => void;
 
   constructor(private readonly o: HostSecurityOptions) {
     const rs = o.config.runtimeSecurity;
@@ -76,6 +86,7 @@ export class HostSecurity {
       },
     };
     this.service = new RuntimeSecurityService({ backend: this.backend, runtime, floor: rs.floor, containAfterMs: rs.containAfterMs, freshMs: rs.freshMs, now: () => o.now().getTime(), onChange: () => this.persistSoon() });
+    this.log = o.log ?? (() => undefined);
   }
 
   get enabled(): boolean {
@@ -136,22 +147,44 @@ export class HostSecurity {
     return test();
   }
 
-  // One proof of the host's prevention and its scope. Returns the capability results it established.
-  async proveCanary(fileless = false): Promise<CapabilityResult[]> {
+  // One proof of the host's prevention and its scope, after any other in progress. Returns the capability results it
+  // established; they are also what the host is said to prove from now on (current()).
+  proveCanary(fileless = false): Promise<CapabilityResult[]> {
+    const run = this.proving.then(() => this.proveCanaryNow(fileless));
+    this.proving = run.catch(() => undefined);
+    return run.then((out) => {
+      for (const c of out) this.latest.set(c.capability, c);
+      return out;
+    });
+  }
+
+  // What a probe said, with what the proofs since established: the capabilities proven again, the sensor as last read.
+  current(probe: RuntimeHostProbe): RuntimeHostProbe {
+    const capabilities = probe.capabilities.map((c) => this.latest.get(c.capability) ?? c);
+    for (const c of this.latest.values()) if (!capabilities.some((x) => x.capability === c.capability)) capabilities.push(c);
+    return { ...probe, capabilities, sensor: this.lastStatus ?? probe.sensor };
+  }
+
+  private async proveCanaryNow(fileless: boolean): Promise<CapabilityResult[]> {
     const at = new Date().toISOString();
     const result = (capability: CapabilityResult["capability"], state: CapabilityResult["state"], detail: string): CapabilityResult => ({ capability, state, detail, checkedAt: at });
     if (!this.enabled) return (["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const).map((c) => result(c, "UNSUPPORTED", "no runtime security backend on this host"));
     const status = await this.backend.status();
+    this.lastStatus = status;
     if (status.state !== "HEALTHY") return (["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const).map((c) => result(c, "UNKNOWN", `the sensor is ${status.state.toLowerCase()}: ${status.detail}`));
     const inside = await this.canaryContainer("in");
     const outside = await this.canaryContainer("out");
     if (inside === null || outside === null) return (["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const).map((c) => result(c, "UNKNOWN", "the canary containers could not be made"));
     const mnt = /mnt:\[(\d+)\]/.exec(await this.canaryExec(inside, ["readlink", "/proc/self/ns/mnt"]))?.[1] ?? null;
     let applyDetail = "";
-    if (mnt !== null && !((await this.backend.policies()) ?? []).some((p) => p.name === CANARY_POLICY && p.state === "TP_STATE_ENABLED")) {
+    // Bound again whenever the in-scope canary has another namespace than the one the policy names (that container
+    // started again): a policy left on the old inode refuses nothing here, and would land on whatever reuses it.
+    const enabled = ((await this.backend.policies()) ?? []).some((p) => p.name === CANARY_POLICY && p.state === "TP_STATE_ENABLED");
+    if (mnt !== null && (!enabled || this.canaryBoundTo !== mnt)) {
       await this.backend.remove(CANARY_POLICY);
       const a = await this.backend.apply(compileCanaryPolicy(mnt), "enforce");
       applyDetail = a.ok ? "" : a.detail;
+      this.canaryBoundTo = a.ok ? mnt : null;
     }
     const startedAt = this.o.now().getTime();
     const inOut = await this.canaryExec(inside, ["sh", "-c", `${CANARY_PATH}; echo "rc=$?"`]);
@@ -203,8 +236,9 @@ export class HostSecurity {
       mkdirSync(join(this.o.config.allocatorServer.stateDir, "runtime-security"), { recursive: true, mode: 0o700 });
       writeFileSync(`${this.recordsFile}.tmp`, JSON.stringify(this.service.exportRecords()), { mode: 0o600 });
       renameSync(`${this.recordsFile}.tmp`, this.recordsFile);
-    } catch {
-      // The watchdog contains what it cannot re-prove after a restart either way; this only spares a re-proof.
+    } catch (err) {
+      // After a restart an enforced attempt with no record is contained either way (containUnrecorded); said, never hidden.
+      this.log(`runtime security: the protection records could not be written: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -219,8 +253,7 @@ export class HostSecurity {
   }
 
   async restore(): Promise<number> {
-    const records = this.readRecords();
-    if (records === null) return 0;
+    const records = this.readRecords() ?? [];
     this.service.restore(records);
     let kept = 0;
     for (const r of records) {
@@ -228,8 +261,43 @@ export class HostSecurity {
       if (alive.some((c) => c === null)) await this.service.release(r.req.dispatchKey);
       else kept += 1;
     }
+    await this.containUnrecorded();
     this.persist();
     return kept;
+  }
+
+  // An attempt whose planes run under enforce (their labels say so: written by this allocator at creation) but whose
+  // protection record is gone -- a write that failed, a crash before it landed -- cannot be proven again from anything
+  // this process holds: both its planes are stopped, never left running unprotected. An observed one is left to run:
+  // observation is never containment.
+  private async containUnrecorded(): Promise<number> {
+    const known = new Set(this.service.exportRecords().map((r) => r.req.dispatchKey));
+    let stopped = 0;
+    for (const c of await this.o.engine.containerList({ [LABELS.managed]: "1", [SECURITY_LABELS.mode]: "enforce" })) {
+      const key = c.Labels[LABELS.dispatchKey];
+      if (key === undefined || known.has(key) || c.State !== "running") continue;
+      await this.o.engine.containerStop(c.Id, 0);
+      stopped += 1;
+      this.log(`runtime security: ${c.Names[0] ?? c.Id.slice(0, 12)} of ${key} ran under enforce with no protection record after a restart: stopped`);
+    }
+    return stopped;
+  }
+
+  // At a start: what the previous process protected is restored for the watchdog to prove again, an enforced attempt
+  // with no record is contained, and the loops run -- whatever the restore met.
+  async begin(): Promise<number | null> {
+    let kept: number | null = null;
+    try {
+      kept = await this.restore();
+    } catch (err) {
+      this.log(`runtime security: the previous process's attempts could not be restored (${err instanceof Error ? err.message : String(err)}); the watchdog runs anyway`);
+    }
+    this.start();
+    return kept;
+  }
+
+  get running(): boolean {
+    return this.timers.length > 0;
   }
 
   // ---- the loops ------------------------------------------------------------------------------------------------------

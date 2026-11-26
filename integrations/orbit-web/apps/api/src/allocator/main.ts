@@ -15,18 +15,12 @@ const log = (line: string): void => {
 function main(): void {
   const config = loadSandboxConfig(process.env);
   const secret = readSecret(config.allocatorServer.secretFile);
-  const allocator = new Allocator({ config, secret });
+  const allocator = new Allocator({ config, secret, log });
   const server = allocatorServer(allocator, secret, log);
   server.listen(config.allocatorServer.port, config.allocatorServer.bind, () => log(`listening on ${config.allocatorServer.bind}:${config.allocatorServer.port}`));
-  // Runtime security (ADR 0063): what the previous process protected is restored for the watchdog to prove again, then
-  // the ingest, watchdog and canary loops run in this process.
-  allocator.security
-    .restore()
-    .then((kept) => {
-      allocator.security.start();
-      log(`runtime security: backend ${config.runtimeSecurity.backend}, floor ${config.runtimeSecurity.floor}, ${kept} attempt(s) restored for re-proof`);
-    })
-    .catch((err: unknown) => log(`runtime security could not start: ${err instanceof Error ? err.message : String(err)}`));
+  // Runtime security (ADR 0063): what the previous process protected is restored for the watchdog to prove again, an
+  // enforced attempt with no record is contained, and the ingest, watchdog and canary loops run -- whatever the restore met.
+  void allocator.security.begin().then((kept) => log(`runtime security: backend ${config.runtimeSecurity.backend}, floor ${config.runtimeSecurity.floor}, ${kept ?? "no"} attempt(s) restored for re-proof`));
   allocator
     .probe(true)
     .then((caps) => log(`probe: runtime ${caps.runtime.reachable ? caps.runtime.detail : "UNREACHABLE"}; limits cpu ${caps.limits.cpu}, memory ${caps.limits.memory}, pids ${caps.limits.pids}; storage ${caps.storage.mechanism} per area ${caps.storage.perArea}, host ${caps.storage.hostProtection}; shell possible: ${caps.shellPossible}. ${caps.storage.evidence}`))

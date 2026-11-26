@@ -84,7 +84,8 @@ function Incident({ i, onChanged }: { i: IncidentView; onChanged: () => void }) 
   };
   const submit = () => {
     setError(null);
-    void reviewIncident(i.id, (detail ?? i).version, decision, note)
+    const current = detail ?? i;
+    void reviewIncident(i.id, current.version, current.state === "RESOLVED" && current.blocksRetry ? "authorize_retry" : decision, note)
       .then((v) => {
         setDetail(v);
         setNote("");
@@ -93,6 +94,9 @@ function Incident({ i, onChanged }: { i: IncidentView; onChanged: () => void }) 
       .catch((err: unknown) => setError(errorText(err)));
   };
   const d = detail ?? i;
+  // A resolved incident that still holds the work is released only by a retry authorized with a reason.
+  const releaseOnly = d.state === "RESOLVED" && d.blocksRetry;
+  const chosen: IncidentDecision = releaseOnly ? "authorize_retry" : decision;
   return (
     <Card icon={<FindingsIcon size={18} />} tone={i.severity === "CRITICAL" || i.severity === "HIGH" ? "danger" : "warning"} title={<>{i.title} <Word value={i.state.toLowerCase()} /> <Word value={i.severity.toLowerCase()} /> {i.blocksRetry && <Word value="held" label={t("governance.runtime.holdsRetry")} />}</>}>
       <Text size={200} className={s.muted}>
@@ -112,20 +116,29 @@ function Incident({ i, onChanged }: { i: IncidentView; onChanged: () => void }) 
               {a.detail !== null ? ` · ${a.detail}` : ""}
             </Text>
           ))}
-          {d.state !== "RESOLVED" && (
+          {releaseOnly && (
+            <Text size={200} className={s.muted}>
+              {t("governance.runtime.resolvedHolds")}
+            </Text>
+          )}
+          {(d.state !== "RESOLVED" || releaseOnly) && (
             <div className={s.row}>
               <CleanSelect
-                value={decision}
+                value={chosen}
                 ariaLabel={t("governance.runtime.decision")}
                 options={[
-                  { value: "investigate", label: t("governance.runtime.investigate") },
-                  { value: "resolve", label: t("governance.runtime.resolve") },
+                  ...(releaseOnly
+                    ? []
+                    : [
+                        { value: "investigate", label: t("governance.runtime.investigate") },
+                        { value: "resolve", label: t("governance.runtime.resolve") },
+                      ]),
                   { value: "authorize_retry", label: t("governance.runtime.authorizeRetry") },
                 ]}
                 onChange={(v) => setDecision(v as IncidentDecision)}
               />
               <Textarea aria-label={t("governance.runtime.note")} placeholder={t("governance.runtime.notePlaceholder")} value={note} onChange={(_, v) => setNote(v.value)} />
-              <Button size="small" appearance="primary" onClick={submit} disabled={decision === "authorize_retry" && note.trim() === ""}>
+              <Button size="small" appearance="primary" onClick={submit} disabled={chosen === "authorize_retry" && note.trim() === ""}>
                 {t("governance.runtime.submit")}
               </Button>
             </div>

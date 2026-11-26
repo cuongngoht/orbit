@@ -643,6 +643,7 @@
   "runtime.investigate": "Investigate",
   "runtime.resolve": "Resolve",
   "runtime.authorizeRetry": "Authorize a retry",
+  "runtime.resolvedHolds": "Resolved, and it still holds this assignment's Retry: authorize a retry, with a reason, to release it.",
   "runtime.note": "Why",
   "runtime.notePlaceholder": "What you looked at, and why",
   "runtime.submit": "Submit review",

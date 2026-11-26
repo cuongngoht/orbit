@@ -82,4 +82,17 @@ describe("Governance → Runtime security", () => {
     expect(post?.body).toEqual({ decision: "authorize_retry", note: "Reviewed the process tree." });
     expect(Object.entries(post?.headers ?? {}).some(([k, v]) => k.toLowerCase() === "if-match" && v === '"3"')).toBe(true);
   });
+
+  test("a resolved incident that still holds the work offers what releases it: a retry authorized with a reason", async () => {
+    const held = incident({ state: "RESOLVED", blocksRetry: true, version: 5 });
+    const api = routes(overview(), [], [], [held]).on("GET", "/api/governance/runtime-security/incidents/inc-1", () => held).on("POST", "/api/governance/runtime-security/incidents/inc-1/review", () => incident({ state: "RESOLVED", blocksRetry: false, version: 6 }));
+    renderLive(<RuntimeSecurityPage />);
+    await userEvent.click(await screen.findByRole("button", { name: "Details" }));
+    const decision = await screen.findByRole("combobox", { name: "Decision" });
+    expect(within(decision).getAllByRole("option").map((o) => (o as HTMLOptionElement).value)).toEqual(["authorize_retry"]);
+    await userEvent.type(screen.getByRole("textbox", { name: "Why" }), "A false positive: the canary of an old build.");
+    await userEvent.click(screen.getByRole("button", { name: "Submit review" }));
+    await waitFor(() => expect(api.calls.some((c) => c.method === "POST")).toBe(true));
+    expect(api.calls.find((c) => c.method === "POST")?.body).toEqual({ decision: "authorize_retry", note: "A false positive: the canary of an old build." });
+  });
 });

@@ -22,8 +22,8 @@ import { RunGovernanceService } from "../../../modules/governance/run-governance
 import { SANDBOX_PROVIDER, type SandboxProvider } from "../../execution/application/sandbox.port.js";
 import { SECURITY_STOP } from "../../execution/application/execution.worker.js";
 import { RunRepository, type RunRecord } from "../../execution/infrastructure/runs.repository.js";
-import type { RuntimePull, WireRuntimeEvent } from "../../execution/infrastructure/sandbox/runtime-security-wire.js";
-import { classify, incidentFor, protectionIncident, type IncidentPlan } from "../domain/rules.js";
+import type { RuntimePull, WireRuntimeEvent, WireSensor } from "../../execution/infrastructure/sandbox/runtime-security-wire.js";
+import { classify, incidentFor, protectionIncident, protectionLoss, type IncidentPlan } from "../domain/rules.js";
 import { isUuid, SecurityRepository, type EventRow, type IncidentRecord } from "../infrastructure/security.repository.js";
 
 const POLL_MS = 2_000;
@@ -98,7 +98,7 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
     try {
       const feed = await this.repo.feed();
       const pull = await this.provider.runtimeSecurityPull({ epoch: feed.epoch, seq: feed.seq }, BATCH);
-      return pull === null ? null : await this.take(pull, feed.lost);
+      return pull === null ? null : await this.take(pull, feed.lost, feed.sensor);
     } finally {
       // Whatever the pull brought, or if it failed: ending a run token needs no allocator, and a stop is tried again.
       await this.respondOwed();
@@ -106,7 +106,7 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
     }
   }
 
-  private async take(pull: RuntimePull, lostBefore: number): Promise<{ events: number; incidents: number }> {
+  private async take(pull: RuntimePull, lostBefore: number, sensorBefore: WireSensor | null): Promise<{ events: number; incidents: number }> {
     const at = new Date().toISOString();
     const accounts = new Set<string>();
     const planned: Planned[] = [];
@@ -117,6 +117,8 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
         const r = await this.repo.reportProtection(p);
         if (r === undefined) continue;
         accounts.add(p.accountId);
+        const loss = protectionLoss({ mode: p.mode, from: r.from, to: p.state });
+        if (loss !== null) await this.audit.record(systemContext("runtime-security", p.accountId), { type: "runtime_security.protection.lost", outcome: loss.contained ? "contained" : "lost", accountId: p.accountId, data: { runId: p.runId, mode: p.mode, cause: p.detail.slice(0, 300), contained: loss.contained } });
         const plan = protectionIncident({ runId: p.runId, mode: p.mode, from: r.from, to: p.state, detail: p.detail });
         if (plan !== null) planned.push({ accountId: p.accountId, plan, runId: p.runId, assignmentId: p.assignmentId, employeeId: p.employeeId, dispatchKey: p.dispatchKey, evidence: { detail: plan.detail.slice(0, 500), state: p.state, mode: p.mode, policy: p.policy } });
       }
@@ -135,6 +137,11 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
       kept = await this.repo.insertEvents(rows, this.settings.maxEventsPerRun, at);
       const last = pull.events.at(-1)?.time ?? null;
       await this.repo.saveFeed({ epoch: pull.epoch, seq: pull.next, sensor: pull.sensor, lost: lostBefore + pull.lost, unattributed: pull.unattributed, gaps: pull.gaps, canaryProvenAt: pull.canaryProvenAt, lastEventAt: last }, at);
+      // The sensor as Orbit Web saw it change (its state, or a new generation: a restart) -- the deployment's record.
+      const sensor = pull.sensor;
+      if (sensor !== null && (sensorBefore?.state !== sensor.state || sensorBefore.generation !== sensor.generation)) {
+        await this.audit.record(systemContext("runtime-security", null), { type: "runtime_security.sensor.changed", outcome: sensor.state.toLowerCase(), accountId: null, data: { state: sensor.state, generation: sensor.generation, cause: sensor.detail.slice(0, 300) } });
+      }
       for (const x of planned) {
         const { incident, created } = await this.repo.openIncident(x.accountId, { ...x.plan, runId: x.runId, assignmentId: x.assignmentId, employeeId: x.employeeId, dispatchKey: x.runId === null ? null : x.dispatchKey, evidence: x.evidence }, at, `inc-${randomUUID()}`);
         if (!created) continue;
@@ -164,6 +171,7 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
   private async respond(incident: IncidentRecord): Promise<void> {
     const accountId = incident.accountId;
     const at = () => new Date().toISOString();
+    await this.repo.responseTried(accountId, incident.id, at());
     const done = await this.repo.actionsOf(accountId, incident.id);
     const owed = incident.respond.filter((step) => (step === "revoke" ? !done.some((a) => a.action === "revoke") : !done.some((a) => a.action === "stop" && a.outcome === STOPPED)));
     if (incident.state === "RESOLVED" || owed.length === 0) return this.repo.responseDone(accountId, incident.id, at());

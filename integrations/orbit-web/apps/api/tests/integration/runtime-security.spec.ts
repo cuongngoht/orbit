@@ -13,6 +13,7 @@ import type { Constitution } from "@orbit-web/governance-core";
 import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
 import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
 import type { RuntimePull, WireProtection, WireRuntimeEvent } from "../../src/contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
+import { ResourcesService } from "../../src/contexts/execution/application/resources.service.js";
 import { RuntimeSecurityIngestion } from "../../src/contexts/runtime-security/application/ingestion.service.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
@@ -253,6 +254,34 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     assert.equal(((await b.get(`/api/governance/runtime-security/incidents/${inc.id}`)).body as IncidentView).actions.length, 4, "a response carried out is never carried out again");
   });
 
+  test("owed responses take turns: twenty that cannot finish never starve a new one", async () => {
+    await publish(b, mode("enforce"));
+    const e1 = await hire("Jon");
+    const m1 = await give(e1.id, "[slow] Work for a while.");
+    const stuck = (await eventually(() => runOf(m1), (x) => x.run?.state === "running")).run!;
+    sandbox.readsBackRunning.add(stuck.dispatch_key);
+    try {
+      const long = new Date(Date.now() - 3_600_000).toISOString();
+      for (let i = 0; i < 20; i += 1) {
+        await h.sql(
+          `INSERT INTO security.incidents (id, account_id, fingerprint, category, severity, state, title, run_id, first_seen, last_seen, count, blocks_retry, respond, dispatch_key, response_due, evidence, created_at, updated_at)
+           VALUES ($1, $2, $3, 'unexpected_process', 'HIGH', 'CONTAINING', 'a stop that never reads back', $4, $5, $5, 1, true, '{stop}', $6, true, '{}', $5, $5)`,
+          [`inc-stuck-${i}-${randomUUID()}`, stuck.account_id, `stuck:${i}:${randomUUID()}`, stuck.id, long, stuck.dispatch_key],
+        );
+      }
+      await ingest.tick();
+      const e2 = await hire("Kim");
+      const m2 = await give(e2.id, "[slow] Work for a while.");
+      const fresh = (await eventually(() => runOf(m2), (x) => x.run?.state === "running")).run!;
+      sandbox.runtimePulls.push(pull([event(fresh, { binary: "/proc/self/fd/3" })]));
+      await ingest.tick();
+      const inc = ((await b.get("/api/governance/runtime-security/incidents?open=1")).body as IncidentList).incidents.find((i) => i.runId === fresh.id) as IncidentView;
+      assert.equal(inc.state, "CONTAINED", "the new incident's response was carried out on its first pull");
+    } finally {
+      sandbox.readsBackRunning.delete(stuck.dispatch_key);
+    }
+  });
+
   test("a stale incident never stops a newer attempt: a report about an attempt that ended touches nothing", async () => {
     const e = await hire("Eve");
     const m = await give(e.id, "[slow] Work for a while.");
@@ -346,6 +375,42 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     const inc = ((await b.get("/api/governance/runtime-security/incidents")).body as IncidentList).incidents.find((i) => i.runId === run!.id && i.category === "protection_missing");
     assert.equal(inc?.state, "CONTAINED");
     assert.equal(inc?.blocksRetry, true);
+    // The account's chain says it: lost, then lost and contained -- once each (the late report is not taken).
+    const lost = await h.sql("SELECT data FROM governance.audit_events WHERE event_type = 'runtime_security.protection.lost' AND data->>'runId' = $1 ORDER BY seq", [run!.id]);
+    assert.deepEqual(lost.map((r) => [(r.data as { contained: boolean }).contained, (r.data as { cause: string }).cause]), [[false, "the sensor restarted"], [true, "both planes stopped"]]);
     await cancel(m);
+  });
+
+  // What this host can do, as its probe decided it, is the deployment's record too -- when it changes, never each probe.
+  test("a change of what the host's probe proved is recorded once on the deployment's chain", async () => {
+    const probed = async () => h.sql("SELECT data FROM governance.audit_events WHERE account_id = '00000000-0000-4000-8000-000000000001' AND event_type = 'runtime_security.capability.probed' ORDER BY seq");
+    const resources = h.app.get(ResourcesService);
+    await resources.refreshCapacity();
+    const before = (await probed()).length;
+    await resources.refreshCapacity();
+    assert.equal((await probed()).length, before, "the same answer is not recorded again");
+    sandbox.runtimePrevention = "UNSUPPORTED";
+    try {
+      await resources.refreshCapacity();
+      await resources.refreshCapacity();
+    } finally {
+      sandbox.runtimePrevention = "SUPPORTED";
+    }
+    const after = (await probed()).slice(before);
+    assert.equal(after.length, 1);
+    assert.deepEqual(after[0]?.data, { backend: "tetragon", version: "test", observation: null, prevention: "UNSUPPORTED", scope: null, hostKind: "unknown" });
+    await resources.refreshCapacity();
+  });
+
+  // The deployment's chain (the system account's) records the sensor's state as Orbit Web saw it change -- never each pull.
+  test("a change of the sensor's state or generation is recorded once on the deployment's chain", async () => {
+    const changed = async () => h.sql("SELECT data FROM governance.audit_events WHERE account_id = '00000000-0000-4000-8000-000000000001' AND event_type = 'runtime_security.sensor.changed' ORDER BY seq");
+    const before = (await changed()).length;
+    const sensor = (state: "HEALTHY" | "UNAVAILABLE", generation: string | null) => ({ ...pull([]), sensor: { state, generation, since: null, version: "v1.8.0", image: "tetragon", detail: state === "HEALTHY" ? "ok" : "the sensor container is not running" } });
+    sandbox.runtimePulls.push(sensor("HEALTHY", "g1"), sensor("UNAVAILABLE", null), sensor("UNAVAILABLE", null), sensor("HEALTHY", "g2"), sensor("HEALTHY", "g2"));
+    for (let i = 0; i < 5; i += 1) await ingest.tick();
+    const after = (await changed()).slice(before).map((r) => [(r.data as { state: string }).state, (r.data as { generation: string | null }).generation]);
+    assert.deepEqual(after.slice(-2), [["UNAVAILABLE", null], ["HEALTHY", "g2"]]);
+    assert.ok(after.length <= 3, `recorded on a change only: ${JSON.stringify(after)}`);
   });
 });

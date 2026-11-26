@@ -130,10 +130,11 @@ export class SecurityRepository {
   // ---- protections ------------------------------------------------------------------------------------------------------
 
   // The allocator's report of one attempt's protection, kept if it is newer than what is kept (and the run is the
-  // account's): the state it replaced, or undefined when it was not taken.
+  // account's): the state it replaced -- the last report's, else the start evidence the worker kept with the run -- or
+  // undefined when it was not taken.
   async reportProtection(p: WireProtection): Promise<{ from: ProtectionState | null } | undefined> {
     if (!isUuid(p.accountId) || !isUuid(p.runId)) return undefined;
-    const run = await this.db.one("SELECT 1 AS x FROM workforce.runs WHERE account_id = $1 AND id = $2", [p.accountId, p.runId]);
+    const run = await this.db.one("SELECT sandbox->'protection'->>'state' AS started FROM workforce.runs WHERE account_id = $1 AND id = $2", [p.accountId, p.runId]);
     if (run === null) return undefined;
     const before = await this.db.one("SELECT state, reported_at FROM security.protections WHERE account_id = $1 AND run_id = $2 FOR UPDATE", [p.accountId, p.runId]);
     if (before !== null && Date.parse(s(before.reported_at)) > Date.parse(p.updatedAt)) return undefined;
@@ -144,7 +145,7 @@ export class SecurityRepository {
        ON CONFLICT (account_id, run_id) DO UPDATE SET mode = excluded.mode, state = excluded.state, evidence = excluded.evidence, reported_at = excluded.reported_at, updated_at = excluded.updated_at`,
       [p.accountId, p.runId, p.dispatchKey, p.fence, isUuid(p.employeeId) ? p.employeeId : null, isUuid(p.assignmentId) ? p.assignmentId : null, p.mode, p.state, jsonParam({ ...evidence, opened: p.opened, lostSince: p.lostSince }), p.updatedAt, new Date().toISOString()],
     );
-    return { from: before === null ? null : (s(before.state) as ProtectionState) };
+    return { from: (before === null ? sn(run.started) : s(before.state)) as ProtectionState | null };
   }
 
   // What an attempt is held to: the allocator's latest report, else what the worker kept with the run when it opened it
@@ -264,9 +265,14 @@ export class SecurityRepository {
     return { incident: incidentOf(r as Row), created: true };
   }
 
-  // Incidents whose response is still owed, oldest first, of every account (the ingestion carries each out as its own).
+  // Incidents whose response is still owed, of every account, in turns: never tried first, then the longest since its
+  // last try -- one that cannot finish never holds the place of another (the ingestion carries each out as its own).
   async dueResponses(limit: number): Promise<IncidentRecord[]> {
-    return (await this.db.query("SELECT * FROM security.incidents WHERE response_due ORDER BY first_seen LIMIT $1", [limit])).map(incidentOf);
+    return (await this.db.query("SELECT * FROM security.incidents WHERE response_due ORDER BY response_tried_at NULLS FIRST, first_seen LIMIT $1", [limit])).map(incidentOf);
+  }
+
+  async responseTried(accountId: string, id: string, at: string): Promise<void> {
+    await this.db.run("UPDATE security.incidents SET response_tried_at = $3 WHERE account_id = $1 AND id = $2", [accountId, id, at]);
   }
 
   async responseDone(accountId: string, id: string, at: string): Promise<void> {

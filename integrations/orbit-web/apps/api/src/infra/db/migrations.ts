@@ -2157,6 +2157,9 @@ CREATE TABLE security.incidents (
   respond text[] NOT NULL DEFAULT '{}' CHECK (respond <@ ARRAY['revoke', 'stop']::text[]),
   dispatch_key text,
   response_due boolean NOT NULL DEFAULT false,
+  -- When its response was last tried: owed responses take turns (never tried first), so ones that cannot finish -- a
+  -- stop that never reads back -- never starve a newer incident's.
+  response_tried_at timestamptz,
   evidence jsonb NOT NULL,
   review jsonb,
   version integer NOT NULL DEFAULT 1,
@@ -2167,7 +2170,7 @@ CREATE TABLE security.incidents (
 );
 CREATE INDEX incidents_open ON security.incidents (account_id, state, last_seen DESC);
 CREATE INDEX incidents_holding ON security.incidents (account_id, assignment_id) WHERE blocks_retry;
-CREATE INDEX incidents_response_due ON security.incidents (first_seen) WHERE response_due;
+CREATE INDEX incidents_response_due ON security.incidents (response_tried_at NULLS FIRST, first_seen) WHERE response_due;
 CREATE TRIGGER incidents_account_never_moves BEFORE UPDATE ON security.incidents FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 CREATE TABLE security.incident_actions (

@@ -85,6 +85,16 @@ export function incidentFor(i: IncidentInput): IncidentPlan | null {
   return { category: i.kind === "identity.mismatch" ? "identity_mismatch" : "unexpected_process", severity: i.severity, title, respond: enforced ? ["revoke", "stop"] : [], blocksRetry: enforced, state: enforced ? "CONTAINING" : "OPEN", fingerprint: `${i.kind}:${i.runId}` };
 }
 
+// When a change of an attempt's protection is its LOSS, said on the account's chain: proof lost under enforce, the
+// attempt contained by the allocator, or its observation degraded. A repeat of the same state is no change.
+export function protectionLoss(p: { mode: RuntimeMode; from: ProtectionState | null; to: ProtectionState }): { contained: boolean } | null {
+  if (p.from === p.to) return null;
+  if (p.mode === "enforce" && p.to === "UNKNOWN" && (p.from === "PROTECTED" || p.from === "VERIFIED")) return { contained: false };
+  if (p.mode === "enforce" && p.to === "CONTAINED") return { contained: true };
+  if (p.mode === "observe" && p.to === "DEGRADED" && p.from === "OBSERVING") return { contained: false };
+  return null;
+}
+
 // What a change of an attempt's protection, as the allocator reported it, means for a person.
 export function protectionIncident(p: { runId: string; mode: RuntimeMode; from: ProtectionState | null; to: ProtectionState; detail: string }): (IncidentPlan & { detail: string }) | null {
   if (p.from === p.to) return null;

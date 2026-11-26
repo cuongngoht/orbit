@@ -258,6 +258,11 @@ export function RunDetails({ run }: { run: RunView }) {
           <Text size={200} className={o.muted}>
             {t("office.run.checkedAt", { at: when(run.sandbox.checkedAt) })}
           </Text>
+          {run.sandbox.protection && run.sandbox.protection.mode !== "disabled" && (
+            <Text size={200} block aria-label={t("office.run.runtimeAria")}>
+              {t("office.run.runtimeProtection", { mode: run.sandbox.protection.mode, state: run.sandbox.protection.state, backend: run.sandbox.protection.backend, policy: run.sandbox.protection.policy ?? "—" })}
+            </Text>
+          )}
         </div>
       )}
     </div>

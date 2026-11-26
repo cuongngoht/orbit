@@ -12,6 +12,7 @@ import {
   DecisionsIcon,
   DesksIcon,
   FindingsIcon,
+  ShieldClearIcon,
   GovernanceIcon,
   IconBadge,
   OverviewIcon,
@@ -35,6 +36,7 @@ import { FindingsPage } from "./FindingsPage";
 import { OverviewPage } from "./OverviewPage";
 import { PolicyPage } from "./PolicyPage";
 import { ReportsPage } from "./ReportsPage";
+import { RuntimeSecurityPage } from "./RuntimeSecurityPage";
 import { ResourcesPage } from "./ResourcesPage";
 
 const TITLE_KEYS: Record<GovernancePage, MessageKey> = {
@@ -48,6 +50,7 @@ const TITLE_KEYS: Record<GovernancePage, MessageKey> = {
   decisions: "governance.nav.decisions",
   audit: "governance.nav.audit",
   findings: "governance.nav.findings",
+  "runtime-security": "governance.nav.runtime-security",
   reports: "governance.nav.reports",
 };
 
@@ -62,6 +65,7 @@ const NAV_META: Record<GovernancePage, { tone: IconTone; icon: (active: boolean)
   decisions: { tone: "brand", icon: (active) => <DecisionsIcon size={16} active={active} /> },
   audit: { tone: "teal", icon: (active) => <AuditChainIcon size={16} active={active} /> },
   findings: { tone: "danger", icon: (active) => <FindingsIcon size={16} active={active} /> },
+  "runtime-security": { tone: "warning", icon: (active) => <ShieldClearIcon size={16} active={active} /> },
   reports: { tone: "teal", icon: (active) => <ReportsIcon size={16} active={active} /> },
 };
 
@@ -200,6 +204,7 @@ function Page({ page, item, go }: { page: GovernancePage; item: string | null; g
   if (page === "approvals") return <ApprovalsPage item={item} />;
   if (page === "audit") return <AuditPage item={item} />;
   if (page === "findings") return <FindingsPage go={go} />;
+  if (page === "runtime-security") return <RuntimeSecurityPage />;
   if (page === "reports") return <ReportsPage item={item} go={go} />;
   return <OverviewPage go={go} />;
 }

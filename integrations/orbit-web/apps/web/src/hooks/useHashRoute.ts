@@ -13,7 +13,7 @@ export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 // them as `#/governance/workspaces/<id>`, `policy` opens a revision as `#/governance/policy/<id>`, `departments` opens
 // one department's policy as `#/governance/departments/<departmentId>`, and `desks` opens one employee's desk as
 // `#/governance/desks/<employeeId>`.
-export const GOVERNANCE_PAGES = ["overview", "policy", "departments", "workspaces", "research", "desks", "approvals", "decisions", "audit", "findings", "reports"] as const;
+export const GOVERNANCE_PAGES = ["overview", "policy", "departments", "workspaces", "research", "desks", "approvals", "decisions", "audit", "findings", "runtime-security", "reports"] as const;
 
 export type GovernancePage = (typeof GOVERNANCE_PAGES)[number];
 

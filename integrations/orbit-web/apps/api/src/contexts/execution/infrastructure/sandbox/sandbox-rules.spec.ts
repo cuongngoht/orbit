@@ -6,7 +6,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_PRESETS } from "@orbit-web/contracts";
+import { DEFAULT_PRESETS, ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { loadSandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
 import { checkAttemptSpec, checkExecRequest, checkSessionSpec, checkToolPath, FILE_AREAS, NonceCache, readSecret, signedHeaders, toolFileAreas, toolPath, verifySigned } from "./allocator-protocol.js";
@@ -248,7 +248,7 @@ test("ids: a run's sandbox sees its own chat, its own connection and its own acc
 
 test("config: a run's sandbox is the Orbit Web image by default, with limits of its own and at most four at once", () => {
   const d = loadSandboxConfig({});
-  assert.equal(d.images.session, "ghcr.io/cuongngoht/orbit-web:0.8.0");
+  assert.equal(d.images.session, `ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_VERSION}`, "this release's own image");
   assert.deepEqual(d.session, { cpuMillis: 1000, memoryMiB: 2048, pids: 1024, max: 4 });
   const c = loadSandboxConfig({ ORBIT_WEB_SANDBOX_IMAGE_SESSION: "orbit-web:0.8.0-x", ORBIT_WEB_SESSION_SANDBOX_CPU: "2", ORBIT_WEB_SESSION_SANDBOX_MEMORY: "4g", ORBIT_WEB_SESSION_SANDBOX_PIDS: "2048", ORBIT_WEB_SESSION_SANDBOX_MAX: "8" });
   assert.deepEqual([c.images.session, c.session], ["orbit-web:0.8.0-x", { cpuMillis: 2000, memoryMiB: 4096, pids: 2048, max: 8 }]);

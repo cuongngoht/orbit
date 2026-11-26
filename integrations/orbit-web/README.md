@@ -1,4 +1,4 @@
-# Orbit Web 0.8.0
+# Orbit Web 0.8.1
 
 Orbit's **Governed Agentic Workplace** ([what it is](../../README.md)), self-hosted in Docker: a **virtual office of AI
 employees**, each working in containers of its own under the account's policy, approvals and audit record -- and,
@@ -37,7 +37,7 @@ files run the pinned `pgvector/pgvector:0.8.1-pg17` image beside it). The image 
 | git | 2.39 (Debian 12) | the base image's digest |
 | Node.js | 24 | the base image's digest (`node:24-bookworm`) |
 | Orbit plugin | the commit the image is built from (0.6.0 today) | `git archive` of that commit |
-| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.0 | `package-lock.json`, exact versions |
+| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.1 | `package-lock.json`, exact versions |
 | tini | 0.19.0 | release binary, SHA-256 per architecture |
 
 `GET /api/setup/status` (and Settings → System) reports every one of these versions, the Orbit commit included.
@@ -47,6 +47,8 @@ or built by Orbit Web itself: **workstation**, the tool plane -- the same pinned
 pinned CPython with pip and venv, Node and npm, and jq, as one non-root user with no sudo --, **model-plane** -- the CLI
 that holds a connection's login (Claude Code as pinned above) with Orbit Web's runner and tool bridge, and no
 `/etc/claude-code` -- and **storage-helper**, the filesystem tools the allocator uses for the employees' storage quotas.
+With [runtime security](#runtime-security) on, one more container runs beside them, pulled and never built: the pinned
+Tetragon sensor (`quay.io/cilium/tetragon:v1.8.0`, by digest; [THIRD_PARTY.md](THIRD_PARTY.md)).
 
 ## Run it
 
@@ -55,7 +57,7 @@ cd integrations/orbit-web/docker
 printf 'ORBIT_WEB_DB_PASSWORD=%s\nORBIT_WEB_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > .env
 (umask 027 && openssl rand -hex 32 > allocator.secret) && sudo chown 0:10001 allocator.secret
 (cd ../../.. && for t in workstation model-plane storage-helper; do
-  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.0" . ; done)
+  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.1" . ; done)
 docker compose up -d --build        # builds from the repository root; the plugin is `git archive HEAD`
 docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code
 open http://localhost:3000          # "Set up Orbit Web", with the code printed above
@@ -90,7 +92,7 @@ public origin, no Secure cookie setting -- and names the condition that failed. 
 person can reach.
 
 **The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
-one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.1` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
 Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
 makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
 `docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
@@ -106,7 +108,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.0
+  ghcr.io/cuongngoht/orbit-web:0.8.1
 ```
 
 | what | command |
@@ -133,7 +135,8 @@ in the data volume until you remove them), and not the Claude CLI's sign-in in `
 own CLIs). A database a development build or release candidate of 0.8.0 migrated under another initial schema --
 0.8.0-rc01's included: the schema changed in place before the release (appointments, department policies, data shares,
 questions) -- is refused at start, with the command that empties it (`db.js reset --confirm=<database name>
---with-data`, above), or remove the volumes. Nothing is migrated from a release candidate.
+--with-data`, above), or remove the volumes. Nothing is migrated from a release candidate. 0.8.1 adds migrations 2
+(artifact provenance) and 3 (runtime security), additive and applied at start: a 0.8.0 database is migrated in place.
 
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--target=…] [--ref=<commit>] [--ca-file=<pem>]` (from
 this directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the
@@ -926,7 +929,7 @@ account owns and nothing of another account's.
   to the next connection of a running attempt. Private and internal addresses are never reachable in either mode.
 - **From a terminal**: `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js status |
   verify-audit [--account=<id> | --deployment] | owner setup-code | owner reset-password --username=<name> | owner
-  revoke-sessions [--username=<name>] | revoke-sessions --account=<id> | --all`.
+  revoke-sessions [--username=<name>] | revoke-sessions --account=<id> | --all | runtime-security status`.
 
 ## Runtime security
 
@@ -986,7 +989,9 @@ drops every policy: enforced attempts are contained, observed ones get their pol
 override -- but an account whose policy (or a floor) requires enforce then has its attempts refused, never run
 unprotected: lower those policies first if that is what you mean.
 
-**Troubleshooting.**
+**Troubleshooting.** `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js runtime-security
+status` says, from the server, what this host proved, how the sensor stands as Orbit Web last pulled it, the telemetry's
+loss counters, and how many running attempts each protection state holds -- counts, never an account's evidence.
 
 - *`prevent.exec` UNSUPPORTED*: the kernel's LSM list has no `bpf`, or its config lacks `CONFIG_BPF_LSM`; the detail
   names which. Use observe here, or a host whose kernel has it.

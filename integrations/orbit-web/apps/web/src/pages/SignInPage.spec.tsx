@@ -1,3 +1,4 @@
+import { ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
@@ -16,7 +17,7 @@ describe("the sign-in page: Orbit's own sign-in", () => {
     const onStatus = vi.fn();
     renderUi(<SignInPage status={signedOut()} onStatus={onStatus} onReload={vi.fn()} />);
     expect(screen.getByRole("heading", { name: "Sign in to Orbit Web" })).toBeInTheDocument();
-    expect(screen.getByText(/Orbit Web 0\.8\.0/)).toBeInTheDocument();
+    expect(screen.getByText(`Orbit Web ${ORBIT_WEB_VERSION}`, { exact: false })).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Continue with Claude|claude\.ai/);
     expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
     await userEvent.type(screen.getByRole("textbox", { name: "Username" }), "  Admin ");

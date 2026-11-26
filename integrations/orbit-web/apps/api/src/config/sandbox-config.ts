@@ -117,10 +117,10 @@ export const MODEL_PLANE_DEFAULTS: Record<RuntimeKind, Amount> = {
 export const DEFAULT_RESERVE_PERCENT = 10;
 
 export const DEFAULT_IMAGES = {
-  workstation: "ghcr.io/cuongngoht/orbit-web-workstation:0.8.0",
-  modelPlane: "ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0",
-  storageHelper: "ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0",
-  session: "ghcr.io/cuongngoht/orbit-web:0.8.0",
+  workstation: "ghcr.io/cuongngoht/orbit-web-workstation:0.8.1",
+  modelPlane: "ghcr.io/cuongngoht/orbit-web-model-plane:0.8.1",
+  storageHelper: "ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.1",
+  session: "ghcr.io/cuongngoht/orbit-web:0.8.1",
 } as const;
 
 export const SESSION_DEFAULTS = { cpuMillis: 1000, memoryMiB: 2048, pids: 1024, max: 4 } as const;

@@ -1,6 +1,6 @@
 {
   "name": "@orbit-web/contracts",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "The DTOs, application event names and status words the Orbit Web API and web app share.",
   "type": "module",
@@ -14,7 +14,7 @@
     }
   },
   "dependencies": {
-    "@orbit-web/governance-core": "0.8.0"
+    "@orbit-web/governance-core": "0.8.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

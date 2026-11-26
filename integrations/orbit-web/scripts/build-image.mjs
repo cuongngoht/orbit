@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds an Orbit Web image from the repository root (the plugin is `git archive` of ORBIT_REF, default HEAD).
 //
-//   node scripts/build-image.mjs [--tag=orbit-web:0.8.0] [--target=workstation|model-plane|storage-helper] [--ref=<commit|tag>] [--ca-file=<pem>] [--platform=linux/amd64]
+//   node scripts/build-image.mjs [--tag=orbit-web:0.8.1] [--target=workstation|model-plane|storage-helper] [--ref=<commit|tag>] [--ca-file=<pem>] [--platform=linux/amd64]
 //
 // Without --target it builds Orbit Web itself (the Dockerfile's last stage); --target builds one of the three images an
 // AI employee's attempt is started from, out of the same Dockerfile (tagged orbit-web-<target>:<version> by default).

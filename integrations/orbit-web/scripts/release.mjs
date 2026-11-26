@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // What the release workflow asks before and after it publishes, runnable anywhere:
 //
-//   node scripts/release.mjs verify --version=0.8.0
-//     the version asked is integrations/orbit-web/package.json's (and every workspace's), CHANGELOG.md has a
-//     "## Orbit Web <version>" section, and every published image the compose files and the README name is tagged with
-//     that version (a compose file that still names a release candidate would pull it); exits 1 naming what does not hold.
-//   node scripts/release.mjs notes --version=0.8.0 --registry=ghcr.io/<owner> --repository=<owner>/<repo> --commit=<sha>
+//   node scripts/release.mjs verify --version=0.8.1
+//     the version asked is integrations/orbit-web/package.json's (and every workspace's, each workspace's pins of the
+//     others, and the lock file's), the image's WEB_VERSION, CHANGELOG.md has a "## Orbit Web <version>" section, and
+//     every published image the compose files, the README and the code's own defaults name is tagged with that version
+//     (a compose file that still names a release candidate would pull it); exits 1 naming what does not hold.
+//   node scripts/release.mjs notes --version=0.8.1 --registry=ghcr.io/<owner> --repository=<owner>/<repo> --commit=<sha>
 //       --digests=orbit-web=sha256:…,orbit-web-workstation=sha256:…,orbit-web-model-plane=sha256:…,orbit-web-storage-helper=sha256:…
 //       [--latest=true]
 //     the release notes: that changelog section, the four images by digest, how to run them, and the plugin it bundles.
@@ -24,8 +25,41 @@ const MANIFESTS = ["package.json", "packages/contracts/package.json", "packages/
 // AI employee's attempt is started from (its workstation, model-plane and storage-helper targets).
 export const IMAGES = ["orbit-web", "orbit-web-workstation", "orbit-web-model-plane", "orbit-web-storage-helper"];
 
-// The files that tell a person which images to run, by tag.
-const RUN_FILES = ["docker/compose.yaml", "docker/compose.published.yaml", "docker/compose.governed.yaml", "README.md"];
+// The files that tell a person which images to run, by tag -- and the ones that run them by default: the allocator's
+// configuration and the real-container test tier.
+const RUN_FILES = ["docker/compose.yaml", "docker/compose.published.yaml", "docker/compose.governed.yaml", "README.md", "apps/api/src/config/sandbox-config.ts", "apps/api/tests/sandbox/harness.ts"];
+
+// Every `@orbit-web/*` dependency a manifest (or a lock entry) pins at another version than the release's.
+export function internalPins(manifest, version) {
+  const deps = { ...(manifest.dependencies ?? {}), ...(manifest.devDependencies ?? {}) };
+  return Object.entries(deps)
+    .filter(([name, spec]) => name.startsWith("@orbit-web/") && spec !== version)
+    .map(([name, spec]) => `${name} ${spec}`);
+}
+
+// What the lock file says that is not the release: its own version, the root's and each workspace's (an entry outside
+// node_modules), and each workspace's pins of the others. A third-party package is never asked.
+export function lockProblems(lock, version) {
+  const problems = lock.version === version ? [] : [`package-lock.json says ${lock.version}`];
+  for (const [path, entry] of Object.entries(lock.packages ?? {})) {
+    if (path.includes("node_modules")) continue;
+    const name = path === "" ? "(root)" : path;
+    if (entry.version !== version) problems.push(`package-lock.json ${name} says ${entry.version}`);
+    for (const pin of internalPins(entry, version)) problems.push(`package-lock.json ${name} pins ${pin}`);
+  }
+  return problems;
+}
+
+// The version the tool bridge tells the AI CLI it serves (its MCP serverInfo): the bridge runs alone in the model plane
+// and imports nothing of Orbit Web's, so it says the version itself -- held here to the release's.
+export function bridgeVersion(text) {
+  return /serverInfo: \{ name: "orbit_tools", version: "([^"]+)" \}/.exec(text)?.[1] ?? null;
+}
+
+// The version Orbit Web's image says it is (the Dockerfile's WEB_VERSION argument), or null.
+export function webVersionArg(text) {
+  return /^ARG WEB_VERSION=(\S+)$/m.exec(text)?.[1] ?? null;
+}
 
 export function changelogSection(text, version) {
   const lines = text.split("\n");
@@ -46,9 +80,15 @@ function verify(version) {
   const problems = [];
   if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) problems.push(`--version must be a release version (x.y.z), not ${JSON.stringify(version)}`);
   for (const m of MANIFESTS) {
-    const v = json(join(WEB, m)).version;
-    if (v !== version) problems.push(`${m} says ${v}, not ${version}`);
+    const manifest = json(join(WEB, m));
+    if (manifest.version !== version) problems.push(`${m} says ${manifest.version}, not ${version}`);
+    for (const pin of internalPins(manifest, version)) problems.push(`${m} pins ${pin}, not ${version}`);
   }
+  for (const p of lockProblems(json(join(WEB, "package-lock.json")), version)) problems.push(`${p}, not ${version}`);
+  const arg = webVersionArg(readFileSync(join(WEB, "docker/Dockerfile"), "utf8"));
+  if (arg !== version) problems.push(`docker/Dockerfile says ARG WEB_VERSION=${arg}, not ${version}`);
+  const bridge = bridgeVersion(readFileSync(join(WEB, "apps/api/src/bridge/main.ts"), "utf8"));
+  if (bridge !== version) problems.push(`apps/api/src/bridge/main.ts says it is ${bridge}, not ${version}`);
   const contract = /ORBIT_WEB_VERSION = "([^"]+)"/.exec(readFileSync(join(WEB, "packages/contracts/src/index.ts"), "utf8"))?.[1];
   if (contract !== version) problems.push(`packages/contracts says ORBIT_WEB_VERSION ${contract}, not ${version}`);
   if (changelogSection(readFileSync(join(REPO, "CHANGELOG.md"), "utf8"), version) === null) problems.push(`CHANGELOG.md has no "## Orbit Web ${version}" section`);

@@ -30,7 +30,7 @@ export const IMAGES = {
   storageHelper: "orbit-web-storage-helper:sandbox-test",
   modelPlane: process.env.ORBIT_WEB_SANDBOX_TEST_MODEL_PLANE ?? "orbit-web-model-plane:sandbox-test",
   // A chat's or research run's own sandbox: the Orbit Web image (its runner) -- one built here, or the one named.
-  session: process.env.ORBIT_WEB_SANDBOX_TEST_SESSION ?? "ghcr.io/cuongngoht/orbit-web:0.8.0",
+  session: process.env.ORBIT_WEB_SANDBOX_TEST_SESSION ?? "ghcr.io/cuongngoht/orbit-web:0.8.1",
 };
 
 // Null when a runtime answers here; else why the suite is skipped.

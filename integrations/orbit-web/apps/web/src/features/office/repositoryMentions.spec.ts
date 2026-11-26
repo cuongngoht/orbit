@@ -24,11 +24,11 @@ describe("extractMentionedRepositories", () => {
 describe("diagnoseUnattachedRepositories", () => {
   const connectedSources: SourcesStatus = {
     sources: [
-      { source: "github", state: "connected", account: "octocat", detail: null, checkedAt: "2026-11-26T00:00:00Z" },
-      { source: "azure", state: "connected", account: "contoso", detail: null, checkedAt: "2026-11-26T00:00:00Z" },
+      { source: "github", state: "connected", account: "octocat" },
+      { source: "azure", state: "connected", account: "contoso" },
     ],
   };
-  const emptyList: RepositoryList = { source: "github", repositories: [], truncated: false };
+  const emptyList: RepositoryList = { source: "github", repositories: [], fetchedAt: "2026-11-26T00:00:00Z", partial: false };
   const ghMention = extractMentionedRepositories("Inspect https://github.com/octo/app");
   const azMention = extractMentionedRepositories("Inspect https://dev.azure.com/contoso/Core/_git/api");
 
@@ -36,7 +36,15 @@ describe("diagnoseUnattachedRepositories", () => {
     const offered = [{ source: "github" as const, id: "octo/app", fullName: "octo/app" }];
     const access: EmployeeAccess = {
       employeeId: "e1",
-      connectors: [{ connector: "github", enabled: true, repositories: [{ id: "octo/app", fullName: "octo/app" }], write: false }],
+      connectors: [
+        {
+          connector: "github",
+          enabled: true,
+          repositories: [{ id: "octo/app", fullName: "octo/app", owner: "octo", project: null, name: "app" }],
+          write: false,
+          grantedAt: "2026-11-26T00:00:00Z",
+        },
+      ],
       knowledge: [],
     };
     const res = diagnoseUnattachedRepositories({
@@ -56,7 +64,7 @@ describe("diagnoseUnattachedRepositories", () => {
   test("distinguishes missing access grant on direct employee when connector is connected", () => {
     const access: EmployeeAccess = {
       employeeId: "e1",
-      connectors: [{ connector: "github", enabled: false, repositories: null, write: false }],
+      connectors: [{ connector: "github", enabled: false, repositories: null, write: false, grantedAt: null }],
       knowledge: [],
     };
     const res = diagnoseUnattachedRepositories({
@@ -75,8 +83,8 @@ describe("diagnoseUnattachedRepositories", () => {
   test("reports disconnected connector for Azure DevOps when connector is not signed in", () => {
     const sources: SourcesStatus = {
       sources: [
-        { source: "github", state: "connected", account: "octocat", detail: null, checkedAt: "2026-11-26T00:00:00Z" },
-        { source: "azure", state: "disconnected", account: null, detail: null, checkedAt: "2026-11-26T00:00:00Z" },
+        { source: "github", state: "connected", account: "octocat" },
+        { source: "azure", state: "not_connected", account: null },
       ],
     };
     const res = diagnoseUnattachedRepositories({
@@ -101,7 +109,7 @@ describe("diagnoseUnattachedRepositories", () => {
       delegating: true,
       access: null,
       sources: connectedSources,
-      listed: { github: null, azure: { source: "azure", repositories: [], truncated: false } },
+      listed: { github: null, azure: { source: "azure", repositories: [], fetchedAt: "2026-11-26T00:00:00Z", partial: false } },
       loading: false,
     });
     expect(res).toEqual([{ kind: "ready_to_attach", mention: azMention[0], repo: offered[0], delegating: true }]);

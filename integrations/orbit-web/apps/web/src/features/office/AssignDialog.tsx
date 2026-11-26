@@ -441,7 +441,10 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const recipientId = kind === "employee" ? target : (responsible?.employeeId ?? "");
   const recipientName = kind === "employee" ? (employee?.name ?? null) : (responsible?.employeeName ?? null);
   const delegating = kind === "ceo" || kind === "department";
-  const chosenRepositories = repositories.for === recipientId ? repositories.list : [];
+  const chosenRepositories = useMemo(
+    () => (repositories.for === recipientId ? repositories.list : []),
+    [repositories.for, repositories.list, recipientId],
+  );
   const briefMentions = useMemo(() => extractMentionedRepositories(goal), [goal]);
   const repoState = useMissionRepositories(recipientId, delegating, briefMentions.length > 0);
   const unattachedMentions = useMemo(

@@ -767,6 +767,7 @@ function RosterBody({
           ceo={roster.ceo}
           ceoEmployee={ceoEmployee}
           filter={filter}
+          filtered={filtered}
           account={account}
           inboxCount={roster.counts.inbox}
           canHire={canHire}

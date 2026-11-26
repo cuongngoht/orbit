@@ -16,7 +16,7 @@
 //
 // Every operation is idempotent by the ids it is given (a retry after a crash finds what the first call made), and a
 // stop or a removal is VERIFIED (read back from the runtime) before the worker releases what the attempt held.
-import type { AttemptRuntimeSecurity, RuntimeHostProbe } from "../infrastructure/sandbox/runtime-security-wire.js";
+import type { AttemptRuntimeSecurity, RuntimeHostProbe, RuntimePull } from "../infrastructure/sandbox/runtime-security-wire.js";
 import type { DeskCleanRequest, DeskEntry, EnforcementLevel, ProtectionEvidence, ResourceProfile, SandboxAttestation, StorageArea, StorageCapability, UsageView } from "@orbit-web/contracts";
 import type { ProcessPort } from "../../../infra/process/process.port.js";
 
@@ -223,6 +223,8 @@ export interface SandboxProvider {
   // THE GATE (ADR 0063): the attempt opened for what the employee runs -- the model plane's runner made reachable, the
   // tool plane's shell allowed -- only once its required runtime protection is proven and fresh. Refused otherwise.
   open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }>;
+  // What the allocator's security plane reported since a cursor (ADR 0063): null where there is no allocator.
+  runtimeSecurityPull(cursor: { epoch: string | null; seq: number }, max: number): Promise<RuntimePull | null>;
   // Starts programs in the MODEL plane (the CLI): the runtime adapter streams them like any child process.
   modelPlane(handle: AttemptHandle): ProcessPort;
   // The TOOL plane (what the employee's tools do): a command, and files in the areas of FILE_AREAS (allocator-protocol.ts)

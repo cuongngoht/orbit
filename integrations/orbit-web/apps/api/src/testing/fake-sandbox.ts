@@ -6,6 +6,7 @@
 import type { DeskEntry, EnforcementLevel, ProtectionEvidence, UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../contexts/execution/application/sandbox.port.js";
 import { AllocatorError, checkToolPath } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
+import type { RuntimePull } from "../contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
 import { FakeProcessPort, type Call, type FakeChild, type SpawnScript } from "./fake-process.js";
 
 interface Attempt {
@@ -47,6 +48,9 @@ export class FakeSandboxProvider implements SandboxProvider {
   protectionHolds = true;
   refuseOpen = false;
   readonly opened = new Set<string>();
+  // What the allocator's security plane would report: a test sets it, the security context pulls it (once each).
+  runtimePulls: RuntimePull[] = [];
+  stopped: string[] = [];
   // What the probe says the host has (a test resizes it).
   host = { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 };
   provisionFailures = 0;
@@ -239,6 +243,10 @@ export class FakeSandboxProvider implements SandboxProvider {
     const state = mode === "disabled" ? "UNREGISTERED" : mode === "observe" ? "OBSERVING" : this.protectionHolds ? "VERIFIED" : "UNKNOWN";
     const at = new Date().toISOString();
     return { backend: "test", backendVersion: "test", hostKind: "unknown", hostId: null, bootId: null, requestedMode: mode, mode, controls: spec.runtimeSecurity?.controls ?? [], policy: mode === "disabled" ? null : `orbit-a-test-${spec.dispatchKey}`, digest: null, planes: [], checks: [{ name: "fake", ok: state !== "UNKNOWN", detail: null }], state, detail: state === "UNKNOWN" ? "the fake's protection does not hold" : "fake", verifiedAt: state === "VERIFIED" ? at : null, freshUntil: state === "VERIFIED" ? new Date(Date.now() + 60_000).toISOString() : null, sensorGeneration: "test" };
+  }
+
+  async runtimeSecurityPull(): Promise<RuntimePull | null> {
+    return this.runtimePulls.shift() ?? null;
   }
 
   async open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }> {

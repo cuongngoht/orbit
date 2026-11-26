@@ -334,6 +334,10 @@ export class ProcessSandboxProvider implements SandboxProvider {
     return Promise.resolve({ protection: null });
   }
 
+  runtimeSecurityPull(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
   modelPlane(): ProcessPort {
     return this.o.process;
   }

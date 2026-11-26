@@ -13,6 +13,7 @@ import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../../../infra/process/runner-port.js";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../../application/sandbox.port.js";
 import { AllocatorClient } from "./allocator-client.js";
+import type { RuntimePull } from "./runtime-security-wire.js";
 import { readSecret, type AllocatorApi, type AttemptRecord, type AttestProbes } from "./allocator-protocol.js";
 import { planeNames } from "./ids.js";
 import { MODEL_PLANE } from "./layout.js";
@@ -127,6 +128,10 @@ export class ContainerSandboxProvider implements SandboxProvider {
     const opened = await this.allocator.openAttempt(handle.dispatchKey);
     this.credentials.set(handle.dispatchKey, { credential: opened.runnerCredential, validUntil: opened.validUntil === null ? null : Date.parse(opened.validUntil) });
     return { protection: opened.protection };
+  }
+
+  runtimeSecurityPull(cursor: { epoch: string | null; seq: number }, max: number): Promise<RuntimePull | null> {
+    return this.allocator.runtimeSecurityPull(cursor, max);
   }
 
   modelPlane(handle: AttemptHandle): ProcessPort {

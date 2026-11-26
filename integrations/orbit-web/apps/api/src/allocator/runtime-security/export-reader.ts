@@ -95,21 +95,24 @@ export class ExportReader {
   read(maxBytes: number): { lines: string[]; gap: boolean } {
     const out: string[] = [];
     if (this.fd === null && !this.open()) return { lines: out, gap: this.takeGap() };
-    let read = this.drain(maxBytes, out);
+    const read = this.drain(maxBytes, out);
     // Rotated: the live name now points at a new file. What the old one still held was just drained; go on in the new.
-    let current: number | null = null;
-    try {
-      current = statSync(join(this.dir, this.fileName)).ino;
-    } catch {
-      current = null;
-    }
+    const current = this.liveIno();
     if (read < maxBytes && current !== null && current !== this.ino) {
       if (this.fd !== null) closeSync(this.fd);
       this.fd = null;
-      if (this.open()) read += this.drain(maxBytes - read, out);
+      if (this.open()) this.drain(maxBytes - read, out);
     }
     this.persist();
     return { lines: out, gap: this.takeGap() };
+  }
+
+  private liveIno(): number | null {
+    try {
+      return statSync(join(this.dir, this.fileName)).ino;
+    } catch {
+      return null;
+    }
   }
 
   private takeGap(): boolean {

@@ -2076,6 +2076,127 @@ ALTER TABLE workforce.artifacts
 CREATE INDEX artifacts_by_source ON workforce.artifacts (account_id, source_artifact_id) WHERE source_artifact_id IS NOT NULL;
 `;
 
+// RUNTIME SECURITY (Orbit Web 0.8.1, ADR 0063). An attempt's protection -- a lifecycle of its own, never the
+// assignment's state -- as the allocator reports it; what the sensor reported, attributed by the allocator to one account
+// and kept bounded (per run, and by age); the incidents a person reviews, and what was done about each (history: never
+// changed). Raw kernel events never reach the audit chain -- only the decisions about them do. The host's probe is kept
+// beside its capacity.
+const RUNTIME_SECURITY = String.raw`
+CREATE SCHEMA security;
+
+CREATE TABLE security.protections (
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  run_id uuid NOT NULL,
+  dispatch_key text NOT NULL,
+  fence bigint NOT NULL,
+  employee_id uuid,
+  assignment_id uuid,
+  mode text NOT NULL CHECK (mode IN ('disabled', 'observe', 'enforce')),
+  state text NOT NULL CHECK (state IN ('UNREGISTERED', 'REGISTERED', 'POLICY_APPLIED', 'VERIFIED', 'PROTECTED', 'OBSERVING', 'DEGRADED', 'CONTAINING', 'CONTAINED', 'UNKNOWN', 'CLEANED_UP')),
+  evidence jsonb NOT NULL,
+  -- When the allocator last said it: an older report never replaces a newer one.
+  reported_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  PRIMARY KEY (account_id, run_id),
+  FOREIGN KEY (account_id, run_id) REFERENCES workforce.runs (account_id, id)
+);
+CREATE INDEX protections_by_state ON security.protections (account_id, state, updated_at DESC);
+CREATE TRIGGER protections_account_never_moves BEFORE UPDATE ON security.protections FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+CREATE TABLE security.events (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  event_key text NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  received_at timestamptz NOT NULL,
+  run_kind text NOT NULL CHECK (run_kind IN ('assignment', 'chat', 'research', 'executive')),
+  run_id text NOT NULL,
+  employee_id uuid,
+  kind text NOT NULL CHECK (kind IN ('process.exec', 'process.exit', 'control.match', 'exec.fileless', 'exec.model_plane', 'identity.mismatch', 'telemetry.gap', 'workload.contained')),
+  outcome text NOT NULL CHECK (outcome IN ('OBSERVED', 'VIOLATION_DETECTED', 'OPERATION_PREVENTED', 'PROCESS_TERMINATED', 'WORKLOAD_CONTAINED')),
+  severity text NOT NULL CHECK (severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+  plane text CHECK (plane IN ('tool-plane', 'model-plane', 'session-plane')),
+  binary_path text,
+  parent_binary text,
+  target_path text,
+  control text,
+  exec_id text,
+  parent_exec_id text,
+  exit_code integer,
+  signal text,
+  -- A gap marker's: how many events of this run were not kept (its cap) or were lost before Orbit Web read them.
+  dropped integer,
+  UNIQUE (account_id, event_key)
+);
+CREATE INDEX events_by_time ON security.events (account_id, occurred_at DESC);
+CREATE INDEX events_by_run ON security.events (account_id, run_id, occurred_at);
+CREATE INDEX events_by_outcome ON security.events (account_id, outcome, occurred_at DESC) WHERE outcome <> 'OBSERVED';
+
+CREATE TABLE security.incidents (
+  id text PRIMARY KEY,
+  account_id uuid NOT NULL REFERENCES app.accounts (id),
+  -- One incident per cause per attempt: a repeat raises its count, never a second incident.
+  fingerprint text NOT NULL,
+  category text NOT NULL CHECK (category IN ('unexpected_process', 'restricted_operation', 'policy_violation', 'identity_mismatch', 'policy_drift', 'protection_missing', 'sensor_failure', 'telemetry_loss', 'containment_failure')),
+  severity text NOT NULL CHECK (severity IN ('INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+  state text NOT NULL CHECK (state IN ('OPEN', 'INVESTIGATING', 'CONTAINING', 'CONTAINED', 'RESOLVED')),
+  title text NOT NULL,
+  run_id uuid,
+  assignment_id uuid,
+  mission_id uuid,
+  employee_id uuid,
+  first_seen timestamptz NOT NULL,
+  last_seen timestamptz NOT NULL,
+  count integer NOT NULL DEFAULT 1,
+  -- While true, a person's Retry of the assignment is refused until a review authorizes it.
+  blocks_retry boolean NOT NULL,
+  evidence jsonb NOT NULL,
+  review jsonb,
+  version integer NOT NULL DEFAULT 1,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  UNIQUE (account_id, id),
+  UNIQUE (account_id, fingerprint)
+);
+CREATE INDEX incidents_open ON security.incidents (account_id, state, last_seen DESC);
+CREATE INDEX incidents_holding ON security.incidents (account_id, assignment_id) WHERE blocks_retry;
+CREATE TRIGGER incidents_account_never_moves BEFORE UPDATE ON security.incidents FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
+
+CREATE TABLE security.incident_actions (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  account_id uuid NOT NULL,
+  incident_id text NOT NULL,
+  at timestamptz NOT NULL,
+  action text NOT NULL,
+  actor text NOT NULL,
+  outcome text NOT NULL,
+  detail text,
+  FOREIGN KEY (account_id, incident_id) REFERENCES security.incidents (account_id, id)
+);
+CREATE INDEX incident_actions_by_incident ON security.incident_actions (account_id, incident_id, id);
+CREATE FUNCTION security.actions_never_change() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'what was done about an incident is history: never changed, never removed' USING ERRCODE = 'P0001';
+END $$;
+CREATE TRIGGER incident_actions_never_change BEFORE UPDATE OR DELETE ON security.incident_actions FOR EACH ROW EXECUTE FUNCTION security.actions_never_change();
+
+-- Where Orbit Web stands in the allocator's stream (its epoch and cursor), and what the stream said of itself.
+CREATE TABLE security.feed (
+  id smallint PRIMARY KEY CHECK (id = 1),
+  epoch text,
+  seq bigint NOT NULL DEFAULT 0,
+  sensor jsonb,
+  lost bigint NOT NULL DEFAULT 0,
+  unattributed bigint NOT NULL DEFAULT 0,
+  gaps bigint NOT NULL DEFAULT 0,
+  canary_proven_at timestamptz,
+  last_event_at timestamptz,
+  updated_at timestamptz NOT NULL
+);
+
+ALTER TABLE workforce.capacity ADD COLUMN runtime_security jsonb;
+`;
+
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier
 // build is upgraded; `cli/db.js reset` empties one). Later releases add migrations after it.
 export const MIGRATIONS: readonly Migration[] = [
@@ -2090,5 +2211,10 @@ ${EXECUTIVE}`,
     version: 2,
     name: "artifact_provenance",
     sql: ARTIFACT_PROVENANCE,
+  },
+  {
+    version: 3,
+    name: "runtime_security",
+    sql: RUNTIME_SECURITY,
   },
 ];

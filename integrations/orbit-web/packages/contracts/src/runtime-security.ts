@@ -288,3 +288,23 @@ export interface RuntimeSecurityOverview {
   // What chats, research and CEO Chat are held to: observation by the deployment's floor, never an employee's policy.
   sessions: "observed" | "not_observed";
 }
+
+// One employee's runtime security, for its page: what holds its attempt now (null: no attempt runs -- its desk is storage,
+// never a process), its last attempts', and what was reported about them.
+export interface EmployeeRuntimeSecurityView {
+  employeeId: string;
+  current: WorkloadProtectionView | null;
+  recent: WorkloadProtectionView[];
+  events: RuntimeEventView[];
+  incidents: IncidentView[];
+  // What the employee's attempts are held to now (the company's policy, its department's, the deployment's floor).
+  effective: { mode: RuntimeMode; controls: RuntimeControlId[]; from: "deployment" | "company" | "department" };
+}
+
+export interface RuntimeWorkloadList {
+  workloads: WorkloadProtectionView[];
+}
+
+export interface IncidentList {
+  incidents: IncidentView[];
+}

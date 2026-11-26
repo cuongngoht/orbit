@@ -210,13 +210,17 @@ export class HostSecurity {
 
   // At start: the records of the previous process, for the watchdog to prove again (or contain); those whose containers
   // are gone are released (their policies reaped).
-  async restore(): Promise<number> {
-    let records: PersistedRecord[] = [];
+  private readRecords(): PersistedRecord[] | null {
     try {
-      records = JSON.parse(readFileSync(this.recordsFile, "utf8")) as PersistedRecord[];
+      return JSON.parse(readFileSync(this.recordsFile, "utf8")) as PersistedRecord[];
     } catch {
-      return 0;
+      return null;
     }
+  }
+
+  async restore(): Promise<number> {
+    const records = this.readRecords();
+    if (records === null) return 0;
     this.service.restore(records);
     let kept = 0;
     for (const r of records) {

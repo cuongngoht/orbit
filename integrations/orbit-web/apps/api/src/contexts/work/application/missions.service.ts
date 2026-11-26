@@ -15,6 +15,7 @@
 // (409 target_changed), when nobody holds it (no_ceo, no_manager) or its holder is suspended (appointment_suspended).
 //
 // RUN OUTCOMES (RunOutcomes, reported by Execution): Work decides what a run's end means for the assignment.
+import { SECURITY_HOLDS, type SecurityHolds } from "./security-holds.port.js";
 import { Inject, Injectable, type OnModuleInit, Optional } from "@nestjs/common";
 import type { MissionRepositoryRequest } from "@orbit-web/contracts";
 import { MISSION_REPOSITORIES, type MissionRepositories, type MissionRepository as ResolvedRepository } from "./mission-repositories.port.js";
@@ -97,6 +98,7 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     @Inject(ClarificationsService) private readonly clarifications: ClarificationsService,
     @Inject(OrgReader) private readonly org: OrgReader,
     @Optional() @Inject(MISSION_REPOSITORIES) private readonly repositories: MissionRepositories | null = null,
+    @Optional() @Inject(SECURITY_HOLDS) private readonly holds: SecurityHolds | null = null,
   ) {}
 
   onModuleInit(): void {
@@ -314,6 +316,9 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
   async retry(actor: Actor, id: string, expectedVersion: number): Promise<CommandResult> {
     return this.onAssignment(actor, id, expectedVersion, "assignment.retry", async (a) => {
       if (a.state === "BLOCKED" && (await this.clarifications.openQuestionOf(actor.command.orbitId, a.id)) !== null) throw conflictWith("waiting_for_answer", "It waits for the answer to its question: answer it (or have its lead answer it) instead of retrying.");
+      // A runtime security incident that requires a person's review holds it until a review authorizes the retry.
+      const held = (await this.holds?.heldBy(actor.command.orbitId, a.id)) ?? null;
+      if (held !== null) throw conflictWith("security_review_required", `A runtime security incident holds this work (${held.title}): review it in Governance → Runtime security, and authorize a retry there.`);
       const fence = a.state === "RECOVERING" ? a.recovered(new Date().toISOString()) : a.unblock(new Date().toISOString(), null);
       await this.decisions.closeAllFor(actor.command.orbitId, a.id, "retried");
       return [await this.requestRun(a, fence, "retried by a person")];

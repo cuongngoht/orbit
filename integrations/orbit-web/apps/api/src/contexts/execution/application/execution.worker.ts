@@ -56,7 +56,7 @@ type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // Why Orbit stops an attempt it is running.
-type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" | "timeout" | "lost_lease" | "shutdown";
+type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "security" | "handed_over" | "timeout" | "lost_lease" | "shutdown";
 
 export interface WorkerTimings {
   tickMs: number;
@@ -108,6 +108,9 @@ export const CONNECTION_GONE = "disconnected";
 // What a stop request written by the access watch asks for: something the attempt was given to read is no longer its.
 export const ACCESS_REVOKED = "access_revoked";
 
+// What a stop request written by runtime security asks for (ADR 0063): an incident's deterministic response.
+export const SECURITY_STOP = "security";
+
 // What an attempt that ended its work BY DESIGN was asked to stop for (ADR 0061 §8): it gave its work to its team, asked a
 // question and waits for the answer, answered or moved up its team's questions, or waits for its team. Such an attempt
 // SUCCEEDED -- its compute goes back at once instead of when its CLI happens to exit -- and says why.
@@ -120,10 +123,10 @@ const BY_DESIGN: Record<string, string> = {
 };
 
 // What a stop request written by Work (`stop_requested`) asks for.
-const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" => {
+const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "security" | "handed_over" => {
   if (requested.startsWith("pause")) return "pause";
   if (Object.hasOwn(BY_DESIGN, requested)) return "handed_over";
-  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE || requested === ACCESS_REVOKED) return requested;
+  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE || requested === ACCESS_REVOKED || requested === SECURITY_STOP) return requested;
   return "cancel";
 };
 
@@ -616,6 +619,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     if (why === "accepted") return { state: "succeeded", detail: "Ended after its hand-in was accepted.", stoppedFor: "cancel" };
     if (why === "replaced") return { state: "cancelled", detail: "Stopped: a newer attempt of the assignment replaced it.", stoppedFor: "cancel" };
     if (why === "disconnected") return { state: "failed", detail: "Stopped: the AI connection it ran on was disconnected. Connect it again in Settings → AI Connections, then retry.", stoppedFor: null };
+    if (why === "security") return { state: "failed", detail: "Stopped by runtime security: an incident's response required it (Governance → Runtime security). It is held for a person's review before it may run again.", stoppedFor: null };
     if (why === "access_revoked") return { state: "failed", detail: "Stopped: something it was given to read is no longer its to read (a share revoked, or its employee moved to another department). Nothing it did after is handed in; retry once access is settled.", stoppedFor: null };
     if (why === "timeout") return { state: "failed", detail: `It ran past its limit of ${profile.timeoutMinutes} minutes and was stopped.`, stoppedFor: "timeout" };
     if (why === "shutdown") return { state: "interrupted", detail: "Orbit Web was shut down while this attempt ran: it was stopped. Retry it when Orbit Web is back.", stoppedFor: null };

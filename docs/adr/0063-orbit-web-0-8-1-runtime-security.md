@@ -109,6 +109,12 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   stale one is removed before the binding. A plane that restarted (new namespaces, the same container) is never
   protected by its old binding.
 - runc's first exec into a container carries no container id yet; it is attributed by the policy that matched it.
+- The container runtime's own processes are never the workload's. On every exec, runc re-executes itself from a sealed
+  memory file (`/proc/self/fd/N`) in the HOST's mount namespace, inside the container's cgroup: the allocator drops every
+  event of the host's mount namespace. And a process the runtime started from outside the container (its parent is
+  `runc` or `containerd-shim` at the host's own path) -- a `docker exec`, which only the allocator can make -- is never
+  judged as the workload's: the allocator's probes and checks raise nothing. A regression test replays the real
+  sensor's lines for exactly these (`tests/fixtures/tetragon-1.8.0/`).
 
 ### 4. The controls, and what each does NOT prevent
 
@@ -117,10 +123,14 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   `noexec` per subpath, and nothing legitimate executes there. `/work`, the home directory and `/cache` stay executable
   (an employee's toolbox, `pip --user`, `npx`). It does not prevent copying a file elsewhere and running it there, an
   interpreter reading a script from a shared area (`sh /team/x.sh` executes `/bin/sh`), or a memory-only program.
-- **Fileless execution** -- detection only (Context 3): a HIGH event and an incident; under enforce, the attempt is
-  stopped (9).
-- **A shell or an interpreter started in the model plane**, where only the AI CLI and Orbit's bridge run -- detection,
-  a HIGH event and an incident; under enforce, the attempt is stopped.
+- **Fileless execution** -- detection only (Context 3), by the name the kernel gives the program: `/proc/<pid>/fd/N`
+  (executed by path) or `/dev/fd/N` (`fexecve`, `execveat`): a HIGH event and an incident; under enforce, the attempt is
+  stopped (9). A name is what the workload chooses: a program reached through a symbolic link of its own naming the
+  descriptor is not recognised.
+- **A shell or an interpreter started in the model plane**, where only the AI CLI and Orbit's bridge run -- detection by
+  the program's name, a HIGH event and an incident; under enforce, the attempt is stopped. A renamed or copied shell, or
+  one run through the dynamic loader (`ld.so /bin/sh`), is not recognised. Both detections are heuristics; prevention is
+  the kernel's (`exec.shared-areas`).
 - **Process lifecycle** is observed in every mode but `disabled`: each exec and exit, with its parent by `exec_id`
   (safe against PID reuse), its binary and its namespaces.
 - `exec.scratch` (no exec under `/tmp`) was dropped: the base layer already refuses it (Context 3), and a kernel rule
@@ -140,6 +150,10 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   break every container). The same probe answers the capability rows a page shows -- `observe.process`,
   `observe.fileless`, `prevent.exec`, `scope.workload` -- each SUPPORTED, UNSUPPORTED, DEGRADED or UNKNOWN, never
   assumed from a kernel version.
+- **The host's proof is current**: the canaries are proven again every 30 s, one proof at a time, and what they prove is
+  what the host is said to prove from then on (the allocator's cached probe takes it in), so a sensor not ready at start
+  is not held against the host, and one that fails later is not said to hold. The canary's policy is bound again
+  whenever its in-scope container has a new namespace (that container started again).
 - **Proof expires**: evidence carries `freshUntil` (60 s); the allocator renews it while the sensor, the policy and the
   canary still hold. A page shows *protected* only for PROTECTED with fresh evidence; stale evidence is *unknown*,
   never green. Whether an operation was PREVENTED is decided from the mode read back from the sensor plus the override
@@ -173,14 +187,22 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   observation is said DEGRADED, and after a sensor restart its policy is put back.
 - A sensor restart is protection lost for every attempt. Policies no attempt owns are reaped -- only while the sensor
   is healthy, and never the canary's.
+- A containment that is not read back stopped (a stop the runtime did not carry out, an inspect that failed) is carried
+  out again at every watch until both planes read back stopped.
 - The allocator keeps its records across its own restart (`<state>/runtime-security/records.json`) and stamps the mode
-  and controls on each plane's labels; an attempt it cannot prove again after a restart is contained.
+  and controls on each plane's labels. After a restart it restores the records for the watchdog to prove again, and an
+  attempt whose labels say enforce but of which it holds no record (a write that failed, a crash before it landed) has
+  both planes stopped; an observed one is left to run. The loops start even when the restore fails, and a record that
+  could not be written is logged.
 
 ### 8. Telemetry: per account, bounded, and never in the audit chain
 
 - The allocator reads the export (rotation-aware, its position kept), attributes each event (3) and keeps a ring of
-  20,000 with an epoch and a sequence. Orbit Web pulls from a cursor every 2 s (at most 500 a pull); what the ring no
-  longer holds is reported LOST, never skipped in silence; an epoch change (an allocator restart) is a reset.
+  20,000 with an epoch and a sequence. A full ring gives up information first; what the rules call notable (their one
+  table) survives a flood until it alone holds a quarter of the ring, so a burst of short-lived processes never pushes a
+  detection out before Orbit Web read it. Orbit Web pulls from a cursor every 2 s, up to ten pulls of 500 in a tick while
+  a backlog remains; what a pull's range no longer holds is counted exactly as LOST, never skipped in silence; an epoch
+  change (an allocator restart) is a reset. Released attempts are reported for ten minutes, then forgotten.
 - Events are kept in `security.events` by account, deduplicated by key, capped per run -- up to
   `ORBIT_WEB_RUNTIME_SECURITY_MAX_EVENTS_PER_RUN` (20,000) of information and, apart, as many notable events, so a flood
   of the one never crowds out the other and neither grows without bound; what is not kept is counted on one gap marker
@@ -193,9 +215,10 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
 
 ### 9. Incidents, a deterministic response, and a person's review
 
-- One ordered rules table (`contexts/runtime-security/domain/rules.ts`) decides from facts -- the kernel's event and the
-  mode the policy was read back in -- what an event is, how severe, whether it is an incident, and what is done. Never a
-  model, never the words of a program's output.
+- One ordered rules table (`contexts/runtime-security/domain/rules.ts`) decides from facts -- the kernel's event, who
+  started the process, and the mode the policy was read back in -- what an event is, how severe, whether it is an
+  incident, and what is done. Never a model, never the words of a program's output. Only what the workload did is
+  judged (3).
 - An incident is one per cause per attempt (a repeat raises its count). Under enforce, a fileless exec, a shell in the
   model plane or an identity mismatch opens a blocking incident whose response is: end the attempt's run token (its
   proxy and tool door refuse it at once), then stop exactly ITS two containers -- by its dispatch key, never a newer
@@ -203,12 +226,12 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   The response is kept with the incident in the transaction that opens it and carried out again on every pull until
   each step is recorded done, so a failed step or a restart between the commit and the response never leaves the
   attempt running while the incident says it was handled; owed responses take turns (never tried first), so ones that
-  cannot finish never starve a newer one. Under observe nothing is acted on: a match is
+  cannot finish never starve a newer one. A containment the allocator could not verify is answered the same way. Under observe nothing is acted on: a match is
   `VIOLATION_DETECTED`, never called prevented.
 - A blocking incident holds the work: a person's Retry is refused (409 `security_review_required`) until the account's
   owner reviews it -- `investigate`, `resolve` or `authorize_retry` (which needs a reason) -- naming the version read
-  (`If-Match`; a stale one is 412). Nothing deletes business data in response, and nothing publishes a policy from an
-  analysis.
+  (`If-Match`; a stale one is 412). Only an authorized retry releases the hold: a resolved incident that still holds the
+  work keeps offering it. Nothing deletes business data in response, and nothing publishes a policy from an analysis.
 
 ### 10. Sessions and the governed agent
 
@@ -247,8 +270,10 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
 - **What is verified, and where.** Observation, scoping, prevention by `exec.shared-areas`, the gate, the watchdog's
   containment and the sensor-restart and sensor-down cases are verified on ONE host: Docker Desktop 29.9.3, kernel
   7.0.14-linuxkit aarch64 (the real-kernel tier, `apps/api/tests/sandbox/runtime-security.spec.ts`, and the proof of
-  concept). A native Linux host, x86_64, a cloud VM and rootless Docker were not run. Whether a host can prevent is
-  probed on that host; nothing is claimed from this one for another.
+  concept). The API's rules are proven on the real sensor's own lines replayed, not on a live enforced attempt with a
+  real AI CLI through its runner (no tier runs that here: the runner is not reachable from macOS, and no AI account was
+  used). A native Linux host, x86_64, a cloud VM and rootless Docker were not run. Whether a host can prevent is probed
+  on that host; nothing is claimed from this one for another.
 - **Said plainly.** The sensor, the allocator, the kernel and whoever operates the host are the trusted computing
   base: the sensor is privileged and could do anything to the host, and a compromised kernel or allocator defeats every
   control here. Between the sensor's death and containment there is a window -- up to the watch interval plus the

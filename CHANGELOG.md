@@ -37,9 +37,11 @@ Built and deployed locally; not published -- pushing, tagging and publishing ima
 - **Incidents and review.** One rules table decides; under enforce a blocking incident ends the attempt's run token and
   stops exactly its two containers (by dispatch key, verified, carried out again until done), and the assignment's Retry
   waits for the owner's review naming the version read. Nothing is deleted and no policy changes by itself.
-- **Telemetry per account, bounded.** Events deduplicated, capped per attempt (information and notable events each),
-  what is not kept counted on a gap marker, pruned after 14 days; loss and unattributed events are said; raw events never
-  enter the audit chain -- decisions do (`runtime_security.*`).
+- **Telemetry per account, bounded.** The allocator's ring gives up information first and keeps detections through a
+  flood; the API drains a backlog within a tick; events deduplicated, capped per attempt (information and notable events
+  each), what is not kept counted on a gap marker, pruned after 14 days; loss and unattributed events are said; raw
+  events never enter the audit chain -- decisions do (`runtime_security.*`). Only what the workload did is judged: the
+  container runtime's own re-exec and the allocator's own probes never raise anything (proven on the real sensor's lines).
 - **What a person sees.** *Governance → Runtime security* (the host's proof, the controls and what each does not prevent,
   attempts, events, incidents), the policy editor's runtime section with this host's support shown before publishing, a
   department's page (what holds its employees and from whom; its editor offers only higher modes), an employee's

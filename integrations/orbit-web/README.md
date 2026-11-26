@@ -970,7 +970,9 @@ The one control that prevents is **No program runs from a shared area** (`exec.s
 `/output`, `/input`, and the model plane's connection home). It does not prevent an interpreter reading a script
 (`sh /team/x.sh`), a copy run from `/work`, or a program run from memory -- the last is detected. In every mode but
 disabled, a program run from memory and a shell or interpreter started in the model plane are detections of their own;
-under enforce they stop the attempt.
+under enforce they stop the attempt. They are recognised by the program's name -- a renamed shell, `ld.so /bin/sh`, or a
+link of the workload's own naming a memory file is not -- and only what the workload itself started is judged (the
+allocator's own checks never are).
 
 **Incidents.** A detection that matters opens an incident (one per cause per attempt; a repeat is counted). Under
 enforce its response is deterministic: the attempt's run token ends, exactly its two containers are stopped and read

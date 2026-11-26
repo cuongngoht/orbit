@@ -29,6 +29,8 @@ import { SecurityRepository, type EventRow, type IncidentRecord } from "../infra
 const POLL_MS = 2_000;
 const PRUNE_MS = 60 * 60_000;
 const BATCH = 500;
+// A backlog is drained within one tick, a pull after another, up to this many pulls (5,000 events every two seconds).
+const PULLS_PER_TICK = 10;
 // How many owed responses one pull carries out (the oldest first; the rest on the next pull).
 const RESPONSES_PER_PULL = 20;
 const STOPPED = "both planes stopped, read back";
@@ -91,14 +93,24 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
     return this.repo.prune(new Date(now.getTime() - this.settings.retentionDays * 86_400_000).toISOString());
   }
 
-  // One pull, taken in whole. Exposed for the tests.
+  // Pulls, each taken in whole in its own transaction, until the allocator has no more than a pull's worth left -- at
+  // most PULLS_PER_TICK of them. Exposed for the tests.
   async tick(): Promise<{ events: number; incidents: number } | null> {
     if (this.busy || this.provider === null) return null;
     this.busy = true;
     try {
-      const feed = await this.repo.feed();
-      const pull = await this.provider.runtimeSecurityPull({ epoch: feed.epoch, seq: feed.seq }, BATCH);
-      return pull === null ? null : await this.take(pull, feed.lost, feed.sensor);
+      const taken = { pulls: 0, events: 0, incidents: 0 };
+      for (let i = 0; i < PULLS_PER_TICK; i += 1) {
+        const feed = await this.repo.feed();
+        const pull = await this.provider.runtimeSecurityPull({ epoch: feed.epoch, seq: feed.seq }, BATCH);
+        if (pull === null) break;
+        const took = await this.take(pull, feed.lost, feed.sensor);
+        taken.pulls += 1;
+        taken.events += took.events;
+        taken.incidents += took.incidents;
+        if (pull.events.length < BATCH) break;
+      }
+      return taken.pulls === 0 ? null : { events: taken.events, incidents: taken.incidents };
     } finally {
       // Whatever the pull brought, or if it failed: ending a run token needs no allocator, and a stop is tried again.
       await this.respondOwed();
@@ -129,7 +141,7 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
       if (strangers > 0) this.logger.warn(`${strangers} runtime event(s) of an account this database does not hold were dropped (an allocator's memory of a reset database)`);
       for (const e of pull.events) {
         if (!known.has(e.accountId)) continue;
-        const c = classify({ kind: e.kind, outcome: e.outcome, plane: e.plane, binary: e.binary, path: e.path, control: e.control, runKind: e.runKind });
+        const c = classify({ kind: e.kind, outcome: e.outcome, plane: e.plane, binary: e.binary, parentBinary: e.parentBinary, path: e.path, control: e.control, runKind: e.runKind });
         rows.push(this.rowOf(e, c.kind, c.severity, e.outcome));
         const key = `${e.accountId}:${e.runId}`;
         if (!modes.has(key)) modes.set(key, e.runKind === "assignment" ? ((await this.repo.protectionOf(e.accountId, e.runId))?.mode ?? null) : "observe");

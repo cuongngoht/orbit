@@ -3,10 +3,13 @@
 // monitor mode whose events still say OVERRIDE, a restart that drops every policy. The same guarantees are proven again
 // on a real kernel by tests/sandbox/runtime-security.spec.ts.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { RuntimeControlId, RuntimeMode } from "@orbit-web/governance-core";
 import type { InstalledPolicy, RuntimeSecurityBackend, SensorStatus } from "./backend.js";
 import { CANARY_PATH, type CompiledPolicy } from "./policy.js";
+import { classify, type EventFact } from "../../contexts/runtime-security/domain/rules.js";
 import { RuntimeSecurityService, type PlaneRuntime, type ProtectRequest } from "./service.js";
 
 const TOOL = "a".repeat(64);
@@ -31,6 +34,8 @@ class FakeKernel implements RuntimeSecurityBackend, PlaneRuntime {
   // A policy that loads and lists but binds nothing: what only a probe can expose.
   bindsNothing = false;
   failRemove = false;
+  // A stop the runtime acknowledged that did not take: the container still runs.
+  stopHeld = false;
   stopped: string[] = [];
   private n = 0;
 
@@ -99,7 +104,7 @@ class FakeKernel implements RuntimeSecurityBackend, PlaneRuntime {
   }
   stop(containerId: string): Promise<void> {
     const c = this.containers.get(containerId);
-    if (c !== undefined) c.running = false;
+    if (c !== undefined && !this.stopHeld) c.running = false;
     this.stopped.push(containerId);
     return Promise.resolve();
   }
@@ -319,4 +324,84 @@ test("a plane restarted under a proven attempt (new namespaces) is lost protecti
   s.canaryProven(clock);
   await s.watch();
   assert.equal(s.evidence("asg-1:1")?.state, "CONTAINED");
+});
+
+// WHAT THE REAL SENSOR SAID (tests/fixtures/tetragon-1.8.0/exec-lifecycle.jsonl): Tetragon v1.8.0's export on Docker
+// Desktop, its container ids and namespaces mapped onto this kernel's two planes and nothing else changed, for the
+// allocator's own execs into a tool and a model plane (readlink, the canary through sh, node), runc's re-exec of itself
+// before it joins a container (in the HOST's mount namespace: every docker exec makes one), and a workload's own
+// memory-only execs (by path and by descriptor) and a shell a process inside the model plane started. Replayed through
+// the allocator and judged by the API's rules -- the one place each half is decided.
+const REPLAY = readFileSync(join(process.cwd(), "tests", "fixtures", "tetragon-1.8.0", "exec-lifecycle.jsonl"), "utf8").trim().split("\n");
+
+test("replayed from the real sensor: runc's own re-exec and the allocator's own execs raise nothing; the workload's fileless execs and its model-plane shell do", async () => {
+  const k = new FakeKernel();
+  const s = service(k);
+  await s.protect(request("observe"));
+  s.ingest();
+  const before = s.pull({ epoch: null, seq: 0 }, 10_000);
+  k.lines.push(...REPLAY);
+  s.ingest();
+  const { events } = s.pull({ epoch: before.epoch, seq: before.next }, 10_000);
+  assert.ok(!events.some((x) => x.binary === "/proc/self/fd/6"), "runc's own re-exec is never the workload's");
+  const judged = events.map((x) => ({ x, c: classify({ kind: x.kind as EventFact["kind"], outcome: x.outcome, plane: x.plane, binary: x.binary, path: x.path, control: x.control, runKind: x.runKind, parentBinary: x.parentBinary }) }));
+  assert.deepEqual(
+    judged.filter(({ c }) => c.severity !== "INFO").map(({ x, c }) => [c.kind, x.plane, x.binary]),
+    [
+      ["exec.fileless", "tool-plane", "/proc/self/fd/3"],
+      ["exec.fileless", "tool-plane", "/dev/fd/3"],
+      ["exec.model_plane", "model-plane", "/bin/sh"],
+    ],
+  );
+});
+
+test("a containment that did not take is tried again at the next watch until both planes read back stopped", async () => {
+  const k = new FakeKernel();
+  const s = service(k);
+  s.canaryProven(clock);
+  await s.protect(request("enforce"));
+  s.open("asg-1:1");
+  k.restartSensor();
+  await s.watch();
+  clock += 15_000;
+  s.canaryProven(clock);
+  k.stopHeld = true;
+  await s.watch();
+  assert.equal(s.evidence("asg-1:1")?.state, "CONTAINING", "a stop that did not take is not a containment");
+  k.stopHeld = false;
+  await s.watch();
+  assert.equal(s.evidence("asg-1:1")?.state, "CONTAINED");
+  assert.equal(k.containers.get(TOOL)?.running, false);
+  assert.equal(k.containers.get(MODEL)?.running, false);
+});
+
+test("a flood never evicts what matters: information goes first when the ring is full, and what was evicted is counted exactly", async () => {
+  const k = new FakeKernel();
+  const s = new RuntimeSecurityService({ backend: k, runtime: k, floor: "disabled", containAfterMs: 15_000, freshMs: 60_000, canaryMaxAgeMs: 90_000, sensorWaitMs: 200, pollMs: 1, now, ringSize: 100 });
+  await s.protect(request("observe"));
+  s.ingest();
+  const start = s.pull({ epoch: null, seq: 0 }, 10_000);
+  // An employee runs a program from memory, then floods the sensor with short-lived processes to push it out.
+  const line = (n: number, binary: string) => JSON.stringify({ process_exec: { process: { exec_id: `flood-${n}`, parent_exec_id: "p0", pid: 5000 + n, binary, docker: TOOL.slice(0, 31), ns: { mnt: { inum: 4026533001 } } }, parent: { binary: "/usr/bin/python3" } }, time: `2026-11-27T01:00:00.${String(n).padStart(6, "0")}Z` });
+  k.lines.push(line(0, "/proc/self/fd/3"), ...Array.from({ length: 500 }, (_, i) => line(i + 1, "/usr/bin/true")));
+  s.ingest();
+  const p = s.pull({ epoch: start.epoch, seq: start.next }, 10_000);
+  assert.ok(p.events.some((e) => e.binary === "/proc/self/fd/3"), "the memory-only exec survived the flood");
+  assert.equal(p.events.length + p.lost, 501, "every event of the range is either returned or counted lost");
+  assert.ok(p.lost > 0);
+});
+
+test("a released attempt's record goes once it has been reported long enough: the pull is the size of what is live", async () => {
+  const k = new FakeKernel();
+  const s = service(k);
+  await s.protect(request("observe"));
+  await s.release("asg-1:1");
+  assert.equal(s.protections().find((p) => p.dispatchKey === "asg-1:1")?.state, "CLEANED_UP", "said cleaned up first");
+  clock += 9 * 60_000;
+  await s.watch();
+  assert.equal(s.protections().length, 1, "still reported for a while");
+  clock += 2 * 60_000;
+  await s.watch();
+  assert.deepEqual(s.protections(), [], "then gone, with what was kept for it");
+  assert.deepEqual(s.exportRecords(), []);
 });

@@ -7,6 +7,8 @@
 //             drops every policy), its policy is listed ENABLED in ENFORCE mode, and the host canary was proven lately.
 //             Otherwise it is LOST at once (nobody may call it protected), and CONTAINED once the deadline passes without
 //             it being proven again -- never before, never instantly promised.
+//             A containment not read back yet (CONTAINING) is carried out again at every watch until both planes read
+//             back stopped: one stop the runtime did not carry out never leaves the attempt running.
 //   observe   never contained: a faltering sensor makes it DEGRADED; a healthy one whose policy is gone re-applies it.
 //   reap      an Orbit policy no live workload owns (its attempt ended, its deletion never read back) is removed; a
 //             policy that is not Orbit's is never touched.
@@ -37,7 +39,7 @@ export type WatchAction =
   | { type: "reapply"; dispatchKey: string; cause: string }
   | { type: "reap"; policy: string };
 
-const SETTLED: readonly ProtectionState[] = ["CONTAINING", "CONTAINED", "CLEANED_UP", "UNREGISTERED"];
+const SETTLED: readonly ProtectionState[] = ["CONTAINED", "CLEANED_UP", "UNREGISTERED"];
 
 function problemOf(s: WatchSnapshot, w: WatchSnapshot["workloads"][number]): string | null {
   if (w.restarted === true) return "a plane restarted since its protection was proven: its namespaces are new, and no policy binds them";
@@ -71,7 +73,8 @@ export function decide(s: WatchSnapshot): WatchAction[] {
   const actions: WatchAction[] = [];
   for (const w of s.workloads) {
     if (w.mode === "disabled" || SETTLED.includes(w.state) || w.policy === null) continue;
-    actions.push(...(w.mode === "enforce" ? enforced(s, w) : observed(s, w)));
+    if (w.state === "CONTAINING") actions.push({ type: "contain", dispatchKey: w.dispatchKey, cause: "its containment was not read back stopped yet" });
+    else actions.push(...(w.mode === "enforce" ? enforced(s, w) : observed(s, w)));
   }
   // Reaping acts on the sensor's own list: only while the sensor is healthy and the list was read.
   if (s.installed !== null && s.sensor.state === "HEALTHY") {

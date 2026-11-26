@@ -211,9 +211,14 @@ test("a policy no live workload owns is reaped; a policy that is not Orbit's is 
   assert.deepEqual(actions.filter((a) => a.type === "reap"), [{ type: "reap", policy: "orbit-a-gone" }]);
 });
 
-test("a workload already contained or containing is left to its containment, never decided twice", () => {
+test("a workload contained (read back stopped) is left to its containment, never decided twice", () => {
   const actions = decide(snap({ workloads: [{ dispatchKey: "asg-1:1", mode: "enforce", state: "CONTAINED", policy: "orbit-a-1", sensorGeneration: "g1", lostSince: 1 }], installed: [] }));
   assert.deepEqual(actions, []);
+});
+
+test("a containment not read back yet is carried out again at every watch -- one failed stop never leaves an attempt running", () => {
+  const actions = decide(snap({ workloads: [{ dispatchKey: "asg-1:1", mode: "enforce", state: "CONTAINING", policy: "orbit-a-1", sensorGeneration: "g1", lostSince: 1 }], installed: [] }));
+  assert.deepEqual(actions.map((a) => [a.type, "dispatchKey" in a ? a.dispatchKey : null]), [["contain", "asg-1:1"]]);
 });
 
 test("a plane that restarted since its protection was proven has new namespaces: protection is LOST (never a stale binding)", () => {

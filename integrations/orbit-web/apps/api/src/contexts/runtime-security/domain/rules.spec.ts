@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { classify, incidentFor, isShellOrInterpreter, protectionIncident } from "./rules.js";
 
-const fact = (over: Partial<Parameters<typeof classify>[0]> = {}): Parameters<typeof classify>[0] => ({ kind: "process.exec", outcome: "OBSERVED", plane: "tool-plane", binary: "/usr/bin/node", path: null, control: null, runKind: "assignment", ...over });
+const fact = (over: Partial<Parameters<typeof classify>[0]> = {}): Parameters<typeof classify>[0] => ({ kind: "process.exec", outcome: "OBSERVED", plane: "tool-plane", binary: "/usr/bin/node", parentBinary: "/usr/local/bin/node", path: null, control: null, runKind: "assignment", ...over });
 
 test("a process is information; a memory-only exec and a shell in the model plane are detections of their own", () => {
   assert.deepEqual(classify(fact()), { kind: "process.exec", severity: "INFO" });
@@ -18,6 +18,20 @@ test("a process is information; a memory-only exec and a shell in the model plan
   assert.deepEqual(classify(fact({ kind: "workload.contained", outcome: "WORKLOAD_CONTAINED" })), { kind: "workload.contained", severity: "HIGH" });
   for (const b of ["/usr/bin/sh", "/bin/bash", "/usr/bin/python3.12", "/opt/python/bin/python3", "/usr/bin/perl", "/usr/bin/nc", "/usr/bin/curl"]) assert.equal(isShellOrInterpreter(b), true, b);
   for (const b of ["/usr/local/bin/node", "/usr/bin/git", "/opt/claude/bin/claude", "/usr/bin/rg"]) assert.equal(isShellOrInterpreter(b), false, b);
+});
+
+test("only what the workload did is judged: a program the container runtime started from outside (a docker exec) is information", () => {
+  // fexecve / execveat run a memory-only program through its descriptor: the kernel names it /dev/fd/N.
+  assert.deepEqual(classify(fact({ binary: "/dev/fd/3" })), { kind: "exec.fileless", severity: "HIGH" });
+  // The allocator's own probes and checks arrive through Docker's exec: their parent is the runtime, on the host.
+  for (const parent of ["/usr/bin/containerd-shim-runc-v2", "/usr/bin/runc", "/usr/sbin/runc", "/usr/local/bin/containerd-shim-runc-v2"]) {
+    assert.deepEqual(classify(fact({ plane: "model-plane", binary: "/usr/bin/sh", parentBinary: parent })), { kind: "process.exec", severity: "INFO" }, parent);
+    assert.deepEqual(classify(fact({ binary: "/proc/self/fd/6", parentBinary: parent })), { kind: "process.exec", severity: "INFO" }, `runc's own re-exec under ${parent}`);
+  }
+  // A program of the workload's own NAMED like the runtime is still the workload's: its path is not the host's.
+  assert.deepEqual(classify(fact({ plane: "model-plane", binary: "/bin/sh", parentBinary: "/connection/runc" })), { kind: "exec.model_plane", severity: "HIGH" });
+  assert.deepEqual(classify(fact({ plane: "model-plane", binary: "/bin/sh", parentBinary: "/usr/local/bin/node" })), { kind: "exec.model_plane", severity: "HIGH" });
+  assert.deepEqual(classify(fact({ plane: "model-plane", binary: "/bin/sh", parentBinary: null })), { kind: "exec.model_plane", severity: "HIGH" }, "an unknown parent is never taken as the runtime");
 });
 
 test("information makes no incident; a prevention is recorded, never contained (the kernel already refused it)", () => {
@@ -62,4 +76,11 @@ test("protection the allocator lost or contained is an incident; a containment i
   assert.deepEqual([degraded?.category, degraded?.severity, degraded?.blocksRetry], ["sensor_failure", "LOW", false]);
   // An enforced attempt that never opened because protection could not be proven: refused at admission, not an incident.
   assert.equal(protectionIncident({ runId: "r1", mode: "enforce", from: null, to: "UNKNOWN", detail: "no backend" }), null);
+});
+
+test("a containment the allocator could not verify is answered too: the run token ended and the attempt stopped, again until done", () => {
+  const plan = protectionIncident({ runId: "r1", mode: "enforce", from: "UNKNOWN", to: "CONTAINING", detail: "Containment could not be verified: the tool-plane still run (x)." });
+  assert.equal(plan?.category, "containment_failure");
+  assert.deepEqual(plan?.respond, ["revoke", "stop"]);
+  assert.equal(plan?.blocksRetry, true);
 });

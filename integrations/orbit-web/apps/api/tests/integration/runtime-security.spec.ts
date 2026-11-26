@@ -316,6 +316,17 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     await cancel(m);
   });
 
+  test("a backlog is drained within one tick, a pull after another, up to a bound -- not 500 events per two seconds", async () => {
+    const e = await hire("Mae");
+    const m = await give(e.id, "Write the report.");
+    const { run } = await eventually(() => runOf(m), (x) => x.run?.state === "succeeded");
+    const full = pull(Array.from({ length: 500 }, () => event(run!)));
+    const rest = pull([event(run!), event(run!)]);
+    sandbox.runtimePulls.push(full, rest);
+    await ingest.tick();
+    assert.equal(Number((await h.sql("SELECT seq FROM security.feed WHERE id = 1"))[0]?.seq), rest.next, "both pulls were taken in the one tick");
+  });
+
   test("telemetry is bounded per run -- what is not kept is said -- and by age; one account never sees another's", async () => {
     const e = await hire("Gus");
     const m = await give(e.id, "Write the report.");

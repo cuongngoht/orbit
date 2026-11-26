@@ -18,8 +18,12 @@ import { WorkloadRegistry } from "./registry.js";
 import { parseSensorLine, type SensorEvent } from "./sensor-events.js";
 import { decide, type WatchAction } from "./watchdog.js";
 import type { RuntimePull, WireProtection, WireRuntimeEvent } from "../../contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
+import { classify, type EventFact } from "../../contexts/runtime-security/domain/rules.js";
 
 export type { RuntimePull, WireProtection, WireRuntimeEvent };
+
+// How long a released attempt is still reported (the API pulls every two seconds): long enough to be read many times.
+const RELEASED_KEPT_MS = 10 * 60_000;
 
 // What the service asks of the container runtime: the allocator's own exec, stop and inspect, narrowed.
 export interface PlaneRuntime {
@@ -104,7 +108,9 @@ const MNT = /mnt:\[(\d+)\]/;
 export class RuntimeSecurityService {
   readonly registry: WorkloadRegistry;
   private readonly records = new Map<string, ProtectionRecord>();
-  private readonly ring: WireRuntimeEvent[] = [];
+  private ring: WireRuntimeEvent[] = [];
+  // The ring's events the rules call notable (by their one table, the API's): kept through floods (trim()).
+  private readonly notables = new Set<number>();
   private seq = 0;
   private readonly epoch = randomBytes(8).toString("hex");
   private unattributed = 0;
@@ -333,10 +339,17 @@ export class RuntimeSecurityService {
   }
 
   private take(e: SensorEvent): boolean {
+    // The container runtime's own: runc re-executes itself from a sealed memory file (/proc/self/fd/N) in the HOST's
+    // mount namespace before it joins a container, on every exec -- in the container's cgroup, never the workload's
+    // (the real sensor's lines: tests/fixtures/tetragon-1.8.0). Counted with what belongs to no workload.
+    if (e.hostNs) {
+      this.unattributed += 1;
+      return false;
+    }
     const side = e.dockerPrefix === null ? undefined : this.canaries.get(e.dockerPrefix);
     if (side !== undefined) {
       if ((side === "in" && e.kind === "hook" && e.path === CANARY_PATH) || (side === "out" && e.kind === "exec" && e.binary === CANARY_PATH)) this.canarySeen[side] = this.o.now();
-      if (side === "out" && e.kind === "exec" && /^\/proc\/(self|thread-self|\d+)\/fd\//.test(e.binary ?? "")) this.canarySeen.fileless = this.o.now();
+      if (side === "out" && e.kind === "exec" && /^\/(proc\/(self|thread-self|\d+)|dev)\/fd\//.test(e.binary ?? "")) this.canarySeen.fileless = this.o.now();
       return false;
     }
     const a = this.registry.attribute({ dockerPrefix: e.dockerPrefix, policy: e.kind === "hook" ? e.policy : null });
@@ -363,16 +376,39 @@ export class RuntimeSecurityService {
   private push(e: Omit<WireRuntimeEvent, "seq">): void {
     this.seq += 1;
     this.ring.push({ ...e, seq: this.seq });
-    if (this.ring.length > this.o.ringSize) this.ring.splice(0, this.ring.length - this.o.ringSize);
+    if (classify({ kind: e.kind as EventFact["kind"], outcome: e.outcome, plane: e.plane, binary: e.binary, parentBinary: e.parentBinary, path: e.path, control: e.control, runKind: e.runKind }).severity !== "INFO") this.notables.add(this.seq);
+    if (this.ring.length > this.o.ringSize) this.trim();
   }
 
+  // A full ring gives up information first, oldest first, down to nine tenths of its size (so a flood is not a scan per
+  // event); what the rules call notable goes only once it alone holds more than a quarter of the ring. A flood of
+  // short-lived processes never pushes a detection out before Orbit Web read it. What went is counted by pull().
+  private trim(): void {
+    let excess = this.ring.length - (this.o.ringSize - Math.floor(this.o.ringSize / 10));
+    const keepNotable = Math.max(1, Math.floor(this.o.ringSize / 4));
+    let notable = this.ring.reduce((n, e) => n + (this.notables.has(e.seq) ? 1 : 0), 0);
+    const kept: WireRuntimeEvent[] = [];
+    for (const e of this.ring) {
+      const isNotable = this.notables.has(e.seq);
+      if (excess > 0 && (!isNotable || notable > keepNotable)) {
+        excess -= 1;
+        if (isNotable) notable -= 1;
+        this.notables.delete(e.seq);
+        continue;
+      }
+      kept.push(e);
+    }
+    this.ring = kept;
+  }
+
+  // From a cursor: the next events, and exactly how many of the range this pull covers are no longer held (a ring that
+  // gave up information keeps gaps of its own, never skipped in silence).
   pull(cursor: { epoch: string | null; seq: number }, max: number): RuntimePull {
     const reset = cursor.epoch !== null && cursor.epoch !== this.epoch;
     const from = reset ? 0 : cursor.seq;
-    const first = this.ring[0]?.seq ?? this.seq + 1;
-    const lost = from < first - 1 ? first - 1 - from : 0;
     const events = this.ring.filter((e) => e.seq > from).slice(0, Math.max(0, max));
-    const next = events.at(-1)?.seq ?? Math.max(from, first - 1);
+    const next = Math.max(from, events.length > 0 && events.length >= max ? (events.at(-1) as WireRuntimeEvent).seq : this.seq);
+    const lost = Math.max(0, next - from - events.length);
     return { epoch: this.epoch, reset, events, next, lost, unattributed: this.unattributed, gaps: this.gaps, protections: this.protections(), sensor: this.sensor, canaryProvenAt: this.canaryAt === null ? null : new Date(this.canaryAt).toISOString() };
   }
 
@@ -417,6 +453,7 @@ export class RuntimeSecurityService {
       keep: [CANARY_POLICY],
     });
     for (const a of actions) await this.act(a, status);
+    this.prune();
     return actions;
   }
 
@@ -428,6 +465,20 @@ export class RuntimeSecurityService {
       if (now !== null && now.running && now.startedAt !== p.startedAt) return true;
     }
     return false;
+  }
+
+  // A released attempt is reported for a while after its release, then forgotten with what was kept for it (its identity
+  // reads, its policy's canary hits): each pull is the size of what is live, never everything since the allocator started.
+  private prune(): void {
+    const cutoff = this.o.now() - RELEASED_KEPT_MS;
+    for (const [key, rec] of this.records) {
+      if (rec.state !== "CLEANED_UP" || rec.updatedAt > cutoff) continue;
+      this.records.delete(key);
+      for (const p of rec.planes) this.identity.delete(`${key}:${p.plane}`);
+      const policy = rec.policy?.name;
+      if (policy !== undefined) for (const hit of [...this.canaryHits]) if (hit.startsWith(`${policy}:`)) this.canaryHits.delete(hit);
+      this.o.onChange?.(key);
+    }
   }
 
   private async act(a: WatchAction, status: SensorStatus): Promise<void> {

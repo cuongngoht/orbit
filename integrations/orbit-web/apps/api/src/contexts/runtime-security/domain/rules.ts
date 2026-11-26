@@ -10,13 +10,21 @@ export interface EventFact {
   outcome: RuntimeOutcome;
   plane: "tool-plane" | "model-plane" | "session-plane" | null;
   binary: string | null;
+  // The program that started it: the container runtime when it was started from OUTSIDE the container.
+  parentBinary: string | null;
   path: string | null;
   control: string | null;
   runKind: WatchedRunKind;
 }
 
-// A memory-only program, executed through a descriptor: the kernel hook sees no file to judge.
-const FILELESS = /^\/proc\/(self|thread-self|\d+)\/fd\/\d+$/;
+// A memory-only program, executed through a descriptor -- by path (/proc/self/fd/N) or by the descriptor itself
+// (fexecve, execveat: /dev/fd/N): the kernel hook sees no file to judge.
+const FILELESS = /^\/(proc\/(self|thread-self|\d+)|dev)\/fd\/\d+$/;
+// A process the container runtime started -- a docker exec from outside the container: the allocator's own (it is the
+// one holder of the Docker socket) or the host's operator. Never the workload's doing, so never judged as it. Its path
+// is the host's, under a read-only /usr that no workload can write.
+const RUNTIME_PARENT = /^\/usr\/(local\/)?s?bin\/(containerd-shim(-runc-v\d+)?|runc)$/;
+export const startedFromOutside = (parentBinary: string | null): boolean => parentBinary !== null && RUNTIME_PARENT.test(parentBinary);
 // Programs only the workstation is meant to run: in the model plane (the AI CLI and Orbit's bridge), one is an anomaly.
 const SHELLS = /^(sh|dash|bash|zsh|ksh|ash|busybox|python(\d+(\.\d+)?)?|perl|ruby|php|lua|nc|ncat|netcat|socat|curl|wget|telnet|ssh)$/;
 
@@ -26,6 +34,7 @@ export function classify(e: EventFact): { kind: RuntimeEventKind; severity: Inci
   if (e.kind === "identity.mismatch") return { kind: e.kind, severity: "CRITICAL" };
   if (e.kind === "workload.contained") return { kind: e.kind, severity: "HIGH" };
   if (e.kind === "control.match") return { kind: e.kind, severity: e.outcome === "PROCESS_TERMINATED" ? "HIGH" : "MEDIUM" };
+  if (e.kind === "process.exec" && startedFromOutside(e.parentBinary)) return { kind: e.kind, severity: "INFO" };
   if (e.kind === "process.exec" && FILELESS.test(e.binary ?? "")) return { kind: "exec.fileless", severity: "HIGH" };
   if (e.kind === "process.exec" && e.plane === "model-plane" && isShellOrInterpreter(e.binary)) return { kind: "exec.model_plane", severity: "HIGH" };
   return { kind: e.kind, severity: "INFO" };
@@ -101,7 +110,7 @@ export function protectionIncident(p: { runId: string; mode: RuntimeMode; from: 
   const lost = { category: "protection_missing" as const, severity: "HIGH" as const, title: "The attempt's required protection was lost while it ran", respond: [] as Response[], blocksRetry: true, fingerprint: `protection:${p.runId}`, detail: p.detail };
   if (p.mode === "enforce" && p.to === "UNKNOWN" && (p.from === "PROTECTED" || p.from === "VERIFIED")) return { ...lost, state: "CONTAINING" };
   if (p.mode === "enforce" && p.to === "CONTAINED") return { ...lost, title: "The attempt's required protection was lost, and both its containers were stopped", state: "CONTAINED" };
-  if (p.mode === "enforce" && p.to === "CONTAINING" && /could not be verified/i.test(p.detail)) return { category: "containment_failure", severity: "CRITICAL", title: "Containment could not be verified: a container of the attempt still runs", respond: [], blocksRetry: true, state: "CONTAINING", fingerprint: `containment:${p.runId}`, detail: p.detail };
+  if (p.mode === "enforce" && p.to === "CONTAINING" && /could not be verified/i.test(p.detail)) return { category: "containment_failure", severity: "CRITICAL", title: "Containment could not be verified: a container of the attempt still runs", respond: ["revoke", "stop"], blocksRetry: true, state: "CONTAINING", fingerprint: `containment:${p.runId}`, detail: p.detail };
   if (p.mode === "observe" && p.to === "DEGRADED") return { category: "sensor_failure", severity: "LOW", title: "Observation of the attempt degraded: the sensor could not report it whole", respond: [], blocksRetry: false, state: "OPEN", fingerprint: `degraded:${p.runId}`, detail: p.detail };
   return null;
 }

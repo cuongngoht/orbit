@@ -223,7 +223,12 @@ It amends ADR 0061 (Orbit Web 0.8.0), section 8 (the virtual office) and its "Sa
   the controls with what each prevents and does not, the attempts and how each is held, the events (prevented and
   detected apart) and the incidents with their review.
 - The policy editor's runtime section shows this host's support beside each choice before publishing -- a prediction,
-  not evidence. An employee's **Runtime security** tab shows what its attempts are held to and, while one runs, its
+  not evidence. A department's page says what holds its employees and from whom (the floor, the company or the
+  department), and its editor offers only modes above the company's. The page takes the host's first look itself on a
+  fresh installation, and the probe is read again at every start.
+- The operator's terminal says the same from the server (`governance.js runtime-security status`): what the host
+  proved, the sensor as last pulled, the telemetry's loss counters, attempts per protection state and open incidents --
+  counts, never an account's evidence. An employee's **Runtime security** tab shows what its attempts are held to and, while one runs, its
   planes' identities and checks; with none running it shows an inactive state, because its desk is storage, never a
   process. A run's details show its protection.
 

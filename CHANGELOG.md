@@ -41,8 +41,13 @@ Built and deployed locally; not published -- pushing, tagging and publishing ima
   what is not kept counted on a gap marker, pruned after 14 days; loss and unattributed events are said; raw events never
   enter the audit chain -- decisions do (`runtime_security.*`).
 - **What a person sees.** *Governance → Runtime security* (the host's proof, the controls and what each does not prevent,
-  attempts, events, incidents), the policy editor's runtime section with this host's support shown before publishing, an
-  employee's *Runtime security* tab, and a run's protection in its details.
+  attempts, events, incidents), the policy editor's runtime section with this host's support shown before publishing, a
+  department's page (what holds its employees and from whom; its editor offers only higher modes), an employee's
+  *Runtime security* tab, and a run's protection in its details.
+- **For the operator**: `governance.js runtime-security status` from the server's terminal (what the host proved, the
+  sensor, loss counters, attempts per protection state, open incidents -- counts only). `release.mjs verify` now also
+  holds the workspaces' pins of each other, the lock file, the image's `WEB_VERSION`, the code's default image tags and
+  the tool bridge's version to the release.
 - **Verified on one host** -- Docker Desktop 29.9.3, kernel 7.0.14-linuxkit arm64: a proof of concept (45 PASS, 1
   UNSUPPORTED) and a real-kernel tier (`apps/api/tests/sandbox/runtime-security.spec.ts`). Other hosts were not run; the
   probe decides on each (`integrations/orbit-web/docs/0.8.1-acceptance.md`, the threat model beside it).

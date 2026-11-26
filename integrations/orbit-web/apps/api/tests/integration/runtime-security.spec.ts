@@ -442,6 +442,10 @@ describe("runtime security on a fresh installation: the page's first look at the
 
   test("with no capacity read yet, the page reads the host itself and shows what its probe proved", async () => {
     assert.equal((await h.sql("SELECT count(*)::int AS n FROM workforce.capacity"))[0]?.n, 0, "nothing has read the host yet");
+    // The page's first request is its overview, read in one read-only snapshot: the first look is taken outside it.
+    const overview = await (h.owner as Browser).get("/api/governance/runtime-security");
+    assert.equal(overview.status, 200, JSON.stringify(overview.body).slice(0, 400));
+    assert.equal((overview.body as RuntimeSecurityOverview).host.capabilities.find((c) => c.capability === "prevent.exec")?.state, "SUPPORTED");
     const host = (await (h.owner as Browser).get("/api/governance/runtime-security/host")).body as RuntimeHostView;
     assert.equal(host.backend, "tetragon");
     assert.equal(host.capabilities.find((c) => c.capability === "prevent.exec")?.state, "SUPPORTED");

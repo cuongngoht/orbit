@@ -82,6 +82,9 @@ export class RuntimeSecurityService {
   }
 
   async overview(accountId: string): Promise<RuntimeSecurityOverview> {
+    // The host's view first, outside the account's read-only snapshot: on a fresh installation it may take the host's
+    // first look, which writes the capacity it read.
+    const host = await this.host();
     return this.db.snapshot(async () => {
       const { configured, effective } = await this.effectiveOf(accountId, null);
       const cov = await this.repo.coverage(accountId);
@@ -92,7 +95,7 @@ export class RuntimeSecurityService {
       return {
         configured,
         effective: { mode: effective.mode, controls: effective.controls, floor: effective.floor, from: effective.from.mode },
-        host: await this.host(),
+        host,
         coverage: { protected: by("PROTECTED"), observing: by("OBSERVING"), degraded: by("DEGRADED") + by("UNKNOWN"), contained: by("CONTAINED") + by("CONTAINING"), unprotected: Math.max(0, cov.running - counted) + by("UNREGISTERED"), running: cov.running },
         openIncidents: await this.repo.openCount(accountId),
         prevented24h: c.prevented,

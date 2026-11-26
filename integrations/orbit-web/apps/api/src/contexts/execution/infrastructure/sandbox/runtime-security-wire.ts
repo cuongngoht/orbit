@@ -95,4 +95,7 @@ export interface OpenedAttempt {
   // The model plane's runner credential: released only here, once the gate holds.
   runnerCredential: string;
   protection: ProtectionEvidence | null;
+  // Under enforce, how long the proof it was released on stands: a start after it must open again, through the gate.
+  // null: no enforced protection to outlive (disabled, observe).
+  validUntil: string | null;
 }

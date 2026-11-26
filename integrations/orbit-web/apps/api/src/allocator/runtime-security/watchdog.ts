@@ -23,7 +23,8 @@ export interface WatchSnapshot {
   canary: { provenAt: number | null };
   // null: the installed policies could not be read.
   installed: { name: string; state: string; mode: "enforce" | "monitor" | "unknown" }[] | null;
-  workloads: { dispatchKey: string; mode: RuntimeMode; state: ProtectionState; policy: string | null; sensorGeneration: string | null; lostSince: number | null }[];
+  // restarted: a plane runs with another start time than the one its protection was proven for -- new namespaces.
+  workloads: { dispatchKey: string; mode: RuntimeMode; state: ProtectionState; policy: string | null; sensorGeneration: string | null; lostSince: number | null; restarted?: boolean }[];
   // Orbit's own policies that belong to no workload (the host canary's).
   keep?: readonly string[];
 }
@@ -39,6 +40,7 @@ export type WatchAction =
 const SETTLED: readonly ProtectionState[] = ["CONTAINING", "CONTAINED", "CLEANED_UP", "UNREGISTERED"];
 
 function problemOf(s: WatchSnapshot, w: WatchSnapshot["workloads"][number]): string | null {
+  if (w.restarted === true) return "a plane restarted since its protection was proven: its namespaces are new, and no policy binds them";
   if (s.sensor.state !== "HEALTHY") return `the sensor is ${s.sensor.state.toLowerCase()}`;
   if (s.sensor.generation !== w.sensorGeneration) return "the sensor restarted since the protection was proven: every policy it held is gone";
   if (s.installed === null) return "the sensor's installed policies could not be read";
@@ -61,7 +63,7 @@ function enforced(s: WatchSnapshot, w: WatchSnapshot["workloads"][number]): Watc
 function observed(s: WatchSnapshot, w: WatchSnapshot["workloads"][number]): WatchAction[] {
   const problem = problemOf(s, w);
   if (problem === null) return [{ type: "renew", dispatchKey: w.dispatchKey, freshUntil: s.now + s.freshMs }];
-  if (s.sensor.state === "HEALTHY" && s.installed !== null && !s.installed.some((x) => x.name === w.policy && x.state === "TP_STATE_ENABLED")) return [{ type: "reapply", dispatchKey: w.dispatchKey, cause: problem }];
+  if (w.restarted !== true && s.sensor.state === "HEALTHY" && s.installed !== null && !s.installed.some((x) => x.name === w.policy && x.state === "TP_STATE_ENABLED")) return [{ type: "reapply", dispatchKey: w.dispatchKey, cause: problem }];
   return [{ type: "degrade", dispatchKey: w.dispatchKey, cause: problem }];
 }
 

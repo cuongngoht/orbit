@@ -15,11 +15,16 @@ const OTHER = "c".repeat(64);
 
 class FakeKernel implements RuntimeSecurityBackend, PlaneRuntime {
   readonly kind = "tetragon" as const;
-  containers = new Map<string, { mnt: string; running: boolean }>([
-    [TOOL, { mnt: "4026533001", running: true }],
-    [MODEL, { mnt: "4026533002", running: true }],
-    [OTHER, { mnt: "4026533003", running: true }],
+  containers = new Map<string, { mnt: string; running: boolean; startedAt: string }>([
+    [TOOL, { mnt: "4026533001", running: true, startedAt: "s1" }],
+    [MODEL, { mnt: "4026533002", running: true, startedAt: "s2" }],
+    [OTHER, { mnt: "4026533003", running: true, startedAt: "s0" }],
   ]);
+  // A plane started again: new namespaces, a new start time.
+  restartPlane(id: string): void {
+    const c = this.containers.get(id);
+    if (c !== undefined) this.containers.set(id, { mnt: String(Number(c.mnt) + 100), running: true, startedAt: `${c.startedAt}-again` });
+  }
   installed = new Map<string, { policy: CompiledPolicy; mode: "enforce" | "monitor" }>();
   status_: SensorStatus = { state: "HEALTHY", generation: "g1", since: "t", version: "v1.8.0", image: "tetragon", detail: "ok" };
   lines: string[] = [];
@@ -98,8 +103,9 @@ class FakeKernel implements RuntimeSecurityBackend, PlaneRuntime {
     this.stopped.push(containerId);
     return Promise.resolve();
   }
-  running(containerId: string): Promise<boolean | null> {
-    return Promise.resolve(this.containers.get(containerId)?.running ?? null);
+  inspect(containerId: string): Promise<{ running: boolean; startedAt: string } | null> {
+    const c = this.containers.get(containerId);
+    return Promise.resolve(c === undefined ? null : { running: c.running, startedAt: c.startedAt });
   }
 }
 
@@ -296,4 +302,21 @@ test("telemetry: an event from a container Orbit did not make is counted and dro
   assert.ok(late.lost > 0, "events the ring no longer holds are said lost, never skipped silently");
   const again = s.pull({ epoch: "an-older-epoch", seq: 999 }, 1000);
   assert.equal(again.reset, true, "a restarted allocator's numbering starts over, and says so");
+});
+
+test("a plane restarted under a proven attempt (new namespaces) is lost protection, then contained -- never a stale VERIFIED", async () => {
+  const k = new FakeKernel();
+  const s = service(k);
+  s.canaryProven(clock);
+  await s.protect(request("enforce"));
+  s.open("asg-1:1");
+  k.restartPlane(TOOL);
+  await s.watch();
+  assert.equal(s.evidence("asg-1:1")?.state, "UNKNOWN");
+  assert.match(s.evidence("asg-1:1")?.detail ?? "", /restarted/);
+  assert.equal(s.gate("asg-1:1").open, false);
+  clock += 15_000;
+  s.canaryProven(clock);
+  await s.watch();
+  assert.equal(s.evidence("asg-1:1")?.state, "CONTAINED");
 });

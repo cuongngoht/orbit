@@ -40,7 +40,7 @@ export class ContainerSandboxProvider implements SandboxProvider {
   readonly kind = "container" as const;
   private readonly endpoints = new Map<string, { name: string; ip: string | null; port: number }>();
   // Each opened attempt's runner credential, as the allocator released it: in this process's memory only, never stored.
-  private readonly credentials = new Map<string, string>();
+  private readonly credentials = new Map<string, { credential: string; validUntil: number | null }>();
 
   constructor(
     private readonly allocator: AllocatorApi,
@@ -125,7 +125,7 @@ export class ContainerSandboxProvider implements SandboxProvider {
 
   async open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }> {
     const opened = await this.allocator.openAttempt(handle.dispatchKey);
-    this.credentials.set(handle.dispatchKey, opened.runnerCredential);
+    this.credentials.set(handle.dispatchKey, { credential: opened.runnerCredential, validUntil: opened.validUntil === null ? null : Date.parse(opened.validUntil) });
     return { protection: opened.protection };
   }
 
@@ -133,9 +133,13 @@ export class ContainerSandboxProvider implements SandboxProvider {
     const known = this.endpoints.get(handle.dispatchKey);
     const host = this.o.modelPlaneAddress === "ip" ? (known?.ip ?? null) : (known?.name ?? planeNames(this.o.prefix, handle.dispatchKey).model);
     if (host === null) throw new Error("the model plane's address is not known to this process yet: find the attempt first");
-    const credential = this.credentials.get(handle.dispatchKey);
-    if (credential === undefined) throw new Error("runtime_protection_not_established: the attempt has not been opened, and only the allocator's gate releases its runner credential");
-    return new RunnerProcessPort(host, known?.port ?? MODEL_PLANE.runnerPort, credential);
+    const opened = this.credentials.get(handle.dispatchKey);
+    if (opened === undefined) throw new Error("runtime_protection_not_established: the attempt has not been opened, and only the allocator's gate releases its runner credential");
+    if (opened.validUntil !== null && opened.validUntil <= Date.now()) {
+      this.credentials.delete(handle.dispatchKey);
+      throw new Error("runtime_protection_not_established: the attempt's opening expired with the proof it was released on -- open it again, through the gate");
+    }
+    return new RunnerProcessPort(host, known?.port ?? MODEL_PLANE.runnerPort, opened.credential);
   }
 
   exec(handle: AttemptHandle, req: ExecRequest): Promise<ExecResult> {
@@ -165,6 +169,7 @@ export class ContainerSandboxProvider implements SandboxProvider {
   async remove(handle: AttemptHandle): Promise<{ gone: boolean; detail: string }> {
     const r = await this.allocator.remove(handle.dispatchKey);
     if (r.gone) this.endpoints.delete(handle.dispatchKey);
+    this.credentials.delete(handle.dispatchKey);
     return r;
   }
 }

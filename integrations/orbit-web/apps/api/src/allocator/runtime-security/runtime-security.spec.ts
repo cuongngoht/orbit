@@ -215,3 +215,10 @@ test("a workload already contained or containing is left to its containment, nev
   const actions = decide(snap({ workloads: [{ dispatchKey: "asg-1:1", mode: "enforce", state: "CONTAINED", policy: "orbit-a-1", sensorGeneration: "g1", lostSince: 1 }], installed: [] }));
   assert.deepEqual(actions, []);
 });
+
+test("a plane that restarted since its protection was proven has new namespaces: protection is LOST (never a stale binding)", () => {
+  const restarted = { dispatchKey: "asg-1:1", mode: "enforce" as const, state: "PROTECTED" as const, policy: "orbit-a-1", sensorGeneration: "g1", lostSince: null, restarted: true };
+  assert.deepEqual(decide(snap({ workloads: [restarted] })).map((a) => a.type), ["lost"]);
+  const observed = { ...restarted, dispatchKey: "obs:1", mode: "observe" as const, state: "OBSERVING" as const, policy: "orbit-a-2" };
+  assert.deepEqual(decide(snap({ workloads: [observed], installed: [{ name: "orbit-a-2", state: "TP_STATE_ENABLED", mode: "monitor" }] })).map((a) => a.type), ["degrade"], "observation must be bound again: degraded, never re-applied to the old namespace");
+});

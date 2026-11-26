@@ -664,7 +664,11 @@ export class Allocator implements AllocatorApi {
   // The attempt's runtime protection, established once per pair of containers (a retried start finds it).
   private async protectOnce(s: AllocatorAttemptSpec, tool: ContainerInspect, model: ContainerInspect): Promise<void> {
     const known = this.security.service.evidence(s.dispatchKey);
-    if (known !== null && known.state !== "CLEANED_UP" && known.planes.every((p) => p.containerId === tool.Id || p.containerId === model.Id)) return;
+    // The same containers, each with the same start time: a retried start finds its protection. A plane started again
+    // has new namespaces -- its old binding protects nothing -- so the record is released and protection made anew.
+    const same = (p: { containerId: string; startedAt: string }) => (p.containerId === tool.Id && p.startedAt === tool.State.StartedAt) || (p.containerId === model.Id && p.startedAt === model.State.StartedAt);
+    if (known !== null && known.state !== "CLEANED_UP" && known.planes.length === 2 && known.planes.every(same)) return;
+    if (known !== null && known.state !== "CLEANED_UP") await this.security.service.release(s.dispatchKey);
     await this.security.protect({
       dispatchKey: s.dispatchKey,
       runKind: "assignment",
@@ -699,7 +703,7 @@ export class Allocator implements AllocatorApi {
       }
       const credential = (model.Config.Env ?? []).find((e) => e.startsWith("ORBIT_WEB_RUNNER_TOKEN="))?.slice("ORBIT_WEB_RUNNER_TOKEN=".length) ?? "";
       if (credential === "") throw new AllocatorError("internal", "the model plane holds no runner credential");
-      return { runnerCredential: credential, protection };
+      return { runnerCredential: credential, protection, validUntil: protection.mode === "enforce" ? protection.freshUntil : null };
     });
   }
 

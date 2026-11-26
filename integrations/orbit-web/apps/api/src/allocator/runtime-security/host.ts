@@ -70,9 +70,9 @@ export class HostSecurity {
       stop: async (id) => {
         await o.engine.containerStop(id, 0);
       },
-      running: async (id) => {
+      inspect: async (id) => {
         const c = await o.engine.containerInspect(id);
-        return c === null ? null : c.State.Running;
+        return c === null ? null : { running: c.State.Running, startedAt: c.State.StartedAt };
       },
     };
     this.service = new RuntimeSecurityService({ backend: this.backend, runtime, floor: rs.floor, containAfterMs: rs.containAfterMs, freshMs: rs.freshMs, now: () => o.now().getTime(), onChange: () => this.persistSoon() });

@@ -25,8 +25,8 @@ export type { RuntimePull, WireProtection, WireRuntimeEvent };
 export interface PlaneRuntime {
   exec(containerId: string, argv: string[], o: { user: string; timeoutMs: number }): Promise<{ code: number | null; out: string }>;
   stop(containerId: string): Promise<void>;
-  // null: the container is gone.
-  running(containerId: string): Promise<boolean | null>;
+  // null: the container is gone. startedAt: when its current process tree started (a restart is new namespaces).
+  inspect(containerId: string): Promise<{ running: boolean; startedAt: string } | null>;
 }
 
 export interface ProtectRequest {
@@ -403,6 +403,8 @@ export class RuntimeSecurityService {
     const status = await this.o.backend.status();
     this.sensor = status;
     const installed = status.state === "HEALTHY" ? await this.o.backend.policies() : null;
+    const restarted = new Set<string>();
+    for (const r of this.records.values()) if (await this.restartedSince(r)) restarted.add(r.req.dispatchKey);
     const actions = decide({
       now: this.o.now(),
       containAfterMs: this.o.containAfterMs,
@@ -411,11 +413,21 @@ export class RuntimeSecurityService {
       sensor: { state: status.state, generation: status.generation },
       canary: { provenAt: this.canaryAt },
       installed: installed === null ? null : installed.map((p) => ({ name: p.name, state: p.state, mode: p.mode })),
-      workloads: [...this.records.values()].map((r) => ({ dispatchKey: r.req.dispatchKey, mode: r.mode, state: r.state, policy: r.policy?.name ?? null, sensorGeneration: r.sensorGeneration, lostSince: r.lostSince })),
+      workloads: [...this.records.values()].map((r) => ({ dispatchKey: r.req.dispatchKey, mode: r.mode, state: r.state, policy: r.policy?.name ?? null, sensorGeneration: r.sensorGeneration, lostSince: r.lostSince, restarted: restarted.has(r.req.dispatchKey) })),
       keep: [CANARY_POLICY],
     });
     for (const a of actions) await this.act(a, status);
     return actions;
+  }
+
+  // Whether a plane of a watched attempt runs again under another start time than the one it was proven for.
+  private async restartedSince(r: ProtectionRecord): Promise<boolean> {
+    if (r.mode === "disabled" || r.policy === null || ["CONTAINING", "CONTAINED", "CLEANED_UP", "UNREGISTERED"].includes(r.state)) return false;
+    for (const p of r.planes) {
+      const now = await this.o.runtime.inspect(p.containerId).catch(() => null);
+      if (now !== null && now.running && now.startedAt !== p.startedAt) return true;
+    }
+    return false;
   }
 
   private async act(a: WatchAction, status: SensorStatus): Promise<void> {
@@ -455,7 +467,7 @@ export class RuntimeSecurityService {
     this.settle(rec, "CONTAINING", `Containing: ${cause}.`);
     for (const p of rec.planes) await this.o.runtime.stop(p.containerId).catch(() => undefined);
     const still = [];
-    for (const p of rec.planes) if ((await this.o.runtime.running(p.containerId).catch(() => true)) === true) still.push(p.plane);
+    for (const p of rec.planes) if ((await this.o.runtime.inspect(p.containerId).catch(() => ({ running: true, startedAt: "" })))?.running === true) still.push(p.plane);
     if (still.length > 0) {
       this.settle(rec, "CONTAINING", `Containment could not be verified: the ${still.join(" and ")} still run (${cause}).`);
       return;

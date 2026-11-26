@@ -3,7 +3,7 @@
 // incident, which names the version it read and is recorded on the account's chain. Nothing here makes a policy, lowers
 // a mode or releases a contained attempt by itself: the policy is published through its own lifecycle, and a retry is a
 // person's, only once a review authorized it.
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import { checkReviewIncident, protectionBadge, type CapabilityResult, type EmployeeRuntimeSecurityView, type HostKind, type IncidentView, type RuntimeEventPage, type RuntimeHostView, type RuntimeSecurityOverview, type RuntimeWorkloadList, type IncidentList, type WorkloadProtectionView } from "@orbit-web/contracts";
 import { composeRuntimeSecurity, isRuntimeMode, runtimeSecurityOf, type RuntimeMode } from "@orbit-web/governance-core";
 import { accepted, ApiError, notFound } from "../../../common/errors.js";
@@ -15,6 +15,7 @@ import { Db } from "../../../infra/db/db.js";
 import { labelOf, type GovernanceContext } from "../../../modules/auth/principal.js";
 import { AuditService } from "../../../modules/governance/audit.service.js";
 import { PolicyService } from "../../../modules/governance/policy.service.js";
+import { ResourcesService } from "../../execution/application/resources.service.js";
 import type { RuntimeHostProbe } from "../../execution/infrastructure/sandbox/runtime-security-wire.js";
 import { isUuid, SecurityRepository, type IncidentRecord } from "../infrastructure/security.repository.js";
 
@@ -31,6 +32,7 @@ export class RuntimeSecurityService {
     @Inject(PolicyService) private readonly policy: PolicyService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(EventBus) private readonly bus: EventBus,
+    @Optional() @Inject(ResourcesService) private readonly resources: ResourcesService | null = null,
   ) {
     let rs = { backend: "off" as "off" | "tetragon", floor: "disabled" as RuntimeMode, retentionDays: 14 };
     try {
@@ -49,8 +51,11 @@ export class RuntimeSecurityService {
     return { configured, effective: composeRuntimeSecurity(company ?? {}, dept, this.rs.floor) };
   }
 
+  // What this host proved, as the probe kept with its capacity says it. On a fresh installation nothing may have read the
+  // host yet (the office reads it at its first need): the page then takes that same first look itself, rather than say
+  // "never probed" because nobody else asked first.
   async host(): Promise<RuntimeHostView> {
-    const probe = (await this.repo.runtimeProbe()) as RuntimeHostProbe | null;
+    const probe = ((await this.repo.runtimeProbe()) ?? (this.rs.backend !== "off" ? await this.firstLook() : null)) as RuntimeHostProbe | null;
     const feed = await this.repo.feed();
     const sensor = feed.sensor ?? probe?.sensor ?? null;
     const disabled = this.rs.backend === "off";
@@ -68,6 +73,12 @@ export class RuntimeSecurityService {
       floor: this.rs.floor,
       telemetry: { lastEventAt: feed.lastEventAt, lost: feed.lost, unattributed: feed.unattributed, retentionDays: this.rs.retentionDays },
     };
+  }
+
+  private async firstLook(): Promise<unknown> {
+    if (this.resources === null || (await this.resources.storedCapacity()) !== null) return null;
+    await this.resources.capacity();
+    return this.repo.runtimeProbe();
   }
 
   async overview(accountId: string): Promise<RuntimeSecurityOverview> {

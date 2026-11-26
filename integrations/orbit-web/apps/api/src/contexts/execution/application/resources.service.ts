@@ -178,7 +178,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
   private async remeasure(): Promise<InfrastructureCapacity | null> {
     for (let attempt = 1; attempt <= START_TRIES && !this.closing; attempt += 1) {
       const probe = await this.probe();
-      if (probe !== null || this.provider === null) return this.keepCapacity(this.measure(probe));
+      if (probe !== null || this.provider === null) return this.keepCapacity(this.measure(probe), probe);
       await pause(START_PAUSE_MS);
     }
     if (!this.closing) this.logger.warn("the sandbox provider did not answer at start: the host's capacity stays as it was last read");

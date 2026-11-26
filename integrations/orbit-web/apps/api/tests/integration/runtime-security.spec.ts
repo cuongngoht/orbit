@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, afterEach, before, describe, test } from "node:test";
-import { DEFAULT_PRESETS, type AssignmentView, type EmployeeDetail, type EmployeeRuntimeSecurityView, type IncidentList, type IncidentView, type MissionAccepted, type MissionDetail, type RuntimeConnection, type RuntimeEventPage, type RuntimeSecurityOverview } from "@orbit-web/contracts";
+import { DEFAULT_PRESETS, type AssignmentView, type EmployeeDetail, type EmployeeRuntimeSecurityView, type IncidentList, type IncidentView, type MissionAccepted, type MissionDetail, type RuntimeConnection, type RuntimeEventPage, type RuntimeHostView, type RuntimeSecurityOverview } from "@orbit-web/contracts";
 import type { RevisionView } from "@orbit-web/contracts";
 import type { Constitution } from "@orbit-web/governance-core";
 import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
@@ -426,5 +426,25 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     const after = (await changed()).slice(before).map((r) => [(r.data as { state: string }).state, (r.data as { generation: string | null }).generation]);
     assert.deepEqual(after.slice(-2), [["UNAVAILABLE", null], ["HEALTHY", "g2"]]);
     assert.ok(after.length <= 3, `recorded on a change only: ${JSON.stringify(after)}`);
+  });
+});
+
+// A fresh installation: nothing has read the host yet (the office reads it lazily, at its first need). The page that says
+// what this host proved must not say "never probed" because nobody else asked first.
+describe("runtime security on a fresh installation: the page's first look at the host", () => {
+  let h: Harness;
+  before(async () => {
+    h = await startHarness({ overrides: [[SANDBOX_PROVIDER, new FakeSandboxProvider()]], env: { ...FAST, ORBIT_WEB_RUNTIME_SECURITY: "tetragon" } });
+  });
+  after(async () => {
+    await h?.close();
+  });
+
+  test("with no capacity read yet, the page reads the host itself and shows what its probe proved", async () => {
+    assert.equal((await h.sql("SELECT count(*)::int AS n FROM workforce.capacity"))[0]?.n, 0, "nothing has read the host yet");
+    const host = (await (h.owner as Browser).get("/api/governance/runtime-security/host")).body as RuntimeHostView;
+    assert.equal(host.backend, "tetragon");
+    assert.equal(host.capabilities.find((c) => c.capability === "prevent.exec")?.state, "SUPPORTED");
+    assert.notEqual(host.probedAt, null);
   });
 });

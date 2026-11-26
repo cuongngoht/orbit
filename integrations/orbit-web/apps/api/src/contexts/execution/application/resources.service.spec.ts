@@ -4,6 +4,7 @@ import { RUNTIME_KINDS, type AccountResourceBudget, type BudgetAuthorization } f
 import type { AppConfig } from "../../../config/config.js";
 import { loadSandboxConfig, MODEL_PLANE_DEFAULTS } from "../../../config/sandbox-config.js";
 import type { Db } from "../../../infra/db/db.js";
+import { FakeSandboxProvider } from "../../../testing/fake-sandbox.js";
 import { authorizationFrom, followAuthorization, ResourcesService, sameLimits } from "./resources.service.js";
 
 // The usable capacity of a 2-vCPU, 8 GiB host with a 10 GiB pool (what the first look made), and of the same host resized.
@@ -79,4 +80,33 @@ test("measured on this process's own host, the capacity settings are read in the
   assert.deepEqual(c.total, { cpuMillis: 4000, memoryMiB: 8192, storageMiB: 20480 }, "4 is four vCPUs, 8g is 8192 MiB");
   assert.deepEqual([c.headroom.cpuMillis, c.headroom.memoryMiB, c.headroom.storageMiB], [500, 820, 10 * 1024]);
   assert.deepEqual(c.usable, { cpuMillis: 3500, memoryMiB: 7372, storageMiB: 10240 });
+});
+
+// What the host's runtime security proved is read again at every start, with the capacity: a restart is how an operator
+// turns runtime security on or moves to another kernel, and the page and the policy editor's host badge must say what
+// THIS start proved -- never the first read's answer kept forever.
+test("the start-up read of the host keeps what its runtime security proved", async () => {
+  // A database that keeps the one capacity row (as PostgreSQL does), read before with no runtime security in it.
+  const amounts = { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 };
+  let row: Record<string, unknown> = { source: "detected", total: amounts, headroom: amounts, usable: amounts, storage: { mechanism: "measured" }, checked_at: "2026-11-26T00:00:00.000Z", runtime_security: null };
+  const db = {
+    query: (sql: string, params: unknown[] = []) => {
+      if (sql.includes("INSERT INTO workforce.capacity")) row = { ...row, checked_at: params[6], runtime_security: params[7] === null ? row.runtime_security : JSON.parse(String(params[7])) };
+      return Promise.resolve([]);
+    },
+    one: (sql: string) => {
+      if (sql.includes("SELECT 1 AS x FROM workforce.capacity")) return Promise.resolve({ x: 1 });
+      if (sql.includes("SELECT runtime_security FROM workforce.capacity")) return Promise.resolve({ runtime_security: row.runtime_security });
+      if (sql.includes("FROM workforce.capacity")) return Promise.resolve(row);
+      return Promise.resolve(null);
+    },
+  } as unknown as Db;
+  const s = new ResourcesService({ sourceEnv: {}, data: { root: "/nonexistent" } } as unknown as AppConfig, db, new FakeSandboxProvider());
+  s.onApplicationBootstrap();
+  for (let i = 0; i < 200 && row.checked_at === "2026-11-26T00:00:00.000Z"; i += 1) await new Promise((r) => setTimeout(r, 10));
+  s.onModuleDestroy();
+  assert.notEqual(row.checked_at, "2026-11-26T00:00:00.000Z", "the host was read again at start");
+  const kept = row.runtime_security as { backend?: string; capabilities?: { capability: string }[] } | null;
+  assert.equal(kept?.backend, "tetragon", "what the probe proved is kept with it");
+  assert.ok(kept?.capabilities?.some((c) => c.capability === "prevent.exec"));
 });

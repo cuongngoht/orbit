@@ -336,6 +336,20 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     assert.equal((await h.sql("SELECT count(*)::int AS c FROM security.events WHERE run_id = $1", [run!.id]))[0]?.c, 0);
   });
 
+  test("an event of an account this database does not hold is dropped, and never poisons the pull it came in", async () => {
+    const e = await hire("Liv");
+    const m = await give(e.id, "Write the report.");
+    const { run } = await eventually(() => runOf(m), (x) => x.run?.state === "succeeded");
+    // What an allocator still remembers after the database was reset: an attempt of an account that is gone.
+    const stranger = { ...run!, account_id: randomUUID(), id: randomUUID() };
+    sandbox.runtimePulls.push(pull([event(stranger, { kind: "workload.contained", outcome: "WORKLOAD_CONTAINED", plane: null, binary: null }), event(run!)]));
+    assert.equal((await ingest.tick())?.events, 1);
+    const kept = await h.sql("SELECT account_id FROM security.events WHERE run_id = ANY($1::text[])", [[run!.id, stranger.id]]);
+    assert.deepEqual(kept.map((r) => r.account_id), [run!.account_id]);
+    sandbox.runtimePulls.push(pull([event(run!)]));
+    assert.equal((await ingest.tick())?.events, 1, "the next pull goes on from there");
+  });
+
   test("a flood of notable events is bounded too: the stream keeps its cap and says the rest, the incident counts every one", async () => {
     const e = await hire("Ivo");
     const m = await give(e.id, "Write the report.");

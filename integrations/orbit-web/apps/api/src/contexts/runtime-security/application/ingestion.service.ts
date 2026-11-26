@@ -24,7 +24,7 @@ import { SECURITY_STOP } from "../../execution/application/execution.worker.js";
 import { RunRepository, type RunRecord } from "../../execution/infrastructure/runs.repository.js";
 import type { RuntimePull, WireRuntimeEvent, WireSensor } from "../../execution/infrastructure/sandbox/runtime-security-wire.js";
 import { classify, incidentFor, protectionIncident, protectionLoss, type IncidentPlan } from "../domain/rules.js";
-import { isUuid, SecurityRepository, type EventRow, type IncidentRecord } from "../infrastructure/security.repository.js";
+import { SecurityRepository, type EventRow, type IncidentRecord } from "../infrastructure/security.repository.js";
 
 const POLL_MS = 2_000;
 const PRUNE_MS = 60 * 60_000;
@@ -124,8 +124,11 @@ export class RuntimeSecurityIngestion implements OnApplicationBootstrap, OnAppli
       }
       const modes = new Map<string, RuntimeMode | null>();
       const rows: EventRow[] = [];
+      const known = await this.repo.knownAccounts(pull.events.map((e) => e.accountId));
+      const strangers = pull.events.filter((e) => !known.has(e.accountId)).length;
+      if (strangers > 0) this.logger.warn(`${strangers} runtime event(s) of an account this database does not hold were dropped (an allocator's memory of a reset database)`);
       for (const e of pull.events) {
-        if (!isUuid(e.accountId)) continue;
+        if (!known.has(e.accountId)) continue;
         const c = classify({ kind: e.kind, outcome: e.outcome, plane: e.plane, binary: e.binary, path: e.path, control: e.control, runKind: e.runKind });
         rows.push(this.rowOf(e, c.kind, c.severity, e.outcome));
         const key = `${e.accountId}:${e.runId}`;

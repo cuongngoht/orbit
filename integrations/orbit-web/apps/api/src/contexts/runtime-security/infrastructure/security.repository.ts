@@ -166,6 +166,15 @@ export class SecurityRepository {
 
   // ---- events -------------------------------------------------------------------------------------------------------------
 
+  // The accounts of `ids` this database holds. An event of any other is nobody's here -- what an allocator remembers of
+  // a database that was reset since -- and is dropped by the caller, never refused by the foreign key, which would fail
+  // the whole pull and replay it forever.
+  async knownAccounts(ids: readonly string[]): Promise<Set<string>> {
+    const asked = [...new Set(ids.filter((id) => isUuid(id)))];
+    if (asked.length === 0) return new Set();
+    return new Set((await this.db.query("SELECT id FROM app.accounts WHERE id = ANY($1::uuid[])", [asked])).map((row) => s(row.id)));
+  }
+
   // Kept up to `cap` per run of what is information and, apart, up to `cap` of what is notable -- a flood of the one
   // never crowds out the other, and neither grows without bound (an attempt looping a refused operation is bounded like
   // any other); beyond, one gap marker per run counts what was not kept, and an incident still counts every repeat.

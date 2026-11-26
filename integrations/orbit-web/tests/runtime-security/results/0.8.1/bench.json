@@ -1,0 +1,261 @@
+{
+  "host": {
+    "os": "Docker Desktop",
+    "kernel": "7.0.14-linuxkit",
+    "arch": "aarch64",
+    "cpus": 10,
+    "memoryBytes": 8319438848,
+    "docker": "29.9.3"
+  },
+  "workstation": "orbit-web-workstation:sandbox-test",
+  "sensor": "quay.io/cilium/tetragon:v1.8.0@sha256:5ed9088a1582131d71b06c98e0d549a37a71ae63ab13aabefc7a47553c822a9d",
+  "runs": 3,
+  "results": {
+    "exec loop (2,000 short-lived processes)": {
+      "off": {
+        "medianMs": 377,
+        "runs": [
+          385,
+          377,
+          367
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 574,
+        "runs": [
+          580,
+          574,
+          554
+        ],
+        "execEvents": 2005,
+        "exportBytes": 5985778
+      },
+      "enforce": {
+        "medianMs": 629,
+        "runs": [
+          578,
+          629,
+          683
+        ],
+        "execEvents": 2004,
+        "exportBytes": 5984616
+      }
+    },
+    "node startup x30": {
+      "off": {
+        "medianMs": 402,
+        "runs": [
+          402,
+          392,
+          407
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 414,
+        "runs": [
+          426,
+          414,
+          414
+        ],
+        "execEvents": 35,
+        "exportBytes": 106455
+      },
+      "enforce": {
+        "medianMs": 441,
+        "runs": [
+          448,
+          441,
+          432
+        ],
+        "execEvents": 35,
+        "exportBytes": 106455
+      }
+    },
+    "python3 startup x30": {
+      "off": {
+        "medianMs": 232,
+        "runs": [
+          232,
+          232,
+          238
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 235,
+        "runs": [
+          240,
+          222,
+          235
+        ],
+        "execEvents": 35,
+        "exportBytes": 106695
+      },
+      "enforce": {
+        "medianMs": 237,
+        "runs": [
+          256,
+          237,
+          229
+        ],
+        "execEvents": 35,
+        "exportBytes": 106678
+      }
+    },
+    "git: 50 commits": {
+      "off": {
+        "medianMs": 158,
+        "runs": [
+          158,
+          157,
+          170
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 170,
+        "runs": [
+          173,
+          166,
+          170
+        ],
+        "execEvents": 160,
+        "exportBytes": 481732
+      },
+      "enforce": {
+        "medianMs": 186,
+        "runs": [
+          194,
+          176,
+          186
+        ],
+        "execEvents": 160,
+        "exportBytes": 481732
+      }
+    },
+    "C build: 40 files, make -j4": {
+      "off": {
+        "medianMs": 150,
+        "runs": [
+          120,
+          161,
+          150
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 164,
+        "runs": [
+          212,
+          157,
+          164
+        ],
+        "execEvents": 129,
+        "exportBytes": 390167
+      },
+      "enforce": {
+        "medianMs": 145,
+        "runs": [
+          204,
+          97,
+          145
+        ],
+        "execEvents": 129,
+        "exportBytes": 390167
+      }
+    },
+    "npm install (offline, a postinstall script)": {
+      "off": {
+        "medianMs": 152,
+        "runs": [
+          155,
+          151,
+          152
+        ],
+        "execEvents": null,
+        "exportBytes": null
+      },
+      "observe": {
+        "medianMs": 158,
+        "runs": [
+          174,
+          158,
+          150
+        ],
+        "execEvents": 12,
+        "exportBytes": 35852
+      },
+      "enforce": {
+        "medianMs": 164,
+        "runs": [
+          181,
+          164,
+          161
+        ],
+        "execEvents": 12,
+        "exportBytes": 35852
+      }
+    }
+  },
+  "concurrent": {
+    "off": {
+      "wallMs": 534,
+      "eachMs": [
+        480,
+        483,
+        482,
+        481
+      ]
+    },
+    "enforce": {
+      "wallMs": 740,
+      "eachMs": [
+        678,
+        678,
+        680,
+        682
+      ]
+    }
+  },
+  "policy": {
+    "observe": {
+      "installMs": 874,
+      "kernelMemoryBytes": 3500440,
+      "canaryRc": 0,
+      "removeMs": 500
+    },
+    "enforce": {
+      "installMs": 790,
+      "kernelMemoryBytes": 3500440,
+      "canaryRc": 255,
+      "removeMs": 353
+    }
+  },
+  "sensorStats": {
+    "idle": {
+      "cpuPercent": 1.14,
+      "memory": "116.2MiB"
+    },
+    "observe": {
+      "cpuPercent": 0,
+      "memory": "185.5MiB"
+    },
+    "enforce": {
+      "cpuPercent": 0,
+      "memory": "248.7MiB"
+    },
+    "afterConcurrent": {
+      "cpuPercent": 65.27,
+      "memory": "339.9MiB"
+    }
+  },
+  "sensorStartMs": 1386,
+  "exportTotalBytes": 33986543
+}

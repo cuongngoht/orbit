@@ -115,6 +115,16 @@ export interface ProtectionEvidence {
 
 export type ProtectionBadge = "protected" | "verifying" | "observing" | "degraded" | "contained" | "unprotected" | "unknown";
 
+// Whether an attempt may act now, by its protection: under enforce ONLY on proof that is VERIFIED or PROTECTED and still
+// fresh -- the allocator's own gate (allocator/runtime-security/service.ts gate()), held again wherever the API lets an
+// attempt act (its network); observe and disabled hold nothing back. A proof lost is refused at once, before the
+// allocator's containment deadline.
+export function protectionHolds(p: { mode: RuntimeMode; state: ProtectionState; freshUntil: string | null }, nowMs: number): boolean {
+  if (p.mode !== "enforce") return true;
+  const fresh = p.freshUntil !== null && Date.parse(p.freshUntil) > nowMs;
+  return fresh && (p.state === "VERIFIED" || p.state === "PROTECTED");
+}
+
 // The word a page shows for an attempt's protection: "protected" ONLY for PROTECTED with evidence still fresh -- stale
 // evidence is unknown, never green.
 export function protectionBadge(p: { state: ProtectionState; freshUntil: string | null }, nowMs: number): ProtectionBadge {

@@ -9,8 +9,13 @@
 // kept in the run's network log (workforce.run_connections). An address the proxy refuses after the policy allowed the
 // host (one that is not on the public internet) is recorded on the account's chain as the run's. Orbit Web relays no
 // sign-in through the proxy: a CLI's login is made from an operator's terminal, never by a run.
+//
+// Runtime security (ADR 0063): an attempt held to enforce reaches nothing while its protection is not proven and fresh
+// (protectionHolds -- the allocator's own gate, held again here), so a lost proof is refused at its next connection,
+// before the allocator's containment deadline. Such a refusal is no policy decision: it is kept in the run's network log.
 import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import type { Server } from "node:http";
+import { protectionHolds } from "@orbit-web/contracts";
 import type { AppConfig } from "../../config/config.js";
 import { egressConfig } from "../../config/egress-config.js";
 import { AGENT_PROCESS_PORT, APP_CONFIG } from "../../core/tokens.js";
@@ -20,6 +25,7 @@ import { loadSandboxConfig } from "../../config/sandbox-config.js";
 import { employeeNetworkOf } from "../../contexts/execution/infrastructure/employee-network.js";
 import { allowedPrivate, startEgressProxy, type ConnectionSink, type EgressAsk, type EgressRun, type EgressVerdict } from "../../infra/egress/proxy.js";
 import { RunBindingStore, sha256, type RunBinding } from "../../infra/governance/stores.js";
+import { SecurityRepository } from "../../contexts/runtime-security/infrastructure/security.repository.js";
 import type { ProcessPort } from "../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../infra/process/runner-port.js";
 import { contextOf, type Principal } from "../auth/principal.js";
@@ -38,6 +44,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   private readonly logger = new Logger("Egress");
   private server: Server | null = null;
   private readonly log: RunConnectionLog;
+  private readonly security: SecurityRepository;
   // The bindings of the employees' runs the proxy decided for lately.
   private readonly recent = new Map<string, RunBinding>();
   private employees: Server | null = null;
@@ -52,6 +59,7 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
     @Inject(Db) db: Db,
   ) {
     this.log = new RunConnectionLog(db);
+    this.security = new SecurityRepository(db);
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -99,6 +107,8 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
   // -- and, without a live one, as nobody (which is never granted anything, and is recorded on the deployment's chain).
   async decide(ask: EgressAsk): Promise<EgressVerdict> {
     const binding = ask.token === null ? null : await this.bindings.live(sha256(ask.token));
+    const unprotected = binding?.kind === "assignment" ? await this.unprotected(binding) : null;
+    if (binding !== null && unprotected !== null) return { allow: false, reason: unprotected, run: { id: binding.runId, accountId: binding.accountId, employee: true, limits: null } };
     const principal: Principal = binding === null ? { kind: "anonymous", agentNetwork: true } : { kind: "agent", binding };
     const ctx = contextOf(principal, `egress:${binding?.runId ?? "none"}`);
     const decision = await this.policy.decide(ctx, { action: "network.egress", resource: `${ask.host}:${ask.port}`, scope: binding === null ? "ACCOUNT" : scopeOf(binding), params: { host: ask.host, port: ask.port } });
@@ -106,6 +116,13 @@ export class EgressService implements OnApplicationBootstrap, OnApplicationShutd
     if (decision.verdict === "allow") return { allow: true, reason: "", run };
     const why = binding === null ? "no run's token was given" : `the account's policy in effect does not allow ${ask.host}:${ask.port} (${decision.reasonCodes.join(", ")})`;
     return { allow: false, reason: `this connection is refused: ${why}. Decision ${decision.decisionId}.`, run };
+  }
+
+  // Why an employee's attempt may not connect now for its runtime protection, or null when nothing holds it back.
+  private async unprotected(binding: RunBinding): Promise<string | null> {
+    const p = await this.security.protectionOf(binding.accountId, binding.runId);
+    if (p === null || protectionHolds(p, Date.now())) return null;
+    return `this connection is refused: the attempt's runtime protection is not established (${p.state}); under enforce it reaches nothing until its protection is proven again.`;
   }
 
   // What the proxy says about each connection of a run: kept in an employee's run's network log, and -- an address the

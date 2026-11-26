@@ -138,15 +138,18 @@ export class SecurityRepository {
 
   // What an attempt is held to: the allocator's latest report, else what the worker kept with the run when it opened it
   // (the evidence of its start) -- never nothing while the attempt carries evidence.
-  async protectionOf(accountId: string, runId: string): Promise<{ mode: RuntimeMode; state: ProtectionState } | null> {
+  // Every field from ONE source: a report's state is never paired with the start evidence's freshness.
+  async protectionOf(accountId: string, runId: string): Promise<{ mode: RuntimeMode; state: ProtectionState; freshUntil: string | null } | null> {
     if (!isUuid(runId)) return null;
     const r = await this.db.one(
-      `SELECT COALESCE(p.mode, r.sandbox->'protection'->>'mode') AS mode, COALESCE(p.state, r.sandbox->'protection'->>'state') AS state
+      `SELECT CASE WHEN p.run_id IS NULL THEN r.sandbox->'protection'->>'mode' ELSE p.mode END AS mode,
+              CASE WHEN p.run_id IS NULL THEN r.sandbox->'protection'->>'state' ELSE p.state END AS state,
+              CASE WHEN p.run_id IS NULL THEN r.sandbox->'protection'->>'freshUntil' ELSE p.evidence->>'freshUntil' END AS fresh_until
          FROM workforce.runs r LEFT JOIN security.protections p ON p.account_id = r.account_id AND p.run_id = r.id
         WHERE r.account_id = $1 AND r.id = $2`,
       [accountId, runId],
     );
-    return r === null || r.mode === null ? null : { mode: s(r.mode) as RuntimeMode, state: s(r.state) as ProtectionState };
+    return r === null || r.mode === null ? null : { mode: s(r.mode) as RuntimeMode, state: s(r.state) as ProtectionState, freshUntil: sn(r.fresh_until) };
   }
 
   // ---- events -------------------------------------------------------------------------------------------------------------

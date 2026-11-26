@@ -2,7 +2,7 @@
 // an outcome that never calls a detection a prevention, and a person's review held to its words.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkReviewIncident, INCIDENT_SEVERITIES, outcomeOf, PROTECTION_STATES, protectionBadge, RUNTIME_OUTCOMES } from "./runtime-security.js";
+import { checkReviewIncident, INCIDENT_SEVERITIES, outcomeOf, PROTECTION_STATES, protectionBadge, protectionHolds, RUNTIME_OUTCOMES } from "./runtime-security.js";
 import type { Checked } from "./validate.js";
 
 const errorsOf = <T>(c: Checked<T>): string[] => (c.ok ? [] : c.errors);
@@ -23,6 +23,18 @@ test("only PROTECTED with fresh evidence is shown as protected: stale evidence i
   for (const state of PROTECTION_STATES) {
     const word = protectionBadge({ state, freshUntil: later }, NOW);
     assert.equal(word === "protected", state === "PROTECTED", state);
+  }
+});
+
+test("an enforced attempt may act only on proof that is VERIFIED or PROTECTED and fresh; observe and disabled hold nothing back", () => {
+  assert.equal(protectionHolds({ mode: "enforce", state: "PROTECTED", freshUntil: later }, NOW), true);
+  assert.equal(protectionHolds({ mode: "enforce", state: "VERIFIED", freshUntil: later }, NOW), true);
+  assert.equal(protectionHolds({ mode: "enforce", state: "PROTECTED", freshUntil: earlier }, NOW), false, "stale proof is no proof");
+  assert.equal(protectionHolds({ mode: "enforce", state: "PROTECTED", freshUntil: null }, NOW), false);
+  for (const state of PROTECTION_STATES.filter((s) => s !== "PROTECTED" && s !== "VERIFIED")) assert.equal(protectionHolds({ mode: "enforce", state, freshUntil: later }, NOW), false, state);
+  for (const state of PROTECTION_STATES) {
+    assert.equal(protectionHolds({ mode: "observe", state, freshUntil: null }, NOW), true, `observe ${state}`);
+    assert.equal(protectionHolds({ mode: "disabled", state, freshUntil: null }, NOW), true, `disabled ${state}`);
   }
 });
 

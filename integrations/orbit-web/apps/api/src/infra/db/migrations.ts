@@ -2150,6 +2150,13 @@ CREATE TABLE security.incidents (
   count integer NOT NULL DEFAULT 1,
   -- While true, a person's Retry of the assignment is refused until a review authorizes it.
   blocks_retry boolean NOT NULL,
+  -- The deterministic response the rules planned (in order), the attempt it is about (by its dispatch key: never a newer
+  -- attempt's), and whether any of it is still owed: carried out again on every pull until each step is recorded done
+  -- (a stop only once both planes read back stopped), so neither a failed step nor a restart between the commit and the
+  -- response leaves an attempt running that the rules said to stop.
+  respond text[] NOT NULL DEFAULT '{}' CHECK (respond <@ ARRAY['revoke', 'stop']::text[]),
+  dispatch_key text,
+  response_due boolean NOT NULL DEFAULT false,
   evidence jsonb NOT NULL,
   review jsonb,
   version integer NOT NULL DEFAULT 1,
@@ -2160,6 +2167,7 @@ CREATE TABLE security.incidents (
 );
 CREATE INDEX incidents_open ON security.incidents (account_id, state, last_seen DESC);
 CREATE INDEX incidents_holding ON security.incidents (account_id, assignment_id) WHERE blocks_retry;
+CREATE INDEX incidents_response_due ON security.incidents (first_seen) WHERE response_due;
 CREATE TRIGGER incidents_account_never_moves BEFORE UPDATE ON security.incidents FOR EACH ROW EXECUTE FUNCTION app.account_never_moves();
 
 CREATE TABLE security.incident_actions (

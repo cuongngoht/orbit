@@ -8,6 +8,7 @@ import type { IncidentActionView, IncidentCategory, IncidentDecision, IncidentSe
 import type { RuntimeControlId, RuntimeMode } from "@orbit-web/governance-core";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 import type { WireProtection, WireSensor } from "../../execution/infrastructure/sandbox/runtime-security-wire.js";
+import type { Response } from "../domain/rules.js";
 
 const s = (v: unknown): string => String(v);
 const sn = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
@@ -49,7 +50,14 @@ export interface EventRow {
 export interface IncidentRecord extends Omit<IncidentView, "actions" | "employeeName"> {
   accountId: string;
   fingerprint: string;
+  // The planned response, the attempt it is about, and whether any step of it is still owed.
+  respond: Response[];
+  dispatchKey: string | null;
+  responseDue: boolean;
 }
+
+// The steps of a response in the one order they are carried out.
+const RESPONSES: readonly Response[] = ["revoke", "stop"];
 
 const eventView = (r: Row): RuntimeEventView => ({
   id: s(r.id),
@@ -91,6 +99,9 @@ const incidentOf = (r: Row): IncidentRecord => ({
   evidence: (r.evidence ?? {}) as IncidentView["evidence"],
   review: (r.review as IncidentView["review"]) ?? null,
   version: Number(r.version),
+  respond: ((r.respond ?? []) as string[]).filter((x): x is Response => (RESPONSES as readonly string[]).includes(x)),
+  dispatchKey: sn(r.dispatch_key),
+  responseDue: r.response_due === true,
 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -154,22 +165,27 @@ export class SecurityRepository {
 
   // ---- events -------------------------------------------------------------------------------------------------------------
 
-  // Kept up to `cap` per run; beyond it, one gap marker per run counts what was not kept. Deduplicated by key.
+  // Kept up to `cap` per run of what is information and, apart, up to `cap` of what is notable -- a flood of the one
+  // never crowds out the other, and neither grows without bound (an attempt looping a refused operation is bounded like
+  // any other); beyond, one gap marker per run counts what was not kept, and an incident still counts every repeat.
+  // Deduplicated by key.
   async insertEvents(rows: readonly EventRow[], cap: number, at: string): Promise<number> {
     if (rows.length === 0) return 0;
     const runs = [...new Set(rows.map((r) => `${r.accountId}\u0001${r.runId}`))];
     const counts = new Map<string, number>();
     for (const key of runs) {
       const [accountId, runId] = key.split("\u0001") as [string, string];
-      const c = await this.db.one("SELECT count(*)::int AS c FROM security.events WHERE account_id = $1 AND run_id = $2 AND kind <> 'telemetry.gap'", [accountId, runId]);
-      counts.set(key, Number(c?.c ?? 0));
+      const c = await this.db.one("SELECT count(*) FILTER (WHERE severity = 'INFO')::int AS info, count(*) FILTER (WHERE severity <> 'INFO')::int AS notable FROM security.events WHERE account_id = $1 AND run_id = $2 AND kind <> 'telemetry.gap'", [accountId, runId]);
+      counts.set(`${key}\u0001info`, Number(c?.info ?? 0));
+      counts.set(`${key}\u0001notable`, Number(c?.notable ?? 0));
     }
     let kept = 0;
     const over = new Map<string, { row: EventRow; dropped: number }>();
     for (const r of rows) {
       const key = `${r.accountId}\u0001${r.runId}`;
-      const c = counts.get(key) ?? 0;
-      if (c >= cap && r.severity === "INFO") {
+      const budget = `${key}\u0001${r.severity === "INFO" ? "info" : "notable"}`;
+      const c = counts.get(budget) ?? 0;
+      if (c >= cap) {
         const o = over.get(key) ?? { row: r, dropped: 0 };
         o.dropped += 1;
         over.set(key, o);
@@ -182,7 +198,7 @@ export class SecurityRepository {
       );
       if (done > 0) {
         kept += 1;
-        counts.set(key, c + 1);
+        counts.set(budget, c + 1);
       }
     }
     for (const [, o] of over) await this.gap(o.row.accountId, o.row.runKind, o.row.runId, o.row.employeeId, o.dropped, at, `cap:${o.row.runId}`);
@@ -224,23 +240,41 @@ export class SecurityRepository {
   // ---- incidents -----------------------------------------------------------------------------------------------------------
 
   // One per cause per attempt: an existing one (by its fingerprint) is seen again, raising its count; a new one is made.
-  async openIncident(accountId: string, i: { fingerprint: string; category: IncidentCategory; severity: IncidentSeverity; state: IncidentState; title: string; runId: string | null; assignmentId: string | null; employeeId: string | null; blocksRetry: boolean; evidence: Record<string, string | number | boolean | null> }, at: string, id: string): Promise<{ incident: IncidentRecord; created: boolean }> {
+  // A step a repeat plans that the incident did not yet plan joins its response (owed again); a resolved one owes nothing.
+  async openIncident(accountId: string, i: { fingerprint: string; category: IncidentCategory; severity: IncidentSeverity; state: IncidentState; title: string; runId: string | null; assignmentId: string | null; employeeId: string | null; blocksRetry: boolean; respond: readonly Response[]; dispatchKey: string | null; evidence: Record<string, string | number | boolean | null> }, at: string, id: string): Promise<{ incident: IncidentRecord; created: boolean }> {
     const existing = await this.db.one("SELECT * FROM security.incidents WHERE account_id = $1 AND fingerprint = $2 FOR UPDATE", [accountId, i.fingerprint]);
     if (existing !== null) {
+      const was = incidentOf(existing);
       const stronger = (a: IncidentState, b: IncidentState): IncidentState => (["OPEN", "INVESTIGATING", "CONTAINING", "CONTAINED", "RESOLVED"].indexOf(b) > ["OPEN", "INVESTIGATING", "CONTAINING", "CONTAINED", "RESOLVED"].indexOf(a) && a !== "RESOLVED" ? b : a);
+      const respond = RESPONSES.filter((x) => was.respond.includes(x) || i.respond.includes(x));
+      const due = was.state !== "RESOLVED" && (was.responseDue || respond.length > was.respond.length);
       const r = await this.db.one(
-        `UPDATE security.incidents SET last_seen = $3, count = count + 1, state = $4, blocks_retry = blocks_retry OR $5, evidence = evidence || $6::jsonb, version = version + 1, updated_at = $3 WHERE account_id = $1 AND id = $2 RETURNING *`,
-        [accountId, s(existing.id), at, stronger(s(existing.state) as IncidentState, i.state), i.blocksRetry, jsonParam(i.evidence)],
+        `UPDATE security.incidents SET last_seen = $3, count = count + 1, state = $4, blocks_retry = blocks_retry OR $5, evidence = evidence || $6::jsonb, respond = $7::text[], response_due = $8,
+                dispatch_key = COALESCE(dispatch_key, $9), version = version + 1, updated_at = $3 WHERE account_id = $1 AND id = $2 RETURNING *`,
+        [accountId, was.id, at, stronger(was.state, i.state), i.blocksRetry, jsonParam(i.evidence), respond, due, i.dispatchKey],
       );
       return { incident: incidentOf(r as Row), created: false };
     }
     const missionId = isUuid(i.assignmentId) ? ((await this.db.one("SELECT mission_id FROM workforce.assignments WHERE account_id = $1 AND id = $2", [accountId, i.assignmentId]))?.mission_id ?? null) : null;
     const r = await this.db.one(
-      `INSERT INTO security.incidents (id, account_id, fingerprint, category, severity, state, title, run_id, assignment_id, mission_id, employee_id, first_seen, last_seen, count, blocks_retry, evidence, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, 1, $13, $14::jsonb, $12, $12) RETURNING *`,
-      [id, accountId, i.fingerprint, i.category, i.severity, i.state, i.title.slice(0, 300), isUuid(i.runId) ? i.runId : null, isUuid(i.assignmentId) ? i.assignmentId : null, sn(missionId), isUuid(i.employeeId) ? i.employeeId : null, at, i.blocksRetry, jsonParam(i.evidence)],
+      `INSERT INTO security.incidents (id, account_id, fingerprint, category, severity, state, title, run_id, assignment_id, mission_id, employee_id, first_seen, last_seen, count, blocks_retry, respond, dispatch_key, response_due, evidence, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, 1, $13, $14::text[], $15, $16, $17::jsonb, $12, $12) RETURNING *`,
+      [id, accountId, i.fingerprint, i.category, i.severity, i.state, i.title.slice(0, 300), isUuid(i.runId) ? i.runId : null, isUuid(i.assignmentId) ? i.assignmentId : null, sn(missionId), isUuid(i.employeeId) ? i.employeeId : null, at, i.blocksRetry, RESPONSES.filter((x) => i.respond.includes(x)), i.dispatchKey, i.respond.length > 0, jsonParam(i.evidence)],
     );
     return { incident: incidentOf(r as Row), created: true };
+  }
+
+  // Incidents whose response is still owed, oldest first, of every account (the ingestion carries each out as its own).
+  async dueResponses(limit: number): Promise<IncidentRecord[]> {
+    return (await this.db.query("SELECT * FROM security.incidents WHERE response_due ORDER BY first_seen LIMIT $1", [limit])).map(incidentOf);
+  }
+
+  async responseDone(accountId: string, id: string, at: string): Promise<void> {
+    await this.db.run("UPDATE security.incidents SET response_due = false, updated_at = $3 WHERE account_id = $1 AND id = $2 AND response_due", [accountId, id, at]);
+  }
+
+  async actionsOf(accountId: string, incidentId: string): Promise<{ action: string; outcome: string }[]> {
+    return (await this.db.query("SELECT action, outcome FROM security.incident_actions WHERE account_id = $1 AND incident_id = $2 ORDER BY id", [accountId, incidentId])).map((a) => ({ action: s(a.action), outcome: s(a.outcome) }));
   }
 
   async setIncidentState(accountId: string, id: string, state: IncidentState, at: string): Promise<IncidentRecord | null> {

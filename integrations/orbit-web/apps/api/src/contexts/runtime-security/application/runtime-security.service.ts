@@ -105,7 +105,7 @@ export class RuntimeSecurityService {
 
   private async viewOf(r: IncidentRecord, actions: IncidentView["actions"] = []): Promise<IncidentView> {
     const name = r.employeeId === null ? null : ((await this.db.one("SELECT name FROM workforce.employees WHERE account_id = $1 AND id = $2", [r.accountId, r.employeeId]))?.name ?? null);
-    const { accountId: _a, fingerprint: _f, ...view } = r;
+    const { accountId: _a, fingerprint: _f, respond: _r, dispatchKey: _d, responseDue: _due, ...view } = r;
     return { ...view, employeeName: name === null ? null : String(name), actions };
   }
 

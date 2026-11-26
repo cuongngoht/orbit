@@ -55,6 +55,8 @@ export class FakeSandboxProvider implements SandboxProvider {
   host = { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 };
   provisionFailures = 0;
   findFails = false;
+  // Attempts whose planes the allocator still reads back running after a stop (a stop that did not take).
+  readsBackRunning = new Set<string>();
   // How the provider reads an input's bytes from Orbit Web's own store (bound by the test to the real reader).
   readInput: ((storePath: string) => Promise<Buffer>) | null = null;
   exec_: (req: ExecRequest) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
@@ -224,6 +226,7 @@ export class FakeSandboxProvider implements SandboxProvider {
   async find(dispatchKey: string): Promise<AttemptStatus | null> {
     if (this.findFails) throw new Error("the fake allocator does not answer");
     const a = this.attempts.get(dispatchKey);
+    if (a !== undefined && this.readsBackRunning.has(dispatchKey)) return { handle: a.handle, toolPlaneRunning: true, modelPlaneRunning: true, oomKilled: a.oom };
     if (a === undefined || a.removed) return null;
     return { handle: a.handle, toolPlaneRunning: a.running, modelPlaneRunning: a.running, oomKilled: a.oom };
   }

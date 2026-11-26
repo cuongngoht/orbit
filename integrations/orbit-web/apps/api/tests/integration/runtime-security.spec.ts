@@ -215,6 +215,44 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     void assignment;
   });
 
+  test("a response nobody could read back is never called contained: it is carried out again on later pulls, recorded once, until both planes read back stopped", async () => {
+    await publish(b, mode("enforce"));
+    const e = await hire("Ida");
+    const m = await give(e.id, "[slow] Work for a while.");
+    const { run } = await eventually(() => runOf(m), (x) => x.run?.state === "running");
+    // The allocator does not answer the read-back: the stop is not verified, so the incident is not contained.
+    sandbox.findFails = true;
+    try {
+      sandbox.runtimePulls.push(pull([event(run!, { binary: "/proc/self/fd/3" })]));
+      await ingest.tick();
+    } finally {
+      sandbox.findFails = false;
+    }
+    const inc = ((await b.get("/api/governance/runtime-security/incidents?open=1")).body as IncidentList).incidents.find((i) => i.runId === run!.id) as IncidentView;
+    assert.equal(inc.state, "CONTAINING", "an unanswered read-back is not a stop");
+    // It answers, and a plane still runs: carried out again, still not contained, and nothing recorded twice.
+    sandbox.readsBackRunning.add(run!.dispatch_key);
+    await ingest.tick();
+    assert.equal(((await b.get(`/api/governance/runtime-security/incidents/${inc.id}`)).body as IncidentView).state, "CONTAINING", "a plane read back running: not contained");
+    sandbox.readsBackRunning.delete(run!.dispatch_key);
+    await ingest.tick();
+    const detail = (await b.get(`/api/governance/runtime-security/incidents/${inc.id}`)).body as IncidentView;
+    assert.equal(detail.state, "CONTAINED");
+    assert.deepEqual(
+      detail.actions.map((a) => [a.action, a.outcome]),
+      [
+        ["opened", "containing"],
+        ["revoke", "run token ended"],
+        ["stop", "containment could not be verified"],
+        ["stop", "both planes stopped, read back"],
+      ],
+    );
+    const audit = await h.sql("SELECT event_type FROM governance.audit_events WHERE event_type LIKE 'runtime_security.containment.%' AND data->>'incidentId' = $1 ORDER BY seq", [inc.id]);
+    assert.deepEqual(audit.map((r) => r.event_type), ["runtime_security.containment.requested", "runtime_security.containment.confirmed"]);
+    await ingest.tick();
+    assert.equal(((await b.get(`/api/governance/runtime-security/incidents/${inc.id}`)).body as IncidentView).actions.length, 4, "a response carried out is never carried out again");
+  });
+
   test("a stale incident never stops a newer attempt: a report about an attempt that ended touches nothing", async () => {
     const e = await hire("Eve");
     const m = await give(e.id, "[slow] Work for a while.");
@@ -267,6 +305,26 @@ describe("runtime security through Orbit Web: requirement, gate, evidence, incid
     await h.sql("UPDATE security.events SET occurred_at = now() - interval '30 days' WHERE run_id = $1", [run!.id]);
     assert.ok((await ingest.prune()) >= 100);
     assert.equal((await h.sql("SELECT count(*)::int AS c FROM security.events WHERE run_id = $1", [run!.id]))[0]?.c, 0);
+  });
+
+  test("a flood of notable events is bounded too: the stream keeps its cap and says the rest, the incident counts every one", async () => {
+    const e = await hire("Ivo");
+    const m = await give(e.id, "Write the report.");
+    const { run } = await eventually(() => runOf(m), (x) => x.run?.state === "succeeded");
+    const refused = () => event(run!, { kind: "control.match", outcome: "OPERATION_PREVENTED", path: "/team/x.sh", control: "exec.shared-areas", policy: "orbit-a-test" });
+    sandbox.runtimePulls.push(pull(Array.from({ length: 150 }, refused)));
+    await ingest.tick();
+    const rows = await h.sql("SELECT kind, dropped FROM security.events WHERE run_id = $1", [run!.id]);
+    assert.equal(rows.filter((r) => r.kind === "control.match").length, 100);
+    assert.equal(rows.find((r) => r.kind === "telemetry.gap")?.dropped, 50);
+    const inc = ((await b.get("/api/governance/runtime-security/incidents")).body as IncidentList).incidents.find((i) => i.runId === run!.id);
+    assert.equal(inc?.count, 150);
+    // Information has its own budget: a flood of it never crowds out what is notable.
+    sandbox.runtimePulls.push(pull(Array.from({ length: 120 }, () => event(run!))));
+    await ingest.tick();
+    const after = await h.sql("SELECT kind, dropped FROM security.events WHERE run_id = $1", [run!.id]);
+    assert.equal(after.filter((r) => r.kind === "process.exec").length, 100);
+    assert.equal(after.find((r) => r.kind === "telemetry.gap")?.dropped, 70);
   });
 
   test("the allocator's report of a lost, then contained protection is an incident that holds the work", async () => {

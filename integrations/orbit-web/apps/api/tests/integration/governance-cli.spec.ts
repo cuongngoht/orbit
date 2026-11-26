@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { after, before, describe, test } from "node:test";
 import { SETUP_ALREADY_DONE, SETUP_CODE_INVALID, SIGN_IN_REQUIRED, type AuditPage, type AuthStatus, type ChainVerification, type FindingList } from "@orbit-web/contracts";
+import { ResourcesService } from "../../src/contexts/execution/application/resources.service.js";
 import { browserAt, startHarness, TEST_PASSWORD, type Browser, type Harness, type Reply } from "../../src/testing/harness.js";
 
 const CLI = fileURLToPath(new URL("../../src/cli/governance.js", import.meta.url));
@@ -166,6 +167,28 @@ describe("the governance terminal", () => {
     assert.match(s.stdout, new RegExp(`account ${h.accountId} "Octo Cat": octo \\(Octo Cat\\); 1 open browser session\\(s\\)`));
     assert.match(s.stdout, new RegExp(`audit, account ${h.accountId}: \\d+ record\\(s\\), the chain holds`));
     assert.match(s.stdout, /audit, deployment: \d+ record\(s\), the chain holds/);
+  });
+
+  test("runtime-security status says what this host proved and how its sensor stands, as Orbit Web last read them -- counts, never an account's evidence", async () => {
+    await h.sql("UPDATE workforce.capacity SET runtime_security = NULL");
+    await h.sql("DELETE FROM security.feed");
+    const none = run("runtime-security", "status");
+    assert.equal(none.status, 0, none.stderr);
+    assert.match(none.stdout, /runtime security: no probe recorded/);
+    assert.match(none.stdout, /sensor: never pulled/);
+    const probe = { backend: "tetragon", backendVersion: "v1.8.0", backendImage: "tetragon", hostKind: "docker-desktop", kernel: "7.0.14-linuxkit", arch: "aarch64", floor: "observe", sensor: { state: "HEALTHY", generation: "g", since: null, version: "v1.8.0", image: "tetragon", detail: "ok" }, capabilities: [{ capability: "prevent.exec", state: "SUPPORTED", detail: "the canary was refused in scope and ran out of scope", checkedAt: null }], resources: { cpuPercent: null, memoryMiB: null }, probedAt: "2026-11-27T00:00:00.000Z" };
+    await h.app.get(ResourcesService).refreshCapacity();
+    await h.sql("UPDATE workforce.capacity SET runtime_security = $1::jsonb", [JSON.stringify(probe)]);
+    await h.sql("INSERT INTO security.feed (id, epoch, seq, sensor, lost, unattributed, gaps, canary_proven_at, last_event_at, updated_at) VALUES (1, 'e1', 10, $1::jsonb, 2, 5, 0, now(), now(), now())", [JSON.stringify({ state: "HEALTHY", generation: "abc@2026-11-27", since: null, version: "v1.8.0", image: "tetragon", detail: "running" })]);
+    const s = run("runtime-security", "status");
+    assert.equal(s.status, 0, s.stderr);
+    assert.match(s.stdout, /runtime security: tetragon v1\.8\.0 · floor observe · docker-desktop · kernel 7\.0\.14-linuxkit \(aarch64\)/);
+    assert.match(s.stdout, /prevent\.exec SUPPORTED -- the canary was refused in scope/);
+    assert.match(s.stdout, /sensor: HEALTHY · generation abc@2026-11-27/);
+    assert.match(s.stdout, /telemetry: lost 2 · unattributed 5 · gaps 0/);
+    assert.match(s.stdout, /attempts running: \d+/);
+    assert.match(s.stdout, /incidents open: \d+ · holding a retry: \d+/);
+    assert.equal(run("runtime-security").status, 1, "a usage error");
   });
 
   test("verify-audit holds on untouched chains -- an account's, or the deployment's -- and refuses what is not an account's id", () => {

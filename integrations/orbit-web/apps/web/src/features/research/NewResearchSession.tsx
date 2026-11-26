@@ -1,10 +1,11 @@
 // A NEW RESEARCH SESSION: in a new research workspace (named here) or one this account already has, with the model and
 // effort its account may use, and -- if wanted -- a first question, asked as soon as a selected source is ready. No
 // repository, no branch and no GitHub: research needs none of them.
-import { Button, Dropdown, Field, Input, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Button, Dropdown, Field, Input, Link, MessageBar, MessageBarBody, Option, Radio, RadioGroup, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { ShieldCheckmark16Regular } from "@fluentui/react-icons";
 import { DEFAULT_EFFORT, DEFAULT_MODEL, modelOf, RESEARCH_LIMITS, type ResearchSessionDetail, type ResearchWorkspaceSummary, type Settings } from "@orbit-web/contracts";
 import { useState } from "react";
+import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
@@ -53,7 +54,9 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
   const { isMobile, isCoarse } = useViewport();
   const workspaces = useResource<ResearchWorkspaceSummary[]>(() => research.workspaces(), []);
   const connections = useConnections();
-  const noClaude = connections.data !== null && !connections.data.connections.some((c) => c.runtime === "claude" && c.auth === "connected");
+  const noClaude =
+    connections.data !== null &&
+    !(connections.data.activation?.uses.research === true || connections.data.connections.some((c) => c.uses.research.ready));
   const catalog = useModelCatalog();
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
@@ -95,8 +98,13 @@ export function NewResearchSession({ settings, onCreated }: { settings: Settings
     >
       <div className={s.card}>
         {noClaude && (
-          <MessageBar intent="warning">
-            <MessageBarBody>{t("research.newSession.noClaudeBanner")}</MessageBarBody>
+          <MessageBar intent="warning" layout="multiline">
+            <MessageBarBody>
+              {t("research.newSession.noClaudeBanner")}{" "}
+              <Link href={settingsHref("ai-connections")} inline>
+                {t("research.newSession.openAiConnections")}
+              </Link>
+            </MessageBarBody>
           </MessageBar>
         )}
         <RadioGroup value={mode} onChange={(_, d) => setMode(d.value as "new" | "existing")} layout={isMobile ? "vertical" : "horizontal"} aria-label={t("research.newSession.workspaceAria")}>

@@ -100,7 +100,7 @@ describe("the office: its overview", () => {
     const dee = within(unassigned).getByRole("article", { name: "Dee" });
     expect(within(dee).getByText("Not ready")).toBeInTheDocument();
     expect(dee.textContent).toContain("Not ready: connection disconnected");
-    expect(screen.getByText(/2 employees · 1 ready · 1 busy · 0 not ready · 1 queued/)).toBeInTheDocument();
+    expect(screen.getByText(/4 employees · 1 ready · 1 working · 1 waiting · 1 not ready · 1 queued/)).toBeInTheDocument();
     expect(screen.getByText(/^Data as of /)).toBeInTheDocument();
     await userEvent.click(within(bao).getByRole("button", { name: "Quarterly contracts review" }));
     expect(go).toHaveBeenCalledWith("mission", "a1000000-0000-4000-8000-000000000002");
@@ -621,5 +621,64 @@ describe("the office: who leads it, and what its employees run on by default", (
     expect(patches[0]?.body).toMatchObject({ profile: { execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.2-sol", effort: "low" } } });
     expect(patches[1]?.body).toMatchObject({ profile: { execution: { runtime: "codex", connectionId: CONN_CODEX, model: "gpt-6.2-sol", effort: "low" } } });
     expect(patches[1]?.headers["if-match"]).toBe('"7"');
+  });
+
+  test("zero active attempts and one employee waiting for information: Working is 0, Waiting / blocked is 1, and summary counts agree with filter results", async () => {
+    const waitingAna = employeeCard({
+      availability: "busy",
+      workLabel: "waiting_info",
+      holding: {
+        assignmentId: "b1000000-0000-4000-8000-000000000011",
+        missionId: "a1000000-0000-4000-8000-000000000011",
+        title: "Collect vendor quotes",
+        state: "BLOCKED",
+        since: "2026-11-21T08:00:00.000Z",
+      },
+      queued: 1,
+    });
+    const counts = {
+      employees: 1,
+      ready: 0,
+      busy: 1,
+      working: 0,
+      waiting: 1,
+      notReady: 0,
+      queued: 1,
+      inbox: 2,
+      reviews: 1,
+      clarifications: 1,
+      otherInbox: 0,
+    };
+    const api = fakeApi()
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/office/roster", (_, url) => {
+        const s = url.searchParams.get("status");
+        const emps = s === "working" ? [] : s === "waiting" || s === "waiting_info" || s === null ? [waitingAna] : [];
+        return roster({ employees: emps, counts });
+      });
+    show();
+
+    await screen.findByRole("region", { name: "Accounting" });
+    // Summary line separates active working (0) from waiting (1) and shows split Needs me counts.
+    expect(screen.getByText(/1 employee · 0 ready · 0 working · 1 waiting · 0 not ready · 1 queued/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 need you (1 review, 1 clarification)" })).toBeInTheDocument();
+
+    // Stat cards show Working = 0 and Waiting / blocked = 1.
+    const workingCard = screen.getByRole("button", { name: /Working\s*0/ });
+    const waitingCard = screen.getByRole("button", { name: /Waiting \/ blocked\s*1/ });
+    expect(workingCard).toBeInTheDocument();
+    expect(waitingCard).toBeInTheDocument();
+
+    // Clicking Working filters status=working and shows 0 employees (agrees with count 0).
+    await userEvent.click(workingCard);
+    await waitFor(() => expect(rosterReads(api).some((c) => c.path.includes("status=working"))).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("article", { name: "Ana" })).toBeNull());
+    expect(screen.getAllByText(/No employee here matches/).length).toBeGreaterThan(0);
+
+    // Clicking Waiting / blocked filters status=waiting and shows Ana (agrees with count 1).
+    await userEvent.click(waitingCard);
+    await waitFor(() => expect(rosterReads(api).some((c) => c.path.includes("status=waiting"))).toBe(true));
+    expect(await screen.findByRole("article", { name: "Ana" })).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "Ana" })).getByText("Waiting for information")).toBeInTheDocument();
   });
 });

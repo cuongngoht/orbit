@@ -10,6 +10,7 @@ import { useI18n } from "../../i18n";
 import { errorText } from "../../services/api";
 import { office, useOfficeRead } from "./api";
 import { AsOf, Callout, EmployeeAvatar, EmptyState, StateBadge, useOfficeStyles, when } from "./parts";
+import { QueuedBehindCallout } from "./QueuedBehindCallout";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
@@ -43,6 +44,7 @@ function Row({ m, go }: { m: MissionSummary; go: Go }) {
           {m.nextAction ? t("office.work.next", { next: m.nextAction }) : ""}
         </Text>
       </div>
+      {a.state === "QUEUED" && m.queuedBehind && <QueuedBehindCallout employeeName={a.employeeName} queuedBehind={m.queuedBehind} go={go} />}
       {a.reason && (
         <Callout tone="warn" icon={<Warning16Regular />}>
           {a.reason}

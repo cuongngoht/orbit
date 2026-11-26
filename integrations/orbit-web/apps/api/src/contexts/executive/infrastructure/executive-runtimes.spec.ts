@@ -48,7 +48,7 @@ test("OpenAI Codex: every executor off, no MCP server, no search, no AGENTS.md, 
 const texts = (events: MappedEvent[]): string[] => events.flatMap((e) => (e.type === "message.completed" ? [e.data.text] : e.type === "message.delta" ? [e.data.text] : []));
 
 test("each mapper turns its CLI's recorded answer into the same chat events, and its own result line", () => {
-  const claude = CLAUDE_EXECUTIVE.mapper({ model: "claude-sonnet-5-5", effort: null, cwd: "/data" });
+  const claude = CLAUDE_EXECUTIVE.mapper({ runId: "r-claude", model: "claude-sonnet-5-5", effort: null, cwd: "/data" });
   const claudeEvents = [
     { type: "system", subtype: "init", session_id: "s", tools: [], mcp_servers: [], model: "claude-sonnet-5-5" },
     { type: "stream_event", event: { type: "message_start", message: { id: "m1" } }, parent_tool_use_id: null },
@@ -57,7 +57,7 @@ test("each mapper turns its CLI's recorded answer into the same chat events, and
     { type: "assistant", message: { id: "m1", content: [{ type: "text", text: "All good." }] }, parent_tool_use_id: null },
     { type: "result", subtype: "success", is_error: false, result: "All good.", total_cost_usd: 0.001, num_turns: 1, duration_ms: 5 },
   ].flatMap((l) => claude.push(l));
-  const codex = CODEX_EXECUTIVE.mapper({ model: "gpt-6.1-sol", effort: null, cwd: "/data" });
+  const codex = CODEX_EXECUTIVE.mapper({ runId: "r-codex", model: "gpt-6.1-sol", effort: null, cwd: "/data" });
   const codexEvents = [
     { type: "thread.started", thread_id: "t" },
     { type: "turn.started" },

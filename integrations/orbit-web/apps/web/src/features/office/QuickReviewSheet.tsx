@@ -142,6 +142,12 @@ export function QuickReviewSheet({
   const inbox = useOfficeRead<Inbox>(open ? () => office.inbox("open") : null, [open], ["inbox", "missions"]);
 
   const items = inbox.data?.items ?? [];
+  const counts = inbox.data?.counts ?? {
+    total: items.length,
+    reviews: items.filter((i) => i.kind === "acceptance").length,
+    clarifications: items.filter((i) => i.kind === "information").length,
+    other: items.filter((i) => i.kind !== "acceptance" && i.kind !== "information").length,
+  };
   const sorted = focusMissionId
     ? [...items].sort((a, b) => (a.missionId === focusMissionId ? -1 : b.missionId === focusMissionId ? 1 : 0))
     : items;
@@ -149,6 +155,21 @@ export function QuickReviewSheet({
   return (
     <ResponsiveSheet open={open} onOpenChange={(next) => !next && onClose()} title={t("office.floor.reviewSheetTitle")}>
       <div className={o.stack} style={{ gap: "12px" }}>
+        {inbox.data !== null && counts.total > 0 && (
+          <div className={o.row} style={{ gap: "6px", flexWrap: "wrap" }}>
+            <Badge appearance="tint" color="important" style={{ borderRadius: "9999px" }}>
+              {t("office.inbox.catReviews", { count: counts.reviews })}
+            </Badge>
+            <Badge appearance="tint" color="warning" style={{ borderRadius: "9999px" }}>
+              {t("office.inbox.catClarifications", { count: counts.clarifications })}
+            </Badge>
+            {counts.other > 0 && (
+              <Badge appearance="tint" color="danger" style={{ borderRadius: "9999px" }}>
+                {t("office.inbox.catOther", { count: counts.other })}
+              </Badge>
+            )}
+          </div>
+        )}
         {inbox.data === null ? (
           inbox.error ? (
             <MessageBar intent="error">

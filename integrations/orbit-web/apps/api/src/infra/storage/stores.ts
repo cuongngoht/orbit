@@ -219,7 +219,7 @@ export class MessageStore {
 
   async add(m: ChatMessage & { sessionId: string }): Promise<void> {
     await this.db.query(
-      "INSERT INTO messages (id, account_id, session_id, run_id, role, text, created_at) SELECT $1, s.account_id, s.id, $3, $4, $5, $6 FROM sessions s WHERE s.id = $2 ON CONFLICT (id) DO UPDATE SET text = excluded.text",
+      "INSERT INTO messages (id, account_id, session_id, run_id, role, text, created_at) SELECT $1, s.account_id, s.id, $3, $4, $5, $6 FROM sessions s WHERE s.id = $2 ON CONFLICT (id) DO UPDATE SET text = excluded.text WHERE messages.session_id = excluded.session_id AND messages.run_id IS NOT DISTINCT FROM excluded.run_id",
       [m.id, m.sessionId, m.runId, m.role, m.text, m.createdAt],
     );
   }

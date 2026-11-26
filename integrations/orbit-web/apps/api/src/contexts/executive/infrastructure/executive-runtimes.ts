@@ -51,7 +51,7 @@ export interface ExecutiveRuntime {
   args(o: { model: string; effort: string | null; maxBudgetUsd: number | null; modelFile: string | null }): string[];
   // The connection's own home (and key); governance's variables are added by the runner, whatever the runtime.
   env(config: AppConfig, rc: RunConnection): Record<string, string>;
-  mapper(o: { model: string; effort: string | null; cwd: string }): ChatStreamMapper;
+  mapper(o: { runId: string; model: string; effort: string | null; cwd: string }): ChatStreamMapper;
   violation(raw: Json): string | null;
 }
 
@@ -92,7 +92,7 @@ export const CODEX_EXECUTIVE: ExecutiveRuntime = {
   binary: (config) => config.binaries.codex,
   args: (o) => codexToollessArgs({ model: o.model, effort: o.effort, systemPrompt: EXECUTIVE_SYSTEM_PROMPT, modelFile: o.modelFile }),
   env: (config, rc) => codexEnv(config, rc.configDir),
-  mapper: (o) => new CodexStreamMapper({ requestedModel: o.model as ModelChoice, requestedEffort: o.effort as EffortChoice, requestedMode: "plan", resumed: false }),
+  mapper: (o) => new CodexStreamMapper({ runId: o.runId, requestedModel: o.model as ModelChoice, requestedEffort: o.effort as EffortChoice, requestedMode: "plan", resumed: false }),
   violation: codexAnswerViolation,
 };
 

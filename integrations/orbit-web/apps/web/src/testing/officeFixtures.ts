@@ -2,6 +2,7 @@
 // as the contract's validators require them.
 import {
   DEFAULT_PRESETS,
+  isWaitingWorkLabel,
   type AiConnectionsView,
   type AppointmentSummary,
   type AppointmentView,
@@ -91,21 +92,40 @@ export const busyBao = (over: Partial<EmployeeCard> = {}): EmployeeCard =>
   });
 
 export function roster(over: Partial<Roster> = {}): Roster {
+  const employees = over.employees ?? [employeeCard(), busyBao()];
+  const working = employees.filter((e) => e.workLabel === "working").length;
+  const waiting = employees.filter((e) => isWaitingWorkLabel(e.workLabel)).length;
+  const ready = employees.filter((e) => e.workLabel === "ready").length;
+  const notReady = employees.filter((e) => e.workLabel === "not_ready").length;
+  const queued = employees.reduce((n, e) => n + e.queued, 0);
+  const defaultCounts = {
+    employees: employees.length,
+    ready,
+    busy: working + waiting,
+    working,
+    waiting,
+    notReady,
+    queued,
+    inbox: 2,
+    reviews: 1,
+    clarifications: 1,
+    otherInbox: 0,
+  };
   return {
     office: { id: "0ff1ce00-0000-4000-8000-000000000001", name: "Octo office", version: 7, createdAt: "2026-11-20T00:00:00.000Z", defaults: {} },
     ceo: null,
     departments: [department(), department({ id: DEPT_LEGAL, name: "Legal", position: 1 })],
-    employees: [employeeCard(), busyBao()],
+    employees,
     nextCursor: null,
     version: 7,
     asOf: AS_OF,
-    counts: { employees: 2, ready: 1, busy: 1, notReady: 0, queued: 1, inbox: 2 },
+    counts: over.counts ?? defaultCounts,
     ...over,
   };
 }
 
 // An account with no office yet.
-export const notSetUp = (): Roster => roster({ office: null, departments: [], employees: [], counts: { employees: 0, ready: 0, busy: 0, notReady: 0, queued: 0, inbox: 0 } });
+export const notSetUp = (): Roster => roster({ office: null, departments: [], employees: [], counts: { employees: 0, ready: 0, busy: 0, working: 0, waiting: 0, notReady: 0, queued: 0, inbox: 0, reviews: 0, clarifications: 0, otherInbox: 0 } });
 
 export const capabilities = (over: Partial<RuntimeCapabilities> = {}): RuntimeCapabilities => ({ start: "yes", stream: "yes", cancel: "yes", resume: "yes", usage: "yes", webSearch: "yes", toolPlaneSplit: "yes", pluginObservation: "yes", ...over });
 
@@ -421,7 +441,21 @@ export function inboxItem(over: Partial<InboxItem> = {}): InboxItem {
   };
 }
 
-export const inbox = (items: InboxItem[], over: Partial<Inbox> = {}): Inbox => ({ items, open: items.filter((i) => i.state === "open").length, nextCursor: null, version: 7, asOf: AS_OF, ...over });
+export const inbox = (items: InboxItem[], over: Partial<Inbox> = {}): Inbox => {
+  const openItems = items.filter((i) => i.state === "open");
+  const reviews = openItems.filter((i) => i.kind === "acceptance").length;
+  const clarifications = openItems.filter((i) => i.kind === "information").length;
+  const other = openItems.length - reviews - clarifications;
+  return {
+    items,
+    open: openItems.length,
+    counts: { total: openItems.length, reviews, clarifications, other },
+    nextCursor: null,
+    version: 7,
+    asOf: AS_OF,
+    ...over,
+  };
+};
 
 export function occurrence(over: Partial<OccurrenceView> = {}): OccurrenceView {
   return { id: "0c000000-0000-4000-8000-000000000001", scheduleId: SCHEDULE_ID, periodKey: "2026-Q3", dueAt: "2026-10-01T01:00:00.000Z", scheduleRevision: 1, state: "created", missionId: MISSION_ID, assignmentState: "COMPLETED", delivery: "SENDING", createdAt: "2026-10-01T01:00:00.000Z", ...over };

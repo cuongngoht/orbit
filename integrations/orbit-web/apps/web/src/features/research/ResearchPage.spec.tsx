@@ -2,6 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { fakeApi, type FakeApi } from "../../testing/fakeApi";
+import { pushApp } from "../../testing/events";
+import { CONN_CODEX, connection, connectionsView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { content, RESEARCH_ID, researchDetail, researchStream, source, SOURCE_A, SOURCE_B, workspace, WORKSPACE_ID } from "../../testing/researchFixtures";
 import { mobileViewport, tabletViewport, wideViewport } from "../../testing/viewport";
@@ -221,5 +223,71 @@ describe("a research session", () => {
     const evidence = await screen.findByRole("region", { name: "Evidence" });
     await userEvent.click(within(evidence).getByRole("button", { name: "Close the evidence" }));
     await waitFor(() => expect(screen.queryByRole("region", { name: "Evidence" })).toBeNull());
+  });
+
+  test("with Codex connected and no Claude Code connection: warns before submission, disables Send, offers Open AI Connections, and preserves typed question and selected sources until Claude becomes available (Issue #7)", async () => {
+    window.sessionStorage.clear();
+    wideViewport();
+    const codexOnly = connectionsView({
+      connections: [
+        connection({
+          id: CONN_CODEX,
+          runtime: "codex",
+          label: "ChatGPT",
+          isDefault: true,
+          auth: "connected",
+        }),
+      ],
+    });
+    const withClaude = connectionsView({
+      connections: [
+        connection(),
+        connection({
+          id: CONN_CODEX,
+          runtime: "codex",
+          label: "ChatGPT",
+          isDefault: true,
+          auth: "connected",
+        }),
+      ],
+    });
+    let claudeConnected = false;
+    const a = api(researchDetail({ messages: [], selection: [SOURCE_A] })).on("GET", "/api/connections", () => (claudeConnected ? withClaude : codexOnly));
+    show();
+
+    // Source ingestion & selection remain usable while Claude is missing.
+    const sources = await screen.findByRole("region", { name: "Sources" });
+    expect(await within(sources).findByText("NIST policy")).toBeInTheDocument();
+    const nistBox = within(sources).getByRole("checkbox", { name: "Use NIST policy in this session" });
+    expect(nistBox).toBeChecked();
+    expect(within(sources).getByRole("button", { name: "Add" })).toBeEnabled();
+
+    // Before submission, warning states source ingestion works while asking questions requires Claude Code, with link to AI Connections.
+    const notice = await screen.findByRole("status");
+    expect(notice).toHaveTextContent(/Source ingestion is available now, but asking questions requires a usable Claude Code connection/);
+    expect(within(notice).getByRole("link", { name: "Open AI Connections" })).toHaveAttribute("href", "#/?settings=ai-connections");
+
+    // Typing a question keeps Send disabled and pressing Enter does not submit.
+    const box = screen.getByRole("textbox", { name: "Message" });
+    await userEvent.type(box, "What are the egress rules?");
+    expect(box).toHaveValue("What are the egress rules?");
+    const sendBtn = screen.getByRole("button", { name: "Send" });
+    expect(sendBtn).toBeDisabled();
+    await userEvent.type(box, "{Enter}");
+    expect(a.calls.some((c) => c.method === "POST" && c.path.endsWith("/messages"))).toBe(false);
+    expect(box).toHaveValue("What are the egress rules?");
+    expect(nistBox).toBeChecked();
+
+    // Once a usable Claude Code connection is configured, Send enables while preserving the typed question and selected sources.
+    claudeConnected = true;
+    pushApp("connections.changed", {});
+    await waitFor(() => expect(screen.queryByText(/requires a usable Claude Code connection/)).toBeNull());
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("What are the egress rules?");
+    expect(within(sources).getByRole("checkbox", { name: "Use NIST policy in this session" })).toBeChecked();
+    const enabledSend = screen.getByRole("button", { name: "Send" });
+    expect(enabledSend).toBeEnabled();
+
+    await userEvent.click(enabledSend);
+    await waitFor(() => expect(a.calls.find((c) => c.method === "POST" && c.path.endsWith("/messages"))?.body).toEqual({ text: "What are the egress rules?" }));
   });
 });

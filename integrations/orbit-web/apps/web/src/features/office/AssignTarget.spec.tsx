@@ -148,3 +148,111 @@ describe("giving work to a department or to the CEO", () => {
     expect(posts(api)).toHaveLength(1);
   });
 });
+
+describe("unattached repository URL warnings in mission briefs (Issue #4)", () => {
+  const connectedSources = {
+    sources: [
+      { source: "github", state: "connected", account: "octocat", detail: null, checkedAt: "2026-11-26T00:00:00Z" },
+      { source: "azure", state: "connected", account: "contoso", detail: null, checkedAt: "2026-11-26T00:00:00Z" },
+    ],
+  };
+
+  test("direct employee with Access grant: warns when GitHub URL is not attached, never auto-attaches, and lets owner attach explicitly", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/sources", () => connectedSources)
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({
+        employeeId: EMP_ANA,
+        connectors: [
+          { connector: "github", enabled: true, repositories: [{ id: "octo/orbit", fullName: "octo/orbit" }], write: false },
+          { connector: "azure", enabled: false, repositories: null, write: false },
+        ],
+        knowledge: [],
+      }))
+      .on("POST", "/api/missions", () => withStatus(201, accepted(EMP_ANA)));
+    const dialog = await openAssign();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Review https://github.com/octo/orbit/tree/main for QA issues");
+
+    // Warning appears BEFORE assignment and distinguishes Access grant from mission attachment.
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent("Repository mentioned in the brief is not attached to this mission");
+    expect(alert).toHaveTextContent(/Ana has an Access grant, but the repository is not attached to this mission/);
+    expect(alert).toHaveTextContent(/Granting read access does not attach a repository to a mission/);
+
+    // Not auto-attached: the checkbox remains unchecked until the owner explicitly clicks Attach.
+    const checkbox = within(dialog).getByRole("checkbox", { name: "octo/orbit (GitHub)" });
+    expect(checkbox).not.toBeChecked();
+    expect(posts(api)).toHaveLength(0);
+
+    // Owner clicks the explicit Attach action.
+    await userEvent.click(within(alert).getByRole("button", { name: "Attach octo/orbit" }));
+    expect(checkbox).toBeChecked();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+
+    // Submitting sends the explicitly attached repository.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
+    expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
+    expect(posts(api)[0]?.body).toMatchObject({ repositories: [{ source: "github", id: "octo/orbit", branch: null }] });
+  });
+
+  test("direct employee without Access grant: states both Access grant and mission attachment are missing and never auto-grants or offers attach", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/sources", () => connectedSources)
+      .on("GET", `/api/employees/${EMP_ANA}/access`, () => ({
+        employeeId: EMP_ANA,
+        connectors: [
+          { connector: "github", enabled: false, repositories: null, write: false },
+          { connector: "azure", enabled: false, repositories: null, write: false },
+        ],
+        knowledge: [],
+      }));
+    const dialog = await openAssign();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Check https://github.com/octo/private-app");
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(/missing both an Access grant for Ana and mission attachment/);
+    expect(alert).toHaveTextContent(/never silently stages an unauthorized repository/);
+    expect(within(alert).getByRole("link", { name: "Open Ana's Access page" })).toHaveAttribute("href", `#/office/employee/${EMP_ANA}/access`);
+    expect(within(alert).queryByRole("button", { name: /^Attach / })).toBeNull();
+    // No Access grant mutation was issued automatically.
+    expect(api.calls.some((c) => c.method === "PUT" && c.path.includes("/access"))).toBe(false);
+  });
+
+  test("CEO target with Azure DevOps URL: warns before assignment, distinguishes mission attachment from delegated employee access, and attaches only on click", async () => {
+    const api = fakeApi()
+      .on("GET", "/api/office/roster", () => roster())
+      .on("GET", "/api/connections", () => connectionsView())
+      .on("GET", "/api/missions/target", () => targetPreview({ target: { kind: "ceo" }, responsible: { employeeId: EMP_BAO, appointmentId: CEO_APPOINTMENT, appointmentRevision: 2, employeeName: "Bao", role: "ceo", departmentName: null } }))
+      .on("GET", "/api/sources", () => connectedSources)
+      .on("GET", "/api/repositories", (_, url) =>
+        url.searchParams.get("source") === "azure"
+          ? { source: "azure", repositories: [{ source: "azure", id: "contoso/repo-1", fullName: "contoso/Core/billing-api", owner: "contoso", project: "Core", name: "billing-api", defaultBranch: "main", private: true, cloneUrl: "https://dev.azure.com/contoso/Core/_git/billing-api", webUrl: "https://dev.azure.com/contoso/Core/_git/billing-api", updatedAt: null }], truncated: false }
+          : { source: "github", repositories: [], truncated: false },
+      )
+      .on("POST", "/api/missions", () => withStatus(201, accepted(EMP_BAO)));
+
+    const dialog = await openAssign();
+    await userEvent.click(within(dialog).getByRole("radio", { name: "The CEO" }));
+    expect(await within(dialog).findByText("Responsible: Bao (CEO)")).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /^Goal/ }), "Delegate audit of https://dev.azure.com/contoso/Core/_git/billing-api to Engineering");
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveTextContent(/contoso\/Core\/billing-api \(Azure DevOps\)/);
+    expect(alert).toHaveTextContent(/not attached to this mission/);
+    expect(alert).toHaveTextContent(/each delegated employee must also have read access on its own Access page/);
+    // Not auto-attached before clicking Attach.
+    expect(within(dialog).getByRole("checkbox", { name: "contoso/Core/billing-api (Azure DevOps)" })).not.toBeChecked();
+
+    await userEvent.click(within(alert).getByRole("button", { name: "Attach contoso/Core/billing-api" }));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(within(dialog).getByRole("checkbox", { name: "contoso/Core/billing-api (Azure DevOps)" })).toBeChecked();
+    expect(within(dialog).getByText(/each delegated employee still needs read access on its own Access page/)).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Start now" }));
+    expect(await screen.findByRole("dialog", { name: "Started" })).toBeInTheDocument();
+    expect(posts(api)[0]?.body).toMatchObject({ repositories: [{ source: "azure", id: "contoso/repo-1", branch: null }] });
+  });
+});

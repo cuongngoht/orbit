@@ -5,8 +5,8 @@
 // employee may leave its model and effort to. An account with no company yet is offered to activate it -- empty -- once
 // an AI connection of its own can be used.
 import { Button, Field, Input, Link, Menu, MenuDivider, MenuGroup, MenuGroupHeader, MenuItem, MenuList, MenuPopover, MenuTrigger, MessageBar, MessageBarBody, SearchBox, Select, Spinner, Text, makeStyles, mergeClasses, shorthands, tokens, useRestoreFocusTarget } from "@fluentui/react-components";
-import { Add16Regular, ChevronDown12Regular, ChevronDown16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, PlugDisconnected16Regular, Settings16Regular, Sparkle16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
-import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type ResourceSummary, type Roster, type WorkLabel } from "@orbit-web/contracts";
+import { Add16Regular, ChevronDown12Regular, ChevronDown16Regular, Clock16Regular, Dismiss16Regular, Filter20Regular, Options16Regular, Organization16Regular, PeopleAdd20Regular, PersonAdd20Regular, PersonStar20Regular, PlugDisconnected16Regular, Settings16Regular, Sparkle16Regular, TaskListLtr20Regular } from "@fluentui/react-icons";
+import { AUTH_STATE_TEXT, RUNTIME_KINDS, RUNTIME_LABELS, WORK_LABELS, WORK_LABEL_TEXT, type AppointmentSummary, type AuthAccount, type Department, type EmployeeCard, type ExecutionDefaults, type ResourceSummary, type Roster, type RosterStatusFilter } from "@orbit-web/contracts";
 import { useEffect, useRef, useState } from "react";
 import { ResponsiveSheet } from "../../components/ResponsiveSheet";
 import {
@@ -817,7 +817,7 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
   const [department, setDepartment] = useState("all");
   const [typed, setTyped] = useState("");
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<WorkLabel | "all">("all");
+  const [status, setStatus] = useState<RosterStatusFilter | "all">("all");
   const [viewMode, setViewMode] = useState<"floor" | "list">("floor");
   const [motionPaused, setMotionPaused] = useState(false);
   const floorPrefs = useFloorPrefs();
@@ -922,8 +922,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         </Select>
       </Field>
       <Field label={t("office.overview.statusLabel")} className={s.select}>
-        <Select value={status} onChange={(_, d) => setStatus(d.value as WorkLabel | "all")}>
+        <Select value={status} onChange={(_, d) => setStatus(d.value as RosterStatusFilter | "all")}>
           <option value="all">{t("office.overview.anyStatus")}</option>
+          <option value="waiting">{t("office.overview.statusWaitingAny")}</option>
           {WORK_LABELS.map((l) => (
             <option key={l} value={l}>
               {WORK_LABEL_TEXT[l]}
@@ -944,8 +945,9 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
         ))}
         <option value="none">{t("office.overview.unassigned")}</option>
       </Select>
-      <Select className={s.select} aria-label={t("office.overview.statusLabel")} value={status} onChange={(_, d) => setStatus(d.value as WorkLabel | "all")}>
+      <Select className={s.select} aria-label={t("office.overview.statusLabel")} value={status} onChange={(_, d) => setStatus(d.value as RosterStatusFilter | "all")}>
         <option value="all">{t("office.overview.anyStatus")}</option>
+        <option value="waiting">{t("office.overview.statusWaitingAny")}</option>
         {WORK_LABELS.map((l) => (
           <option key={l} value={l}>
             {WORK_LABEL_TEXT[l]}
@@ -955,6 +957,16 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
     </>
   );
   const c = r.counts;
+  const workingCount = c.working ?? (c.waiting !== undefined ? Math.max(0, c.busy - c.waiting) : c.busy);
+  const waitingCount = c.waiting ?? Math.max(0, c.busy - workingCount);
+  const reviewsCount = c.reviews ?? 0;
+  const clarificationsCount = c.clarifications ?? 0;
+  const otherInboxCount = c.otherInbox ?? Math.max(0, c.inbox - reviewsCount - clarificationsCount);
+  const inboxParts: string[] = [];
+  if (reviewsCount > 0) inboxParts.push(t(reviewsCount === 1 ? "office.overview.reviewOne" : "office.overview.reviewMany", { count: reviewsCount }));
+  if (clarificationsCount > 0) inboxParts.push(t(clarificationsCount === 1 ? "office.overview.clarificationOne" : "office.overview.clarificationMany", { count: clarificationsCount }));
+  if (otherInboxCount > 0 && inboxParts.length > 0) inboxParts.push(t(otherInboxCount === 1 ? "office.overview.otherNeedOne" : "office.overview.otherNeedMany", { count: otherInboxCount }));
+  const needYouText = c.inbox > 0 && inboxParts.length > 0 ? t("office.overview.needYouSplit", { count: c.inbox, parts: inboxParts.join(", ") }) : t("office.overview.needYou", { count: c.inbox });
   const waitingReviewCount = r.employees.filter((e) => e.workLabel === "waiting_review").length;
   const viewSwitch = (
     <div className={s.viewToggle} role="group" aria-label={t("office.overview.viewModeAria")}>
@@ -996,12 +1008,13 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
                 employees: c.employees,
                 employeeWord: c.employees === 1 ? t("office.overview.employeeOne") : t("office.overview.employeeMany"),
                 ready: c.ready,
-                busy: c.busy,
+                working: workingCount,
+                waiting: waitingCount,
                 notReady: c.notReady,
                 queued: c.queued,
               })}
               <Link as="button" onClick={() => go("inbox")}>
-                {t("office.overview.needYou", { count: c.inbox })}
+                {needYouText}
               </Link>
             </Text>
           </div>
@@ -1099,13 +1112,24 @@ export function OverviewPage({ go, account }: { go: Go; account: AuthAccount | n
           </button>
           <button type="button" aria-pressed={status === "working"} className={mergeClasses(o.statCard, o.statCardAction, status === "working" && s.statActive)} onClick={() => setStatus((cur) => (cur === "working" ? "all" : "working"))}>
             <span className={s.statLabelWrap}>
-              <IconBadge icon={<WorkingIcon size={13} />} tone={c.busy > 0 ? "brand" : "neutral"} size="sm" />
+              <IconBadge icon={<WorkingIcon size={13} />} tone={workingCount > 0 ? "brand" : "neutral"} size="sm" />
               <Text size={200} className={mergeClasses(o.muted, s.statLabel)}>
                 {t("office.overview.statWorking")}
               </Text>
             </span>
-            <Text size={400} weight="semibold" className={mergeClasses(s.statValue, c.busy > 0 && s.statBusy)}>
-              {c.busy}
+            <Text size={400} weight="semibold" className={mergeClasses(s.statValue, workingCount > 0 && s.statBusy)}>
+              {workingCount}
+            </Text>
+          </button>
+          <button type="button" aria-pressed={status === "waiting"} className={mergeClasses(o.statCard, o.statCardAction, status === "waiting" && s.statActive)} onClick={() => setStatus((cur) => (cur === "waiting" ? "all" : "waiting"))}>
+            <span className={s.statLabelWrap}>
+              <IconBadge icon={<Clock16Regular />} tone={waitingCount > 0 ? "warning" : "neutral"} size="sm" />
+              <Text size={200} className={mergeClasses(waitingCount > 0 ? s.statWarn : o.muted, s.statLabel)}>
+                {t("office.overview.statWaiting")}
+              </Text>
+            </span>
+            <Text size={400} weight="semibold" className={mergeClasses(s.statValue, waitingCount > 0 && s.statWarn)}>
+              {waitingCount}
             </Text>
           </button>
           <button type="button" className={mergeClasses(o.statCard, o.statCardAction)} onClick={() => go("work")}>

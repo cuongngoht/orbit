@@ -51,14 +51,38 @@ const extensionOf = (s: PinnedSource): string => {
 // Text compared as a reader would: Unicode-normalized, one space for any run of spacing, letter case aside.
 const norm = (t: string): string => t.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
 
+// Returns a verbatim excerpt from the mission brief when either the claim's quote or the claim text itself appears in
+// the brief (at least MIN_QUOTE normalized characters). Prevents fake brief attribution: explicit `basis: "brief"` is
+// still verified against the actual brief text.
+export function matchBriefExcerpt(
+  briefNorm: string,
+  claimText: string,
+  claimQuote: string | null,
+  explicitBrief: boolean,
+  noOtherSource: boolean,
+): string | null {
+  if (briefNorm.length < MIN_QUOTE) return null;
+  if (!explicitBrief && !noOtherSource) return null;
+  const quoteNorm = claimQuote === null ? "" : norm(claimQuote);
+  if (quoteNorm.length >= MIN_QUOTE && briefNorm.includes(quoteNorm)) {
+    return (claimQuote ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  }
+  const textNorm = norm(claimText);
+  if (textNorm.length >= MIN_QUOTE && briefNorm.includes(textNorm)) {
+    return claimText.replace(/\s+/g, " ").trim().slice(0, 300);
+  }
+  return null;
+}
+
 export interface ClaimInput {
   text: string;
   sources: string[];
   quote: string | null;
   url: string | null;
+  basis?: "source" | "brief" | "web" | "external" | null;
 }
 
-export type VerifiedClaim = HandoffClaim & { web?: { url: string; readAt: string } | null };
+export type VerifiedClaim = HandoffClaim;
 
 @Injectable()
 export class ResearchInputs {
@@ -139,13 +163,18 @@ export class ResearchInputs {
     return out.join("\n");
   }
 
-  // Each claim held to the sources the mission was given.
-  async verify(orbitId: string, sources: readonly PinnedSource[], claims: readonly ClaimInput[]): Promise<VerifiedClaim[]> {
+  // Each claim held to the pinned research sources the mission was given, distinguishing verbatim mission brief context
+  // from external factual claims without awarding either an unearned source-verification badge (`supported: true` is
+  // strictly reserved for claims verified verbatim against pinned research sources).
+  async verify(orbitId: string, sources: readonly PinnedSource[], claims: readonly ClaimInput[], briefText = ""): Promise<VerifiedClaim[]> {
     const byLabel = new Map(sources.map((s) => [s.label.toUpperCase(), s]));
+    const briefNorm = norm(briefText);
     const out: VerifiedClaim[] = [];
     for (const c of claims) {
       const web = c.url === null ? null : { url: c.url, readAt: new Date().toISOString() };
-      const labels = [...new Set(c.sources.map((l) => l.trim().toUpperCase()).filter((l) => l.length > 0))];
+      const rawLabels = [...new Set(c.sources.map((l) => l.trim().toUpperCase()).filter((l) => l.length > 0))];
+      const explicitBrief = c.basis === "brief" || rawLabels.includes("BRIEF");
+      const labels = rawLabels.filter((l) => l !== "BRIEF");
       const quote = c.quote === null ? "" : norm(c.quote);
       const found: HandoffClaim["sources"] = [];
       for (const label of labels) {
@@ -154,7 +183,23 @@ export class ResearchInputs {
         const passage = await this.find(orbitId, s.revisionId, quote);
         if (passage !== null) found.push({ label, sourceId: s.sourceId, revisionId: s.revisionId, locator: passage.locator, excerpt: passage.excerpt });
       }
-      out.push({ text: c.text, sources: found, supported: labels.length > 0 && found.length === labels.length, ...(web !== null ? { web } : {}) });
+      const supported = labels.length > 0 && found.length === labels.length;
+      if (supported) {
+        out.push({ text: c.text, sources: found, supported: true, basis: "pinned_source", ...(web !== null ? { web } : {}) });
+        continue;
+      }
+      // Check whether the claim or its quote appears verbatim in the mission/assignment brief.
+      // Even when verbatim in the brief, `supported` remains false (brief context is not pinned research evidence).
+      const briefExcerpt = matchBriefExcerpt(briefNorm, c.text, c.quote, explicitBrief, labels.length === 0 && web === null);
+      if (briefExcerpt !== null) {
+        out.push({ text: c.text, sources: found, supported: false, basis: "brief", briefExcerpt, ...(web !== null ? { web } : {}) });
+        continue;
+      }
+      if (web !== null) {
+        out.push({ text: c.text, sources: found, supported: false, basis: "web", web });
+        continue;
+      }
+      out.push({ text: c.text, sources: found, supported: false, basis: "external" });
     }
     return out;
   }

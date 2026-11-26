@@ -7,10 +7,12 @@
 // before sending and shown -- or why nobody is (no manager, no CEO, a suspended appointment), and then nothing can be
 // sent. The request names who the person saw (`expectedAssignee`): when the appointment moved since, nothing is created,
 // the page says who is responsible now, and sending again is a new request with a new key.
-import { Badge, Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
+import { Badge, Button, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Field, Input, Link, MessageBar, MessageBarActions, MessageBarBody, Radio, RadioGroup, Select, Spinner, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Add16Regular, Dismiss16Regular } from "@fluentui/react-icons";
 import {
+  ACCESS_CONNECTOR_LABELS,
   ASSIGNMENT_STATE_TEXT,
+  MAX_MISSION_REPOSITORIES,
   WORK_LABEL_TEXT,
   checkCreateMission,
   type CreateMissionRequest,
@@ -26,9 +28,10 @@ import {
   type Roster,
   type WhenBusy,
 } from "@orbit-web/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ConnectionRequired, isConnectionRequired } from "../../components/ApiErrorBar";
 import { DesksIcon, IconBadge, PolicyIcon, QueuedIcon, WorkMissionIcon } from "../../components/SectionIcons";
+import { settingsHref } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n, type I18nContextValue } from "../../i18n";
@@ -36,7 +39,8 @@ import { ApiError, errorText, newIdempotencyKey } from "../../services/api";
 import { office } from "./api";
 import { readFloorPrefs } from "./floorPrefs";
 import { Disclosure, WorkLabelBadge, useOfficeStyles, when } from "./parts";
-import { RepositoriesPicker } from "./RepositoriesPicker";
+import { RepositoriesPicker, useMissionRepositories } from "./RepositoriesPicker";
+import { diagnoseUnattachedRepositories, extractMentionedRepositories, type MentionedRepositoryDiagnosis, type OfferedRepository } from "./repositoryMentions";
 import { NO_SOURCES, SourcesPicker, type PinnedSources } from "./SourcesPicker";
 import { PixelChibiSvg } from "./PixelOfficeArt";
 import { deskMoodText, personaFor, presenceStatusColor } from "./VirtualDesk";
@@ -270,6 +274,84 @@ function responsibleText(t: I18nContextValue["t"], r: Pick<Responsible, "employe
   return r.employeeName;
 }
 
+// Pre-assignment warning when the brief names a GitHub or Azure DevOps repository URL that is not attached to the
+// mission: explains which prerequisite is missing (connector, employee Access grant, mission attachment, or delegated
+// employee access) and offers explicit review/attach actions without ever attaching or granting access automatically.
+function UnattachedRepositoriesWarning({
+  items,
+  employeeId,
+  employeeName,
+  canAttachMore,
+  onAttach,
+  onReview,
+}: {
+  items: MentionedRepositoryDiagnosis[];
+  employeeId: string;
+  employeeName: string;
+  canAttachMore: boolean;
+  onAttach: (repo: OfferedRepository) => void;
+  onReview: () => void;
+}) {
+  const { t } = useI18n();
+  const o = useOfficeStyles();
+  const describe = (d: MentionedRepositoryDiagnosis): string => {
+    const connector = ACCESS_CONNECTOR_LABELS[d.mention.source];
+    const repo = d.kind === "ready_to_attach" ? d.repo.fullName : d.mention.fullName;
+    if (d.kind === "ready_to_attach") {
+      return t(d.delegating ? "office.repos.unattachedReadyDelegating" : "office.repos.unattachedReadyDirect", { repo, connector, name: employeeName });
+    }
+    if (d.kind === "missing_access_grant") {
+      return t("office.repos.unattachedMissingGrant", { repo, connector, name: employeeName });
+    }
+    if (d.kind === "connector_disconnected") {
+      return t(d.delegating ? "office.repos.unattachedDisconnectedDelegating" : "office.repos.unattachedDisconnectedDirect", { repo, connector, name: employeeName });
+    }
+    if (d.kind === "not_listed") {
+      return t(d.delegating ? "office.repos.unattachedNotListedDelegating" : "office.repos.unattachedNotListedDirect", { repo, connector });
+    }
+    return t("office.repos.unattachedUnknown", { repo, connector });
+  };
+  return (
+    <MessageBar intent="warning" layout="multiline" role="alert">
+      <MessageBarBody>
+        <div className={o.stack} style={{ gap: "8px" }}>
+          <Text weight="semibold" size={200}>
+            {t("office.repos.unattachedWarningTitle")}
+          </Text>
+          {items.map((d) => {
+            const key = `${d.mention.source}:${d.mention.fullName.toLowerCase()}`;
+            return (
+              <div key={key} className={o.stack} style={{ gap: "4px" }}>
+                <Text size={200}>{describe(d)}</Text>
+                <div className={o.row} style={{ gap: "8px", flexWrap: "wrap" }}>
+                  {d.kind === "ready_to_attach" && (
+                    <Button type="button" size="small" appearance="primary" disabled={!canAttachMore} onClick={() => onAttach(d.repo)}>
+                      {t("office.repos.attachRepoAction", { repo: d.repo.fullName })}
+                    </Button>
+                  )}
+                  {(d.kind === "missing_access_grant" || (d.kind === "connector_disconnected" && !d.delegating)) && employeeId !== "" && (
+                    <Link href={`#/office/employee/${employeeId}/access`} inline>
+                      {t("office.repos.openEmployeeAccess", { name: employeeName })}
+                    </Link>
+                  )}
+                  {(d.kind === "connector_disconnected" || d.kind === "not_listed") && (
+                    <Link href={settingsHref("connectors")} inline>
+                      {t("office.repos.openConnectorsSettings")}
+                    </Link>
+                  )}
+                  <Button type="button" size="small" appearance="subtle" onClick={onReview}>
+                    {t("office.repos.reviewRepositoriesAction")}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </MessageBarBody>
+    </MessageBar>
+  );
+}
+
 // Who a department or the CEO would give the work to now, as the API says it -- or why nobody would.
 function TargetResponsible({ preview, loading, error }: { preview: MissionTargetPreview | null; loading: boolean; error: unknown }) {
   const { t } = useI18n();
@@ -322,6 +404,7 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const select = useRef<HTMLSelectElement>(null);
+  const reposRef = useRef<HTMLDivElement>(null);
   // The key of the request as last sent: the same body is the same request (sent again with its key), any other is new.
   const sent = useRef<{ body: string; key: string } | null>(null);
   const employee = choices.find((e) => e.id === target) ?? null;
@@ -357,7 +440,36 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
   // Who takes it: the employee chosen, or whoever the department or the CEO resolves to now.
   const recipientId = kind === "employee" ? target : (responsible?.employeeId ?? "");
   const recipientName = kind === "employee" ? (employee?.name ?? null) : (responsible?.employeeName ?? null);
+  const delegating = kind === "ceo" || kind === "department";
   const chosenRepositories = repositories.for === recipientId ? repositories.list : [];
+  const briefMentions = useMemo(() => extractMentionedRepositories(goal), [goal]);
+  const repoState = useMissionRepositories(recipientId, delegating, briefMentions.length > 0);
+  const unattachedMentions = useMemo(
+    () =>
+      recipientId === ""
+        ? []
+        : diagnoseUnattachedRepositories({
+            mentions: briefMentions,
+            chosen: chosenRepositories,
+            offered: repoState.offered,
+            delegating,
+            access: repoState.access,
+            sources: repoState.sources,
+            listed: repoState.listed,
+            loading: repoState.loadingBase || repoState.reading,
+          }),
+    [recipientId, briefMentions, chosenRepositories, repoState.offered, delegating, repoState.access, repoState.sources, repoState.listed, repoState.loadingBase, repoState.reading],
+  );
+  const attachRepository = (repo: OfferedRepository) => {
+    if (recipientId === "") return;
+    if (chosenRepositories.some((r) => r.source === repo.source && r.id === repo.id)) return;
+    if (chosenRepositories.length >= MAX_MISSION_REPOSITORIES) return;
+    setRepositories({ for: recipientId, list: [...chosenRepositories, { source: repo.source, id: repo.id, branch: null }] });
+  };
+  const reviewRepositories = () => {
+    reposRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    reposRef.current?.focus();
+  };
   const ready = missionTarget !== null && (kind === "employee" || expected !== null);
 
   // A change of who takes it clears what was said about the one before.
@@ -676,7 +788,15 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
                 {recipientId !== "" && (
                   <>
                     <div className={o.divider} />
-                    <RepositoriesPicker employeeId={recipientId} employeeName={recipientName ?? ""} delegating={kind === "ceo" || kind === "department"} value={chosenRepositories} onChange={(list) => setRepositories({ for: recipientId, list })} />
+                    <RepositoriesPicker
+                      employeeId={recipientId}
+                      employeeName={recipientName ?? ""}
+                      delegating={delegating}
+                      value={chosenRepositories}
+                      onChange={(list) => setRepositories({ for: recipientId, list })}
+                      state={repoState}
+                      sectionRef={reposRef}
+                    />
                   </>
                 )}
               </div>
@@ -710,6 +830,16 @@ export function AssignDialog({ employees, employeeId = null, onClose, onOpenMiss
               </div>
 
               <Disclosure />
+              {unattachedMentions.length > 0 && (
+                <UnattachedRepositoriesWarning
+                  items={unattachedMentions}
+                  employeeId={recipientId}
+                  employeeName={recipientName ?? t("office.repos.thisEmployee")}
+                  canAttachMore={chosenRepositories.length < MAX_MISSION_REPOSITORIES}
+                  onAttach={attachRepository}
+                  onReview={reviewRepositories}
+                />
+              )}
               {problems.length > 0 && (
                 <MessageBar intent="error" layout="multiline">
                   <MessageBarBody>{problems.join("; ")}</MessageBarBody>

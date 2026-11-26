@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { rememberSession } from "../../services/account";
 import { fakeApi, withStatus } from "../../testing/fakeApi";
 import { CSRF, authAccount, authSession } from "../../testing/fixtures";
-import { ASSIGNMENT_ID, EMP_ANA, EMP_BAO, HANDOFF_DIGEST, MISSION_ID, assignmentView, busyBao, connectionsView, missionDetail, missionList, missionSummary, roster, runView } from "../../testing/officeFixtures";
+import { ASSIGNMENT_ID, EMP_ANA, EMP_BAO, HANDOFF_DIGEST, MISSION_ID, SOURCE_REVISION_ID, assignmentView, busyBao, connectionsView, handoff, missionDetail, missionList, missionSummary, roster, runView } from "../../testing/officeFixtures";
 import { renderLive } from "../../testing/render";
 import { REVISION_A, SOURCE_B, WORKSPACE_ID, source, workspaceSummary } from "../../testing/researchFixtures";
 import { NETWORK_DISCLOSURE } from "./parts";
@@ -145,8 +145,8 @@ describe("the work and one mission", () => {
     expect(r2.textContent).toContain(HANDOFF_DIGEST.slice(0, 12));
     expect(within(r2).getByRole("link", { name: /q3-report\.pdf/ })).toHaveAttribute("href", "/api/artifacts/a7000000-0000-4000-8000-000000000001/content");
     const claims = within(r2).getByRole("list", { name: "Claims of revision 2" });
-    expect(within(claims).getByText("Supported by a source")).toBeInTheDocument();
-    expect(within(claims).getByText("Not supported")).toBeInTheDocument();
+    expect(within(claims).getByText("Verified by pinned source")).toBeInTheDocument();
+    expect(within(claims).getByText("No pinned source match")).toBeInTheDocument();
     expect(r2.textContent).toContain("Missing deliverables: summary.xlsx");
     await userEvent.click(within(r2).getByRole("button", { name: "Request revision" }));
     await userEvent.type(within(r2).getByRole("textbox", { name: /What must change/ }), "Add the summary sheet");
@@ -300,5 +300,144 @@ describe("a mission with repositories", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Assign work to Ana" }));
     const group = within(await screen.findByRole("dialog", { name: "Assign work" })).getByRole("group", { name: "Repositories" });
     expect(await within(group).findByRole("link", { name: /Access/ })).toHaveAttribute("href", `#/office/employee/${EMP_ANA}/access`);
+  });
+});
+
+describe("queued mission blocker visibility and access boundaries (Issue #5)", () => {
+  const BLOCKING_MISSION_ID = "a1000000-0000-4000-8000-000000000051";
+  const BLOCKING_ASSIGNMENT_ID = "b1000000-0000-4000-8000-000000000051";
+  const QUEUED_MISSION_ID = "a1000000-0000-4000-8000-000000000052";
+
+  test("queued mission shows the blocking assignment and links directly to its clarification action (not an unrelated review)", async () => {
+    const queued = missionSummary({
+      id: QUEUED_MISSION_ID,
+      title: "Follow-up audit",
+      assignment: { ...missionSummary().assignment, state: "QUEUED", employeeId: EMP_ANA, employeeName: "Ana" },
+      nextAction: "Waits for Ana — blocked on your clarification for “Collect vendor quotes”.",
+      queuedBehind: {
+        accessible: true,
+        assignmentId: BLOCKING_ASSIGNMENT_ID,
+        missionId: BLOCKING_MISSION_ID,
+        title: "Collect vendor quotes",
+        state: "BLOCKED",
+        waitingOn: "information",
+        ownerAction: {
+          decisionId: "1b000000-0000-4000-8000-000000000051",
+          kind: "information",
+          title: "Question about vendor currency",
+          missionId: BLOCKING_MISSION_ID,
+          assignmentId: BLOCKING_ASSIGNMENT_ID,
+          tab: "overview",
+        },
+      },
+    });
+    fakeApi().on("GET", "/api/missions", () => missionList([queued]));
+    const go = vi.fn();
+    renderLive(<OfficeView page="work" item={null} tab={null} go={go} account={authAccount()} />);
+    expect(await screen.findByText(/Slot held by “Collect vendor quotes” \(Blocked\) — waiting for your clarification/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Answer clarification" }));
+    expect(go).toHaveBeenCalledWith("mission", BLOCKING_MISSION_ID, "overview");
+  });
+
+  test("queued mission with a restricted blocking assignment reveals no title, state, or action link", async () => {
+    const restrictedDetail = missionDetail({
+      id: QUEUED_MISSION_ID,
+      title: "Follow-up audit",
+      assignment: { ...missionDetail().assignment, state: "QUEUED", employeeId: EMP_ANA, employeeName: "Ana" },
+      assignments: [assignmentView({ state: "QUEUED", employeeId: EMP_ANA, employeeName: "Ana", actions: ["hand_over", "cancel"] })],
+      queuedBehind: {
+        accessible: false,
+        assignmentId: null,
+        missionId: null,
+        title: null,
+        state: null,
+        waitingOn: null,
+        ownerAction: null,
+      },
+    });
+    fakeApi().on("GET", `/api/missions/${QUEUED_MISSION_ID}`, () => restrictedDetail);
+    renderLive(<OfficeView page="mission" item={QUEUED_MISSION_ID} tab="overview" go={vi.fn()} account={authAccount()} />);
+    expect(await screen.findByText("Ana is currently holding another assignment you do not have access to view.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Answer clarification" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open blocking mission" })).toBeNull();
+  });
+});
+
+describe("pinned research source verification vs brief context (Issue #6)", () => {
+  test("no pinned sources: displays No pinned research sources next to the claims summary and separates brief context from external claims without awarding verification badges", async () => {
+    const noSourceDetail = missionDetail({
+      sourceRevisionIds: [],
+      handoffs: [
+        handoff({
+          claims: [
+            {
+              text: "Pilot launch target is 15 December 2026 with 12 beta customers.",
+              sources: [],
+              supported: false,
+              basis: "brief",
+              briefExcerpt: "Pilot launch target is 15 December 2026 with 12 beta customers",
+            },
+            {
+              text: "Competitor pricing rose 18% last quarter.",
+              sources: [],
+              supported: false,
+              basis: "external",
+            },
+          ],
+        }),
+      ],
+    });
+    fakeApi().on("GET", `/api/missions/${MISSION_ID}`, () => noSourceDetail);
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="handoffs" go={vi.fn()} account={authAccount()} />);
+    const r2 = await screen.findByRole("article", { name: "Revision 2" });
+    expect(within(r2).getByText(/Pinned research source check \(2\) · 0 verified · 1 from mission brief · 1 without pinned source/)).toBeInTheDocument();
+    expect(within(r2).getByText("No pinned research sources")).toBeInTheDocument();
+    expect(within(r2).getByText(/No research sources are pinned to this mission/)).toBeInTheDocument();
+
+    const claims = within(r2).getByRole("list", { name: "Claims of revision 2" });
+    expect(within(claims).getByText("From mission brief (not source-verified)")).toBeInTheDocument();
+    expect(within(claims).getByText(/Mission brief: “Pilot launch target is 15 December 2026 with 12 beta customers”/)).toBeInTheDocument();
+    expect(within(claims).getByText("No pinned source match")).toBeInTheDocument();
+    expect(within(claims).queryByText("Verified by pinned source")).toBeNull();
+  });
+
+  test("with pinned sources: verifies pinned claims separately from brief context and external claims", async () => {
+    const withSourceDetail = missionDetail({
+      sourceRevisionIds: [SOURCE_REVISION_ID],
+      handoffs: [
+        handoff({
+          claims: [
+            {
+              text: "Revenue was 2,000,000 VND.",
+              sources: [{ label: "S1", sourceId: "s", revisionId: SOURCE_REVISION_ID, locator: "page 3", excerpt: "Total: 2,000,000" }],
+              supported: true,
+              basis: "pinned_source",
+            },
+            {
+              text: "Scope covers Q3 subsidiaries only.",
+              sources: [],
+              supported: false,
+              basis: "brief",
+              briefExcerpt: "Scope covers Q3 subsidiaries only",
+            },
+            {
+              text: "Industry benchmark margin is 22%.",
+              sources: [],
+              supported: false,
+              basis: "external",
+            },
+          ],
+        }),
+      ],
+    });
+    fakeApi().on("GET", `/api/missions/${MISSION_ID}`, () => withSourceDetail);
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="handoffs" go={vi.fn()} account={authAccount()} />);
+    const r2 = await screen.findByRole("article", { name: "Revision 2" });
+    expect(within(r2).getByText("1 pinned research source(s)")).toBeInTheDocument();
+    expect(within(r2).getByText(/Pinned research source check \(3\) · 1 verified · 1 from mission brief · 1 without pinned source/)).toBeInTheDocument();
+    const claims = within(r2).getByRole("list", { name: "Claims of revision 2" });
+    expect(within(claims).getByText("Verified by pinned source")).toBeInTheDocument();
+    expect(within(claims).getByText("From mission brief (not source-verified)")).toBeInTheDocument();
+    expect(within(claims).getByText("No pinned source match")).toBeInTheDocument();
   });
 });

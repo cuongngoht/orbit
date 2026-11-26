@@ -105,4 +105,37 @@ describe("the chat timeline", () => {
     const s = apply([ev("project.plugin", { plugin: { ...inventory().plugins[0], state: "failed" } })]);
     expect(s.items).toEqual([]);
   });
+
+  test("two Codex turns with run-scoped message IDs render in order and replaying a completed event never duplicates a message", () => {
+    seq = 0;
+    const round1User = ev("message.completed", { messageId: "u1", role: "user", text: "Ask 1", parentToolUseId: null, partial: false, truncated: false });
+    const round1Start = ev("message.started", { messageId: "run-1:item_0", role: "assistant", parentToolUseId: null });
+    const round1Reply = ev("message.completed", { messageId: "run-1:item_0", role: "assistant", text: "ORBIT-ROUND-ONE-348", parentToolUseId: null, partial: false, truncated: false });
+    const round2User = ev("message.completed", { messageId: "u2", role: "user", text: "Ask 2", parentToolUseId: null, partial: false, truncated: false });
+    const round2Start = ev("message.started", { messageId: "run-2:item_0", role: "assistant", parentToolUseId: null });
+    const round2Reply = ev("message.completed", { messageId: "run-2:item_0", role: "assistant", text: "ORBIT-ROUND-TWO-906", parentToolUseId: null, partial: false, truncated: false });
+    const stream = [round1User, round1Start, round1Reply, round2User, round2Start, round2Reply];
+    const live = apply(stream);
+    expect(live.items.map((i) => (i.kind === "message" ? [i.id, i.role, i.text] : null))).toEqual([
+      ["u1", "user", "Ask 1"],
+      ["run-1:item_0", "assistant", "ORBIT-ROUND-ONE-348"],
+      ["u2", "user", "Ask 2"],
+      ["run-2:item_0", "assistant", "ORBIT-ROUND-TWO-906"],
+    ]);
+    // Full reload replay produces the exact same ordered transcript.
+    const reloaded = apply(stream, emptyChat());
+    expect(reloaded.items).toEqual(live.items);
+    // Replaying the same completed event (same seq or even a higher seq duplicate) never duplicates the bubble.
+    const afterSameSeq = chatReducer(reloaded, round1Reply);
+    expect(afterSameSeq.items).toEqual(live.items);
+    const dupWithLaterSeq = { ...round1Reply, id: "e-dup", seq: seq + 1 };
+    const afterDup = chatReducer(reloaded, dupWithLaterSeq);
+    expect(afterDup.items).toHaveLength(4);
+    expect(afterDup.items.map((i) => (i.kind === "message" ? [i.id, i.text] : null))).toEqual([
+      ["u1", "Ask 1"],
+      ["run-1:item_0", "ORBIT-ROUND-ONE-348"],
+      ["u2", "Ask 2"],
+      ["run-2:item_0", "ORBIT-ROUND-TWO-906"],
+    ]);
+  });
 });

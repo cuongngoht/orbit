@@ -11,7 +11,13 @@ export interface StagedArtifact {
   mediaType: string;
   size: number;
   sha256: string;
+  // Direct child artifact id when attached verbatim by reference from a reviewed subordinate hand-in.
+  sourceArtifactId?: string | null;
 }
+
+export type ResolvedChildArtifact =
+  | { ok: true; artifactId: string; handoffId: string; revision: number; name: string; mediaType: string; size: number; sha256: string }
+  | { ok: false; reason: string };
 
 export interface SubmittedHandoff {
   runId: string;
@@ -157,6 +163,8 @@ export interface RunOutcomes {
   // Whether this employee may publish a hand-in of this assignment now (artifact.publish, decided as the employee):
   // asked BEFORE its files are staged.
   mayPublish(actor: Actor, assignmentId: string, fence: number): Promise<void>;
+  // Resolves an artifact from an authorized direct child's accepted hand-in so a lead can attach it verbatim by reference.
+  resolveChildArtifact(orbitId: string, assignmentId: string, fence: number, partKey: string, artifactName: string): Promise<ResolvedChildArtifact>;
   handoff(actor: Actor, assignmentId: string, fence: number, h: SubmittedHandoff): Promise<{ revision: number; digest: string; missing: string[] }>;
   question(actor: Actor, assignmentId: string, fence: number, question: string): Promise<void>;
   ended(actor: Actor, assignmentId: string, fence: number, end: RunEnd): Promise<void>;

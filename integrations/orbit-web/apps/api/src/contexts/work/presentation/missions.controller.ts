@@ -16,7 +16,7 @@
 //   GET  /api/missions/:id/data-shares                         what each lead shared with its parts (§9)
 //   POST /api/data-shares/:id/revoke                           take a share back: attempts holding it are stopped
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, Res, StreamableFile } from "@nestjs/common";
-import { isWorkforceId, type CommandResult, type Inbox, type MissionDetail, type MissionList, type MissionMessages, type MissionTarget, type MissionTargetPreview } from "@orbit-web/contracts";
+import { INBOX_CATEGORIES, isWorkforceId, type CommandResult, type Inbox, type InboxCategory, type MissionDetail, type MissionList, type MissionMessages, type MissionTarget, type MissionTargetPreview } from "@orbit-web/contracts";
 import type { Request, Response } from "express";
 import { ApiError, notFound } from "../../../common/errors.js";
 import { ArtifactStore } from "../../execution/infrastructure/artifact-store.js";
@@ -156,8 +156,9 @@ export class MissionsController {
   }
 
   @Get("inbox")
-  inbox(@Query("state") state?: string, @Query("cursor") cursor?: string): Promise<Inbox> {
-    return this.queries.inbox(ownerActor().command.orbitId, { open: state !== "history", cursor: cursor !== undefined && isWorkforceId(cursor) ? cursor : null });
+  inbox(@Query("state") state?: string, @Query("cursor") cursor?: string, @Query("category") category?: string): Promise<Inbox> {
+    const cat: InboxCategory = category !== undefined && (INBOX_CATEGORIES as readonly string[]).includes(category) ? (category as InboxCategory) : "all";
+    return this.queries.inbox(ownerActor().command.orbitId, { open: state !== "history", cursor: cursor !== undefined && isWorkforceId(cursor) ? cursor : null, category: cat });
   }
 
   // The bytes of an artifact of the session's account, verified against their hash before they are sent. Never shown as

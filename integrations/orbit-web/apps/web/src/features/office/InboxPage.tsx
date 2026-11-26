@@ -8,7 +8,7 @@
 import { Badge, Button, Field, Link, MessageBar, MessageBarBody, Spinner, Tab, TabList, Text, Textarea, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Clock16Regular } from "@fluentui/react-icons";
 import { ShieldClearIcon } from "../../components/SectionIcons";
-import { INBOX_KIND_TEXT, type Inbox, type InboxItem, type MissionDetail } from "@orbit-web/contracts";
+import { INBOX_KIND_TEXT, type Inbox, type InboxCategory, type InboxCounts, type InboxItem, type MissionDetail } from "@orbit-web/contracts";
 import { useState } from "react";
 import type { OfficePage } from "../../hooks/useHashRoute";
 import { useResource } from "../../hooks/useResource";
@@ -190,19 +190,36 @@ function Item({ item, go, onDone }: { item: InboxItem; go: Go; onDone: () => voi
   );
 }
 
-function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "history"; go: Go; onDone: () => void }) {
+function countsOf(data: Inbox): InboxCounts {
+  if (data.counts !== undefined) return data.counts;
+  const openItems = data.items.filter((i) => i.state === "open");
+  const reviews = openItems.filter((i) => i.kind === "acceptance").length;
+  const clarifications = openItems.filter((i) => i.kind === "information").length;
+  const other = Math.max(0, data.open - reviews - clarifications);
+  return { total: data.open, reviews, clarifications, other };
+}
+
+function matchesCategory(item: InboxItem, category: InboxCategory): boolean {
+  if (category === "reviews") return item.kind === "acceptance";
+  if (category === "clarifications") return item.kind === "information";
+  if (category === "other") return item.kind !== "acceptance" && item.kind !== "information";
+  return true;
+}
+
+function Items({ first, state, category, go, onDone }: { first: Inbox; state: "open" | "history"; category: InboxCategory; go: Go; onDone: () => void }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const [more, setMore] = useState<InboxItem[]>([]);
   const [cursor, setCursor] = useState(first.nextCursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const items = [...first.items, ...more.filter((m) => !first.items.some((x) => x.id === m.id))];
+  const merged = [...first.items, ...more.filter((m) => !first.items.some((x) => x.id === m.id))];
+  const items = state === "open" && category !== "all" ? merged.filter((i) => matchesCategory(i, category)) : merged;
   const loadMore = async () => {
     setLoading(true);
     setError(null);
     try {
-      const next = await office.inbox(state, cursor);
+      const next = await office.inbox(state, cursor, category);
       setMore((x) => [...x, ...next.items]);
       setCursor(next.nextCursor);
     } catch (err) {
@@ -217,8 +234,8 @@ function Items({ first, state, go, onDone }: { first: Inbox; state: "open" | "hi
         <EmptyState
           icon={<ShieldClearIcon size={22} />}
           tone="success"
-          title={state === "open" ? t("office.inbox.emptyOpenTitle") : t("office.inbox.emptyHistoryTitle")}
-          body={state === "open" ? t("office.inbox.emptyOpenBody") : t("office.inbox.emptyHistoryBody")}
+          title={state === "open" ? (category === "all" ? t("office.inbox.emptyOpenTitle") : t("office.inbox.emptyCategoryTitle")) : t("office.inbox.emptyHistoryTitle")}
+          body={state === "open" ? (category === "all" ? t("office.inbox.emptyOpenBody") : t("office.inbox.emptyCategoryBody")) : t("office.inbox.emptyHistoryBody")}
         />
       ) : (
         <ul className={o.list} aria-label={state === "open" ? t("office.inbox.listOpenAria") : t("office.inbox.listHistoryAria")}>
@@ -247,12 +264,22 @@ export function InboxPage({ go }: { go: Go }) {
   const { t } = useI18n();
   const o = useOfficeStyles();
   const [state, setState] = useState<"open" | "history">("open");
-  const inbox = useOfficeRead<Inbox>(() => office.inbox(state), [state], ["inbox", "missions"]);
+  const [category, setCategory] = useState<InboxCategory>("all");
+  const inbox = useOfficeRead<Inbox>(() => office.inbox(state, null, state === "open" ? category : "all"), [state, category], ["inbox", "missions"]);
+  const counts = inbox.data !== null ? countsOf(inbox.data) : null;
   return (
     <div className={o.page}>
       <div className={o.between}>
         <div className={o.tabStrip}>
-          <TabList selectedValue={state} onTabSelect={(_, d) => setState(d.value as "open" | "history")} aria-label={t("office.inbox.whichItemsAria")}>
+          <TabList
+            selectedValue={state}
+            onTabSelect={(_, d) => {
+              const next = d.value as "open" | "history";
+              setState(next);
+              if (next === "history") setCategory("all");
+            }}
+            aria-label={t("office.inbox.whichItemsAria")}
+          >
             <Tab value="open">
               {t("office.inbox.tabOpen")}
               {inbox.data && state === "open" ? ` (${inbox.data.open})` : ""}
@@ -262,6 +289,24 @@ export function InboxPage({ go }: { go: Go }) {
         </div>
         <AsOf at={inbox.data?.asOf ?? null} />
       </div>
+      {state === "open" && counts !== null && counts.total > 0 && (
+        <div className={o.row} role="group" aria-label={t("office.inbox.categoryAria")} style={{ gap: "6px", flexWrap: "wrap" }}>
+          <Button size="small" appearance={category === "all" ? "primary" : "outline"} aria-pressed={category === "all"} onClick={() => setCategory("all")}>
+            {t("office.inbox.catAll", { count: counts.total })}
+          </Button>
+          <Button size="small" appearance={category === "reviews" ? "primary" : "outline"} aria-pressed={category === "reviews"} onClick={() => setCategory("reviews")}>
+            {t("office.inbox.catReviews", { count: counts.reviews })}
+          </Button>
+          <Button size="small" appearance={category === "clarifications" ? "primary" : "outline"} aria-pressed={category === "clarifications"} onClick={() => setCategory("clarifications")}>
+            {t("office.inbox.catClarifications", { count: counts.clarifications })}
+          </Button>
+          {counts.other > 0 && (
+            <Button size="small" appearance={category === "other" ? "primary" : "outline"} aria-pressed={category === "other"} onClick={() => setCategory("other")}>
+              {t("office.inbox.catOther", { count: counts.other })}
+            </Button>
+          )}
+        </div>
+      )}
       {inbox.data === null ? (
         inbox.error ? (
           <MessageBar intent="error">
@@ -271,7 +316,7 @@ export function InboxPage({ go }: { go: Go }) {
           <Spinner label={t("office.inbox.reading")} />
         )
       ) : (
-        <Items key={`${state}:${inbox.data.asOf}:${inbox.data.version}`} first={inbox.data} state={state} go={go} onDone={() => void inbox.reload()} />
+        <Items key={`${state}:${category}:${inbox.data.asOf}:${inbox.data.version}`} first={inbox.data} state={state} category={category} go={go} onDone={() => void inbox.reload()} />
       )}
     </div>
   );

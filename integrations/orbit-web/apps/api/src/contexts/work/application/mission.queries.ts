@@ -10,16 +10,21 @@ import {
   type AssignmentState,
   type AssignmentSummary,
   type AssignmentView,
+  type ArtifactSourceRef,
   type ArtifactView,
+  type BlockingOwnerAction,
   type ClarificationView,
   type HandoffClaim,
   type HandoffView,
   type Inbox,
+  type InboxCategory,
+  type InboxKind,
   type MissionDetail,
   type MissionList,
   type MissionMessages,
   type MissionParty,
   type MissionSummary,
+  type QueuedBehind,
   type ResponsibleNow,
   type TimelineEntry,
 } from "@orbit-web/contracts";
@@ -79,11 +84,24 @@ const summaryOf = (r: Row): AssignmentSummary => ({
   updatedAt: s(r.updated_at),
 });
 
+// Redacts a blocking assignment when the viewer does not have access to it so restricted details are never leaked.
+export function redactQueuedBehind(q: QueuedBehind | null, accessible: boolean): QueuedBehind | null {
+  if (q === null) return null;
+  if (accessible && q.accessible) return q;
+  return { accessible: false, assignmentId: null, missionId: null, title: null, state: null, waitingOn: null, ownerAction: null };
+}
+
 // The next thing that has to happen for a mission, in words.
-function nextActionOf(a: AssignmentSummary): string | null {
+function nextActionOf(a: AssignmentSummary, queuedBehind: QueuedBehind | null = null): string | null {
   switch (a.state) {
-    case "QUEUED":
+    case "QUEUED": {
+      if (queuedBehind !== null && queuedBehind.accessible && queuedBehind.title !== null) {
+        if (queuedBehind.ownerAction?.kind === "information") return `Waits for ${a.employeeName} — blocked on your clarification for “${queuedBehind.title}”.`;
+        if (queuedBehind.ownerAction?.kind === "acceptance") return `Waits for ${a.employeeName} — waiting for your review of “${queuedBehind.title}”.`;
+        return `Waits for ${a.employeeName} to finish “${queuedBehind.title}”.`;
+      }
       return `Waits for ${a.employeeName} to finish their current work.`;
+    }
     case "ASSIGNED":
       return `${a.employeeName} starts as soon as resources are free.`;
     case "RUNNING":
@@ -252,12 +270,15 @@ export class MissionQueries {
        ORDER BY m.updated_at DESC, m.id DESC LIMIT ${PAGE + 1}`,
       params as never,
     );
-    const page = rows.slice(0, PAGE).map((r) => this.missionSummaryOf(r));
+    const slice = rows.slice(0, PAGE);
+    const queuedEmployeeIds = [...new Set(slice.filter((r) => s(r.state) === "QUEUED").map((r) => s(r.employee_id)))];
+    const blockers = await this.queuedBehindOf(orbitId, queuedEmployeeIds);
+    const page = slice.map((r) => this.missionSummaryOf(r, s(r.state) === "QUEUED" ? (blockers.get(s(r.employee_id)) ?? null) : null));
     const last = rows.length > PAGE ? rows[PAGE - 1] : undefined;
     return { missions: page, nextCursor: last === undefined ? null : `${new Date(s(last.m_updated)).toISOString()}|${s(last.m_id)}`, version, asOf: new Date().toISOString() };
   }
 
-  private missionSummaryOf(r: Row): MissionSummary {
+  private missionSummaryOf(r: Row, queuedBehind: QueuedBehind | null = null): MissionSummary {
     const assignment = summaryOf(r);
     return {
       id: s(r.m_id),
@@ -266,11 +287,74 @@ export class MissionQueries {
       state: s(r.m_state) as MissionSummary["state"],
       assignment,
       deadline: sn(r.m_deadline),
-      nextAction: nextActionOf(assignment),
+      nextAction: nextActionOf(assignment, queuedBehind),
+      ...(queuedBehind !== null ? { queuedBehind } : {}),
       scheduleId: sn(r.schedule_id),
       createdAt: s(r.m_created),
       updatedAt: s(r.m_updated),
     };
+  }
+
+  // For QUEUED assignments, looks up the assignment currently holding each employee's reservation in THIS account
+  // (strictly scoped by account_id) along with any open owner action belonging to that blocking assignment or its
+  // mission -- never an unrelated mission's review or another account's assignment.
+  private async queuedBehindOf(orbitId: string, employeeIds: readonly string[]): Promise<Map<string, QueuedBehind>> {
+    const out = new Map<string, QueuedBehind>();
+    if (employeeIds.length === 0) return out;
+    const heldRows = await this.db.query(
+      `SELECT rv.employee_id, a.id AS assignment_id, a.mission_id, a.state, a.waiting_on, m.title AS mission_title
+       FROM workforce.reservations rv
+       JOIN workforce.assignments a ON a.account_id = rv.account_id AND a.id = rv.assignment_id
+       JOIN workforce.missions m ON m.account_id = a.account_id AND m.id = a.mission_id
+       WHERE rv.account_id = $1 AND rv.employee_id = ANY($2::uuid[])`,
+      [orbitId, [...employeeIds]],
+    );
+    if (heldRows.length === 0) return out;
+    const heldAssignmentIds = heldRows.map((r) => s(r.assignment_id));
+    const heldMissionIds = [...new Set(heldRows.map((r) => s(r.mission_id)))];
+    const openDecisions = await this.db.query(
+      `SELECT id, kind, title, mission_id, assignment_id, created_at
+       FROM workforce.decisions
+       WHERE account_id = $1 AND state = 'open'
+         AND (assignment_id = ANY($2::uuid[]) OR mission_id = ANY($3::uuid[]))
+       ORDER BY created_at DESC, id DESC`,
+      [orbitId, heldAssignmentIds, heldMissionIds],
+    );
+    const kindRank = (kind: string): number => (kind === "information" ? 0 : kind === "acceptance" ? 1 : kind === "blocked" || kind === "unschedulable" ? 2 : 3);
+    for (const r of heldRows) {
+      const assignmentId = s(r.assignment_id);
+      const missionId = s(r.mission_id);
+      const matching = openDecisions
+        .filter((d) => sn(d.assignment_id) === assignmentId || s(d.mission_id) === missionId)
+        .sort((x, y) => {
+          const xDirect = sn(x.assignment_id) === assignmentId ? 0 : 1;
+          const yDirect = sn(y.assignment_id) === assignmentId ? 0 : 1;
+          if (xDirect !== yDirect) return xDirect - yDirect;
+          return kindRank(s(x.kind)) - kindRank(s(y.kind));
+        });
+      const top = matching[0];
+      const ownerAction: BlockingOwnerAction | null =
+        top === undefined
+          ? null
+          : {
+              decisionId: s(top.id),
+              kind: s(top.kind) as InboxKind,
+              title: s(top.title),
+              missionId: s(top.mission_id),
+              assignmentId: sn(top.assignment_id),
+              tab: s(top.kind) === "acceptance" ? "handoffs" : "overview",
+            };
+      out.set(s(r.employee_id), {
+        accessible: true,
+        assignmentId,
+        missionId,
+        title: s(r.mission_title),
+        state: s(r.state) as AssignmentState,
+        waitingOn: sn(r.waiting_on),
+        ownerAction,
+      });
+    }
+    return out;
   }
 
   // One mission in full, read from ONE snapshot: its row, its assignments, their runs and handoffs agree with each other.
@@ -326,7 +410,8 @@ export class MissionQueries {
     });
     const root = assignments.find((a) => a.parentId === null) ?? assignments[0];
     if (root === undefined) throw missing("Mission");
-    const handoffs = await this.handoffsOf(orbitId, assignments.map((a) => a.id));
+    const handoffs = await this.handoffsOf(orbitId, assignments);
+    const queuedBehind = root.state === "QUEUED" ? ((await this.queuedBehindOf(orbitId, [root.employeeId])).get(root.employeeId) ?? null) : null;
     return {
       id: s(m.id),
       title: s(m.title),
@@ -338,7 +423,8 @@ export class MissionQueries {
       dataShares: await this.team.missionShares(orbitId, missionId),
       assignment: root,
       deadline: sn(m.deadline),
-      nextAction: nextActionOf(root),
+      nextAction: nextActionOf(root, queuedBehind),
+      ...(queuedBehind !== null ? { queuedBehind } : {}),
       scheduleId: sn(m.schedule_id),
       createdAt: s(m.created_at),
       updatedAt: s(m.updated_at),
@@ -382,15 +468,79 @@ export class MissionQueries {
     });
   }
 
-  private async handoffsOf(orbitId: string, assignmentIds: string[]): Promise<HandoffView[]> {
+  private async handoffsOf(orbitId: string, assignments: readonly AssignmentView[]): Promise<HandoffView[]> {
+    const assignmentIds = assignments.map((a) => a.id);
     if (assignmentIds.length === 0) return [];
+    const byAssignment = new Map(assignments.map((a) => [a.id, a]));
     const rows = await this.db.query("SELECT * FROM workforce.handoffs WHERE account_id = $1 AND assignment_id = ANY($2) ORDER BY assignment_id, revision DESC", [orbitId, assignmentIds]);
     const ids = rows.map((r) => s(r.id));
+    const handoffMeta = new Map(rows.map((r) => [s(r.id), { assignmentId: s(r.assignment_id), revision: Number(r.revision) }]));
     const files = ids.length === 0 ? [] : await this.db.query("SELECT * FROM workforce.artifacts WHERE account_id = $1 AND handoff_id = ANY($2) ORDER BY name", [orbitId, ids]);
+
+    interface RawArtifactMeta {
+      id: string;
+      handoffId: string;
+      assignmentId: string;
+      unitKey: string | null;
+      employeeName: string;
+      revision: number;
+      name: string;
+      sourceArtifactId: string | null;
+    }
+    const metaById = new Map<string, RawArtifactMeta>();
+    for (const f of files) {
+      const hid = s(f.handoff_id);
+      const hm = handoffMeta.get(hid);
+      const a = hm === undefined ? undefined : byAssignment.get(hm.assignmentId);
+      metaById.set(s(f.id), {
+        id: s(f.id),
+        handoffId: hid,
+        assignmentId: hm?.assignmentId ?? "",
+        unitKey: a?.unitKey ?? null,
+        employeeName: a?.employeeName ?? "",
+        revision: hm?.revision ?? 1,
+        name: s(f.name),
+        sourceArtifactId: sn(f.source_artifact_id),
+      });
+    }
+    const refOf = (m: RawArtifactMeta): ArtifactSourceRef => ({
+      artifactId: m.id,
+      handoffId: m.handoffId,
+      assignmentId: m.assignmentId,
+      unitKey: m.unitKey,
+      employeeName: m.employeeName,
+      revision: m.revision,
+      name: m.name,
+    });
+    const resolveOrigin = (m: RawArtifactMeta): ArtifactSourceRef => {
+      let cur = m;
+      const seen = new Set<string>([cur.id]);
+      for (let i = 0; i < 10 && cur.sourceArtifactId !== null; i += 1) {
+        if (seen.has(cur.sourceArtifactId)) break;
+        const parent = metaById.get(cur.sourceArtifactId);
+        if (parent === undefined) break;
+        seen.add(parent.id);
+        cur = parent;
+      }
+      return refOf(cur);
+    };
+
     const byHandoff = new Map<string, ArtifactView[]>();
     for (const f of files) {
+      const id = s(f.id);
+      const meta = metaById.get(id);
+      const parent = meta?.sourceArtifactId ? (metaById.get(meta.sourceArtifactId) ?? null) : null;
       const list = byHandoff.get(s(f.handoff_id)) ?? [];
-      list.push({ id: s(f.id), name: s(f.name), kind: s(f.kind) as ArtifactView["kind"], mediaType: s(f.media_type), size: Number(f.size), sha256: s(f.sha256) });
+      list.push({
+        id,
+        name: s(f.name),
+        kind: s(f.kind) as ArtifactView["kind"],
+        mediaType: s(f.media_type),
+        size: Number(f.size),
+        sha256: s(f.sha256),
+        attachedFrom: parent === null ? null : refOf(parent),
+        origin: meta === undefined ? null : resolveOrigin(meta),
+      });
       byHandoff.set(s(f.handoff_id), list);
     }
     return rows.map((r) => ({
@@ -401,7 +551,33 @@ export class MissionQueries {
       summary: s(r.summary),
       status: s(r.status) as HandoffView["status"],
       artifacts: byHandoff.get(s(r.id)) ?? [],
-      claims: (r.claims as (HandoffClaim & { web?: { url: string; readAt: string } | null })[]).map((c) => ({ text: c.text, sources: c.sources ?? [], supported: c.supported === true, ...(c.web ? { web: c.web } : {}) })),
+      claims: (r.claims as HandoffClaim[]).map((c) => {
+        const supported = c.supported === true;
+        const base: HandoffClaim = {
+          text: c.text,
+          sources: c.sources ?? [],
+          supported,
+          ...(c.basis !== undefined ? { basis: c.basis } : {}),
+          ...(c.briefExcerpt ? { briefExcerpt: c.briefExcerpt } : {}),
+          ...(c.web ? { web: c.web } : {}),
+        };
+        if (base.basis === undefined) {
+          if (supported) base.basis = "pinned_source";
+          else if (base.web) base.basis = "web";
+          else {
+            const a = byAssignment.get(s(r.assignment_id));
+            const briefNorm = (a?.brief.goal ?? "").normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+            const textNorm = c.text.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+            if (textNorm.length >= 12 && briefNorm.includes(textNorm)) {
+              base.basis = "brief";
+              base.briefExcerpt = c.text.replace(/\s+/g, " ").trim().slice(0, 300);
+            } else {
+              base.basis = "external";
+            }
+          }
+        }
+        return base;
+      }),
       missing: r.missing as string[],
       submittedAt: s(r.submitted_at),
       submittedBy: s(r.submitted_by),
@@ -425,9 +601,11 @@ export class MissionQueries {
     return r === null ? null : { name: s(r.name), mediaType: s(r.media_type), size: Number(r.size), sha256: s(r.sha256) };
   }
 
-  async inbox(orbitId: string, q: { open: boolean; cursor: string | null }): Promise<Inbox> {
-    const items = await this.decisions.list(orbitId, q.open, q.cursor, PAGE + 1);
+  async inbox(orbitId: string, q: { open: boolean; cursor: string | null; category?: InboxCategory }): Promise<Inbox> {
+    const category = q.category ?? "all";
+    const items = await this.decisions.list(orbitId, q.open, q.cursor, PAGE + 1, q.open ? category : "all");
     const page = items.slice(0, PAGE);
-    return { items: page, open: await this.decisions.openCount(orbitId), nextCursor: items.length > PAGE ? (page.at(-1)?.id ?? null) : null, version: await this.outbox.version(orbitId), asOf: new Date().toISOString() };
+    const counts = await this.decisions.openCounts(orbitId);
+    return { items: page, open: counts.total, counts, nextCursor: items.length > PAGE ? (page.at(-1)?.id ?? null) : null, version: await this.outbox.version(orbitId), asOf: new Date().toISOString() };
   }
 }

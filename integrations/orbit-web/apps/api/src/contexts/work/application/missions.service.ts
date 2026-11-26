@@ -39,7 +39,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { accepted } from "../../../common/errors.js";
 import { Db } from "../../../infra/db/db.js";
 import { RunRequests } from "../../execution/application/run-requests.js";
-import type { AttemptContext, DelegatedUnit, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
+import type { AttemptContext, DelegatedUnit, ResolvedChildArtifact, RunEnd, RunOutcomes, SubmittedHandoff, TeamRoom } from "../../execution/application/run-outcomes.port.js";
 import { canDelegate } from "../domain/assistants.js";
 import { scopeIsEmpty } from "../domain/authority.js";
 import { CEO_NEEDS_DEPARTMENTS, resolveMissionTarget, sameAssignee, type ResolvedMissionTarget } from "../domain/target.js";
@@ -519,8 +519,22 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
       const id = randomUUID();
       await this.handoffs.insert({ id, orbitId, assignmentId, runId: h.runId, revision, digest, summary: h.summary, status: "submitted", claims: h.claims, missing: missingNames, submissionKey: h.submissionKey, submittedBy: actor.command.actor, submittedAt: at, review: null });
       for (const x of h.artifacts) {
+        const sourceId = x.sourceArtifactId ?? null;
+        if (sourceId !== null) {
+          const ok = await this.db.one(
+            `SELECT ar.id FROM workforce.artifacts ar
+             JOIN workforce.handoffs hh ON hh.account_id = ar.account_id AND hh.id = ar.handoff_id
+             JOIN workforce.assignments ch ON ch.account_id = hh.account_id AND ch.id = hh.assignment_id
+             WHERE ar.account_id = $1 AND ar.id = $2 AND ch.parent_id = $3 AND hh.status = 'accepted' AND ar.sha256 = $4`,
+            [orbitId, sourceId, a.id, x.sha256],
+          );
+          if (ok === null) throw conflictWith("unauthorized_artifact_ref", `Artifact "${x.name}" cannot be attached by reference: it is not from an accepted hand-in of a direct part of this assignment.`);
+        }
         await this.db.query("UPDATE workforce.blobs SET refcount = refcount + 1 WHERE account_id = $1 AND sha256 = $2", [orbitId, x.sha256]);
-        await this.db.query("INSERT INTO workforce.artifacts (id, account_id, handoff_id, name, kind, media_type, size, sha256, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)", [randomUUID(), orbitId, id, x.name, x.kind, x.mediaType, x.size, x.sha256, at]);
+        await this.db.query(
+          "INSERT INTO workforce.artifacts (id, account_id, handoff_id, name, kind, media_type, size, sha256, created_at, source_artifact_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+          [randomUUID(), orbitId, id, x.name, x.kind, x.mediaType, x.size, x.sha256, at, sourceId],
+        );
       }
       await this.db.query("UPDATE workforce.handoffs SET status = 'superseded' WHERE account_id = $1 AND assignment_id = $2 AND revision < $3 AND status = 'submitted'", [orbitId, assignmentId, revision]);
       a.handoffSubmitted(revision, digest, fence, at);
@@ -553,6 +567,24 @@ export class MissionsService implements OnModuleInit, RunOutcomes {
     if (a === null) throw missing("Assignment");
     if (a.data.fence !== fence) throw conflictWith("stale_fence", "This attempt was replaced: its hand-in is not taken.");
     await this.governance.authorize(actor, "artifact.publish", assignmentId, { assignment: assignmentId, mission: a.data.missionId });
+  }
+
+  // Resolves an artifact belonging to an accepted hand-in of a DIRECT child of `assignmentId` so a lead (manager, CEO)
+  // can attach binary deliverables verbatim without reading them as text or rebuilding them.
+  async resolveChildArtifact(orbitId: string, assignmentId: string, fence: number, partKey: string, artifactName: string): Promise<ResolvedChildArtifact> {
+    const a = await this.assignments.get(orbitId, assignmentId);
+    if (a === null || !a.acting(fence)) return { ok: false, reason: "This attempt has ended its work: it cannot attach child artifacts." };
+    const child = await this.db.one("SELECT id, state FROM workforce.assignments WHERE account_id = $1 AND parent_id = $2 AND unit_key = $3 ORDER BY created_at DESC LIMIT 1", [orbitId, assignmentId, partKey]);
+    if (child === null) return { ok: false, reason: `No direct part named "${partKey}" belongs to this assignment: you can only attach artifacts from your own direct parts' reviewed hand-ins.` };
+    const handoff = await this.db.one("SELECT id, revision FROM workforce.handoffs WHERE account_id = $1 AND assignment_id = $2 AND status = 'accepted' ORDER BY revision DESC LIMIT 1", [orbitId, String(child.id)]);
+    if (handoff === null) return { ok: false, reason: `Part "${partKey}" has no accepted hand-in yet (state: ${String(child.state)}): review and accept its hand-in with review_unit before attaching its artifacts.` };
+    const files = await this.db.query("SELECT id, name, media_type, size, sha256 FROM workforce.artifacts WHERE account_id = $1 AND handoff_id = $2 ORDER BY name", [orbitId, String(handoff.id)]);
+    const found = files.find((f) => String(f.name) === artifactName);
+    if (found === undefined) {
+      const available = files.map((f) => String(f.name));
+      return { ok: false, reason: `Part "${partKey}" (revision ${Number(handoff.revision)}) has no artifact named "${artifactName}"${available.length > 0 ? ` (available: ${available.join(", ")})` : " (it handed in no files)"}.` };
+    }
+    return { ok: true, artifactId: String(found.id), handoffId: String(handoff.id), revision: Number(handoff.revision), name: String(found.name), mediaType: String(found.media_type), size: Number(found.size), sha256: String(found.sha256) };
   }
 
   // A question its attempt cannot go on without: to its lead (a part), or to the person who gave the work (the root).

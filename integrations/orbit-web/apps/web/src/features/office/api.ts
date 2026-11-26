@@ -23,6 +23,7 @@ import type {
   HandOverRequest,
   HireEmployeeRequest,
   Inbox,
+  InboxCategory,
   MissionAccepted,
   MissionDetail,
   MissionList,
@@ -36,6 +37,7 @@ import type {
   ResolveDeliveryRequest,
   ResourcePreset,
   Roster,
+  RosterStatusFilter,
   ScheduleRule,
   ScheduleRun,
   ScheduleView,
@@ -44,7 +46,6 @@ import type {
   UpdateResourcesRequest,
   UpdateScheduleRequest,
   TeamRoomChange,
-  WorkLabel,
 } from "@orbit-web/contracts";
 import { useState } from "react";
 import { useResource, type Resource } from "../../hooks/useResource";
@@ -55,7 +56,7 @@ export interface RosterQuery {
   // A department's id, "none" for Unassigned, or null for all.
   department: string | null;
   q: string;
-  status: WorkLabel | null;
+  status: RosterStatusFilter | null;
   cursor?: string | null;
 }
 
@@ -123,7 +124,8 @@ export const office = {
   repin: (assignmentId: string, version: number) => send<CommandResult>("POST", `/api/assignments/${id(assignmentId)}/repin`, {}, ifMatch(version)),
   // What a lead shared with a part of its team, taken back: every attempt that holds it is stopped.
   revokeShare: (shareId: string) => send<{ id: string; revokedAt: string }>("POST", `/api/data-shares/${id(shareId)}/revoke`, {}),
-  inbox: (state: "open" | "history", cursor: string | null = null) => get<Inbox>(`/api/inbox${query({ state, cursor })}`),
+  inbox: (state: "open" | "history", cursor: string | null = null, category: InboxCategory = "all") =>
+    get<Inbox>(`/api/inbox${query({ state, cursor, category: state === "open" && category !== "all" ? category : null })}`),
   schedules: () => get<ScheduleView[]>("/api/schedules"),
   createSchedule: (body: CreateScheduleRequest) => send<ScheduleView>("POST", "/api/schedules", body),
   previewSchedule: (rule: ScheduleRule) => send<ScheduleRun[]>("POST", "/api/schedules/preview", { rule }),

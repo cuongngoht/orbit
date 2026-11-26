@@ -53,7 +53,7 @@ test("where Codex's sandbox runs, a chat's commands are confined: nothing of Orb
 });
 
 test("Codex's events become the chat's: its thread, its commands and edits as tools, its message, its turn's end", () => {
-  const m = new CodexStreamMapper({ requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: false });
+  const m = new CodexStreamMapper({ runId: "run-1", requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: false });
   const events = [
     { type: "thread.started", thread_id: "th_1" },
     { type: "turn.started" },
@@ -81,7 +81,7 @@ test("Codex's events become the chat's: its thread, its commands and edits as to
 });
 
 test("a failed turn is the run's error; a tool still running at the end is said to have been cut off", () => {
-  const m = new CodexStreamMapper({ requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: true });
+  const m = new CodexStreamMapper({ runId: "run-2", requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: true });
   m.push({ type: "thread.started", thread_id: "th_2" });
   m.push({ type: "item.started", item: { id: "c1", type: "command_execution", command: "sleep 100", status: "in_progress" } });
   m.push({ type: "turn.failed", error: { message: "You've hit your usage limit." } });
@@ -89,6 +89,36 @@ test("a failed turn is the run's error; a tool still running at the end is said 
   const end = m.finish();
   assert.deepEqual(end.map((e) => e.type), ["tool.failed"]);
   assert.equal((end[0] as { data: { interrupted: boolean } }).data.interrupted, true);
+  assert.equal((end[0] as { data: { toolUseId: string } }).data.toolUseId, "run-2:c1");
+});
+
+test("reused provider item IDs stay stable within one run and never collide across initial and resumed runs", () => {
+  const first = new CodexStreamMapper({ runId: "run-a", requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: false });
+  const second = new CodexStreamMapper({ runId: "run-b", requestedModel: "gpt-6.1-sol", requestedEffort: "medium", requestedMode: "autonomous", resumed: true });
+  const e1 = [
+    ...first.push({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "pwd", status: "in_progress" } }),
+    ...first.push({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "pwd", aggregated_output: "/work\n", exit_code: 0, status: "completed" } }),
+    ...first.push({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: "ORBIT-ROUND-ONE-348" } }),
+  ];
+  const e2 = [
+    ...second.push({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "ls", status: "in_progress" } }),
+    ...second.push({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "ls", aggregated_output: "a.txt\n", exit_code: 0, status: "completed" } }),
+    ...second.push({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: "ORBIT-ROUND-TWO-906" } }),
+  ];
+  const t1Start = (e1[0] as { data: { toolUseId: string } }).data.toolUseId;
+  const t1End = (e1[1] as { data: { toolUseId: string } }).data.toolUseId;
+  const m1Start = (e1[2] as { data: { messageId: string } }).data.messageId;
+  const m1End = (e1[3] as { data: { messageId: string } }).data.messageId;
+  const t2Start = (e2[0] as { data: { toolUseId: string } }).data.toolUseId;
+  const t2End = (e2[1] as { data: { toolUseId: string } }).data.toolUseId;
+  const m2Start = (e2[2] as { data: { messageId: string } }).data.messageId;
+  const m2End = (e2[3] as { data: { messageId: string } }).data.messageId;
+  assert.equal(t1Start, t1End, "tool id stays stable within run 1");
+  assert.equal(m1Start, m1End, "message id stays stable within run 1");
+  assert.equal(t2Start, t2End, "tool id stays stable within run 2");
+  assert.equal(m2Start, m2End, "message id stays stable within run 2");
+  assert.notEqual(t1Start, t2Start, "tool ids do not collide across runs");
+  assert.notEqual(m1End, m2End, "message ids do not collide across runs");
 });
 
 test("a thread Codex can no longer find is a lost conversation: the next message starts a new one", () => {

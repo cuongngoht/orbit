@@ -1,0 +1,46 @@
+Running `(cd /Users/cuongngoht/.pub-cache/hosted/pub.dev/objective_c-9.5.0/; TMPDIR=/var/folders/63/kqtlq18s1lz66xqvjwjlfnp80000gn/T/ PATH=/Applications/Xcode.app/Contents/SharedFrameworks/SwiftBuild.framework/Versions/A/PlugIns/SWBBuildService.bundle/Contents/PlugIns/SWBUniversalPlatformPlugin.bundle/Contents/Frameworks/SWBUniversalPlatform.framework/Resources:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/local/bin:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/libexec:/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/usr/bin:/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/usr/local/bin:/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin:/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/local/bin:/Applications/Xcode.app/Contents/Developer/usr/bin:/Applications/Xcode.app/Contents/Developer/usr/local/bin:/Users/cuongngoht/.gemini/antigravity/bin:/Users/cuongngoht/Library/Application Support/Antigravity/bin:/Users/cuongngoht/.antigravity-ide/antigravity-ide/bin:/Users/cuongngoht/.grok/bin:/Users/cuongngoht/.local/bin:/Users/cuongngoht/.aspire/bin:/Users/cuongngoht/.antigravity/antigravity/bin:/Users/cuongngoht/.nvm/versions/node/v22.23.1/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:/opt/homebrew/bin:/Users/cuongngoht/.docker/bin:/Users/cuongngoht/.dotnet/tools HOME=/Users/cuongngoht /opt/homebrew/share/flutter/bin/cache/dart-sdk/bin/dart --packages=/Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/package_config.json /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/objective_c/63843f2ee8/hook.dill --config=/Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/objective_c/63843f2ee8/input.json )`.
+INFO: 2026-11-25 23:59:36.457208: Using compiler /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang from BuildInput.cCompiler.cc.
+
+INFO: 2026-11-25 23:59:36.462749: Running: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios -mios-version-min=13 -c /Users/cuongngoht/.pub-cache/hosted/pub.dev/objective_c-9.5.0/src/include/dart_api_dl.c -fpic -gline-tables-only -I src -o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/include/dart_api_dl.c.o
+
+INFO: 2026-11-25 23:59:36.464241: Running: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios -mios-version-min=13 -x objective-c -fobjc-arc -c /Users/cuongngoht/.pub-cache/hosted/pub.dev/objective_c-9.5.0/src/input_stream_adapter.m -fpic -gline-tables-only -I src -o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/input_stream_adapter.m.o
+
+INFO: 2026-11-25 23:59:36.465506: Running: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios -mios-version-min=13 -x objective-c -fobjc-arc -c /Users/cuongngoht/.pub-cache/hosted/pub.dev/objective_c-9.5.0/src/protocol.m -fpic -gline-tables-only -I src -o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/protocol.m.o
+
+obj/src/objective_c_bindings_generated.m.o
+
+INFO: 2026-11-25 23:59:36.728500: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c.c.o
+
+s_runner/shared/objective_c/build/63843f2ee8/obj/src/include/dart_api_dl.c.o
+
+INFO: 2026-11-25 23:59:36.859415: 
+INFO: 2026-11-25 23:59:36.859516: 
+INFO: 2026-11-25 23:59:36.859553: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/observer.m.o
+
+INFO: 2026-11-25 23:59:36.867372: 
+INFO: 2026-11-25 23:59:36.867413: 
+INFO: 2026-11-25 23:59:36.867425: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/protocol.m.o
+
+INFO: 2026-11-25 23:59:37.232879: 
+INFO: 2026-11-25 23:59:37.232915: 
+INFO: 2026-11-25 23:59:37.232926: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/ns_number.m.o
+
+INFO: 2026-11-25 23:59:37.249828: 
+INFO: 2026-11-25 23:59:37.249871: 
+INFO: 2026-11-25 23:59:37.249882: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c.m.o
+
+INFO: 2026-11-25 23:59:37.259563: 
+INFO: 2026-11-25 23:59:37.259597: 
+INFO: 2026-11-25 23:59:37.259608: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/input_stream_adapter.m.o
+
+INFO: 2026-11-25 23:59:37.287838: 
+INFO: 2026-11-25 23:59:37.287876: 
+INFO: 2026-11-25 23:59:37.287887: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c_bindings_generated.m.o
+
+oper/SDKs/iPhoneOS26.5.sdk -target arm64-apple-ios -mios-version-min=13 /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/include/dart_api_dl.c.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c.c.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/input_stream_adapter.m.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c.m.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/observer.m.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/ns_number.m.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/protocol.m.o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/obj/src/objective_c_bindings_generated.m.o -o /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/objective_c.dylib
+
+INFO: 2026-11-25 23:59:37.401890: 
+INFO: 2026-11-25 23:59:37.401969: ld: warning: -undefined dynamic_lookup is deprecated on iOS
+
+INFO: 2026-11-25 23:59:37.401982: Generated /Users/cuongngoht/Repo/orbit/integrations/orbit-mobile/.dart_tool/hooks_runner/shared/objective_c/build/63843f2ee8/objective_c.dylib
+

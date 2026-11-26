@@ -6,6 +6,7 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js migrate   # apply what is missing
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js verify    # exit 1 unless it is ready
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js reset --confirm=<database name> [--with-data]
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/db.js recover-codex-transcripts [--apply] [--account=<id>] [--session=<id>] [--json]
 //
 // RESET drops every schema of Orbit Web's (each one its migrations create, and the migrator's own, orbit) -- every
 // account, user, chat, research record, AI connection and audit record -- and migrates again: an empty database at this
@@ -20,6 +21,7 @@ import { ConfigError, loadConfig } from "../config/config.js";
 import { Db } from "../infra/db/db.js";
 import { migrate, schemaState, SchemaError, verifySchema } from "../infra/db/migrate.js";
 import { emptyRooms, resetSchemas } from "../infra/db/reset.js";
+import { assessAndRecoverCodexTranscripts } from "../modules/claude-runner/codex-recovery.js";
 
 function say(line: string): void {
   process.stdout.write(`${line}\n`);
@@ -54,15 +56,33 @@ async function reset(db: Db): Promise<number> {
   return 0;
 }
 
+async function recoverCodex(db: Db): Promise<number> {
+  const apply = process.argv.includes("--apply");
+  const report = await assessAndRecoverCodexTranscripts(db, { apply, accountId: opt("account"), sessionId: opt("session") });
+  if (process.argv.includes("--json")) {
+    say(JSON.stringify(report, null, 2));
+  } else {
+    say(`codex-recovery (${apply ? "apply" : "dry-run"}): inspected ${report.inspected} session(s) · clean ${report.clean} · recoverable ${report.recoverable} · recovered ${report.recovered} · manual_review ${report.manualReview} · gaps ${report.totalGaps}`);
+    for (const s of report.sessions) {
+      if (s.status !== "clean" || s.gaps.length > 0) {
+        say(`  ${s.sessionId} [${s.status}] messages ${s.storedMessagesBefore} -> ${s.storedMessagesAfter}, eventsScoped=${s.eventsScoped}, gaps=${s.gaps.length}${s.hasShareSnapshot ? " (has share snapshot)" : ""}`);
+        for (const g of s.gaps) say(`    gap [${g.kind}] ${g.detail}`);
+      }
+    }
+  }
+  return report.manualReview > 0 ? 1 : 0;
+}
+
 async function main(): Promise<number> {
   const command = process.argv[2] ?? "status";
-  if (!["status", "migrate", "verify", "reset"].includes(command)) {
-    say("usage: db.js status | migrate | verify | reset --confirm=<database name> [--with-data]");
+  if (!["status", "migrate", "verify", "reset", "recover-codex-transcripts"].includes(command)) {
+    say("usage: db.js status | migrate | verify | reset --confirm=<database name> [--with-data] | recover-codex-transcripts [--apply] [--account=<id>] [--session=<id>] [--json]");
     return 2;
   }
   const db = new Db({ url: url(), poolMax: 2, connectTimeoutMs: 10_000, statementTimeoutMs: 300_000, searchPath: SEARCH_PATH, applicationName: "orbit-web-cli" });
   try {
     if (command === "reset") return await reset(db);
+    if (command === "recover-codex-transcripts") return await recoverCodex(db);
     if (command === "migrate") {
       const s = await migrate(db);
       say(`migrated: schema version ${s.version} of ${s.latest}, pgvector ${s.vector ?? "missing"}, PostgreSQL ${s.server}`);

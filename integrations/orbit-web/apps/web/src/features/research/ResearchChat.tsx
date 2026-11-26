@@ -8,6 +8,7 @@ import type { ResearchCitation, ResearchMessage } from "@orbit-web/contracts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiErrorBar } from "../../components/ApiErrorBar";
 import { Markdown } from "../../components/Markdown";
+import { settingsHref } from "../../hooks/useHashRoute";
 import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
 import { Composer } from "../composer/Composer";
@@ -276,6 +277,12 @@ export interface ResearchChatProps {
   onOpenSources?: () => void;
   // The last refusal, as the API said it (a question that needs an AI connection says where to connect one).
   error: unknown;
+  // True when the account has no usable Claude Code connection for Research questions (sources can still be added/indexed).
+  missingClaude?: boolean;
+  missingClaudeReason?: string | null;
+  // Draft text preserved across opening Settings → AI Connections or reloads.
+  initialDraft?: string;
+  onDraftChange?: (text: string) => void;
   right?: ReactNode;
 }
 
@@ -440,7 +447,7 @@ export function ResearchChat(p: ResearchChatProps) {
                 <MessageBarBody>{p.stream.ended.message}</MessageBarBody>
                 {lastQuestion !== null && (
                   <MessageBarActions>
-                    <Button size="small" icon={<ArrowClockwise16Regular />} onClick={() => p.onAsk(lastQuestion)}>
+                    <Button size="small" icon={<ArrowClockwise16Regular />} disabled={p.missingClaude === true} onClick={() => p.onAsk(lastQuestion)}>
                       {t("research.chat.askAgain")}
                     </Button>
                   </MessageBarActions>
@@ -475,16 +482,32 @@ export function ResearchChat(p: ResearchChatProps) {
       <div className={mergeClasses(s.bottom, isMobile && s.bottomMobile)}>
         <Composer
           key={composerKey}
-          defaultValue={editedDraft ?? undefined}
+          defaultValue={editedDraft ?? p.initialDraft}
+          onDraftChange={p.onDraftChange}
           autoFocus={!touch && p.usable > 0}
           placeholder={t(p.usable > 0 ? "research.chat.placeholderReady" : p.selected > 0 ? "research.chat.placeholderPreparing" : "research.chat.placeholderEmpty")}
-          canSend={!running && !p.busy}
+          canSend={!running && !p.busy && p.missingClaude !== true}
+          sendDisabledReason={p.missingClaude === true ? t("research.chat.missingClaudeSendReason") : undefined}
           running={running}
           busy={p.busy}
           onSend={p.onAsk}
           onStop={p.onStop}
           above={
             <>
+              {p.missingClaude === true && (
+                <MessageBar intent="warning" layout="multiline" role="status">
+                  <MessageBarBody>
+                    {p.missingClaudeReason
+                      ? t("research.chat.missingClaudeWithReason", { reason: p.missingClaudeReason })
+                      : t("research.chat.missingClaudeBody")}
+                  </MessageBarBody>
+                  <MessageBarActions>
+                    <Button as="a" href={settingsHref("ai-connections")} size="small" appearance="primary">
+                      {t("research.chat.openAiConnections")}
+                    </Button>
+                  </MessageBarActions>
+                </MessageBar>
+              )}
               <ApiErrorBar error={p.error} />
               {p.draftQuestion && !dismissedDraft && messages.length === 0 && (
                 <div className={s.draftCard}>
@@ -506,6 +529,7 @@ export function ResearchChat(p: ResearchChatProps) {
                       disabled={running}
                       onClick={() => {
                         setEditedDraft(p.draftQuestion);
+                        p.onDraftChange?.(p.draftQuestion ?? "");
                         setComposerKey((k) => k + 1);
                         setDismissedDraft(true);
                       }}
@@ -516,7 +540,7 @@ export function ResearchChat(p: ResearchChatProps) {
                       className={mergeClasses(s.draftBtn, touch && s.draftBtnTouch)}
                       size="small"
                       appearance={p.usable > 0 ? "primary" : "secondary"}
-                      disabled={running}
+                      disabled={running || p.missingClaude === true}
                       onClick={() => void p.onAsk(p.draftQuestion as string)}
                     >
                       {t("research.chat.askItNow")}

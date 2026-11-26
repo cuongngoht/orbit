@@ -278,7 +278,7 @@ export class TurnRunner implements ConversationDispatch, BeforeApplicationShutdo
       turn,
       handle,
       rt,
-      mapper: rt.mapper({ model, effort, cwd }),
+      mapper: rt.mapper({ runId: run.id, model, effort, cwd }),
       splitter: new LineSplitter((line) => this.onLine(a, line)),
       messageId: randomUUID(),
       answer: "",

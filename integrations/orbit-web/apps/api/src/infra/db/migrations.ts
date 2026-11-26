@@ -2068,8 +2068,27 @@ CREATE TABLE executive.events (
 );
 `;
 
+const ARTIFACT_PROVENANCE = String.raw`
+-- Tracks direct child artifact lineage when a lead attaches a reviewed subordinate artifact by reference (byte-for-byte).
+ALTER TABLE workforce.artifacts
+  ADD COLUMN source_artifact_id uuid,
+  ADD CONSTRAINT artifacts_source_fk FOREIGN KEY (account_id, source_artifact_id) REFERENCES workforce.artifacts (account_id, id);
+CREATE INDEX artifacts_by_source ON workforce.artifacts (account_id, source_artifact_id) WHERE source_artifact_id IS NOT NULL;
+`;
+
 // 0.8.0 is Orbit Web's first PostgreSQL release: ONE initial migration (the owner's decision -- no database of an earlier
 // build is upgraded; `cli/db.js reset` empties one). Later releases add migrations after it.
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: "initial", sql: `${INITIAL}
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    version: 1,
+    name: "initial",
+    sql: `${INITIAL}
 ${WORKFORCE}
-${EXECUTIVE}` }];
+${EXECUTIVE}`,
+  },
+  {
+    version: 2,
+    name: "artifact_provenance",
+    sql: ARTIFACT_PROVENANCE,
+  },
+];

@@ -236,27 +236,45 @@ export class OfficeService {
     const office = await this.offices.get(orbitId);
     const version = await this.outbox.version(orbitId);
     const asOf = new Date().toISOString();
-    const empty = { employees: 0, ready: 0, busy: 0, notReady: 0, queued: 0, inbox: 0 };
+    const empty = { employees: 0, ready: 0, busy: 0, working: 0, waiting: 0, notReady: 0, queued: 0, inbox: 0, reviews: 0, clarifications: 0, otherInbox: 0 };
     if (office === null) return { office: null, ceo: null, departments: [], employees: [], nextCursor: null, version, asOf, counts: empty };
     const departments = await this.departments.list(orbitId);
     const incumbents = await this.appointments.incumbents(orbitId);
     const members = await this.departments.members(orbitId);
     const cards = await this.cards(orbitId);
-    const inbox = Number((await this.db.one("SELECT count(*) AS n FROM workforce.decisions WHERE account_id = $1 AND state = 'open'", [orbitId]))?.n ?? 0);
+    const decisionRows = await this.db.query("SELECT kind, count(*) AS n FROM workforce.decisions WHERE account_id = $1 AND state = 'open' GROUP BY kind", [orbitId]);
+    let reviews = 0;
+    let clarifications = 0;
+    let otherInbox = 0;
+    for (const r of decisionRows) {
+      const kind = String(r.kind);
+      const n = Number(r.n ?? 0);
+      if (kind === "acceptance") reviews += n;
+      else if (kind === "information") clarifications += n;
+      else otherInbox += n;
+    }
+    const inbox = reviews + clarifications + otherInbox;
+    const working = cards.filter((c) => c.workLabel === "working").length;
+    const waiting = cards.filter((c) => c.availability === "busy" && c.workLabel !== "working").length;
     const counts = {
       employees: cards.length,
       ready: cards.filter((c) => c.availability === "available").length,
-      busy: cards.filter((c) => c.availability === "busy").length,
+      busy: working + waiting,
+      working,
+      waiting,
       notReady: cards.filter((c) => c.availability === "ineligible").length,
       queued: cards.reduce((n, c) => n + c.queued, 0),
       inbox,
+      reviews,
+      clarifications,
+      otherInbox,
     };
     const position = new Map(departments.map((d) => [d.id, d.position]));
     const text = (q.q ?? "").trim().toLowerCase();
     const filtered = cards
       .filter((c) => q.department === undefined || (q.department === "none" ? c.departmentId === null : c.departmentId === q.department))
       .filter((c) => text === "" || c.name.toLowerCase().includes(text) || c.title.toLowerCase().includes(text))
-      .filter((c) => q.status === undefined || c.workLabel === (q.status as WorkLabel))
+      .filter((c) => (q.status === undefined ? true : q.status === "waiting" ? c.availability === "busy" && c.workLabel !== "working" : c.workLabel === (q.status as WorkLabel)))
       .sort((a, b) => (position.get(a.departmentId ?? "") ?? 1e9) - (position.get(b.departmentId ?? "") ?? 1e9) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     const start = q.cursor !== undefined && isWorkforceId(q.cursor) ? filtered.findIndex((c) => c.id === q.cursor) + 1 : 0;
     const page = filtered.slice(start, start + PAGE);

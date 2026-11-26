@@ -101,6 +101,48 @@ describe("Needs me", () => {
     expect(await screen.findByText(/Resolved .*: Cancelled by Ann Owner/)).toBeInTheDocument();
     expect(api.calls.map((c) => c.path)).toContain("/api/inbox?state=history");
   });
+
+  test("counts reviews and clarification requests separately and filters each category", async () => {
+    const reviewItem = inboxItem({
+      id: "1b000000-0000-4000-8000-000000000010",
+      kind: "acceptance",
+      missionId: "a1000000-0000-4000-8000-000000000099",
+      assignmentId: "b1000000-0000-4000-8000-000000000099",
+      title: "Review unrelated quarterly report",
+      reason: "Revision 1 awaits your review.",
+    });
+    const clarificationItem = inboxItem({
+      id: "1b000000-0000-4000-8000-000000000011",
+      kind: "information",
+      missionId: MISSION_ID,
+      assignmentId: ASSIGNMENT_ID,
+      title: "Clarification on vendor quotes",
+      reason: "Which vendor currency should be used?",
+    });
+    const all = [reviewItem, clarificationItem];
+    const api = fakeApi()
+      .on("GET", "/api/inbox", (_, url) => {
+        const cat = url.searchParams.get("category");
+        const filtered = cat === "reviews" ? [reviewItem] : cat === "clarifications" ? [clarificationItem] : all;
+        return inbox(filtered, { open: 2, counts: { total: 2, reviews: 1, clarifications: 1, other: 0 } });
+      })
+      .on("GET", `/api/missions/${MISSION_ID}`, () => missionDetail());
+    renderLive(<OfficeView page="inbox" item={null} tab={null} go={vi.fn()} account={authAccount()} />);
+    const group = await screen.findByRole("group", { name: "Filter by category" });
+    expect(within(group).getByRole("button", { name: "All (2)" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "Reviews (1)" })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: "Clarifications (1)" })).toBeInTheDocument();
+
+    await userEvent.click(within(group).getByRole("button", { name: "Clarifications (1)" }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/api/inbox?state=open&category=clarifications")).toBe(true));
+    expect(await screen.findByRole("listitem", { name: "Clarification on vendor quotes" })).toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: "Review unrelated quarterly report" })).toBeNull();
+
+    await userEvent.click(within(group).getByRole("button", { name: "Reviews (1)" }));
+    await waitFor(() => expect(api.calls.some((c) => c.path === "/api/inbox?state=open&category=reviews")).toBe(true));
+    expect(await screen.findByRole("listitem", { name: "Review unrelated quarterly report" })).toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: "Clarification on vendor quotes" })).toBeNull();
+  });
 });
 
 describe("Schedule", () => {

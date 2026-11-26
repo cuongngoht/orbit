@@ -172,6 +172,11 @@ export type Availability = (typeof AVAILABILITIES)[number];
 export const WORK_LABELS = ["ready", "working", "waiting_resources", "waiting_team", "waiting_info", "waiting_review", "paused", "cancelling", "reconciling", "not_ready"] as const;
 export type WorkLabel = (typeof WORK_LABELS)[number];
 
+// Work labels for employees holding an assignment that is NOT actively executing (blocked, awaiting review/info/resources/team, paused).
+export const WAITING_WORK_LABELS: readonly WorkLabel[] = ["waiting_resources", "waiting_team", "waiting_info", "waiting_review", "paused", "cancelling", "reconciling"];
+export const isWaitingWorkLabel = (label: WorkLabel): boolean => WAITING_WORK_LABELS.includes(label);
+export type RosterStatusFilter = WorkLabel | "waiting";
+
 export const WORK_LABEL_TEXT: Record<WorkLabel, string> = {
   ready: "Ready",
   working: "Working",
@@ -304,6 +309,24 @@ export interface EmployeeDeskList {
   asOf: string;
 }
 
+export interface RosterCounts {
+  employees: number;
+  ready: number;
+  // Employees holding any reservation (working + waiting). Kept for compatibility.
+  busy: number;
+  // Actively executing employees (workLabel === "working").
+  working?: number;
+  // Employees holding blocked, waiting-for-info, review-pending, waiting-for-resources/team, or paused work.
+  waiting?: number;
+  notReady: number;
+  queued: number;
+  inbox: number;
+  // Breakdown of open Needs me items: reviews (acceptance) vs clarification requests (information) vs other blockers.
+  reviews?: number;
+  clarifications?: number;
+  otherInbox?: number;
+}
+
 export interface Roster {
   // Null: the account has no company yet (the page offers to activate it).
   office: Office | null;
@@ -315,7 +338,7 @@ export interface Roster {
   // The account's office version this was read at, and when: a page says "data as of".
   version: number;
   asOf: string;
-  counts: { employees: number; ready: number; busy: number; notReady: number; queued: number; inbox: number };
+  counts: RosterCounts;
 }
 
 export interface EmployeeTemplate {
@@ -650,6 +673,16 @@ export interface AssignmentView extends AssignmentSummary {
 export const ASSIGNMENT_ACTIONS = ["accept", "request_revision", "cancel", "pause", "resume", "answer", "retry", "hand_over", "repin"] as const;
 export type AssignmentAction = (typeof ASSIGNMENT_ACTIONS)[number];
 
+export interface ArtifactSourceRef {
+  artifactId: string;
+  handoffId: string;
+  assignmentId: string;
+  unitKey: string | null;
+  employeeName: string;
+  revision: number;
+  name: string;
+}
+
 export interface ArtifactView {
   id: string;
   name: string;
@@ -657,13 +690,27 @@ export interface ArtifactView {
   mediaType: string;
   size: number;
   sha256: string;
+  // Direct child hand-in artifact this file was attached from by reference (null when created in this hand-in).
+  attachedFrom?: ArtifactSourceRef | null;
+  // Original creator artifact when traceable (follows attachedFrom across delegation levels, e.g. employee -> manager -> CEO).
+  origin?: ArtifactSourceRef | null;
 }
+
+export const CLAIM_ORIGINS = ["pinned_source", "brief", "web", "external"] as const;
+export type ClaimOrigin = (typeof CLAIM_ORIGINS)[number];
 
 export interface HandoffClaim {
   text: string;
-  // Passage labels the server verified against the sources the assignment was given; empty: unsupported.
+  // Passage labels the server verified against the pinned research sources the assignment was given; empty: not verified against a pinned source.
   sources: { label: string; sourceId: string; revisionId: string; locator: string; excerpt: string }[];
+  // True ONLY when every cited pinned research source holds the quoted words (never true for brief context or web links).
   supported: boolean;
+  // Server-classified verification basis separating pinned-source matches, mission brief context, web refs, and unverified external claims.
+  basis?: ClaimOrigin;
+  // Verbatim excerpt found in the mission brief when basis === "brief".
+  briefExcerpt?: string | null;
+  // Web URL cited by the claim (never counts as pinned source verification).
+  web?: { url: string; readAt: string } | null;
 }
 
 export const HANDOFF_STATUSES = ["submitted", "revision_requested", "accepted", "superseded"] as const;
@@ -695,6 +742,27 @@ export interface TimelineEntry {
   assignmentId: string | null;
 }
 
+export interface BlockingOwnerAction {
+  decisionId: string;
+  kind: InboxKind;
+  title: string;
+  missionId: string;
+  assignmentId: string | null;
+  tab: "overview" | "handoffs";
+}
+
+// For a QUEUED mission, what holds its assignee's single execution slot now.
+// When `accessible` is false, all identifying fields are null so restricted assignment details are never revealed.
+export interface QueuedBehind {
+  accessible: boolean;
+  assignmentId: string | null;
+  missionId: string | null;
+  title: string | null;
+  state: AssignmentState | null;
+  waitingOn: string | null;
+  ownerAction: BlockingOwnerAction | null;
+}
+
 export interface MissionSummary {
   id: string;
   title: string;
@@ -704,6 +772,8 @@ export interface MissionSummary {
   assignment: AssignmentSummary;
   deadline: string | null;
   nextAction: string | null;
+  // When the root assignment is QUEUED, describes the assignment currently holding the assignee's slot.
+  queuedBehind?: QueuedBehind | null;
   scheduleId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -913,9 +983,21 @@ export interface InboxItem {
   resolution: string | null;
 }
 
+export const INBOX_CATEGORIES = ["all", "reviews", "clarifications", "other"] as const;
+export type InboxCategory = (typeof INBOX_CATEGORIES)[number];
+
+export interface InboxCounts {
+  total: number;
+  reviews: number;
+  clarifications: number;
+  other: number;
+}
+
 export interface Inbox {
   items: InboxItem[];
   open: number;
+  // Separate counts of open Needs me items by category (reviews vs clarifications vs other blockers).
+  counts?: InboxCounts;
   nextCursor: string | null;
   version: number;
   asOf: string;

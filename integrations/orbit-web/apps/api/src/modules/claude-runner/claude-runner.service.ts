@@ -434,7 +434,7 @@ export class ClaudeRunnerService implements OnModuleInit, BeforeApplicationShutd
   private async spawnCodex(session: SessionRecord, input: RunInput, runId: string, plan: RunPlan, connection: RunConnection, lease: SessionLease, args: string[], resume: boolean): Promise<void> {
     await this.runs.start({ id: runId, sessionId: session.id, model: session.model, effort: session.effort, mode: session.mode, resumed: resume });
     const handle = lease.port.spawn(this.config.binaries.codex, args, { cwd: session.workspacePath, env: { ...codexEnv(this.config, connection.configDir), ...this.envIn(lease, plan.env) } });
-    this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }), lease);
+    this.attach(session, input, runId, plan, handle, new CodexStreamMapper({ runId, requestedModel: session.model, requestedEffort: session.effort, requestedMode: session.mode, resumed: resume }), lease);
   }
 
   // Whether Codex's own sandbox can start on this host (`codex sandbox -- true`), asked once: in a container without user

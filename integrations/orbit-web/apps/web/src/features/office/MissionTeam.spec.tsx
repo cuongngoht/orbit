@@ -462,4 +462,66 @@ describe("how the mission's people talk", () => {
     await userEvent.click(within(timeline).getByRole("button", { name: "All events" }));
     expect(within(timeline).getAllByRole("listitem")).toHaveLength(3);
   });
+
+  test("shows forwarded artifact origin and revision clearly, and never implies a missing required file was delivered", async () => {
+    const ROOT_ID = ASSIGNMENT_ID;
+    const MGR_ID = "a2000000-0000-4000-8000-000000000020";
+    const EMP_ID = "a2000000-0000-4000-8000-000000000021";
+    const ART_EMP = "a7000000-0000-4000-8000-000000000031";
+    const ART_MGR = "a7000000-0000-4000-8000-000000000032";
+    const ART_CEO = "a7000000-0000-4000-8000-000000000033";
+    const rootA = assignmentView({ id: ROOT_ID, title: "Board memo", employeeName: "An", state: "AWAITING_ACCEPTANCE", handoffRevision: 1 });
+    const mgrA = partView({ id: MGR_ID, parentId: ROOT_ID, unitKey: "research", title: "Research dept", employeeName: "Minh", state: "COMPLETED", handoffRevision: 1 });
+    const empA = partView({ id: EMP_ID, parentId: MGR_ID, unitKey: "draft", title: "Draft DOCX", employeeName: "Lan", state: "COMPLETED", handoffRevision: 2 });
+    const originRef = { artifactId: ART_EMP, handoffId: "4a000000-0000-4000-8000-000000000031", assignmentId: EMP_ID, unitKey: "draft", employeeName: "Lan", revision: 2, name: "board-memo.docx" };
+    const viaRef = { artifactId: ART_MGR, handoffId: "4a000000-0000-4000-8000-000000000032", assignmentId: MGR_ID, unitKey: "research", employeeName: "Minh", revision: 1, name: "board-memo.docx" };
+
+    fakeApi().on("GET", `/api/missions/${MISSION_ID}`, () =>
+      missionDetail({
+        title: "Board memo",
+        deliverables: [
+          { name: "board-memo.docx", required: true },
+          { name: "appendix.xlsx", required: true },
+        ],
+        assignments: [rootA, mgrA, empA],
+        handoffs: [
+          handoff({
+            id: "4a000000-0000-4000-8000-000000000033",
+            assignmentId: ROOT_ID,
+            revision: 1,
+            submittedBy: "An",
+            artifacts: [
+              {
+                id: ART_CEO,
+                name: "board-memo.docx",
+                kind: "deliverable",
+                mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                size: 4096,
+                sha256: "ab".repeat(32),
+                attachedFrom: viaRef,
+                origin: originRef,
+              },
+            ],
+            missing: ["appendix.xlsx"],
+            claims: [],
+          }),
+        ],
+      }),
+    );
+
+    // Overview must show board-memo.docx as Delivered and appendix.xlsx as Not delivered (never implying delivery).
+    show("overview");
+    const wanted = await screen.findByRole("region", { name: "What is wanted" });
+    const delivGroup = within(wanted).getByRole("group", { name: "Deliverables" });
+    expect(delivGroup.textContent).toContain("board-memo.docx");
+    expect(delivGroup.textContent).toContain("Delivered (rev 1)");
+    expect(delivGroup.textContent).toContain("appendix.xlsx");
+    expect(delivGroup.textContent).toContain("Not delivered (missing from rev 1)");
+
+    // Handoffs tab must show clear origin + intermediate revision without expanding Technical details, and warn on missing file.
+    renderLive(<OfficeView page="mission" item={MISSION_ID} tab="handoffs" go={vi.fn()} account={authAccount()} />);
+    const r1 = await screen.findByRole("article", { name: "Revision 1" });
+    expect(r1.textContent).toContain("Origin: Lan (draft) (rev 2) · via Minh (research) (rev 1)");
+    expect(r1.textContent).toContain("Missing deliverables: appendix.xlsx — not delivered in revision 1.");
+  });
 });

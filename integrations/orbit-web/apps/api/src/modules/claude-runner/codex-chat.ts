@@ -115,6 +115,12 @@ function toolOf(item: Json): ToolOf | null {
   return null;
 }
 
+// Scopes a Codex provider item id to its Orbit run so reused per-invocation ids (`item_0`, `cmd_1`) stay stable within
+// one execution and never collide across resumed turns, sessions or accounts.
+export const codexScopedId = (runId: string, rawId: string): string => `${runId}:${rawId}`;
+
+export const isCodexScopedId = (id: string, runId: string): boolean => id.startsWith(`${runId}:`);
+
 export class CodexStreamMapper {
   init: InitInfo | null = null;
   result: ResultInfo | null = null;
@@ -122,8 +128,9 @@ export class CodexStreamMapper {
   private readonly pending = new Set<string>();
   private lastText: string | null = null;
   private turns = 0;
+  private itemSeq = 0;
 
-  constructor(private readonly o: { requestedModel: ModelChoice; requestedEffort: EffortChoice; requestedMode: ModeChoice; resumed: boolean }) {}
+  constructor(private readonly o: { runId: string; requestedModel: ModelChoice; requestedEffort: EffortChoice; requestedMode: ModeChoice; resumed: boolean }) {}
 
   push(event: unknown): MappedEvent[] {
     if (!isRecord(event)) return [];
@@ -160,8 +167,14 @@ export class CodexStreamMapper {
     ];
   }
 
+  private itemId(item: Json): string {
+    const raw = str(item.id);
+    const local = raw !== null && raw.length > 0 ? raw : `item-${++this.itemSeq}`;
+    return isCodexScopedId(local, this.o.runId) ? local : codexScopedId(this.o.runId, local);
+  }
+
   private onItem(completed: boolean, item: Json): MappedEvent[] {
-    const id = str(item.id) ?? `item-${Math.random().toString(36).slice(2)}`;
+    const id = this.itemId(item);
     if (item.type === "agent_message") return completed ? this.message(id, str(item.text) ?? "") : [];
     // Codex's warnings (a setting it ignores, an instruction file cut short): said, never an error of the run.
     if (item.type === "error") return completed ? [{ type: "run.notice", data: { kind: "info", message: redactSecrets(str(item.message) ?? "").slice(0, 500) } }] : [];

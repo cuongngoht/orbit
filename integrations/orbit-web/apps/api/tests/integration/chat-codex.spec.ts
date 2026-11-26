@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import type { RuntimeConnection, SessionSummary } from "@orbit-web/contracts";
+import type { AnySessionEvent, RuntimeConnection, SessionDetail, SessionSummary } from "@orbit-web/contracts";
+import { Transcript } from "../../src/modules/claude-runner/transcript.js";
 import { fakeCodexControl } from "../../src/testing/fake-codex.js";
 import { program, type Call, type FakeChild } from "../../src/testing/fake-process.js";
 import { startHarness, type Harness } from "../../src/testing/harness.js";
@@ -81,6 +82,94 @@ describe("a chat on OpenAI Codex", () => {
     const second = h.fake.children.filter((c) => isChatRun(c.call.file, c.call.args)).at(-1) as { call: Call };
     assert.deepEqual(second.call.args.slice(0, 2), ["exec", "resume"]);
     assert.deepEqual(second.call.args.slice(-2), ["th_chat", "-"]);
+  });
+});
+
+describe("Codex reused provider item IDs across turns (Issue #1 regression)", () => {
+  let h: Harness;
+  let codex: RuntimeConnection;
+
+  before(async () => {
+    h = await startHarness();
+    fakeCodexControl(h.fake);
+    h.fake.on(program("codex", "sandbox"), { run: { code: 0 } });
+    // Stand-in Codex that reuses the EXACT same provider item IDs (`item_0`, `item_1`) on every invocation.
+    h.fake.on(isChatRun, {
+      spawn: (c) => {
+        c.onSignal((s) => c.exit(null, s));
+        c.onInputClosed(() => {
+          const prompt = c.written.join("");
+          const reply = prompt.includes("ORBIT-ROUND-TWO-906") ? "ORBIT-ROUND-TWO-906" : "ORBIT-ROUND-ONE-348";
+          c.line({ type: "thread.started", thread_id: "th_reuse" });
+          c.line({ type: "turn.started" });
+          c.line({ type: "item.started", item: { id: "item_0", type: "command_execution", command: "echo ok", aggregated_output: "", exit_code: null, status: "in_progress" } });
+          c.line({ type: "item.completed", item: { id: "item_0", type: "command_execution", command: "echo ok", aggregated_output: `${reply}\n`, exit_code: 0, status: "completed" } });
+          c.line({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: reply } });
+          c.line({ type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 5 } });
+          c.exit(0);
+        });
+      },
+    });
+    const made = await h.send("POST", "/api/connections", { runtime: "codex", method: "api_key", apiKey: "sk-proj-test-key-0123456789abcdefghijABCDE" });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    codex = made.body as RuntimeConnection;
+  });
+  after(() => h.close());
+
+  test("both completed replies persist in order after reload and event replay, and replaying a completed event never duplicates a message", async () => {
+    const created = await h.send("POST", "/api/sessions", { repository: null, connectionId: codex.id, model: "gpt-6.1-sol", prompt: "Reply with exact text ORBIT-ROUND-ONE-348" });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const s = created.body as SessionSummary;
+    await h.events(`/api/sessions/${s.id}/events`, { until: (es) => es.some((e) => e.type === "session.status" && (e.data as { status: string }).status === "completed") });
+
+    const followUp = await h.send("POST", `/api/sessions/${s.id}/messages`, { text: "Reply with exact text ORBIT-ROUND-TWO-906" });
+    assert.equal(followUp.status, 202, JSON.stringify(followUp.body));
+    const { events } = await h.events(`/api/sessions/${s.id}/events`, {
+      until: (es) => es.filter((e) => e.type === "session.status" && (e.data as { status: string }).status === "completed").length >= 2,
+    });
+
+    // Reload: session detail must contain all 4 messages in exact turn order.
+    const reloaded = await h.get(`/api/sessions/${s.id}`);
+    assert.equal(reloaded.status, 200);
+    const detail = reloaded.body as SessionDetail;
+    assert.deepEqual(
+      detail.messages.map((m) => [m.role, m.text]),
+      [
+        ["user", "Reply with exact text ORBIT-ROUND-ONE-348"],
+        ["assistant", "ORBIT-ROUND-ONE-348"],
+        ["user", "Reply with exact text ORBIT-ROUND-TWO-906"],
+        ["assistant", "ORBIT-ROUND-TWO-906"],
+      ],
+    );
+    const assistantMsgs = detail.messages.filter((m) => m.role === "assistant");
+    assert.notEqual(assistantMsgs[0]?.id, assistantMsgs[1]?.id, "reused provider item IDs must become distinct message IDs across turns");
+    assert.notEqual(assistantMsgs[0]?.runId, assistantMsgs[1]?.runId);
+    assert.equal(assistantMsgs[0]?.id, `${assistantMsgs[0]?.runId}:item_1`);
+    assert.equal(assistantMsgs[1]?.id, `${assistantMsgs[1]?.runId}:item_1`);
+
+    // Event replay: distinct messageIds and toolUseIds across runs, and stable within each run.
+    const completedAssistant = events.filter((e) => e.type === "message.completed" && (e.data as { role: string }).role === "assistant") as unknown as AnySessionEvent[];
+    assert.equal(completedAssistant.length, 2);
+    const startedAssistant = events.filter((e) => e.type === "message.started" && (e.data as { role: string }).role === "assistant") as unknown as AnySessionEvent[];
+    assert.equal(startedAssistant.length, 2);
+    assert.equal((startedAssistant[0]?.data as { messageId: string }).messageId, (completedAssistant[0]?.data as { messageId: string }).messageId);
+    assert.equal((startedAssistant[1]?.data as { messageId: string }).messageId, (completedAssistant[1]?.data as { messageId: string }).messageId);
+    assert.notEqual((completedAssistant[0]?.data as { messageId: string }).messageId, (completedAssistant[1]?.data as { messageId: string }).messageId);
+
+    const completedTools = events.filter((e) => e.type === "tool.completed") as unknown as AnySessionEvent[];
+    assert.equal(completedTools.length, 2);
+    assert.notEqual((completedTools[0]?.data as { toolUseId: string }).toolUseId, (completedTools[1]?.data as { toolUseId: string }).toolUseId);
+
+    // Replaying the exact same completed event into Transcript must not duplicate a message.
+    const transcript = h.app.get(Transcript);
+    await transcript.keep(completedAssistant[0] as AnySessionEvent);
+    await transcript.keep(completedAssistant[1] as AnySessionEvent);
+    const afterReplay = (await h.get(`/api/sessions/${s.id}`)).body as SessionDetail;
+    assert.equal(afterReplay.messages.length, 4);
+    assert.deepEqual(
+      afterReplay.messages.map((m) => [m.id, m.role, m.text]),
+      detail.messages.map((m) => [m.id, m.role, m.text]),
+    );
   });
 });
 

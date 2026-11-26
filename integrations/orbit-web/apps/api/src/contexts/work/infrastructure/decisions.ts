@@ -2,7 +2,7 @@
 // give, a run to reconcile, work that can never start as configured -- each pinned to the version it was raised against,
 // deduplicated by a key (one open item per subject), resolved by the command of the context that owns the subject.
 import { Inject, Injectable } from "@nestjs/common";
-import type { InboxItem, InboxKind } from "@orbit-web/contracts";
+import type { InboxCategory, InboxCounts, InboxItem, InboxKind } from "@orbit-web/contracts";
 import { randomUUID } from "node:crypto";
 import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 
@@ -60,9 +60,17 @@ export class DecisionRepository {
     await this.db.query("UPDATE workforce.decisions SET state = 'withdrawn', resolution = $3, resolved_at = $4, version = version + 1 WHERE account_id = $1 AND assignment_id = $2 AND state = 'open'", [orbitId, assignmentId, resolution.slice(0, 300), new Date().toISOString()]);
   }
 
-  async list(orbitId: string, open: boolean, cursor: string | null, limit: number): Promise<InboxItem[]> {
+  async list(orbitId: string, open: boolean, cursor: string | null, limit: number, category: InboxCategory = "all"): Promise<InboxItem[]> {
+    const kindClause =
+      category === "reviews"
+        ? "AND kind = 'acceptance'"
+        : category === "clarifications"
+          ? "AND kind = 'information'"
+          : category === "other"
+            ? "AND kind NOT IN ('acceptance', 'information')"
+            : "";
     const rows = await this.db.query(
-      `SELECT * FROM workforce.decisions WHERE account_id = $1 AND ${open ? "state = 'open'" : "state <> 'open'"}
+      `SELECT * FROM workforce.decisions WHERE account_id = $1 AND ${open ? "state = 'open'" : "state <> 'open'"} ${kindClause}
          AND ($2::uuid IS NULL OR (created_at, id) < (SELECT created_at, id FROM workforce.decisions WHERE account_id = $1 AND id = $2::uuid))
        ORDER BY created_at DESC, id DESC LIMIT $3`,
       [orbitId, cursor, limit],
@@ -71,6 +79,21 @@ export class DecisionRepository {
   }
 
   async openCount(orbitId: string): Promise<number> {
-    return Number((await this.db.one("SELECT count(*) AS n FROM workforce.decisions WHERE account_id = $1 AND state = 'open'", [orbitId]))?.n ?? 0);
+    return (await this.openCounts(orbitId)).total;
+  }
+
+  async openCounts(orbitId: string): Promise<InboxCounts> {
+    const rows = await this.db.query("SELECT kind, count(*) AS n FROM workforce.decisions WHERE account_id = $1 AND state = 'open' GROUP BY kind", [orbitId]);
+    let reviews = 0;
+    let clarifications = 0;
+    let other = 0;
+    for (const r of rows) {
+      const kind = String(r.kind);
+      const n = Number(r.n ?? 0);
+      if (kind === "acceptance") reviews += n;
+      else if (kind === "information") clarifications += n;
+      else other += n;
+    }
+    return { total: reviews + clarifications + other, reviews, clarifications, other };
   }
 }

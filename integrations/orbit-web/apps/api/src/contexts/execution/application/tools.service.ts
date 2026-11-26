@@ -22,6 +22,7 @@ import { areaWords, FILE_AREAS, readOnlyAreaOf, TOOLBOX } from "../infrastructur
 import { RunRepository, type RunRecord } from "../infrastructure/runs.repository.js";
 import type { GovernanceContext } from "../../../modules/auth/principal.js";
 import { CONNECTOR_TOOLS, type ConnectorTools } from "./connector-tools.port.js";
+import { validateDocx } from "./docx-validate.js";
 import { ResearchInputs, type ClaimInput } from "./research-inputs.js";
 import { RUN_OUTCOMES, type AttemptContext, type RunOutcomes, type StagedArtifact } from "./run-outcomes.port.js";
 import { SANDBOX_PROVIDER, type AttemptHandle, type SandboxProvider } from "./sandbox.port.js";
@@ -47,7 +48,42 @@ const TOOLS: ToolSpec[] = [
   { name: "write_file", description: `Create or replace a file in ${areaWords({ write: true })}.`, inputSchema: obj({ path: str("The file to write"), content: str("Its whole text") }, ["path", "content"]) },
   { name: "edit_file", description: "Replace one exact occurrence of a text in a file.", inputSchema: obj({ path: str("The file"), old_text: str("Text that occurs exactly once"), new_text: str("Its replacement") }, ["path", "old_text", "new_text"]) },
   { name: "shell", description: "Run a shell command in your sandbox (bash), in /work or a directory under it. Install packages, write and run scripts, build, test.", inputSchema: obj({ command: str("The command line"), cwd: str("A directory under /work (default /work)"), timeout_seconds: { type: "integer", minimum: 1, maximum: 3600 } }, ["command"]) },
-  { name: "submit_handoff", description: "Hand in your result once the deliverables are in /output: a short summary and the claims it rests on. Cite a source you were given by its label (S1, S2 ...) and quote the exact words of it the claim rests on: Orbit checks the quote against the source.", inputSchema: obj({ summary: str("What you did and how you checked it"), claims: { type: "array", items: obj({ text: str("A claim of your result"), sources: { type: "array", items: { type: "string" }, description: "Labels of the sources it rests on, e.g. S1" }, quote: str("The exact words of the cited source the claim rests on"), url: str("A web page it rests on, if any") }, ["text"]) } }, ["summary"]) },
+  {
+    name: "submit_handoff",
+    description:
+      "Hand in your result once the deliverables are in /output (or attached by reference from accepted direct parts via attach_artifacts): a short summary and the claims it rests on. For binary deliverables (such as .docx, .pdf, .xlsx, or images) already produced by a direct part whose hand-in you accepted, pass them in attach_artifacts instead of reading them as text or rewriting them. Cite a source you were given by its label (S1, S2 ...) and quote the exact words of it the claim rests on: Orbit checks the quote against the source.",
+    inputSchema: obj(
+      {
+        summary: str("What you did and how you checked it"),
+        claims: {
+          type: "array",
+          items: obj(
+            {
+              text: str("A claim of your result"),
+              sources: { type: "array", items: { type: "string" }, description: "Labels of pinned research sources it rests on, e.g. S1" },
+              quote: str("The exact words of the cited pinned source or mission brief the claim rests on"),
+              url: str("A web page it rests on, if any"),
+              basis: { type: "string", enum: ["source", "brief", "web", "external"], description: "Origin of the claim: source (pinned research source), brief (verbatim from the mission brief), web (web URL), or external (other knowledge)" },
+            },
+            ["text"],
+          ),
+        },
+        attach_artifacts: {
+          type: "array",
+          description: "Attach files verbatim (byte-for-byte, preserving exact binary integrity and lineage) from your authorized direct parts' accepted hand-ins without reading or rebuilding them.",
+          items: obj(
+            {
+              part: str("The direct part's key (e.g. research or report)"),
+              name: str("Exact artifact file name from that part's accepted hand-in (e.g. report.docx)"),
+              as: str("Optional file name in your hand-in if you want to rename it (defaults to name)"),
+            },
+            ["part", "name"],
+          ),
+        },
+      },
+      ["summary"],
+    ),
+  },
 ];
 
 // Asked of its lead (a part) or of the person who gave the work (the root): the tool says which.
@@ -370,6 +406,7 @@ export class ToolsService {
     await this.outcomes.mayPublish(actor, run.assignmentId, run.fence);
     const entries = (await this.provider!.list(h, "/output", 200)).filter((e) => e.type === "file");
     const staged: StagedArtifact[] = [];
+    const seenNames = new Set<string>();
     let total = 0;
     for (const e of entries) {
       const name = e.path.replace(/^\/?output\//, "").replace(/^\//, "");
@@ -379,23 +416,75 @@ export class ToolsService {
       if (bytes === null) continue;
       total += bytes.length;
       if (total > MAX_HANDOFF) return { text: "The hand-in is larger than 200 MiB in all.", isError: true };
+      if (name.toLowerCase().endsWith(".docx")) {
+        const checked = validateDocx(bytes);
+        if (!checked.ok) {
+          return {
+            text: `Cannot hand in "${name}": it is not a valid Word (.docx) document (${checked.reason}). Generate a valid .docx package containing [Content_Types].xml, _rels/.rels, and word/document.xml, or attach a reviewed direct part's valid .docx via attach_artifacts, then call submit_handoff again.`,
+            isError: true,
+          };
+        }
+      }
       const stored = await this.artifacts.put(run.orbitId, bytes);
-      staged.push({ name, kind: "deliverable", mediaType: mediaOf(name), size: stored.size, sha256: stored.sha256 });
+      seenNames.add(name);
+      staged.push({ name, kind: "deliverable", mediaType: mediaOf(name), size: stored.size, sha256: stored.sha256, sourceArtifactId: null });
+    }
+    if (args.attach_artifacts !== undefined) {
+      if (!Array.isArray(args.attach_artifacts)) return { text: "attach_artifacts must be a list of { part, name, as? } objects.", isError: true };
+      for (const raw of args.attach_artifacts.slice(0, 50)) {
+        const item = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+        const part = typeof item.part === "string" ? item.part.trim() : "";
+        const sourceName = typeof item.name === "string" ? item.name.trim() : "";
+        const targetName = typeof item.as === "string" && item.as.trim().length > 0 ? item.as.trim() : sourceName;
+        if (part.length === 0 || sourceName.length === 0) return { text: "Each entry in attach_artifacts must name both part and name.", isError: true };
+        if (!isDeliverableName(targetName)) return { text: `"${targetName}" in attach_artifacts is not a plain file name (letters, digits, dots, dashes, spaces).`, isError: true };
+        if (seenNames.has(targetName)) return { text: `Duplicate deliverable "${targetName}": it is already in /output or listed twice in attach_artifacts.`, isError: true };
+        const resolved = await this.outcomes.resolveChildArtifact(run.orbitId, run.assignmentId, run.fence, part, sourceName);
+        if (!resolved.ok) return { text: resolved.reason, isError: true };
+        if (resolved.size > MAX_ARTIFACT) return { text: `${targetName} is larger than ${MAX_ARTIFACT / 1024 / 1024} MiB.`, isError: true };
+        const bytes = this.artifacts.read(run.orbitId, resolved.sha256);
+        if (bytes === null) return { text: `Artifact "${sourceName}" from part "${part}" is unavailable or failed integrity verification.`, isError: true };
+        total += bytes.length;
+        if (total > MAX_HANDOFF) return { text: "The hand-in is larger than 200 MiB in all.", isError: true };
+        if (targetName.toLowerCase().endsWith(".docx")) {
+          const checked = validateDocx(bytes);
+          if (!checked.ok) {
+            return {
+              text: `Cannot attach "${sourceName}" from part "${part}" as "${targetName}": it is not a valid Word (.docx) document (${checked.reason}). Request a revision from that part so it produces a valid .docx file.`,
+              isError: true,
+            };
+          }
+        }
+        seenNames.add(targetName);
+        staged.push({
+          name: targetName,
+          kind: "deliverable",
+          mediaType: resolved.mediaType || mediaOf(targetName),
+          size: bytes.length,
+          sha256: resolved.sha256,
+          sourceArtifactId: resolved.artifactId,
+        });
+      }
     }
     const asked: ClaimInput[] = Array.isArray(args.claims)
       ? args.claims.slice(0, 100).map((c) => {
           const x = (typeof c === "object" && c !== null ? c : {}) as Record<string, unknown>;
           const url = typeof x.url === "string" && /^https?:\/\//.test(x.url) ? x.url.slice(0, 2000) : null;
           const labels = Array.isArray(x.sources) ? x.sources.filter((l): l is string => typeof l === "string").slice(0, 10).map((l) => l.slice(0, 20)) : [];
-          return { text: String(x.text ?? "").slice(0, 2000), sources: labels, quote: typeof x.quote === "string" ? x.quote.slice(0, 1000) : null, url };
+          const basis = x.basis === "source" || x.basis === "brief" || x.basis === "web" || x.basis === "external" ? x.basis : null;
+          return { text: String(x.text ?? "").slice(0, 2000), sources: labels, quote: typeof x.quote === "string" ? x.quote.slice(0, 1000) : null, url, basis };
         })
       : [];
     const ctx = await this.outcomes.current(run.orbitId, run.assignmentId, run.fence);
-    const claims = await this.research.verify(run.orbitId, ctx?.sources ?? [], asked);
+    const briefText =
+      ctx === null
+        ? ""
+        : [ctx.brief.goal, ...ctx.brief.acceptanceCriteria, ...ctx.brief.answers.map((a) => a.answer)].filter((s) => s.length > 0).join("\n");
+    const claims = await this.research.verify(run.orbitId, ctx?.sources ?? [], asked, briefText);
     const submissionKey = `${run.id}:${createHash("sha256").update(JSON.stringify({ summary, staged, claims: claims.map((c) => c.text) })).digest("hex").slice(0, 32)}`;
     try {
       const r = await this.outcomes.handoff(actor, run.assignmentId, run.fence, { runId: run.id, summary, artifacts: staged, claims, submissionKey });
-      const missingNote = r.missing.length > 0 ? ` The required ${r.missing.join(", ")} ${r.missing.length === 1 ? "is" : "are"} missing from /output -- the reviewer will see that.` : "";
+      const missingNote = r.missing.length > 0 ? ` The required ${r.missing.join(", ")} ${r.missing.length === 1 ? "is" : "are"} missing from your hand-in -- the reviewer will see that.` : "";
       return { text: `Handed in as revision ${r.revision} (${staged.length} file(s)).${missingNote} Stop here: the reviewer decides next.`, isError: false };
     } catch (err) {
       if (err instanceof Error && "code" in err && (err as { code?: string }).code === "stale_fence") throw conflictWith("attempt_replaced", "This attempt was replaced: its hand-in was not recorded.");

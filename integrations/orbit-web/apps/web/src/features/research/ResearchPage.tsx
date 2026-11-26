@@ -12,6 +12,7 @@ import { useViewport } from "../../hooks/useViewport";
 import { useI18n } from "../../i18n";
 import { useAppEvent } from "../../services/events/AppEvents";
 import { ModelEffortPicker } from "../composer/RunPickers";
+import { useConnections } from "../connections/AiConnectionsSection";
 import { PeopleAccess } from "../share/PeopleAccess";
 import { AddSourcesDialog } from "./AddSourcesDialog";
 import { research } from "./api";
@@ -137,6 +138,25 @@ const useStyles = makeStyles({
 
 type MobilePanel = "sources" | "chat" | "evidence";
 
+const draftKeyOf = (sessionId: string): string => `orbit-web.research.draft.${sessionId}`;
+
+function readSavedDraft(sessionId: string): string {
+  try {
+    return window.sessionStorage.getItem(draftKeyOf(sessionId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeSavedDraft(sessionId: string, text: string): void {
+  try {
+    if (text === "") window.sessionStorage.removeItem(draftKeyOf(sessionId));
+    else window.sessionStorage.setItem(draftKeyOf(sessionId), text);
+  } catch {
+    // ignore storage errors in restricted environments
+  }
+}
+
 export interface ResearchPageProps {
   sessionId: string;
   onUpdated: (s: ResearchSessionSummary) => void;
@@ -150,12 +170,17 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
   const touch = isMobile || isCoarse;
   const detail = useResource<ResearchSessionDetail>(() => research.session(sessionId), [sessionId]);
   const { state, connected } = useResearchStream(sessionId);
+  const connections = useConnections();
+  useAppEvent("connections.changed", () => {
+    void connections.reload();
+  });
   const workspaceId = detail.data?.workspaceId ?? null;
   const workspace = useResource<ResearchWorkspaceDetail>(workspaceId ? () => research.workspace(workspaceId) : null, [workspaceId]);
   const sources = useResource<ResearchSourceSummary[]>(workspaceId ? () => research.sources(workspaceId) : null, [workspaceId]);
   const notes = useResource<ResearchNote[]>(workspaceId ? () => research.notes(workspaceId) : null, [workspaceId]);
   const findings = useResource<ResearchFinding[]>(workspaceId ? () => research.findings(workspaceId) : null, [workspaceId]);
   const [selection, setSelection] = useState<string[] | null>(null);
+  const [initialDraft] = useState(() => readSavedDraft(sessionId));
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
   const [showSources, setShowSources] = useState(true);
   const [showEvidence, setShowEvidence] = useState(true);
@@ -236,12 +261,24 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       setError(err);
     }
   };
+  const connectionsView = connections.data;
+  const researchReady =
+    connectionsView === null
+      ? true
+      : connectionsView.activation?.uses.research === true ||
+        connectionsView.connections.some((c) => c.uses.research.ready);
+  const missingClaude = connectionsView !== null && !researchReady;
+  const claudeConnection = connectionsView?.connections.find((c) => c.runtime === "claude") ?? null;
+  const missingClaudeReason = missingClaude && claudeConnection !== null ? claudeConnection.uses.research.reason : null;
+
   const ask = async (text: string): Promise<boolean> => {
+    if (missingClaude) return false;
     setBusy(true);
     setError(null);
     setChosen(null);
     try {
       await research.ask(sessionId, text);
+      writeSavedDraft(sessionId, "");
       return true;
     } catch (err) {
       setError(err);
@@ -347,6 +384,10 @@ export function ResearchPage({ sessionId, onUpdated, onOpenNav }: ResearchPagePr
       draftQuestion={session.draftQuestion}
       busy={busy}
       error={error}
+      missingClaude={missingClaude}
+      missingClaudeReason={missingClaudeReason}
+      initialDraft={initialDraft}
+      onDraftChange={(text) => writeSavedDraft(sessionId, text)}
       onAsk={ask}
       onStop={() => void research.stop(sessionId).catch((err: unknown) => setError(err))}
       onShowCitations={(id) => {

@@ -59,6 +59,8 @@ import {
   type AssignmentAction,
   type AssignmentTarget,
   type AssignmentView,
+  type ArtifactSourceRef,
+  type ArtifactView,
   type ClarificationKind,
   type ClarificationState,
   type ClarificationView,
@@ -80,6 +82,7 @@ import { bytesText } from "../resources/format";
 import { isNotServed, office, useOfficeRead, wholeRoster, type AssignmentCommand } from "./api";
 import { AsOf, Callout, EmployeeAvatar, ProblemBar, RUN_STATE_KEYS, StateBadge, humanizeActor, humanizeWaitingOn, short, useAction, useOfficeStyles, when, whenSeconds } from "./parts";
 import { MissionCommunication } from "./MissionThread";
+import { QueuedBehindCallout } from "./QueuedBehindCallout";
 import { RunDetails } from "./RunDetails";
 
 const useStyles = makeStyles({
@@ -1459,7 +1462,38 @@ function AcceptDialog({ h, onClose, onConfirm, busy }: { h: HandoffView; onClose
 
 const SHOWN = /^(text\/(markdown|plain|csv)|application\/(json|pdf)|image\/(png|jpeg))$/;
 
-function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; a: AssignmentView | null; assignments: readonly AssignmentView[]; onDone: () => void; onLoadLatest: () => void }) {
+function formatArtifactProvenance(
+  t: I18nContextValue["t"],
+  x: ArtifactView,
+  handoffRevision: number,
+  submitterLabel: string,
+): string {
+  const partSuffix = (ref: ArtifactSourceRef): string => (ref.unitKey && ref.unitKey !== "root" ? ` (${ref.unitKey})` : "");
+  const via = x.attachedFrom ?? null;
+  const origin = x.origin ?? null;
+  if (via !== null) {
+    if (origin !== null && origin.artifactId !== via.artifactId) {
+      return t("office.mission.artifactOriginVia", {
+        originBy: origin.employeeName || submitterLabel,
+        originPart: partSuffix(origin),
+        originRevision: origin.revision,
+        viaBy: via.employeeName || submitterLabel,
+        viaPart: partSuffix(via),
+        viaRevision: via.revision,
+      });
+    }
+    return t("office.mission.artifactAttachedFrom", {
+      by: via.employeeName || submitterLabel,
+      part: partSuffix(via),
+      revision: via.revision,
+    });
+  }
+  const by = origin?.employeeName || submitterLabel;
+  const revision = origin?.revision ?? handoffRevision;
+  return t("office.mission.artifactCreatedBy", { by, revision });
+}
+
+function Handoff({ h, a, assignments, pinnedSourceCount, onDone, onLoadLatest }: { h: HandoffView; a: AssignmentView | null; assignments: readonly AssignmentView[]; pinnedSourceCount: number; onDone: () => void; onLoadLatest: () => void }) {
   const { t } = useI18n();
   const s = useStyles();
   const o = useOfficeStyles();
@@ -1472,8 +1506,23 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
   const reviewable = h.status === "submitted" && a !== null;
   const submitter = humanizeActor(h.submittedBy, assignments, t);
   const reviewer = h.review ? humanizeActor(h.review.by, assignments, t) : null;
-  const supportedCount = h.claims.filter((c) => c.supported).length;
-  const unverifiedCount = h.claims.length - supportedCount;
+  const claimBasisOf = (c: HandoffView["claims"][number]): "pinned_source" | "brief" | "web" | "external" => {
+    if (c.supported) return "pinned_source";
+    if (c.basis === "brief") return "brief";
+    if (c.basis === "web" || c.web) return "web";
+    return "external";
+  };
+  const supportedCount = h.claims.filter((c) => claimBasisOf(c) === "pinned_source").length;
+  const briefCount = h.claims.filter((c) => claimBasisOf(c) === "brief").length;
+  const webCount = h.claims.filter((c) => claimBasisOf(c) === "web").length;
+  const externalCount = h.claims.filter((c) => claimBasisOf(c) === "external").length;
+  const claimsSummaryParts = [
+    t("office.mission.claimsHeading", { total: h.claims.length }),
+    t("office.mission.claimsCountVerified", { count: supportedCount }),
+    ...(briefCount > 0 ? [t("office.mission.claimsCountBrief", { count: briefCount })] : []),
+    ...(webCount > 0 ? [t("office.mission.claimsCountWeb", { count: webCount })] : []),
+    ...(externalCount > 0 || (briefCount === 0 && webCount === 0) ? [t("office.mission.claimsCountExternal", { count: externalCount })] : []),
+  ];
   const review = async (command: AssignmentCommand, body: object) => {
     if (a === null) return;
     const ok = await act.run(() => office.command(a.id, a.version, command, { handoffDigest: h.digest, ...body }));
@@ -1501,15 +1550,21 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
         <ul className={o.list} aria-label={t("office.mission.artifactsAria", { revision: h.revision })}>
           {h.artifacts.map((x) => {
             const canPreview = SHOWN.test(x.mediaType);
+            const provenance = formatArtifactProvenance(t, x, h.revision, submitter.label);
             return (
               <li key={x.id} className={s.fileRow}>
-                <div className={o.row}>
-                  <Link className="orbit-target" href={office.artifactHref(x.id)} {...(canPreview ? {} : { download: x.name })} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
-                    {!canPreview && <ArrowDownload16Regular aria-hidden />} {x.name}
-                  </Link>
-                  <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
-                    {bytesText(x.size)}
-                    {showTech ? ` · ${x.kind} · ${x.mediaType} · sha256 ${short(x.sha256)}` : ""}
+                <div className={o.stack} style={{ gap: "2px", minWidth: 0 }}>
+                  <div className={o.row}>
+                    <Link className="orbit-target" href={office.artifactHref(x.id)} {...(canPreview ? {} : { download: x.name })} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+                      {!canPreview && <ArrowDownload16Regular aria-hidden />} {x.name}
+                    </Link>
+                    <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+                      {bytesText(x.size)}
+                      {showTech ? ` · ${x.kind} · ${x.mediaType} · sha256 ${short(x.sha256)}` : ""}
+                    </Text>
+                  </div>
+                  <Text size={100} className={mergeClasses(o.muted, o.wrap)}>
+                    {provenance}
                   </Text>
                 </div>
                 {canPreview && (
@@ -1524,41 +1579,68 @@ function Handoff({ h, a, assignments, onDone, onLoadLatest }: { h: HandoffView; 
       )}
       {h.claims.length > 0 && (
         <div className={o.stack} style={{ gap: "8px" }}>
-          <div className={o.stack} style={{ gap: "2px" }}>
-            <Text size={200} weight="semibold">
-              {t("office.mission.claimsSummary", { total: h.claims.length, supported: supportedCount, unverified: unverifiedCount })}
-            </Text>
-            {unverifiedCount > 0 && (
+          <div className={o.stack} style={{ gap: "4px" }}>
+            <div className={o.row} style={{ gap: "8px", flexWrap: "wrap" }}>
+              <Text size={200} weight="semibold">
+                {claimsSummaryParts.join(" · ")}
+              </Text>
+              <Badge appearance="outline" color={pinnedSourceCount === 0 ? "subtle" : "informative"} size="small">
+                {pinnedSourceCount === 0 ? t("office.mission.noPinnedSourcesBadge") : t("office.mission.pinnedSourcesBadge", { count: pinnedSourceCount })}
+              </Badge>
+            </div>
+            {(pinnedSourceCount === 0 || briefCount > 0 || webCount > 0 || externalCount > 0) && (
               <Text size={200} className={o.muted}>
-                {t("office.mission.claimsUnverifiedHint")}
+                {pinnedSourceCount === 0 ? t("office.mission.claimsNoSourcesHint") : t("office.mission.claimsUnverifiedHint")}
               </Text>
             )}
           </div>
           <ul className={o.list} aria-label={t("office.mission.claimsAria", { revision: h.revision })}>
-            {h.claims.map((c, i) => (
-              <li key={`${i}:${c.text}`} className={o.item}>
-                <div className={o.row}>
-                  <Badge appearance="tint" color={c.supported ? "success" : "warning"} title={c.supported ? t("office.mission.supported") : t("office.mission.claimsUnverifiedHint")}>
-                    {c.supported ? t("office.mission.supported") : t("office.mission.notSupported")}
-                  </Badge>
-                </div>
-                <Text size={200} className={o.wrap}>
-                  {c.text}
-                </Text>
-                {c.sources.map((src) => (
-                  <Text key={`${src.label}:${src.revisionId}`} size={200} className={mergeClasses(o.muted, o.wrap)}>
-                    [{src.label}] {src.locator}: “{src.excerpt}”
+            {h.claims.map((c, i) => {
+              const basis = claimBasisOf(c);
+              const badgeColor = basis === "pinned_source" ? "success" : basis === "brief" ? "informative" : basis === "web" ? "subtle" : "warning";
+              const badgeText =
+                basis === "pinned_source"
+                  ? t("office.mission.supported")
+                  : basis === "brief"
+                    ? t("office.mission.claimFromBrief")
+                    : basis === "web"
+                      ? t("office.mission.claimFromWeb")
+                      : t("office.mission.notSupported");
+              return (
+                <li key={`${i}:${c.text}`} className={o.item}>
+                  <div className={o.row}>
+                    <Badge appearance="tint" color={badgeColor} title={basis === "pinned_source" ? t("office.mission.supported") : t("office.mission.claimsUnverifiedHint")}>
+                      {badgeText}
+                    </Badge>
+                  </div>
+                  <Text size={200} className={o.wrap}>
+                    {c.text}
                   </Text>
-                ))}
-              </li>
-            ))}
+                  {c.sources.map((src) => (
+                    <Text key={`${src.label}:${src.revisionId}`} size={200} className={mergeClasses(o.muted, o.wrap)}>
+                      [{src.label}] {src.locator}: “{src.excerpt}”
+                    </Text>
+                  ))}
+                  {basis === "brief" && c.briefExcerpt && (
+                    <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+                      {t("office.mission.briefExcerptLine", { excerpt: c.briefExcerpt })}
+                    </Text>
+                  )}
+                  {c.web?.url && (
+                    <Text size={200} className={mergeClasses(o.muted, o.wrap)}>
+                      {t("office.mission.webSourceLine", { url: c.web.url })}
+                    </Text>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
       {h.missing.length > 0 && (
-        <Text size={200} className={mergeClasses(o.danger, o.wrap)}>
-          {t("office.mission.missingDeliverables", { missing: h.missing.join(", ") })}
-        </Text>
+        <MessageBar intent="warning">
+          <MessageBarBody>{t("office.mission.missingDeliverables", { missing: h.missing.join(", "), revision: h.revision })}</MessageBarBody>
+        </MessageBar>
       )}
       {h.review && reviewer && (
         <Text size={200} className={mergeClasses(o.muted, s.plain)} title={reviewer.raw ?? undefined}>
@@ -1664,7 +1746,7 @@ function HandIns({ m, onDone, onLoadLatest }: { m: MissionDetail; onDone: () => 
             </div>
           )}
           {g.list.map((h) => (
-            <Handoff key={`${h.id}:${h.status}`} h={h} a={g.a} assignments={m.assignments} onDone={onDone} onLoadLatest={onLoadLatest} />
+            <Handoff key={`${h.id}:${h.status}`} h={h} a={g.a} assignments={m.assignments} pinnedSourceCount={m.sourceRevisionIds.length} onDone={onDone} onLoadLatest={onLoadLatest} />
           ))}
         </section>
       ))}
@@ -1798,6 +1880,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
   const creator = humanizeActor(m.createdBy, m.assignments, t);
   const rootRunWaiting = root?.lastRun && (root.lastRun.state === "waiting_for_resources" || root.lastRun.state === "unschedulable") ? root.lastRun : null;
   const awaitingOwnerAcceptance = root?.state === "AWAITING_ACCEPTANCE" && root.actions.includes("accept");
+  const latestRootHandoff = root === null ? null : (m.handoffs.filter((h) => h.assignmentId === root.id).sort((x, y) => y.revision - x.revision)[0] ?? null);
   return (
     <div className={o.page}>
       <section className={o.heroCard} aria-label={m.title}>
@@ -1823,6 +1906,7 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
             {m.nextAction ? t("office.work.next", { next: m.nextAction }) : ""}
           </Text>
         </div>
+        {m.assignment.state === "QUEUED" && m.queuedBehind && <QueuedBehindCallout employeeName={m.assignment.employeeName} queuedBehind={m.queuedBehind} go={go} />}
         {parts.length > 0 && (
           <div className={o.stack} style={{ gap: "6px" }}>
             <div className={s.progressTrack} aria-hidden>
@@ -1976,7 +2060,36 @@ export function MissionPage({ id, tab, go }: { id: string; tab: string | null; g
                 {m.deliverables.length > 0 && (
                   <>
                     <dt className={o.dt}>{t("office.assign.deliverables")}</dt>
-                    <dd className={o.dd}>{m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")}</dd>
+                    <dd className={o.dd}>
+                      {latestRootHandoff === null ? (
+                        m.deliverables.map((d) => `${d.name}${d.required ? "" : ` (${t("office.assign.optionalTag")})`}`).join(", ")
+                      ) : (
+                        <div className={o.stack} style={{ gap: "4px" }} role="group" aria-label={t("office.assign.deliverables")}>
+                          {m.deliverables.map((d) => {
+                            const delivered = latestRootHandoff.artifacts.some((art) => art.name === d.name);
+                            const isMissing = d.required && (!delivered || latestRootHandoff.missing.includes(d.name));
+                            return (
+                              <div key={d.name} className={o.row} style={{ gap: "6px" }}>
+                                <Text size={200} className={o.wrap}>
+                                  {d.name}
+                                  {d.required ? "" : ` (${t("office.assign.optionalTag")})`}
+                                </Text>
+                                {delivered && !isMissing && (
+                                  <Badge appearance="tint" color="success" size="small">
+                                    {t("office.mission.deliverableDelivered", { revision: latestRootHandoff.revision })}
+                                  </Badge>
+                                )}
+                                {isMissing && (
+                                  <Badge appearance="tint" color="danger" size="small">
+                                    {t("office.mission.deliverableNotDelivered", { revision: latestRootHandoff.revision })}
+                                  </Badge>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </dd>
                   </>
                 )}
                 {m.acceptanceCriteria.length > 0 && (

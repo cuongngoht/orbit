@@ -16,7 +16,8 @@
 // what it runs as is a fixed profile (`claude-code` for a chat, `claude-research` for research), not a registration.
 // A research run's token opens the egress proxy alone: the agent gateway refuses it (auth/principals.ts).
 import { Inject, Injectable, type OnApplicationBootstrap } from "@nestjs/common";
-import { composeEmployeeModels, composeEmployeeNetwork, modelAllowed, RUN_SCOPES, type EnforcementScope } from "@orbit-web/governance-core";
+import { composeEmployeeModels, composeEmployeeNetwork, composeRuntimeSecurity, modelAllowed, RUN_SCOPES, type EffectiveRuntimeSecurity, type EnforcementScope, type RuntimeMode } from "@orbit-web/governance-core";
+import { loadSandboxConfig } from "../../config/sandbox-config.js";
 import type { IsolationState } from "@orbit-web/contracts";
 import { randomBytes } from "node:crypto";
 import type { AppConfig } from "../../config/config.js";
@@ -72,7 +73,10 @@ export type Refusal = { ok: false; message: string; reasonCodes: string[] };
 export type Prepared = { ok: true; plan: RunPlan } | Refusal;
 // An employee's attempt: its plan, the run's token (the tool bridge's and the egress proxy's credential) and whether the
 // account's policy obliges isolation.
-export type PreparedAssignment = { ok: true; plan: RunPlan; token: string; isolationRequired: boolean; network: EmployeeNetwork } | Refusal;
+// runtimeSecurity: what the attempt is held to while its programs run (ADR 0063) -- the strictest of the deployment's floor,
+// the company's policy and the employee's department's, composed here (the one decision point) and applied again by the
+// allocator.
+export type PreparedAssignment = { ok: true; plan: RunPlan; token: string; isolationRequired: boolean; network: EmployeeNetwork; runtimeSecurity: EffectiveRuntimeSecurity } | Refusal;
 
 // How an employee's sandbox reaches the internet, as the account's policy in effect says (a policy published before the
 // setting existed says nothing: AUTONOMOUS). Enforced by the egress proxy, each connection decided as the run.
@@ -121,6 +125,14 @@ export class RunGovernanceService implements OnApplicationBootstrap {
     @Inject(GovernedResources) private readonly resources: GovernedResources,
     @Inject(ToolchainService) private readonly toolchain: ToolchainService,
   ) {}
+
+  private floorOf: RuntimeMode | null = null;
+
+  // The deployment's runtime security floor (ORBIT_WEB_RUNTIME_SECURITY_FLOOR): no account's policy goes below it.
+  private runtimeFloor(): RuntimeMode {
+    if (this.floorOf === null) this.floorOf = loadSandboxConfig(this.config.sourceEnv).runtimeSecurity.floor;
+    return this.floorOf;
+  }
 
   // At a start nothing runs: every run token still open ends.
   async onApplicationBootstrap(): Promise<void> {
@@ -247,7 +259,8 @@ export class RunGovernanceService implements OnApplicationBootstrap {
         data: { scope, runtime: AUDIT_RUNTIME[runtime], runtimeVersion: runtime === "claude" ? this.runtimeVersion : ((await this.toolchain.get()).versions[runtime] ?? null), mode: "employee", isolation: "per-attempt sandbox", startedBy: binding.startedBy, employeeId, assignmentId: subject.assignmentId, missionId: subject.missionId ?? null, departmentId },
       });
       const network = composeEmployeeNetwork(effective.constitution, dept?.policy ?? null);
-      return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: { mode: network.mode, allow: network.allow } };
+      const runtimeSecurity = composeRuntimeSecurity(effective.constitution, dept?.policy ?? null, this.runtimeFloor());
+      return { ok: true as const, plan, token, isolationRequired: effective.constitution.obligations.isolation === "required", network: { mode: network.mode, allow: network.allow }, runtimeSecurity };
     });
   }
 

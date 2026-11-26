@@ -1,6 +1,7 @@
 // ORBIT WEB'S SIDE OF THE ALLOCATOR: each typed operation as a signed request on the private control network
 // (allocator-protocol.ts). node:http, never through a proxy. An allocator that cannot be reached is `unavailable` --
 // the worker treats it as an outage, never as an answer.
+import type { OpenedAttempt, RuntimePull } from "./runtime-security-wire.js";
 import { request } from "node:http";
 import type { UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
@@ -102,8 +103,16 @@ export class AllocatorClient implements AllocatorApi {
     return this.call("startAttempt", { spec });
   }
 
+  openAttempt(dispatchKey: string): Promise<OpenedAttempt> {
+    return this.call("openAttempt", { dispatchKey });
+  }
+
   findAttempt(dispatchKey: string): Promise<AttemptStatusRecord | null> {
     return this.call("findAttempt", { dispatchKey });
+  }
+
+  runtimeSecurityPull(cursor: { epoch: string | null; seq: number }, max: number): Promise<RuntimePull> {
+    return this.call("runtimeSecurityPull", { cursor, max });
   }
 
   attest(dispatchKey: string, request: AttestRequest): Promise<AttemptEvidence> {

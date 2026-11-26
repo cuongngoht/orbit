@@ -10,6 +10,7 @@
 // THREE AXES, NEVER ONE WORD. An employee's EMPLOYMENT (candidate ... archived) is the organisation's; their
 // AVAILABILITY (available, busy, ineligible) is derived from the reservation and the conditions to run; the health of
 // their CONNECTION and the state of a RUN are separate again. The office shows a WORK LABEL worked out from them.
+import type { ProtectionEvidence } from "./runtime-security.js";
 import type { Checked } from "./validate.js";
 import { isRuntimeKind, RUNTIME_KINDS, type RuntimeKind } from "./ai-connections.js";
 import { checkResourceProfile, type ResourceEvidence, type ResourceProfile, type ResourceRevisionView, type SandboxState, type SandboxView, type UsageView } from "./resources.js";
@@ -125,6 +126,8 @@ export interface SandboxAttestation {
   detail: string;
   checks: { name: string; ok: boolean; detail: string | null }[];
   checkedAt: string;
+  // What the attempt's runtime security proved before anything it runs started (ADR 0063); absent before 0.8.1.
+  protection?: ProtectionEvidence | null;
 }
 
 // ---- office, departments, employees ---------------------------------------------------------------------------------

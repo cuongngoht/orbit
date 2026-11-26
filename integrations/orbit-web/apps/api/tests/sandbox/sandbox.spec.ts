@@ -97,6 +97,9 @@ describe("an employee's attempt in real containers", { skip: skip ?? false, time
   test("one dispatch key is one attempt: a second start returns the first", async () => {
     await timed("prepare workspace", () => provider.prepareWorkspace(idsA(), "asg-a", resources.scratchStorageMiB));
     handle = await timed("start attempt", () => provider.startAttempt(spec(idsA(), "run-a:1", "asg-a")));
+    // Opened as the worker opens it (ADR 0063): the runner's credential and the shell exist only past the gate.
+    await assert.rejects(provider.exec(handle, { argv: ["true"], timeoutMs: 5_000, maxOutputBytes: 1024 }), /runtime_protection_not_established/);
+    await provider.open(handle);
     const again = await provider.startAttempt(spec(idsA(), "run-a:1", "asg-a"));
     assert.deepEqual([again.toolPlane, again.modelPlane], [handle.toolPlane, handle.modelPlane]);
     assert.deepEqual([handle.modelPlaneHome, handle.modelPlaneCwd], ["/connection", "/workdir"]);
@@ -256,6 +259,7 @@ print(len(pids), err)
       const viaWire = lab.provider(new AllocatorClient(`http://127.0.0.1:${port}`, lab.secret));
       await viaWire.prepareWorkspace(idsB(), "asg-b", 256);
       const hb = await viaWire.startAttempt(spec(idsB(), "run-b:1", "asg-b"));
+      await viaWire.open(hb);
       const e = await viaWire.attest(hb, spec(idsB(), "run-b:1", "asg-b"));
       assert.equal(e.attestation.checks.find((c) => c.name === "sibling_desk_canary")?.ok, true);
       const r = await run(lab, viaWire, hb, `grep -rl ${marker} /work /output /input /home /tmp /cache /team /data /mnt /var /run 2>/dev/null | head -3; ls /work; echo end`);
@@ -283,6 +287,7 @@ print(len(pids), err)
     assert.equal((await provider.remove(r)).gone, true);
     await provider.prepareWorkspace(idsB(), "asg-room-f", 256);
     const f = await timed("start (Finance's room)", () => provider.startAttempt(spec(idsB(), "run-room-f:1", "asg-room-f", { teamRoom: finance })));
+    await provider.open(f);
     const seen = await run(lab, provider, f, `ls -A /team; grep -rl ${marker} /work /output /input /home /tmp /cache /team /data /mnt /var /run 2>/dev/null | head -3; echo end`);
     assert.doesNotMatch(seen.stdout, /notes\.md|research-only/);
     assert.equal(await provider.readFile(f, "/team/notes.md", 1000), null);
@@ -298,6 +303,7 @@ print(len(pids), err)
     const specB = spec(idsB(), "run-b:3", "asg-b3");
     await provider.prepareWorkspace(idsB(), "asg-b3", 256);
     const hb = await timed("start B (isolation)", () => provider.startAttempt(specB));
+    await provider.open(hb);
     const ipOf = async (container: string, network: string) => (await lab.engine.containerInspect(container))?.NetworkSettings.Networks?.[network]?.IPAddress ?? "";
     const netsA = attemptNetworks(lab.prefix, handle.dispatchKey);
     const netsB = attemptNetworks(lab.prefix, hb.dispatchKey);
@@ -342,10 +348,14 @@ print(len(pids), err)
   });
 
   test("a worker crash: a fresh allocator and provider find the attempt, stop it and remove it -- verified", async () => {
-    const reborn = lab.provider(new Allocator({ config: lab.config, secret: lab.secret, engine: lab.engine }));
+    // A restarted allocator restores what the previous one protected (its state directory), as its main does.
+    const rebornAllocator = new Allocator({ config: lab.config, secret: lab.secret, engine: lab.engine });
+    await rebornAllocator.security.restore();
+    const reborn = lab.provider(rebornAllocator);
     const found = await timed("find after restart", () => reborn.find(handle.dispatchKey));
     assert.ok(found !== null);
     assert.deepEqual([found.handle.toolPlane, found.handle.modelPlane, found.toolPlaneRunning, found.modelPlaneRunning], [handle.toolPlane, handle.modelPlane, true, true]);
+    await reborn.open(found.handle);
     const r = await reborn.modelPlane(found.handle).run("node", ["-e", "process.stdout.write('alive')"], { cwd: "/workdir", env: {}, timeoutMs: 10_000 });
     assert.equal(r.stdout, "alive");
     await timed("stop", () => reborn.stop(found.handle, 2000));
@@ -376,6 +386,7 @@ print(len(pids), err)
     await provider.prepareWorkspace(idsC(), "asg-c", 256);
     await assert.rejects(provider.cleanDesk(idsC(), { remove: ["private.txt"], empty: false, cache: false }, 0), (e: unknown) => code("conflict")(e) && /workspace/.test((e as Error).message));
     const hc = await timed("start attempt (desk)", () => provider.startAttempt(spec(idsC(), "run-c:1", "asg-c")));
+    await provider.open(hc);
     const w = await run(lab, provider, hc, "echo desk-of-c > /work/private.txt && ln -s /etc/passwd /work/passwd-link && ln -s /etc /work/etc-link && mkdir -p /work/big && head -c 2000000 /dev/zero > /work/big/zeros.bin && echo ok");
     assert.match(w.stdout, /ok/, w.stderr);
     await provider.stop(hc, 1000);

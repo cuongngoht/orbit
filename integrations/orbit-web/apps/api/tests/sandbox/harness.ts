@@ -116,7 +116,8 @@ export interface Lab {
 
 const TEST_LABEL = "orbit-web.test";
 
-export async function createLab(): Promise<Lab> {
+// `env`: what a suite adds to the allocator's configuration (runtime security's backend, its sensor, its deadlines).
+export async function createLab(env: Record<string, string> = {}): Promise<Lab> {
   const engine = new DockerEngine(SOCKET);
   const prefix = `owt${randomBytes(3).toString("hex")}`;
   const labels = { [TEST_LABEL]: prefix };
@@ -144,6 +145,7 @@ export async function createLab(): Promise<Lab> {
     ORBIT_WEB_WORKFORCE_POOL_SIZE: process.env.ORBIT_WEB_SANDBOX_TEST_POOL ?? "2g",
     ORBIT_WEB_ALLOCATOR_STATE_DIR: state,
     ORBIT_WEB_DOCKER_SOCKET: SOCKET,
+    ...env,
   });
   const cleanup = async () => {
     const all = [...(await engine.containerList({ "orbit-web.prefix": prefix })), ...(await engine.containerList({ [TEST_LABEL]: prefix }))];

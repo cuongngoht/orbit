@@ -23,6 +23,7 @@ import {
   deskRefusal,
   checkExecRequest,
   checkProbes,
+  checkPullCursor,
   checkQuotas,
   checkSandboxIds,
   checkSessionSpec,
@@ -49,6 +50,10 @@ import { DockerEngine, DockerError, type ContainerInspect, type NetworkInspect a
 import { attestProbeScript, cgroupScript, deskScript, modelPlaneScript, nodeScript, syncScript, toolFileScript, writeTestScript, type AttestProbeConfig } from "./scripts/node-scripts.js";
 import { limitsProbeBody, MiB, MODEL_PLANE_PIDS, MODEL_PLANE_TMPFS, modelPlaneBody, modelPlaneMounts, PROBE_LIMITS, sessionPlaneBody, toolPlaneBody, toolPlaneMounts, type VolumeMount } from "./specs.js";
 import { WorkforceStorage, type StorageState } from "./storage.js";
+import type { OpenedAttempt, RuntimePull } from "../contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
+import type { RuntimeSecurityBackend } from "./runtime-security/backend.js";
+import { HostSecurity } from "./runtime-security/host.js";
+import { ProtectionRefused } from "./runtime-security/service.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -103,11 +108,15 @@ export interface AllocatorOptions {
   secret: string;
   engine?: DockerEngine;
   now?: () => Date;
+  // The runtime security backend (ADR 0063): from the configuration unless a test hands one in.
+  securityBackend?: RuntimeSecurityBackend;
 }
 
 export class Allocator implements AllocatorApi {
   readonly engine: DockerEngine;
   readonly storage: WorkforceStorage;
+  // The security plane (ADR 0063): protects, gates, watches and contains this allocator's attempts.
+  readonly security: HostSecurity;
   private readonly config: SandboxConfig;
   private readonly secret: string;
   private readonly now: () => Date;
@@ -122,6 +131,7 @@ export class Allocator implements AllocatorApi {
     this.engine = o.engine ?? new DockerEngine(o.config.allocatorServer.dockerSocket);
     this.now = o.now ?? (() => new Date());
     this.storage = new WorkforceStorage(this.engine, this.config, this.now);
+    this.security = new HostSecurity({ engine: this.engine, config: this.config, now: this.now, backend: o.securityBackend });
   }
 
   private get prefix(): string {
@@ -167,6 +177,7 @@ export class Allocator implements AllocatorApi {
       storage: { mechanism: st.mechanism, perArea: st.perArea, hostProtection: st.hostProtection, evidence: this.storageEvidence(st), probedAt: st.probedAt },
       host: { cpuMillis: info.NCPU * 1000, memoryMiB: Math.floor(info.MemTotal / MiB), storageMiB },
       shellPossible: limitsHard && (st.perArea === "HARD_ENFORCED" || st.hostProtection === "HARD_ENFORCED"),
+      runtimeSecurity: await this.security.probe(info),
       probedAt,
     };
     this.caps = caps;
@@ -586,6 +597,7 @@ export class Allocator implements AllocatorApi {
       modelPlaneHome: MODEL_PLANE.home,
       modelPlaneCwd: MODEL_PLANE.cwd,
       bridgeCommand: { command: MODEL_PLANE.bridgeCommand.command, args: [...MODEL_PLANE.bridgeCommand.args] },
+      protection: this.security.service.evidence(dispatchKey),
     };
   }
 
@@ -623,12 +635,14 @@ export class Allocator implements AllocatorApi {
         if (team !== null && s.teamRoom !== null) await this.storage.ensureArea(team, s.teamRoom.quotaMiB * MiB, "employee", "0700");
         const inputs = await this.storage.worker([{ volume: st.volume, subpath: `${scratch}/input`, target: "/dst", readOnly: false }], ["node", "-e", nodeScript(syncScript), "inputs", "/dst"], Buffer.from(JSON.stringify(s.inputs)));
         if (inputs.code !== 0) throw new Error(failure("materializing the inputs", inputs));
-        const body = toolPlaneBody({ image: this.config.images.workstation, network: nets.tool, workforceVolume: st.volume, labels: attemptLabels(this.prefix, s, "tool-plane"), areas: { scratch, cache: record.cacheMiB > 0 ? cacheArea(s) : null, team }, resources: s.resources, egress: s.egress });
+        const body = toolPlaneBody({ image: this.config.images.workstation, network: nets.tool, workforceVolume: st.volume, labels: { ...attemptLabels(this.prefix, s, "tool-plane"), ...this.security.labels(s.runtimeSecurity) }, areas: { scratch, cache: record.cacheMiB > 0 ? cacheArea(s) : null, team }, resources: s.resources, egress: s.egress });
         await this.engine.containerCreate(names.tool, body);
         tool = await this.engine.containerInspect(names.tool);
       }
       if (model === null) {
-        const body = modelPlaneBody({ image: this.config.images.modelPlane, network: nets.model, dataVolume: this.config.names.dataVolume, connectionSubpath: connectionSubpath(s.orbitId, s.modelPlane.connectionHome), labels: attemptLabels(this.prefix, s, "model-plane"), cpuMillis: s.modelPlane.cpuMillis, memoryMiB: s.modelPlane.memoryMiB, runnerToken: runnerToken(this.secret, s.dispatchKey), env: s.modelPlane.env });
+        // The runner's credential is the attempt's own, random: Orbit Web gets it only from openAttempt, once the gate
+        // holds (ADR 0063) -- it cannot derive it, so nothing it runs can start the CLI early.
+        const body = modelPlaneBody({ image: this.config.images.modelPlane, network: nets.model, dataVolume: this.config.names.dataVolume, connectionSubpath: connectionSubpath(s.orbitId, s.modelPlane.connectionHome), labels: { ...attemptLabels(this.prefix, s, "model-plane"), ...this.security.labels(s.runtimeSecurity) }, cpuMillis: s.modelPlane.cpuMillis, memoryMiB: s.modelPlane.memoryMiB, runnerToken: randomBytes(32).toString("hex"), env: s.modelPlane.env });
         await this.engine.containerCreate(names.model, body);
         model = await this.engine.containerInspect(names.model);
       }
@@ -642,8 +656,57 @@ export class Allocator implements AllocatorApi {
       }
       await this.waitForRunner(model.Id);
       const after = await this.planes(s.dispatchKey);
+      if (after.tool !== null && after.model !== null) await this.protectOnce(s, after.tool, after.model);
       return this.record(s.dispatchKey, s.runId, after.tool, after.model);
     });
+  }
+
+  // The attempt's runtime protection, established once per pair of containers (a retried start finds it).
+  private async protectOnce(s: AllocatorAttemptSpec, tool: ContainerInspect, model: ContainerInspect): Promise<void> {
+    const known = this.security.service.evidence(s.dispatchKey);
+    if (known !== null && known.state !== "CLEANED_UP" && known.planes.every((p) => p.containerId === tool.Id || p.containerId === model.Id)) return;
+    await this.security.protect({
+      dispatchKey: s.dispatchKey,
+      runKind: "assignment",
+      runId: s.runId,
+      accountId: s.orbitId,
+      employeeId: s.employeeId,
+      assignmentId: s.assignmentId,
+      sessionId: null,
+      fence: s.fence,
+      requested: s.runtimeSecurity ?? { mode: "disabled", controls: [] },
+      planes: [
+        { plane: "tool-plane", containerId: tool.Id, startedAt: tool.State.StartedAt, user: `${TOOL_PLANE.uid}:${TOOL_PLANE.gid}` },
+        { plane: "model-plane", containerId: model.Id, startedAt: model.State.StartedAt, user: `${MODEL_PLANE.uid}:${MODEL_PLANE.gid}` },
+      ],
+    });
+  }
+
+  // THE GATE (ADR 0063): the model plane's runner credential, released only when the attempt's required protection is
+  // proven and fresh. Before this, nothing the employee runs can start: the CLI needs the credential, the shell needs it
+  // opened.
+  async openAttempt(dispatchKeyIn: string): Promise<OpenedAttempt> {
+    const dispatchKey = checkDispatchKey(dispatchKeyIn);
+    return this.locks.run(`attempt:${dispatchKey}`, async () => {
+      const { tool, model } = await this.planes(dispatchKey);
+      if (tool === null || model === null || !tool.State.Running || !model.State.Running) throw new AllocatorError("conflict", "the attempt's two planes are not both running");
+      let protection;
+      try {
+        protection = this.security.service.open(dispatchKey);
+      } catch (err) {
+        if (err instanceof ProtectionRefused) throw new AllocatorError("conflict", err.message);
+        throw err;
+      }
+      const credential = (model.Config.Env ?? []).find((e) => e.startsWith("ORBIT_WEB_RUNNER_TOKEN="))?.slice("ORBIT_WEB_RUNNER_TOKEN=".length) ?? "";
+      if (credential === "") throw new AllocatorError("internal", "the model plane holds no runner credential");
+      return { runnerCredential: credential, protection };
+    });
+  }
+
+  runtimeSecurityPull(cursorIn: { epoch: string | null; seq: number }, maxIn: number): Promise<RuntimePull> {
+    const { cursor, max } = checkPullCursor(cursorIn, maxIn);
+    this.security.service.ingest();
+    return Promise.resolve(this.security.service.pull(cursor, max));
   }
 
   private async waitForRunner(modelId: string): Promise<void> {
@@ -694,6 +757,9 @@ export class Allocator implements AllocatorApi {
     if (tool === null || model === null || !tool.State.Running || !model.State.Running) return this.evidence(checks, null, null, checkedAt);
     const s = spec;
     const labels = tool.Config.Labels ?? {};
+    // Runtime security (ADR 0063): under enforce, the attempt's protection must be proven before the shell is granted.
+    const prot = this.security.service.evidence(dispatchKey);
+    add(check("runtime_protection", prot === null ? ["the allocator holds no runtime protection record for this attempt"] : prot.mode === "enforce" && prot.state !== "VERIFIED" && prot.state !== "PROTECTED" ? [`required runtime protection is ${prot.state}: ${prot.detail}`] : [], prot === null ? "" : `runtime security ${prot.mode}: ${prot.state}`));
     add(check("attempt_identity", labels[LABELS.account] === s.orbitId && labels[LABELS.employee] === s.employeeId && labels[LABELS.run] === s.runId && labels[LABELS.assignment] === s.assignmentId ? [] : ["the containers are labelled for another account, employee, run or assignment"], "the containers are this attempt's (account, employee, run, assignment)"));
     // Applied: what the runtime was given, read back.
     const th = tool.HostConfig;
@@ -825,6 +891,10 @@ export class Allocator implements AllocatorApi {
 
   async exec(dispatchKey: string, reqIn: ExecRequest): Promise<ExecResult> {
     const req = checkExecRequest(reqIn);
+    // The shell runs only in an opened attempt, and -- under enforce -- only while its protection is still proven.
+    if (!this.security.service.opened(dispatchKey)) throw new AllocatorError("shell_refused", "runtime_protection_not_established: the attempt has not been opened");
+    const gate = this.security.service.gate(dispatchKey);
+    if (!gate.open) throw new AllocatorError("shell_refused", gate.reason);
     const tool = await this.toolPlane(dispatchKey);
     const started = Date.now();
     const seconds = (req.timeoutMs / 1000).toFixed(3);
@@ -932,6 +1002,8 @@ export class Allocator implements AllocatorApi {
     const dispatchKey = checkDispatchKey(dispatchKeyIn);
     return this.locks.run(`attempt:${dispatchKey}`, async () => {
       const { tool, model } = await this.planes(dispatchKey);
+      // Its policy first: a namespace freed by the removal is handed to the next container at once.
+      const released = this.security.service.evidence(dispatchKey) === null ? null : await this.security.service.release(dispatchKey);
       await Promise.all([tool, model].flatMap((c) => (c === null ? [] : [this.engine.containerRemove(c.Id, true)])));
       // Then the attempt's own networks: whatever is still connected (Orbit Web's container) is disconnected first.
       const nets = await this.networksOf(dispatchKey);
@@ -947,7 +1019,8 @@ export class Allocator implements AllocatorApi {
         ...(await Promise.all([this.engine.networkInspect(netNames.tool), this.engine.networkInspect(netNames.model)])).filter((n) => n !== null).map((n) => n.Name),
       ];
       for (const c of [tool, model]) if (c !== null) this.pidsPeaks.delete(c.Id);
-      return left.length === 0 ? { gone: true, detail: "both planes and their networks are gone (the runtime no longer knows them)" } : { gone: false, detail: `${left.join(", ")} still exist` };
+      const policy = released === null ? "" : ` Runtime security: ${released.detail}.`;
+      return left.length === 0 ? { gone: true, detail: `both planes and their networks are gone (the runtime no longer knows them).${policy}` } : { gone: false, detail: `${left.join(", ")} still exist.${policy}` };
     });
   }
 
@@ -1012,6 +1085,8 @@ export class Allocator implements AllocatorApi {
         throw new AllocatorError("conflict", `the run's sandbox is not what it must be, so it was removed: ${problems.join("; ")}`);
       }
       await this.waitForRunner(c.Id);
+      // Observed, never enforced, and only by the deployment's floor: an employee's policy does not reach a chat.
+      if (this.security.enabled && this.config.runtimeSecurity.floor !== "disabled") this.security.service.registerSession({ dispatchKey: s.dispatchKey, runKind: s.kind, accountId: s.accountId, runId: s.runId, sessionId: s.sessionId, containerId: c.Id, startedAt: started?.State.StartedAt ?? this.iso() });
       return { dispatchKey: s.dispatchKey, name: names.container, ip: started?.NetworkSettings.Networks?.[names.network]?.IPAddress || null, port: SESSION_PLANE.runnerPort, createdAt: started?.Created ?? this.iso() };
     });
   }
@@ -1022,6 +1097,7 @@ export class Allocator implements AllocatorApi {
       const names = sessionNames(this.prefix, dispatchKey);
       const c = await this.engine.containerInspect(names.container);
       if (c !== null && c.Config.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${c.Name} does not belong to this dispatch key`);
+      this.security.service.retireSession(dispatchKey);
       if (c !== null) await this.engine.containerRemove(c.Id, true);
       const net = await this.engine.networkInspect(names.network);
       if (net !== null && net.Labels?.[LABELS.dispatchKey] !== dispatchKey) throw new AllocatorError("conflict", `${net.Name} does not belong to this dispatch key`);

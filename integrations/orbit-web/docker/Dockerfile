@@ -208,6 +208,8 @@ RUN --mount=type=secret,id=ca,required=false \
 # the pinned CPython build above with pip and venv, the base's Node and npm, and jq. One non-root user, `employee`
 # (20001), and no sudo: inside its own container the employee runs any command, and has nothing to raise itself with.
 # The root filesystem is read-only at run time: everything it writes lands in a mounted, quota'd area.
+# The runtime security CANARY (ADR 0063), here and in the model plane: a copy of /bin/true no workload runs, which every
+# enforced attempt's policy refuses -- the probe that proves, before the attempt opens, that the policy binds THIS attempt.
 FROM ${NODE_IMAGE} AS workstation
 COPY --from=python /opt/python /opt/python
 COPY --from=jq /opt/jq/bin/jq /usr/local/bin/jq
@@ -217,6 +219,7 @@ RUN set -eu; \
     mkdir -p /work /output /input /cache /team /home/employee; \
     chown employee:employee /work /output /input /cache /team /home/employee; \
     ln -s /work/toolbox /toolbox; \
+    install -D -m 0755 /bin/true /usr/local/libexec/orbit-web/runtime-canary; \
     rm -rf /etc/claude-code; \
     if command -v sudo >/dev/null 2>&1; then echo "sudo must not be in the workstation" >&2; exit 1; fi; \
     for t in python3 pip3 node npm git gcc g++ make curl wget unzip jq timeout; do \
@@ -248,6 +251,7 @@ RUN set -eu; \
     groupadd --system --gid 10001 orbit; \
     useradd --system --uid 10001 --gid orbit --home-dir /home/orbit --no-create-home --shell /usr/sbin/nologin orbit; \
     mkdir -p /connection /workdir /home/orbit; \
+    install -D -m 0755 /bin/true /usr/local/libexec/orbit-web/runtime-canary; \
     rm -rf /etc/claude-code; \
     test ! -e /etc/claude-code; \
     test -f /opt/orbit-web/apps/api/dist/runner/main.js; \

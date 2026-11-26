@@ -174,7 +174,7 @@ export function outcomeOf(e: { matched: boolean; policyMode: "enforce" | "monito
   return "VIOLATION_DETECTED";
 }
 
-export const RUNTIME_EVENT_KINDS = ["process.exec", "process.exit", "control.match", "exec.fileless", "exec.model_plane", "telemetry.gap", "workload.contained"] as const;
+export const RUNTIME_EVENT_KINDS = ["process.exec", "process.exit", "control.match", "exec.fileless", "exec.model_plane", "identity.mismatch", "telemetry.gap", "workload.contained"] as const;
 export type RuntimeEventKind = (typeof RUNTIME_EVENT_KINDS)[number];
 
 export const INCIDENT_SEVERITIES = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;

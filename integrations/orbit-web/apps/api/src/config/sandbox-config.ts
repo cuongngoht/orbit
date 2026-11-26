@@ -37,8 +37,23 @@
 //                                         "2g") or a share of the total ("10%", the default)
 //   ORBIT_WEB_MODEL_PLANE_<RUNTIME>_CPU / _MEMORY        what one attempt's model plane reserves beside the employee's
 //                                         own limits (starting values below; the recorded peaks say when to tune them)
+//
+// Runtime security (ADR 0063) -- off unless the operator names a backend; read by BOTH sides: Orbit Web composes the
+// floor into every account's requirement, and the allocator applies it again itself:
+//   ORBIT_WEB_RUNTIME_SECURITY            off | tetragon (default off: Orbit Web 0.8.0's behaviour)
+//   ORBIT_WEB_RUNTIME_SECURITY_FLOOR      disabled | observe | enforce: the least every employee attempt is held to,
+//                                         whatever an account says (with no backend, an attempt it covers is refused)
+//   ORBIT_WEB_RUNTIME_SECURITY_SENSOR     the sensor's container (default orbit-tetragon), reached by the allocator alone
+//   ORBIT_WEB_RUNTIME_SECURITY_EVENTS_DIR where the sensor's export file is mounted, read-only, in the allocator
+//   ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS  how long an enforced attempt may run with its protection unproven
+//                                         before both its containers are stopped (default 15000)
+//   ORBIT_WEB_RUNTIME_SECURITY_FRESH_MS   how long a proof stands before the watchdog must prove it again (60000)
+//   ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS / _MAX_EVENTS_PER_RUN  how much telemetry Orbit Web keeps (14, 20000)
+//   ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU / _MEMORY  what the sensor reserves of the host, taken from the capacity
+//                                         when a backend is on (default 1 vCPU, 1g)
 import { isAbsolute, resolve } from "node:path";
 import { RUNTIME_KINDS, type RuntimeKind } from "@orbit-web/contracts";
+import { isRuntimeMode, type RuntimeMode } from "@orbit-web/governance-core";
 
 export class SandboxConfigError extends Error {}
 
@@ -74,6 +89,19 @@ export interface SandboxConfig {
   modelPlane: Record<RuntimeKind, Amount>;
   // A chat's or a research session's run in a sandbox of its own: its limits, and how many at once.
   session: { cpuMillis: number; memoryMiB: number; pids: number; max: number };
+  runtimeSecurity: RuntimeSecurityConfig;
+}
+
+export interface RuntimeSecurityConfig {
+  backend: "off" | "tetragon";
+  floor: RuntimeMode;
+  sensor: string;
+  eventsDir: string;
+  containAfterMs: number;
+  freshMs: number;
+  retentionDays: number;
+  maxEventsPerRun: number;
+  reserve: Amount;
 }
 
 // Starting values of one model plane, per runtime: the CLI and its bridge, idle most of the time (it waits on the
@@ -280,6 +308,28 @@ export function loadSandboxConfig(env: Env): SandboxConfig {
     },
     modelPlane: modelPlane(env),
     session: sessionLimits(env),
+    runtimeSecurity: runtimeSecurityOf(env),
+  };
+}
+
+function runtimeSecurityOf(env: Env): RuntimeSecurityConfig {
+  const backend = given(env.ORBIT_WEB_RUNTIME_SECURITY) ? env.ORBIT_WEB_RUNTIME_SECURITY.trim() : "off";
+  if (backend !== "off" && backend !== "tetragon") throw new SandboxConfigError("ORBIT_WEB_RUNTIME_SECURITY must be off or tetragon");
+  const floor = given(env.ORBIT_WEB_RUNTIME_SECURITY_FLOOR) ? env.ORBIT_WEB_RUNTIME_SECURITY_FLOOR.trim() : "disabled";
+  if (!isRuntimeMode(floor)) throw new SandboxConfigError("ORBIT_WEB_RUNTIME_SECURITY_FLOOR must be disabled, observe or enforce");
+  return {
+    backend,
+    floor,
+    sensor: dockerName(env.ORBIT_WEB_RUNTIME_SECURITY_SENSOR, "orbit-tetragon", "ORBIT_WEB_RUNTIME_SECURITY_SENSOR"),
+    eventsDir: absolute(env.ORBIT_WEB_RUNTIME_SECURITY_EVENTS_DIR, "/run/orbit-runtime-security/events", "ORBIT_WEB_RUNTIME_SECURITY_EVENTS_DIR"),
+    containAfterMs: wholeIn(env.ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS, 15_000, 1_000, 600_000, "ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS"),
+    freshMs: wholeIn(env.ORBIT_WEB_RUNTIME_SECURITY_FRESH_MS, 60_000, 5_000, 3_600_000, "ORBIT_WEB_RUNTIME_SECURITY_FRESH_MS"),
+    retentionDays: wholeIn(env.ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS, 14, 1, 365, "ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS"),
+    maxEventsPerRun: wholeIn(env.ORBIT_WEB_RUNTIME_SECURITY_MAX_EVENTS_PER_RUN, 20_000, 100, 1_000_000, "ORBIT_WEB_RUNTIME_SECURITY_MAX_EVENTS_PER_RUN"),
+    reserve: {
+      cpuMillis: given(env.ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU) ? parseCpuMillis(env.ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU, "ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU") : 1000,
+      memoryMiB: given(env.ORBIT_WEB_RUNTIME_SECURITY_RESERVE_MEMORY) ? parseMiB(env.ORBIT_WEB_RUNTIME_SECURITY_RESERVE_MEMORY, "ORBIT_WEB_RUNTIME_SECURITY_RESERVE_MEMORY") : 1024,
+    },
   };
 }
 

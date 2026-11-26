@@ -16,7 +16,8 @@
 //
 // Every operation is idempotent by the ids it is given (a retry after a crash finds what the first call made), and a
 // stop or a removal is VERIFIED (read back from the runtime) before the worker releases what the attempt held.
-import type { DeskCleanRequest, DeskEntry, EnforcementLevel, ResourceProfile, SandboxAttestation, StorageArea, StorageCapability, UsageView } from "@orbit-web/contracts";
+import type { AttemptRuntimeSecurity, RuntimeHostProbe } from "../infrastructure/sandbox/runtime-security-wire.js";
+import type { DeskCleanRequest, DeskEntry, EnforcementLevel, ProtectionEvidence, ResourceProfile, SandboxAttestation, StorageArea, StorageCapability, UsageView } from "@orbit-web/contracts";
 import type { ProcessPort } from "../../../infra/process/process.port.js";
 
 export const SANDBOX_PROVIDER = Symbol("SANDBOX_PROVIDER");
@@ -35,6 +36,8 @@ export interface HostCapabilities {
   host: { cpuMillis: number | null; memoryMiB: number | null; storageMiB: number | null };
   // Whether this provider can ever grant an attempt a shell (process: never).
   shellPossible: boolean;
+  // Runtime security (ADR 0063): what this host can observe and prevent, each from a probe (absent: no allocator).
+  runtimeSecurity?: RuntimeHostProbe;
   probedAt: string;
 }
 
@@ -110,6 +113,9 @@ export interface AttemptSpec extends SandboxIds {
   inputs: { name: string; storePath: string }[];
   // The mission's team room, when the assignment belongs to a team.
   teamRoom: { id: string; quotaMiB: number } | null;
+  // What the attempt is to be held to while its programs run (ADR 0063). Not said: disabled (the deployment's floor still
+  // applies in the allocator).
+  runtimeSecurity?: AttemptRuntimeSecurity;
 }
 
 export interface AttemptHandle {
@@ -126,6 +132,8 @@ export interface AttemptHandle {
   modelPlaneHome: string;
   modelPlaneCwd: string;
   bridgeCommand: { command: string; args: string[] };
+  // What the allocator established about the attempt's runtime protection when it started it (ADR 0063).
+  protection?: ProtectionEvidence | null;
 }
 
 export interface ExecRequest {
@@ -212,6 +220,9 @@ export interface SandboxProvider {
   find(dispatchKey: string): Promise<AttemptStatus | null>;
   // The attempt's isolation and limits, checked from outside the shell (canaries, cgroup files, mounts, network).
   attest(handle: AttemptHandle, spec: AttemptSpec): Promise<AttemptEvidence>;
+  // THE GATE (ADR 0063): the attempt opened for what the employee runs -- the model plane's runner made reachable, the
+  // tool plane's shell allowed -- only once its required runtime protection is proven and fresh. Refused otherwise.
+  open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }>;
   // Starts programs in the MODEL plane (the CLI): the runtime adapter streams them like any child process.
   modelPlane(handle: AttemptHandle): ProcessPort;
   // The TOOL plane (what the employee's tools do): a command, and files in the areas of FILE_AREAS (allocator-protocol.ts)

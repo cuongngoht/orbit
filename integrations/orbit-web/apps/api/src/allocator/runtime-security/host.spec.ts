@@ -72,7 +72,9 @@ class FakeHost implements RuntimeSecurityBackend {
     const fits = (b: Box) => Object.entries(labels).every(([k, v]) => (v === null ? k in b.labels : b.labels[k] === v));
     return Promise.resolve([...this.boxes.values()].filter(fits).map((b) => ({ Id: b.id, Names: [`/${b.name}`], Labels: b.labels, State: b.running ? "running" : "exited" })));
   }
+  execFails = false;
   execCreate(id: string, config: { Cmd: string[] }): Promise<string> {
+    if (this.execFails) return Promise.reject(new Error("the runtime refused the exec"));
     this.n += 1;
     const execId = `x${this.n}`;
     this.execs.set(execId, { id, cmd: config.Cmd });
@@ -138,13 +140,15 @@ class FakeHost implements RuntimeSecurityBackend {
   }
 }
 
+let clock = Date.parse("2026-11-27T01:00:00.000Z");
+
 function setup(): { host: FakeHost; security: HostSecurity; stateDir: string; logged: string[] } {
   const stateDir = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "rs-host-"));
   const base = loadSandboxConfig({ ORBIT_WEB_RUNTIME_SECURITY: "tetragon", ORBIT_WEB_RUNTIME_SECURITY_FLOOR: "disabled" });
   const config = { ...base, allocatorServer: { ...base.allocatorServer, stateDir } };
   const host = new FakeHost();
   const logged: string[] = [];
-  const security = new HostSecurity({ engine: host as unknown as DockerEngine, config, now: () => new Date(), backend: host, log: (line: string) => logged.push(line) });
+  const security = new HostSecurity({ engine: host as unknown as DockerEngine, config, now: () => new Date(clock), backend: host, log: (line: string) => logged.push(line) });
   return { host, security, stateDir, logged };
 }
 
@@ -207,6 +211,34 @@ test("a restart whose restore fails still runs the watchdog, the ingest and the 
     assert.ok(logged.some((l) => /could not be restored/.test(l)), logged.join("\n"));
   } finally {
     security.stop();
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("a proof that failed is never held as the last one: what it could not prove is said UNKNOWN", async () => {
+  const { host, security, stateDir } = setup();
+  try {
+    const first = await security.probe({ KernelVersion: "7.0.14", Architecture: "aarch64", OperatingSystem: "Docker Desktop" });
+    assert.equal(prevent(first.capabilities), "SUPPORTED");
+    host.execFails = true;
+    await security.proveCanary(true).catch(() => undefined);
+    assert.equal(prevent(security.current(first).capabilities), "UNKNOWN");
+  } finally {
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("a proof not taken again lately is not said to hold: the host is UNKNOWN until it is proven again", async () => {
+  const { security, stateDir } = setup();
+  try {
+    const first = await security.probe({ KernelVersion: "7.0.14", Architecture: "aarch64", OperatingSystem: "Docker Desktop" });
+    assert.equal(prevent(security.current(first).capabilities), "SUPPORTED");
+    clock += 80_000;
+    const stale = security.current(first).capabilities;
+    assert.ok(stale.every((c) => c.state === "UNKNOWN"), JSON.stringify(stale.map((c) => [c.capability, c.state])));
+    await security.proveCanary(true);
+    assert.equal(prevent(security.current(first).capabilities), "SUPPORTED", "proven again");
+  } finally {
     rmSync(stateDir, { recursive: true, force: true });
   }
 });

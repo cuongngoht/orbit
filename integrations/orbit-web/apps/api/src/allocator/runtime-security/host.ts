@@ -47,6 +47,11 @@ export interface HostSecurityOptions {
   log?: (line: string) => void;
 }
 
+// The host's capabilities, each proven by a test it ran (proveCanary).
+const CAPABILITIES = ["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const;
+// A proof older than this (two and a half canary periods) is not said to hold: UNKNOWN until it is proven again.
+const PROOF_FRESH_MS = 75_000;
+
 export class HostSecurity {
   readonly service: RuntimeSecurityService;
   private readonly backend: RuntimeSecurityBackend;
@@ -152,21 +157,33 @@ export class HostSecurity {
   proveCanary(fileless = false): Promise<CapabilityResult[]> {
     const run = this.proving.then(() => this.proveCanaryNow(fileless));
     this.proving = run.catch(() => undefined);
-    return run.then((out) => {
-      for (const c of out) this.latest.set(c.capability, c);
-      return out;
-    });
+    return run.then(
+      (out) => {
+        for (const c of out) this.latest.set(c.capability, c);
+        return out;
+      },
+      (err: unknown) => {
+        // A proof that failed proves nothing: never is the one before it held as the last word.
+        const at = this.o.now().toISOString();
+        for (const capability of CAPABILITIES) this.latest.set(capability, { capability, state: "UNKNOWN", detail: `the proof failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400), checkedAt: at });
+        this.lastStatus = null;
+        throw err;
+      },
+    );
   }
 
-  // What a probe said, with what the proofs since established: the capabilities proven again, the sensor as last read.
+  // What a probe said, with what the proofs since established: the capabilities proven again, the sensor as last read --
+  // and a capability not proven lately (PROOF_FRESH_MS) said UNKNOWN, never held from an old proof.
   current(probe: RuntimeHostProbe): RuntimeHostProbe {
-    const capabilities = probe.capabilities.map((c) => this.latest.get(c.capability) ?? c);
-    for (const c of this.latest.values()) if (!capabilities.some((x) => x.capability === c.capability)) capabilities.push(c);
+    const merged = probe.capabilities.map((c) => this.latest.get(c.capability) ?? c);
+    for (const c of this.latest.values()) if (!merged.some((x) => x.capability === c.capability)) merged.push(c);
+    const since = this.o.now().getTime() - PROOF_FRESH_MS;
+    const capabilities = merged.map((c): CapabilityResult => (c.state !== "UNKNOWN" && (c.checkedAt === null || Date.parse(c.checkedAt) < since) ? { ...c, state: "UNKNOWN", detail: `not proven again since ${c.checkedAt ?? "it started"}: ${c.detail}`.slice(0, 400) } : c));
     return { ...probe, capabilities, sensor: this.lastStatus ?? probe.sensor };
   }
 
   private async proveCanaryNow(fileless: boolean): Promise<CapabilityResult[]> {
-    const at = new Date().toISOString();
+    const at = this.o.now().toISOString();
     const result = (capability: CapabilityResult["capability"], state: CapabilityResult["state"], detail: string): CapabilityResult => ({ capability, state, detail, checkedAt: at });
     if (!this.enabled) return (["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const).map((c) => result(c, "UNSUPPORTED", "no runtime security backend on this host"));
     const status = await this.backend.status();
@@ -215,7 +232,7 @@ export class HostSecurity {
     this.hostKind = hostKindOf(info);
     this.kernel = info.KernelVersion ?? null;
     this.arch = info.Architecture ?? null;
-    const capabilities = await this.proveCanary(true).catch((err: unknown) => (["observe.process", "observe.fileless", "prevent.exec", "scope.workload"] as const).map((c): CapabilityResult => ({ capability: c, state: "UNKNOWN", detail: `the probe failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400), checkedAt: new Date().toISOString() })));
+    const capabilities = await this.proveCanary(true).catch((err: unknown) => CAPABILITIES.map((c): CapabilityResult => ({ capability: c, state: "UNKNOWN", detail: `the probe failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 400), checkedAt: this.o.now().toISOString() })));
     const status = await this.backend.status();
     return { backend: this.backend.kind, backendVersion: status.version, backendImage: status.image, hostKind: this.hostKind, kernel: this.kernel, arch: this.arch, floor: this.o.config.runtimeSecurity.floor, sensor: status, capabilities, resources: await this.backend.resources().catch(() => ({ cpuPercent: null, memoryMiB: null })), probedAt: this.o.now().toISOString() };
   }
@@ -319,16 +336,17 @@ export class HostSecurity {
         this.busy.watch = false;
       }
     });
+    // Every capability proven again, the fileless observation included: none goes stale by design (current()).
     every(30_000, async () => {
       if (this.busy.canary) return;
       this.busy.canary = true;
       try {
-        await this.proveCanary(false);
+        await this.proveCanary(true);
       } finally {
         this.busy.canary = false;
       }
     });
-    void this.proveCanary(false).catch(() => undefined);
+    void this.proveCanary(true).catch(() => undefined);
   }
 
   stop(): void {

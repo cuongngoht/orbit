@@ -59,7 +59,8 @@ export class FakeSandboxProvider implements SandboxProvider {
   readsBackRunning = new Set<string>();
   // How the provider reads an input's bytes from Orbit Web's own store (bound by the test to the real reader).
   readInput: ((storePath: string) => Promise<Buffer>) | null = null;
-  exec_: (req: ExecRequest) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
+  // The handle is the attempt the command runs in: a test acts on THAT attempt (attemptOf), never on whichever runs first.
+  exec_: (req: ExecRequest, handle: AttemptHandle) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
 
   async probe(): Promise<HostCapabilities> {
     return {
@@ -263,9 +264,15 @@ export class FakeSandboxProvider implements SandboxProvider {
     return this.cli;
   }
 
+  // The attempt a scripted CLI belongs to, by the run token its bridge was given (ToolCaller.bridge.token): attempts of
+  // different employees may run side by side, so "the first one running" is not this one.
+  attemptOfRun(runToken: string): Attempt | undefined {
+    return [...this.attempts.values()].find((a) => a.spec.bridge.runToken === runToken);
+  }
+
   async exec(handle: AttemptHandle, req: ExecRequest): Promise<ExecResult> {
     this.execs.push({ dispatchKey: handle.dispatchKey, argv: req.argv, cwd: req.cwd });
-    return this.exec_(req);
+    return this.exec_(req, handle);
   }
 
   // The file tools are held to the areas the real providers hold them to (one declaration): what a real tool plane

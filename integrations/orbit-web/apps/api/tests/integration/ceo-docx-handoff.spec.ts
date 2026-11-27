@@ -83,11 +83,12 @@ describe("preserve Word documents across employee, manager, and CEO handoffs (Is
     assert.equal((await b.send("POST", "/api/office/setup", { name: "Executive Docs Co" })).status, 200);
     const researchDept = ((await b.send("POST", "/api/office/departments", { name: "Research" })).body as Department).id;
 
-    sandbox.exec_ = (req) => {
+    sandbox.exec_ = (req, handle) => {
       if ((req.argv[2] ?? "") === "create-board-brief-docx") {
-        const running = [...sandbox.attempts.values()].find((a) => a.running);
-        assert.ok(running !== undefined);
-        sandbox.workspaces.get(running.spec.assignmentId)?.set("/output/board-brief.docx", Buffer.from(originalDocx));
+        // Into the workspace of the attempt the command runs in, never whichever attempt runs first.
+        const attempt = sandbox.attempts.get(handle.dispatchKey);
+        assert.ok(attempt !== undefined);
+        sandbox.workspaces.get(attempt.spec.assignmentId)?.set("/output/board-brief.docx", Buffer.from(originalDocx));
       }
       return { code: 0, signal: null, stdout: "created /output/board-brief.docx\n", stderr: "", timedOut: false, truncated: false };
     };

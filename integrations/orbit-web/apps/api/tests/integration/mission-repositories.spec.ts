@@ -178,12 +178,19 @@ describe("CEO-routed repository attachment and per-assignee authorization (Issue
     // Only Nam is granted read access to the Azure repository. Neither Eve (CEO), Mai (Manager), nor Linh has a grant.
     assert.equal((await b.send("PUT", `/api/employees/${permitted.id}/access`, { connectors: [{ connector: "azure", enabled: true, repositories: [AZURE_REPOSITORY] }] })).status, 200);
 
-    const recordAttempt = (tag: string, prompt: string) => {
-      const running = [...sandbox.attempts.values()].find((a) => a.running);
+    const recordAttempt = (tag: string, t: ToolCaller) => {
+      const prompt = t.prompt;
+      const running = sandbox.attemptOfRun(t.bridge.token);
       const inputs = running?.spec.inputs.map((i) => i.name) ?? [];
       const bundleName = inputs.find((n) => n.endsWith(".bundle"));
       const bundleBytes = bundleName && running ? (sandbox.workspaces.get(running.spec.assignmentId)?.get(`/input/${bundleName}`) ?? null) : null;
       attemptMeta.set(tag, { prompt, inputs, bundleBytes });
+    };
+
+    // The permitted and unauthorized parts may run side by side: each stays open until the other has been looked at
+    // (at most 5 s), so what one attempt was given is read while the other may still run.
+    const meanwhile = async (other: string): Promise<void> => {
+      for (let i = 0; i < 50 && !attemptMeta.has(other); i += 1) await new Promise((r) => setTimeout(r, 100));
     };
 
     sandbox.cli.on(program("claude"), {
@@ -192,7 +199,7 @@ describe("CEO-routed repository attachment and per-assignee authorization (Issue
         if (p.includes("[ceo-repo-flow]")) {
           const lines = unitLines(p, ["eng"]);
           if (lines.length === 0) {
-            recordAttempt("ceo", p);
+            recordAttempt("ceo", t);
             await t.call("delegate", {
               parts: [{ key: "eng", department: "Engineering", title: "Audit repo", goal: "[mgr-repo-flow] Delegate repo audit.", deliverables: ["summary.md"], share_repositories: true }],
             });
@@ -208,7 +215,7 @@ describe("CEO-routed repository attachment and per-assignee authorization (Issue
         if (p.includes("[mgr-repo-flow]")) {
           const lines = unitLines(p, ["permitted", "unauthorized", "unshared"]);
           if (lines.length === 0) {
-            recordAttempt("manager", p);
+            recordAttempt("manager", t);
             await t.call("delegate", {
               parts: [
                 { key: "permitted", employee: "Nam", title: "Permitted audit", goal: "[part-permitted] Read repo snapshot.", deliverables: ["p.md"], share_repositories: true },
@@ -232,19 +239,21 @@ describe("CEO-routed repository attachment and per-assignee authorization (Issue
           return;
         }
         if (p.includes("[part-permitted]")) {
-          recordAttempt("permitted", p);
+          recordAttempt("permitted", t);
+          await meanwhile("unauthorized");
           await t.call("write_file", { path: "/output/p.md", content: "Permitted done.\n" });
           await t.call("submit_handoff", { summary: "Permitted done." });
           return;
         }
         if (p.includes("[part-unauthorized]")) {
-          recordAttempt("unauthorized", p);
+          recordAttempt("unauthorized", t);
+          await meanwhile("permitted");
           await t.call("write_file", { path: "/output/u.md", content: "Unauthorized done.\n" });
           await t.call("submit_handoff", { summary: "Unauthorized done." });
           return;
         }
         if (p.includes("[part-unshared]")) {
-          recordAttempt("unshared", p);
+          recordAttempt("unshared", t);
           await t.call("write_file", { path: "/output/n.md", content: "Unshared done.\n" });
           await t.call("submit_handoff", { summary: "Unshared done." });
         }

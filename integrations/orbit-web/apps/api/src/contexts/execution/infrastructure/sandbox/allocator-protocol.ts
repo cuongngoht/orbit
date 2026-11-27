@@ -11,6 +11,9 @@ import { posix } from "node:path";
 import { checkDeskClean, checkResourceProfile, type UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, AttemptSpec, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds } from "../../application/sandbox.port.js";
 import { checkDispatchKey, checkEmployeeIds, checkId, connectionSubpath, SandboxInputError, type SessionPlaces } from "./ids.js";
+import { isRuntimeControlId, isRuntimeMode } from "@orbit-web/governance-core";
+import type { ProtectionEvidence } from "@orbit-web/contracts";
+import type { AttemptRuntimeSecurity, OpenedAttempt, RuntimePull } from "./runtime-security-wire.js";
 
 // ---- the operations ------------------------------------------------------------------------------------------------
 
@@ -40,6 +43,8 @@ export interface AttemptRecord {
   modelPlaneHome: string;
   modelPlaneCwd: string;
   bridgeCommand: { command: string; args: string[] };
+  // What the allocator established about the attempt's runtime protection (null: none recorded, e.g. found again).
+  protection: ProtectionEvidence | null;
 }
 
 export interface AttemptStatusRecord extends AttemptRecord {
@@ -103,6 +108,9 @@ export interface AllocatorApi {
   readDesk(ids: SandboxIds, path: string, maxBytes: number): Promise<DeskRead>;
   cleanDesk(ids: SandboxIds, order: DeskCleanOrder, expectedDeskVersion: number): Promise<DeskCleaned>;
   startAttempt(spec: AllocatorAttemptSpec): Promise<AttemptRecord>;
+  // The gate (ADR 0063): the model plane's runner credential, released only once the attempt's required protection is
+  // proven -- the tool plane's shell is refused until then.
+  openAttempt(dispatchKey: string): Promise<OpenedAttempt>;
   findAttempt(dispatchKey: string): Promise<AttemptStatusRecord | null>;
   attest(dispatchKey: string, request: AttestRequest): Promise<AttemptEvidence>;
   exec(dispatchKey: string, req: ExecRequest): Promise<ExecResult>;
@@ -116,9 +124,11 @@ export interface AllocatorApi {
   removeSession(dispatchKey: string): Promise<{ gone: boolean; detail: string }>;
   // Every run's sandbox left over (Orbit Web restarted while one ran): removed, with its network.
   sweepSessions(): Promise<{ removed: number }>;
+  // What the sensor reported since a cursor, attributed by the allocator; the protections it holds; the sensor's state.
+  runtimeSecurityPull(cursor: { epoch: string | null; seq: number }, max: number): Promise<RuntimePull>;
 }
 
-export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "listDesk", "readDesk", "cleanDesk", "startAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove", "startSession", "removeSession", "sweepSessions"] as const;
+export const OPERATIONS = ["probe", "provisionEmployee", "archiveEmployee", "deleteEmployee", "measure", "prepareWorkspace", "publishWorkspace", "removeWorkspace", "listDesk", "readDesk", "cleanDesk", "startAttempt", "openAttempt", "findAttempt", "attest", "exec", "readFile", "writeFile", "list", "usage", "stop", "remove", "startSession", "removeSession", "sweepSessions", "runtimeSecurityPull"] as const;
 export type Operation = (typeof OPERATIONS)[number];
 
 // An error the allocator says on purpose: a code a caller can act on, and words.
@@ -249,6 +259,7 @@ export function checkAttestSpec(v: unknown): AttestSpec {
   }
   return {
     ...ids,
+    runtimeSecurity: checkRuntimeSecurity(v.runtimeSecurity),
     runId: checkId(v.runId, "runId"),
     dispatchKey: checkDispatchKey(v.dispatchKey),
     fence: intIn(v.fence, 0, Number.MAX_SAFE_INTEGER, "fence"),
@@ -259,6 +270,23 @@ export function checkAttestSpec(v: unknown): AttestSpec {
     bridge: { url: checkUrl(br.url, "bridge.url"), runToken: checkToken(br.runToken, "bridge.runToken") },
     teamRoom,
   };
+}
+
+// What an attempt asks to be held to: a mode and catalog controls, nothing else (no hook, path or policy text). Not said:
+// disabled -- and the allocator still applies the deployment's floor itself.
+export function checkRuntimeSecurity(v: unknown): AttemptRuntimeSecurity {
+  if (v === undefined || v === null) return { mode: "disabled", controls: [] };
+  if (!isRecord(v)) return bad("runtimeSecurity must be an object");
+  for (const k of Object.keys(v)) if (k !== "mode" && k !== "controls") bad(`runtimeSecurity.${k} is not part of an attempt's runtime security`);
+  if (!isRuntimeMode(v.mode)) bad("runtimeSecurity.mode must be disabled, observe or enforce");
+  if (!Array.isArray(v.controls) || v.controls.length > 16 || !v.controls.every(isRuntimeControlId)) bad("runtimeSecurity.controls must be runtime controls Orbit Web offers");
+  return { mode: v.mode as AttemptRuntimeSecurity["mode"], controls: [...new Set(v.controls as AttemptRuntimeSecurity["controls"])] };
+}
+
+export function checkPullCursor(v: unknown, max: unknown): { cursor: { epoch: string | null; seq: number }; max: number } {
+  if (!isRecord(v)) return bad("cursor must be an object");
+  const epoch = v.epoch === null || v.epoch === undefined ? null : typeof v.epoch === "string" && /^[0-9a-f]{16}$/.test(v.epoch) ? v.epoch : bad("cursor.epoch must be an epoch the allocator gave, or null");
+  return { cursor: { epoch, seq: intIn(v.seq, 0, Number.MAX_SAFE_INTEGER, "cursor.seq") }, max: intIn(max, 1, 5_000, "max") };
 }
 
 const SESSION_FIELDS = ["accountId", "sessionId", "connectionId", "runId", "dispatchKey", "kind", "workspace", "switches"];

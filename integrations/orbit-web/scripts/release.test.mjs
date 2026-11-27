@@ -4,7 +4,7 @@
 // release runs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { IMAGES, changelogSection, digestsOf, otherTags, releaseNotes } from "./release.mjs";
+import { IMAGES, bridgeVersion, changelogSection, digestsOf, internalPins, lockProblems, otherTags, releaseNotes, versionKind, versionProblems, webVersionArg } from "./release.mjs";
 
 const COMPOSE = `
 #   ORBIT_WEB_TAG=0.8.0-rc02                 the images' tag
@@ -50,4 +50,60 @@ test("a changelog section ends where the next one starts", () => {
   const text = "# Changelog\n\n## Orbit Web 0.8.0\n\nThe office.\n\n## Orbit Web 0.7.0\n\nThe browser.\n";
   assert.equal(changelogSection(text, "0.8.0"), "The office.");
   assert.equal(changelogSection(text, "0.9.0"), null);
+});
+
+test("a workspace pinning another at an older version is named, wherever the pin is", () => {
+  const manifest = { name: "@orbit-web/api", version: "0.8.1", dependencies: { "@orbit-web/contracts": "0.8.0", express: "4.0.0" }, devDependencies: { "@orbit-web/governance-core": "0.8.1" } };
+  assert.deepEqual(internalPins(manifest, "0.8.1"), ["@orbit-web/contracts 0.8.0"]);
+  assert.deepEqual(internalPins({ name: "x", version: "0.8.1" }, "0.8.1"), []);
+});
+
+test("the lock file says the version for the root and every workspace, and each workspace's pins", () => {
+  const lock = {
+    name: "orbit-web",
+    version: "0.8.1",
+    packages: {
+      "": { name: "orbit-web", version: "0.8.1" },
+      "apps/api": { name: "@orbit-web/api", version: "0.8.0", dependencies: { "@orbit-web/contracts": "0.8.0", pg: "8.0.0" } },
+      "node_modules/@orbit-web/api": { resolved: "apps/api", link: true },
+      "node_modules/some-library": { version: "0.8.0" },
+    },
+  };
+  assert.deepEqual(lockProblems(lock, "0.8.1"), ["package-lock.json apps/api says 0.8.0", "package-lock.json apps/api pins @orbit-web/contracts 0.8.0"]);
+  assert.deepEqual(lockProblems({ ...lock, version: "0.8.0", packages: { "": { version: "0.8.1" } } }, "0.8.1"), ["package-lock.json says 0.8.0"]);
+});
+
+test("the image's own version is its WEB_VERSION argument", () => {
+  assert.equal(webVersionArg("FROM node AS web\nARG WEB_VERSION=0.8.1\nLABEL version=$WEB_VERSION\n"), "0.8.1");
+  assert.equal(webVersionArg("FROM node\n"), null);
+});
+
+test("the tool bridge says the release's version to the AI CLI it serves", () => {
+  assert.equal(bridgeVersion('return { serverInfo: { name: "orbit_tools", version: "0.8.1" } };'), "0.8.1");
+  assert.equal(bridgeVersion("nothing here"), null);
+});
+
+test("a release publishes x.y.z or a prerelease x.y.z-<identifiers>, and nothing a Docker tag or npm would refuse", () => {
+  assert.equal(versionKind("0.8.1"), "release");
+  for (const v of ["0.8.1-beta1", "0.8.1-beta.1", "1.0.0-rc.2", "0.8.0-rc01"]) assert.equal(versionKind(v), "prerelease", v);
+  for (const v of ["v0.8.1", "0.8", "0.8.1-", "0.8.1-beta..1", "0.8.1+build.5", "0.8.1-beta1+build", "latest", "", null]) assert.equal(versionKind(v), null, String(v));
+});
+
+test("a prerelease never moves latest; a release may, when asked", () => {
+  assert.deepEqual(versionProblems("0.8.1", "true"), []);
+  assert.deepEqual(versionProblems("0.8.1-beta1", "false"), []);
+  assert.deepEqual(versionProblems("0.8.1-beta1", null), []);
+  assert.equal(versionProblems("0.8.1-beta1", "true").length, 1);
+  assert.match(versionProblems("0.8.1-beta1", "true")[0], /prerelease/);
+  assert.match(versionProblems("v0.8.1", "false")[0], /x\.y\.z/);
+});
+
+test("the notes of a prerelease say it is one, and that latest and the release before it stay where they were", () => {
+  const digests = Object.fromEntries(IMAGES.map((name, i) => [name, digest("abcd"[i])]));
+  const base = { section: "Runtime security.", registry: "ghcr.io/acme", repository: "acme/orbit", commit: "c0ffee", digests, latest: false, plugin: "0.6.0" };
+  const beta = releaseNotes({ ...base, version: "0.8.1-beta1" });
+  assert.ok(beta.startsWith("Runtime security.\n"), beta);
+  assert.ok(beta.includes("**A prerelease.**"), beta);
+  assert.ok(beta.includes("`ghcr.io/acme/orbit-web:0.8.1-beta1`"), beta);
+  assert.ok(!releaseNotes({ ...base, version: "0.8.1" }).includes("prerelease"));
 });

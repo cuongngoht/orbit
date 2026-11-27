@@ -140,7 +140,9 @@ describe("a team works in parallel when the budget holds it", () => {
     // All three hold their attempts open: they run side by side.
     assert.deepEqual(await eventually(running, (r) => r.length === 3, 30_000), ["Binh", "Hoa", "Lan"]);
     assert.deepEqual(problems, []);
-    const m = await mission(id);
+    // A run is marked running first, then its assignment moves to RUNNING (missions.started): wait for the assignments'
+    // own state, never read it once the runs alone say so.
+    const m = await eventually(() => mission(id), (x) => ["a", "b", "c"].every((k) => byKey(x, k)?.state === "RUNNING"), 30_000);
     assert.deepEqual(["a", "b", "c"].map((k) => byKey(m, k).state), ["RUNNING", "RUNNING", "RUNNING"]);
     for (const k of ["a", "b", "c"]) gates.release(`p1:${k}`);
     await accept(id);

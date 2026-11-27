@@ -9,7 +9,7 @@ import { after, before, describe, test } from "node:test";
 import { DEFAULT_PRESETS, type AssignmentView, type Department, type EmployeeDetail, type MissionAccepted, type MissionDetail, type RuntimeConnection } from "@orbit-web/contracts";
 import { AttemptInputs } from "../../src/contexts/execution/application/attempt-inputs.js";
 import { validateDocx } from "../../src/contexts/execution/application/docx-validate.js";
-import { SANDBOX_PROVIDER } from "../../src/contexts/execution/application/sandbox.port.js";
+import { SANDBOX_PROVIDER, type AttemptHandle } from "../../src/contexts/execution/application/sandbox.port.js";
 import { buildRealDocx, buildZip, CONTENT_TYPES_DOCX } from "../../src/testing/docx-fixtures.js";
 import { program } from "../../src/testing/fake-process.js";
 import { FakeSandboxProvider, scriptedEmployee, type ToolCaller } from "../../src/testing/fake-sandbox.js";
@@ -34,10 +34,11 @@ describe("DOCX deliverable validation before handoff recording (Issue #3)", () =
   const incompleteZip = buildZip([{ name: "[Content_Types].xml", content: CONTENT_TYPES_DOCX }]);
   const damagedZip = validDocx.subarray(0, Math.floor(validDocx.length / 2));
 
-  const putOutputBinary = (name: string, bytes: Buffer): void => {
-    const running = [...sandbox.attempts.values()].find((a) => a.running);
-    assert.ok(running !== undefined, "an attempt must be running");
-    sandbox.workspaces.get(running.spec.assignmentId)?.set(`/output/${name}`, Buffer.from(bytes));
+  // Into the workspace of the attempt the command runs in (its handle), never whichever attempt runs first.
+  const putOutputBinary = (handle: AttemptHandle, name: string, bytes: Buffer): void => {
+    const attempt = sandbox.attempts.get(handle.dispatchKey);
+    assert.ok(attempt !== undefined, "the command runs in an attempt this provider started");
+    sandbox.workspaces.get(attempt.spec.assignmentId)?.set(`/output/${name}`, Buffer.from(bytes));
   };
 
   before(async () => {
@@ -48,11 +49,11 @@ describe("DOCX deliverable validation before handoff recording (Issue #3)", () =
     assert.equal((await b.send("POST", "/api/office/setup", { name: "Docs Co" })).status, 200);
     const dept = ((await b.send("POST", "/api/office/departments", { name: "Research" })).body as Department).id;
 
-    sandbox.exec_ = (req) => {
+    sandbox.exec_ = (req, handle) => {
       const cmd = req.argv[2] ?? "";
-      if (cmd === "write-incomplete-docx") putOutputBinary("report.docx", incompleteZip);
-      if (cmd === "write-damaged-docx") putOutputBinary("report.docx", damagedZip);
-      if (cmd === "write-valid-docx") putOutputBinary("report.docx", validDocx);
+      if (cmd === "write-incomplete-docx") putOutputBinary(handle, "report.docx", incompleteZip);
+      if (cmd === "write-damaged-docx") putOutputBinary(handle, "report.docx", damagedZip);
+      if (cmd === "write-valid-docx") putOutputBinary(handle, "report.docx", validDocx);
       return { code: 0, signal: null, stdout: "ok\n", stderr: "", timedOut: false, truncated: false };
     };
 

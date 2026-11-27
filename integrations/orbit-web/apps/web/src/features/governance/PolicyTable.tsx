@@ -7,7 +7,10 @@
 // page saves, which the server checks as it checks any document.
 import { Button, Checkbox, Input, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import { Delete16Regular, LockClosed16Regular } from "@fluentui/react-icons";
-import { ACTIONS, BINDINGS, CLAUDE_ACCOUNT_HOSTS, boxesOf, effectOf, egressHostOf, tableOf, withTable, type AccountPolicy, type ActionKind, type ActionRow, type Binding, type ConstitutionTable as TableModel } from "@orbit-web/governance-core";
+import { ACTIONS, BINDINGS, CLAUDE_ACCOUNT_HOSTS, RUNTIME_CONTROLS, RUNTIME_MODES, boxesOf, effectOf, egressHostOf, runtimeSecurityOf, tableOf, withTable, type AccountPolicy, type ActionKind, type ActionRow, type Binding, type ConstitutionTable as TableModel, type RuntimeMode } from "@orbit-web/governance-core";
+import type { RuntimeHostView } from "@orbit-web/contracts";
+import { useResource } from "../../hooks/useResource";
+import { get } from "../../services/api";
 import { useState } from "react";
 import { useViewport } from "../../hooks/useViewport";
 import { t as tr, useI18n, type MessageKey } from "../../i18n";
@@ -261,6 +264,42 @@ function Hosts({ hosts, editable, onChange }: { hosts: string[]; editable: boole
   );
 }
 
+// RUNTIME SECURITY (ADR 0063), part of the policy: a mode and the catalog's controls. What this host has PROVEN it can
+// prevent is shown beside it before anything is published -- a prediction, never evidence; an attempt that requires what
+// the host cannot prove is refused, never quietly observed. Lowering it is a weakening (high risk, acknowledged).
+function RuntimeSecuritySection({ document, editable, onChange }: { document: AccountPolicy; editable: boolean; onChange: (next: AccountPolicy) => void }) {
+  const { t } = useI18n();
+  const s = usePolicyTableStyles();
+  const parts = useParts();
+  const rs = runtimeSecurityOf(document);
+  const host = useResource<RuntimeHostView>(() => get("/api/governance/runtime-security/host"), []);
+  const prevention = host.data?.capabilities.find((c) => c.capability === "prevent.exec")?.state ?? (host.data?.backend === "disabled" ? "UNSUPPORTED" : "UNKNOWN");
+  const set = (mode: RuntimeMode, controls: typeof rs.controls) => onChange({ ...document, runtimeSecurity: { mode, controls } });
+  return (
+    <div className={s.dividerSection}>
+      <Text weight="semibold">{t("governance.policyTable.runtimeTitle")}</Text>
+      <Text size={200} className={s.note}>
+        {t("governance.policyTable.runtimeNote")}
+      </Text>
+      <div className={parts.inset}>
+        <CleanSelect value={rs.mode} disabled={!editable} ariaLabel={t("governance.policyTable.runtimeMode")} options={RUNTIME_MODES.map((m) => ({ value: m, label: m }))} onChange={(v) => set(v as RuntimeMode, rs.controls)} />
+        <Text size={200}>
+          {t("governance.policyTable.runtimeHost", { state: prevention })} {rs.mode === "enforce" && prevention !== "SUPPORTED" && <Word value="danger" label={t("governance.policyTable.runtimeWouldRefuse")} />}
+        </Text>
+        {Object.values(RUNTIME_CONTROLS).map((c) => (
+          <Checkbox
+            key={c.id}
+            label={`${c.title} -- ${c.prevents}`}
+            checked={rs.controls.includes(c.id)}
+            disabled={!editable}
+            onChange={(_, d) => set(rs.mode, d.checked === true ? [...rs.controls, c.id] : rs.controls.filter((x) => x !== c.id))}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PolicyTable({ document, editable, onChange }: { document: AccountPolicy; editable: boolean; onChange: (next: AccountPolicy) => void }) {
   const { t } = useI18n();
   const s = usePolicyTableStyles();
@@ -335,6 +374,7 @@ export function PolicyTable({ document, editable, onChange }: { document: Accoun
           />
         </div>
       </div>
+      <RuntimeSecuritySection document={document} editable={editable} onChange={onChange} />
       {table.kept.length > 0 && (
         <div className={s.dividerSection}>
           <Text weight="semibold">{t("governance.policyTable.keptTitle")}</Text>

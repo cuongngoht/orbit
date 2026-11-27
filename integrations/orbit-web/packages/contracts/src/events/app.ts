@@ -42,7 +42,7 @@ export interface CustomizationsChangedData {
 
 // What governance changed: a page that shows it reads it again. Ids only -- sent to the account it concerns, and what
 // changed is read through the routes the account's owner reaches.
-export const GOVERNANCE_AREAS = ["policy", "overrides", "resources", "audit", "findings", "reports", "isolation"] as const;
+export const GOVERNANCE_AREAS = ["policy", "overrides", "resources", "audit", "findings", "reports", "isolation", "runtime-security"] as const;
 
 export type GovernanceArea = (typeof GOVERNANCE_AREAS)[number];
 

@@ -15,7 +15,7 @@ export * from "./resources.js";
 export * from "./workforce.js";
 export * from "./executive.js";
 
-export const ORBIT_WEB_VERSION = "0.8.0";
+export const ORBIT_WEB_VERSION = "0.8.1-beta1";
 
 // The header every state-changing request carries. A browser cannot add it to a cross-site request without a CORS
 // preflight the API never answers, so its presence is part of the CSRF defence.
@@ -32,3 +32,4 @@ export * from "./updates.js";
 export * from "./employee-access.js";
 export * from "./mcp-servers.js";
 export * from "./desks.js";
+export * from "./runtime-security.js";

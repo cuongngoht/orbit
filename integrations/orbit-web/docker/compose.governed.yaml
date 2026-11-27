@@ -38,7 +38,7 @@
 name: orbit-web-governed
 
 x-hardened: &hardened
-  image: ${ORBIT_WEB_IMAGE:-ghcr.io/cuongngoht/orbit-web:0.8.0}
+  image: ${ORBIT_WEB_IMAGE:-ghcr.io/cuongngoht/orbit-web:0.8.1-beta1}
   cap_drop:
     - ALL
   security_opt:
@@ -185,9 +185,9 @@ services:
       <<: *employees
       ORBIT_WEB_DOCKER_SOCKET: /var/run/docker.sock
       ORBIT_WEB_ALLOCATOR_STATE_DIR: /var/lib/orbit-allocator
-      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.0}
-      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0}
-      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.0}
+      ORBIT_WEB_SANDBOX_IMAGE_WORKSTATION: ${ORBIT_WEB_WORKSTATION_IMAGE:-ghcr.io/cuongngoht/orbit-web-workstation:0.8.1-beta1}
+      ORBIT_WEB_SANDBOX_IMAGE_MODEL_PLANE: ${ORBIT_WEB_MODEL_PLANE_IMAGE:-ghcr.io/cuongngoht/orbit-web-model-plane:0.8.1-beta1}
+      ORBIT_WEB_SANDBOX_IMAGE_STORAGE_HELPER: ${ORBIT_WEB_STORAGE_HELPER_IMAGE:-ghcr.io/cuongngoht/orbit-web-storage-helper:0.8.1-beta1}
       ORBIT_WEB_DATA_VOLUME: ${COMPOSE_PROJECT_NAME}_orbit-web-data
       # This project's Orbit Web container: connected to every attempt's two internal networks, their only other member.
       ORBIT_WEB_CONTROL_CONTAINER: ${COMPOSE_PROJECT_NAME}-orbit-web-1

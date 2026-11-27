@@ -6,7 +6,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DEFAULT_PRESETS } from "@orbit-web/contracts";
+import { DEFAULT_PRESETS, ORBIT_WEB_VERSION } from "@orbit-web/contracts";
 import { loadSandboxConfig } from "../../../../config/sandbox-config.js";
 import type { HostCapabilities } from "../../application/sandbox.port.js";
 import { checkAttemptSpec, checkExecRequest, checkSessionSpec, checkToolPath, FILE_AREAS, NonceCache, readSecret, signedHeaders, toolFileAreas, toolPath, verifySigned } from "./allocator-protocol.js";
@@ -199,6 +199,15 @@ test("capacity: detected or configured, minus the control plane's limits and the
   assert.deepEqual([tiny.usable.cpuMillis, tiny.usable.memoryMiB], [0, 0]);
 });
 
+test("capacity: a runtime security sensor's reserve is the host's, taken from what employees may use -- only when one runs", () => {
+  const caps = { host: { cpuMillis: 4000, memoryMiB: 16_000, storageMiB: 20_000 }, storage: { mechanism: "btrfs-qgroup", perArea: "HARD_ENFORCED", hostProtection: "HARD_ENFORCED", evidence: "", probedAt: null }, probedAt: "2026-11-21T00:00:00.000Z" } as unknown as HostCapabilities;
+  const base = { ORBIT_WEB_CONTROL_PLANE_LIMITS: "orbit-web:1:2g,postgres:0.5:768m,allocator:0.25:256m" };
+  const off = infrastructureCapacity(caps, loadSandboxConfig(base));
+  const on = infrastructureCapacity(caps, loadSandboxConfig({ ...base, ORBIT_WEB_RUNTIME_SECURITY: "tetragon", ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU: "500m", ORBIT_WEB_RUNTIME_SECURITY_RESERVE_MEMORY: "512m" }));
+  assert.deepEqual([on.headroom.cpuMillis - off.headroom.cpuMillis, on.headroom.memoryMiB - off.headroom.memoryMiB], [500, 512]);
+  assert.deepEqual([on.usable.cpuMillis, on.usable.memoryMiB], [off.usable.cpuMillis - 500, off.usable.memoryMiB - 512]);
+});
+
 // A chat's or a research session's run in a sandbox of its own: what it may name, and what that names on the disk.
 const session = (over: Record<string, unknown> = {}) => ({ accountId: "acct-1", sessionId: "chat-1", connectionId: "conn-1", runId: "run-1", dispatchKey: "session:run-1", kind: "chat", workspace: "rw", switches: { github: false, azure: false }, ...over });
 
@@ -239,7 +248,7 @@ test("ids: a run's sandbox sees its own chat, its own connection and its own acc
 
 test("config: a run's sandbox is the Orbit Web image by default, with limits of its own and at most four at once", () => {
   const d = loadSandboxConfig({});
-  assert.equal(d.images.session, "ghcr.io/cuongngoht/orbit-web:0.8.0");
+  assert.equal(d.images.session, `ghcr.io/cuongngoht/orbit-web:${ORBIT_WEB_VERSION}`, "this release's own image");
   assert.deepEqual(d.session, { cpuMillis: 1000, memoryMiB: 2048, pids: 1024, max: 4 });
   const c = loadSandboxConfig({ ORBIT_WEB_SANDBOX_IMAGE_SESSION: "orbit-web:0.8.0-x", ORBIT_WEB_SESSION_SANDBOX_CPU: "2", ORBIT_WEB_SESSION_SANDBOX_MEMORY: "4g", ORBIT_WEB_SESSION_SANDBOX_PIDS: "2048", ORBIT_WEB_SESSION_SANDBOX_MAX: "8" });
   assert.deepEqual([c.images.session, c.session], ["orbit-web:0.8.0-x", { cpuMillis: 2000, memoryMiB: 4096, pids: 2048, max: 8 }]);

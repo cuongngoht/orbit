@@ -451,7 +451,8 @@ describe("how the mission's people talk", () => {
     const r2 = await screen.findByRole("article", { name: "Revision 2" });
     expect(r2.textContent).toContain("handed in");
     expect(r2.textContent).toContain("by Bao");
-    expect(r2.textContent).toContain("Claims (1) · 0 verified · 1 unverified");
+    expect(r2.textContent).toContain("Pinned research source check (1) · 0 verified · 1 without pinned source");
+    expect(r2.textContent).toContain("No pinned research sources");
 
     renderLive(<OfficeView page="mission" item={MISSION_ID} tab="timeline" go={go} account={authAccount()} />);
     const timeline = await screen.findByRole("region", { name: "Timeline" });

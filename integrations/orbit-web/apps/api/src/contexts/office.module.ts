@@ -23,6 +23,11 @@ import { AttemptManifest } from "./execution/infrastructure/attempt-manifest.js"
 import { CONNECTOR_TOOLS } from "./execution/application/connector-tools.port.js";
 import { REPOSITORY_BUNDLES } from "./execution/application/repository-bundles.port.js";
 import { MISSION_REPOSITORIES } from "./work/application/mission-repositories.port.js";
+import { SECURITY_HOLDS } from "./work/application/security-holds.port.js";
+import { RuntimeSecurityIngestion } from "./runtime-security/application/ingestion.service.js";
+import { RuntimeSecurityService } from "./runtime-security/application/runtime-security.service.js";
+import { SecurityRepository } from "./runtime-security/infrastructure/security.repository.js";
+import { RuntimeSecurityController } from "./runtime-security/presentation/runtime-security.controller.js";
 import { AdmissionService } from "./execution/application/admission.service.js";
 import { CONNECTION_SECRETS } from "./execution/application/connection-secrets.port.js";
 import { SANDBOX_PROVIDER } from "./execution/application/sandbox.port.js";
@@ -90,6 +95,10 @@ import { ExecutiveStream } from "./executive/infrastructure/executive-stream.js"
 import { ExecutiveController } from "./executive/presentation/executive.controller.js";
 
 const PROVIDERS: Provider[] = [
+  // runtime security (ADR 0063)
+  SecurityRepository,
+  RuntimeSecurityService,
+  RuntimeSecurityIngestion,
   // shared
   Outbox,
   Idempotency,
@@ -174,13 +183,15 @@ export class OfficeModule {
       // A mission's repositories: held to its employee's grants, and brought into its attempts as git bundles.
       ...(bound.has(MISSION_REPOSITORIES) ? [] : [{ provide: MISSION_REPOSITORIES, useExisting: MissionRepositoryGrants }]),
       ...(bound.has(REPOSITORY_BUNDLES) ? [] : [{ provide: REPOSITORY_BUNDLES, useExisting: RepositoryBundler }]),
+      // A runtime security incident that needs a person holds its assignment from a Retry.
+      ...(bound.has(SECURITY_HOLDS) ? [] : [{ provide: SECURITY_HOLDS, useExisting: SecurityRepository }]),
     ];
     return {
       module: OfficeModule,
       imports: [GovernanceModule, ConnectionsModule, EmployeeAccessModule],
       providers: [...PROVIDERS, AttemptInputs, ...defaults, ...bindings],
-      controllers: [OfficeController, AppointmentsController, DeskController, MissionsController, SchedulesController, ToolsController, ExecutiveController],
-      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs],
+      controllers: [OfficeController, AppointmentsController, DeskController, MissionsController, SchedulesController, ToolsController, ExecutiveController, RuntimeSecurityController],
+      exports: [Outbox, EventDispatcher, ResourcesService, ExecutionWorker, SandboxProvisioner, MissionsService, SchedulesService, ArtifactStore, ResearchInputs, AttemptInputs, RuntimeSecurityService, RuntimeSecurityIngestion],
     };
   }
 }

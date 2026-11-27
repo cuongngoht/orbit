@@ -3,7 +3,8 @@
 // answer) or an answer of its own, never looser than the company delegated, and for an action the company did not
 // delegate only narrower -- and its employees' network access and models, each part inherited or its own. A rule the rows
 // cannot show is kept as written. Every change goes back into the document the page saves; the API holds it to the
-// company's delegation in effect when it is validated, and again when it is published.
+// company's delegation in effect when it is validated, and again when it is published. Runtime security (ADR 0063) is
+// offered only upward: a mode above the company's, or a control the company does not already require.
 import { Checkbox, Field, Text, makeStyles, mergeClasses, shorthands, tokens } from "@fluentui/react-components";
 import {
   ACTION_KINDS,
@@ -11,7 +12,10 @@ import {
   COMPANY_ONLY_LIMITS,
   EFFECTS,
   networkHostOf,
+  RUNTIME_CONTROLS,
+  RUNTIME_MODES,
   rankOf,
+  runtimeModeRank,
   strictest,
   withDepartmentTable,
   type ActionKind,
@@ -21,6 +25,9 @@ import {
   type Effect,
   type NetworkLimits,
   type Rule,
+  type RuntimeControlId,
+  type RuntimeMode,
+  type RuntimeSecurity,
 } from "@orbit-web/governance-core";
 import { useI18n, type MessageKey } from "../../i18n";
 import { LIMITS, LimitField } from "./EmployeeNetwork";
@@ -276,7 +283,51 @@ function Models({ value, editable, onChange }: { value: string[] | undefined; ed
   );
 }
 
-export function DepartmentEditor({ document, rows, editable, onChange }: { document: DepartmentPolicy; rows: readonly DepartmentRow[]; editable: boolean; onChange: (next: DepartmentPolicy) => void }) {
+// The department's own runtime security: a mode only above the company's (what it already says stays offered, so the
+// select never hides it -- the API says why it may not stay), and a control only where the company does not require it.
+function Runtime({ value, company, editable, onChange }: { value: DepartmentPolicy["runtimeSecurity"]; company: RuntimeSecurity; editable: boolean; onChange: (next: DepartmentPolicy["runtimeSecurity"]) => void }) {
+  const { t } = useI18n();
+  const p = useParts();
+  const s = useStyles();
+  const current = value ?? {};
+  const set = (next: NonNullable<DepartmentPolicy["runtimeSecurity"]>) => onChange(next.mode !== undefined || (next.controls !== undefined && next.controls.length > 0) ? next : undefined);
+  const modes = RUNTIME_MODES.filter((m) => runtimeModeRank(m) > runtimeModeRank(company.mode) || m === current.mode);
+  const own = (id: RuntimeControlId) => current.controls?.includes(id) === true;
+  return (
+    <div className={s.dividerSection}>
+      <Text weight="semibold">{t("governance.deptEditor.runtimeTitle")}</Text>
+      <Text size={200} className={p.muted}>
+        {t("governance.deptEditor.runtimeDesc")}
+      </Text>
+      <CleanSelect
+        className={s.control}
+        ariaLabel={t("governance.deptEditor.runtimeAria")}
+        value={current.mode ?? "inherit"}
+        disabled={!editable}
+        options={[{ value: "inherit", label: t("governance.deptEditor.runtimeInherit", { mode: company.mode }) }, ...modes.map((m) => ({ value: m, label: m }))]}
+        onChange={(v) => set(put(current, "mode", v === "inherit" ? undefined : (v as RuntimeMode)))}
+      />
+      {Object.values(RUNTIME_CONTROLS).map((c) =>
+        company.controls.includes(c.id) ? (
+          <Checkbox key={c.id} checked disabled label={t("governance.deptEditor.runtimeRequired", { title: c.title })} />
+        ) : (
+          <Checkbox
+            key={c.id}
+            checked={own(c.id)}
+            disabled={!editable}
+            label={`${c.title} -- ${c.prevents}`}
+            onChange={(_, d) => {
+              const controls = d.checked === true ? [...(current.controls ?? []), c.id] : (current.controls ?? []).filter((x) => x !== c.id);
+              set(put(current, "controls", controls.length > 0 ? controls : undefined));
+            }}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+export function DepartmentEditor({ document, rows, runtime, editable, onChange }: { document: DepartmentPolicy; rows: readonly DepartmentRow[]; runtime: RuntimeSecurity | null; editable: boolean; onChange: (next: DepartmentPolicy) => void }) {
   const s = useStyles();
   return (
     <div className={mergeClasses(s.wrap, "orbit-touch")}>
@@ -284,6 +335,7 @@ export function DepartmentEditor({ document, rows, editable, onChange }: { docum
       <Kept rules={document.rules.filter((r) => !plain(r))} />
       <Network value={document.employeeNetwork} editable={editable} onChange={(next) => onChange(put(document, "employeeNetwork", next))} />
       <Models value={document.employeeModels?.allow} editable={editable} onChange={(allow) => onChange(put(document, "employeeModels", allow === undefined ? undefined : { allow }))} />
+      {runtime !== null && <Runtime value={document.runtimeSecurity} company={runtime} editable={editable} onChange={(next) => onChange(put(document, "runtimeSecurity", next))} />}
     </div>
   );
 }

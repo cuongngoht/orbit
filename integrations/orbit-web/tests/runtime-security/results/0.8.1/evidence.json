@@ -1,0 +1,797 @@
+{
+  "steps": [
+    {
+      "cap": "-",
+      "label": "host facts",
+      "verdict": "PASS",
+      "detail": "Docker Desktop · kernel 7.0.14-linuxkit · aarch64 · 10 CPU · cgroup v2 · active LSMs capability,bpf,landlock · BPF LSM active · KPROBE_OVERRIDE y · BTF y"
+    },
+    {
+      "cap": "-",
+      "label": "workloads made with the allocator's hardening (read-only root, no capability, no-new-privileges, default seccomp)",
+      "verdict": "PASS",
+      "detail": "a-tool mnt:4026533383 · a-model mnt:4026533517 · b-tool mnt:4026533651 · c-tool mnt:4026533785"
+    },
+    {
+      "cap": "C",
+      "label": "EXISTING control holds: /tmp is noexec (Docker's tmpfs default) -- nothing to add there",
+      "verdict": "PASS",
+      "detail": "rc 126: sh: 1: /tmp/x-base-tmp.sh: Permission denied"
+    },
+    {
+      "cap": "C",
+      "label": "GAP: the baseline PERMITS running a file from the team room (a volume shared with other employees)",
+      "verdict": "PASS",
+      "detail": "rc 0, marker written"
+    },
+    {
+      "cap": "C",
+      "label": "GAP: the baseline PERMITS running a file from /output (delivered to people)",
+      "verdict": "PASS",
+      "detail": "rc 0"
+    },
+    {
+      "cap": "C",
+      "label": "GAP: the baseline PERMITS running a file from the model plane's credential home (/connection)",
+      "verdict": "PASS",
+      "detail": "rc 0"
+    },
+    {
+      "cap": "C",
+      "label": "GAP: the baseline PERMITS fileless execution (memfd)",
+      "verdict": "PASS",
+      "detail": "rc 0"
+    },
+    {
+      "cap": "C",
+      "label": "the canary runs before any policy",
+      "verdict": "PASS",
+      "detail": ""
+    },
+    {
+      "cap": "C",
+      "label": "a-tool: no new mount or user namespace can be made, so the namespace selector cannot be escaped",
+      "verdict": "PASS",
+      "detail": "unshare: unshare failed: Operation not permitted rc=1 unshare: unshare failed: Operation not permitted rc=1"
+    },
+    {
+      "cap": "C",
+      "label": "a-model: no new mount or user namespace can be made, so the namespace selector cannot be escaped",
+      "verdict": "PASS",
+      "detail": "unshare: unshare failed: Operation not permitted rc=1 unshare: unshare failed: Operation not permitted rc=1"
+    },
+    {
+      "cap": "-",
+      "label": "the pinned sensor runs with no network; policies reach it over its unix socket only",
+      "verdict": "PASS",
+      "detail": "CLI version: v1.8.0 · Health Status: running · ready in 2026 ms"
+    },
+    {
+      "cap": "A",
+      "label": "every exec of each workload is attributed to its own container, and nothing crosses accounts",
+      "verdict": "PASS",
+      "detail": "a-tool: 7 · a-model: 7 · b-tool: 7 · c-tool: 7 · docker id prefix of 31 hex chars, unique among the workloads"
+    },
+    {
+      "cap": "A",
+      "label": "the sensor's mount namespace for a workload equals the one the workload reports (identity cross-check)",
+      "verdict": "PASS",
+      "detail": ""
+    },
+    {
+      "cap": "A",
+      "label": "account, attempt and plane come from labels only the allocator set, of THAT container",
+      "verdict": "PASS",
+      "detail": ""
+    },
+    {
+      "cap": "A",
+      "label": "no process argument reaches the export file (field filter at the source)",
+      "verdict": "PASS",
+      "detail": ""
+    },
+    {
+      "cap": "B",
+      "label": "a child process tree is observed with parent links by exec id (a reused PID cannot confuse it)",
+      "verdict": "PASS",
+      "detail": "/usr/bin/sleep <- /usr/bin/sh <- /usr/bin/sh <- /usr/bin/containerd-shim-runc-v2 <- /oldroot/initd <- <kernel>"
+    },
+    {
+      "cap": "B",
+      "label": "the child's exit is observed",
+      "verdict": "PASS",
+      "detail": ""
+    },
+    {
+      "cap": "B",
+      "label": "fileless execution is OBSERVED: the executed program is named /proc/self/fd/N",
+      "verdict": "PASS",
+      "detail": "/proc/self/fd/3"
+    },
+    {
+      "cap": "C",
+      "label": "a policy scoped to ONE attempt's two namespaces is installed and READ BACK",
+      "verdict": "PASS",
+      "detail": "739 ms · TP_STATE_ENABLED · TP_MODE_ENFORCE · 3500528 B of kernel memory"
+    },
+    {
+      "cap": "C",
+      "label": "IN SCOPE, A's tool plane: running a script from the team room is PREVENTED -- EPERM, exit 126, no marker",
+      "verdict": "PASS",
+      "detail": "rc 126, marker absent, \"sh: 1: /team/x-enf.sh: Operation not permitted\""
+    },
+    {
+      "cap": "C",
+      "label": "IN SCOPE, A's tool plane: the same from /output",
+      "verdict": "PASS",
+      "detail": "rc 126"
+    },
+    {
+      "cap": "C",
+      "label": "IN SCOPE, A's model plane: running a file from the credential home is PREVENTED",
+      "verdict": "PASS",
+      "detail": "rc 126, marker absent"
+    },
+    {
+      "cap": "C",
+      "label": "the canary is refused in BOTH of A's planes (run as the allocator runs it: docker exec)",
+      "verdict": "PASS",
+      "detail": "tool 255 · model 255 · \"exec /usr/bin/arch: operation not permitted\""
+    },
+    {
+      "cap": "C",
+      "label": "the sensor's own event says OVERRIDE, for A's container, this policy and this path",
+      "verdict": "PASS",
+      "detail": "KPROBE_ACTION_OVERRIDE /team/x-enf.sh"
+    },
+    {
+      "cap": "C",
+      "label": "OUT OF SCOPE, account B (same image, its own team room): the same operation still runs, the canary too",
+      "verdict": "PASS",
+      "detail": "rc 0, canary 0"
+    },
+    {
+      "cap": "C",
+      "label": "OUT OF SCOPE, control C: the same operation still runs -- the policy is not host-wide",
+      "verdict": "PASS",
+      "detail": "rc 0, canary 0"
+    },
+    {
+      "cap": "C",
+      "label": "the policy's own counters read back the overrides it made",
+      "verdict": "PASS",
+      "detail": "{\"override\":\"5\"}"
+    },
+    {
+      "cap": "C",
+      "label": "fileless (memfd) execution cannot be PREVENTED by this hook: it reports no path for a memory-only file",
+      "verdict": "UNSUPPORTED",
+      "detail": "rc 0 in scope; a rule on the execve filename would be bypassed by a symlink, and runc re-executes itself through a memfd: detected (B), never claimed prevented"
+    },
+    {
+      "cap": "C",
+      "label": "LIMIT: `sh file` interprets a file (the shell is what runs) and is not prevented -- stated, not claimed",
+      "verdict": "PASS",
+      "detail": "INTERPRETED"
+    },
+    {
+      "cap": "C",
+      "label": "by design /work stays executable (a toolbox, a build) -- the rule names only the shared areas",
+      "verdict": "PASS",
+      "detail": "rc 0"
+    },
+    {
+      "cap": "C",
+      "label": "OBSERVE (monitor mode): the rule MATCHES and the operation RUNS -- a detection, never called prevention",
+      "verdict": "PASS",
+      "detail": "ran true, mode TP_MODE_MONITOR"
+    },
+    {
+      "cap": "C",
+      "label": "FINDING: in monitor mode the event STILL says KPROBE_ACTION_OVERRIDE -- prevention is never read from an event, only from the policy's mode and a probe",
+      "verdict": "PASS",
+      "detail": "the normalizer derives OPERATION_PREVENTED from (enforce mode read back) AND (override event); monitor mode gives VIOLATION_DETECTED"
+    },
+    {
+      "cap": "D",
+      "label": "namespace inodes are RE-USED: a policy that outlives its container can bind the next one (it must be deleted first)",
+      "verdict": "PASS",
+      "detail": "old 4026533383 = new 4026533383; the stale policy DID refuse the new container"
+    },
+    {
+      "cap": "D",
+      "label": "so a new workload's inode is checked against every installed policy before it is protected",
+      "verdict": "PASS",
+      "detail": "a registry finds 1 installed policy holding inode 4026533383 that is not this attempt's: reap it, then bind"
+    },
+    {
+      "cap": "D",
+      "label": "reaped and bound to the new container: protection is back, the old binding is gone",
+      "verdict": "PASS",
+      "detail": "after reap ran true; after bind rc 126"
+    },
+    {
+      "cap": "D",
+      "label": "cleanup: delete removes the policy (read back) and its effect",
+      "verdict": "PASS",
+      "detail": "listed after delete false"
+    },
+    {
+      "cap": "D",
+      "label": "events of a removed container still carry its id: a registry keeps tombstones and never re-uses a mapping",
+      "verdict": "PASS",
+      "detail": "19 late exit event(s)"
+    },
+    {
+      "cap": "D",
+      "label": "a sensor RESTART drops every policy: protection must be re-proven, or the workload contained",
+      "verdict": "PASS",
+      "detail": "policies after restart []; the probe ran"
+    },
+    {
+      "cap": "E",
+      "label": "sensor STOPPED: its enforcement is gone with it (why mandatory protection must fail closed)",
+      "verdict": "PASS",
+      "detail": "the probe ran"
+    },
+    {
+      "cap": "E",
+      "label": "a policy for a hook the kernel does not have is REFUSED (an error, never a silent no-op), and never listed as enabled",
+      "verdict": "PASS",
+      "detail": "add failed: \" check if the hook exists or if your kernel supports BTF for lsm hooks, as an alternative, consider switching to kprobes\" · listed: TP_STATE_LOAD_ERROR"
+    },
+    {
+      "cap": "E",
+      "label": "a policy aimed at the WRONG namespace loads and lists fine -- only the in-workload canary shows it protects nothing",
+      "verdict": "PASS",
+      "detail": "listed TP_STATE_ENABLED, canary in the workload rc 0"
+    },
+    {
+      "cap": "E",
+      "label": "a selector with NO workload namespace is never produced (it would be host-wide)",
+      "verdict": "PASS",
+      "detail": "every selector needs one to four mount-namespace inodes"
+    },
+    {
+      "cap": "F",
+      "label": "exec overhead: 2,000 short-lived processes, median of 3",
+      "verdict": "PASS",
+      "detail": "no sensor 470 ms · sensor 583 ms · sensor + this attempt's policy 613 ms"
+    },
+    {
+      "cap": "F",
+      "label": "event loss under bursts of 2,000 execs",
+      "verdict": "PASS",
+      "detail": "6000/6000 exec events · export +7351 KiB (1255 B per exec+exit)"
+    },
+    {
+      "cap": "F",
+      "label": "ten concurrent attempt policies: each holds in its own workload, the control stays free",
+      "verdict": "PASS",
+      "detail": "add 738-839 ms each · 33 MiB of kernel memory for all ten · sensor 0.17% 300.3MiB"
+    },
+    {
+      "cap": "F",
+      "label": "sensor CPU/RAM",
+      "verdict": "PASS",
+      "detail": "idle 1.09% 107.2MiB, 0% 107.1MiB, 0% 107.1MiB · after a burst 0.63% 154.1MiB"
+    }
+  ],
+  "suffix": "88c5b1",
+  "image": "quay.io/cilium/tetragon:v1.8.0@sha256:5ed9088a1582131d71b06c98e0d549a37a71ae63ab13aabefc7a47553c822a9d",
+  "workstation": "ghcr.io/cuongngoht/orbit-web-workstation:0.8.0",
+  "modelPlane": "ghcr.io/cuongngoht/orbit-web-model-plane:0.8.0",
+  "canary": "/usr/bin/arch",
+  "facts": {
+    "kernel": "7.0.14-linuxkit",
+    "os": "Docker Desktop",
+    "arch": "aarch64",
+    "docker": "29.9.3",
+    "cgroup": "2",
+    "cgroupDriver": "cgroupfs",
+    "securityOptions": [
+      "name=seccomp,profile=builtin",
+      "name=cgroupns"
+    ],
+    "cpus": 10,
+    "memory": 8319438848,
+    "config": {
+      "CONFIG_BPF_LSM": "y",
+      "CONFIG_DEBUG_INFO_BTF": "y",
+      "CONFIG_BPF_KPROBE_OVERRIDE": "y",
+      "CONFIG_FUNCTION_ERROR_INJECTION": "y",
+      "LSM": "capability,bpf,landlock"
+    },
+    "tetragon": "CLI version: v1.8.0"
+  },
+  "cost": {
+    "execLoopNoSensorMs": 470,
+    "sensorStartMs": 2026,
+    "sensorIdle": [
+      {
+        "cpu": 1.09,
+        "mem": "107.2MiB"
+      },
+      {
+        "cpu": 0,
+        "mem": "107.1MiB"
+      },
+      {
+        "cpu": 0,
+        "mem": "107.1MiB"
+      }
+    ],
+    "policyAddMs": [
+      739
+    ],
+    "execLoopSensorMs": 583,
+    "exportBytes": 7527463,
+    "sensorUnderLoad": {
+      "cpu": 0.63,
+      "mem": "154.1MiB"
+    },
+    "execLoopEnforceMs": 613,
+    "execEvents": {
+      "observed": 6000,
+      "expected": 6000
+    },
+    "tenPolicies": {
+      "addMs": [
+        839,
+        804,
+        790,
+        812,
+        743,
+        753,
+        738,
+        772,
+        757,
+        769
+      ],
+      "held": 10,
+      "sensor": {
+        "cpu": 0.17,
+        "mem": "300.3MiB"
+      },
+      "kernelMemoryBytes": 35004400
+    }
+  },
+  "scenarios": {
+    "attribution": {
+      "perWorkload": {
+        "a-tool": [
+          "/usr/sbin/docker-init",
+          "/usr/bin/sleep",
+          "/proc/self/fd/6",
+          "/usr/bin/sh",
+          "/usr/bin/id",
+          "/bin/true",
+          "/usr/bin/readlink"
+        ],
+        "a-model": [
+          "/usr/sbin/docker-init",
+          "/usr/bin/sleep",
+          "/proc/self/fd/6",
+          "/usr/bin/sh",
+          "/usr/bin/id",
+          "/bin/true",
+          "/usr/bin/readlink"
+        ],
+        "b-tool": [
+          "/usr/sbin/docker-init",
+          "/usr/bin/sleep",
+          "/proc/self/fd/6",
+          "/usr/bin/sh",
+          "/usr/bin/id",
+          "/bin/true",
+          "/usr/bin/readlink"
+        ],
+        "c-tool": [
+          "/usr/sbin/docker-init",
+          "/usr/bin/sleep",
+          "/proc/self/fd/6",
+          "/usr/bin/sh",
+          "/usr/bin/id",
+          "/bin/true",
+          "/usr/bin/readlink"
+        ]
+      },
+      "dockerIdLength": 31,
+      "nsAgree": true
+    },
+    "observation": {
+      "chain": [
+        "/usr/bin/sleep",
+        "/usr/bin/sh",
+        "/usr/bin/sh",
+        "/usr/bin/containerd-shim-runc-v2",
+        "/oldroot/initd",
+        "<kernel>"
+      ],
+      "exits": 1
+    },
+    "policyYaml": "apiVersion: cilium.io/v1alpha1\nkind: TracingPolicy\nmetadata:\n  name: \"orbit-poc-a\"\nspec:\n  lsmhooks:\n  - hook: bprm_check_security\n    args:\n    - index: 0\n      type: linux_binprm\n    selectors:\n    - matchNamespaces:\n      - namespace: Mnt\n        operator: In\n        values: [\"4026533383\"]\n      matchArgs:\n      - index: 0\n        operator: Prefix\n        values: [\"/team/\", \"/output/\", \"/input/\"]\n      matchActions:\n      - action: Override\n        argError: -1\n    - matchNamespaces:\n      - namespace: Mnt\n        operator: In\n        values: [\"4026533517\"]\n      matchArgs:\n      - index: 0\n        operator: Prefix\n        values: [\"/connection/\"]\n      matchActions:\n      - action: Override\n        argError: -1\n    - matchNamespaces:\n      - namespace: Mnt\n        operator: In\n        values: [\"4026533383\", \"4026533517\"]\n      matchArgs:\n      - index: 0\n        operator: Equal\n        values: [\"/usr/bin/arch\"]\n      matchActions:\n      - action: Override\n        argError: -1\n",
+    "policyReadBack": {
+      "id": "2",
+      "name": "orbit-poc-a",
+      "sensors": [
+        "generic_lsm"
+      ],
+      "enabled": true,
+      "state": "TP_STATE_ENABLED",
+      "kernel_memory_bytes": "3500528",
+      "mode": "TP_MODE_ENFORCE",
+      "stats": {
+        "action_counters": {}
+      },
+      "domain": "grpc"
+    },
+    "enforcement": {
+      "inA": {
+        "rc": 126,
+        "ran": false,
+        "eperm": true,
+        "eacces": false,
+        "stderr": "sh: 1: /team/x-enf.sh: Operation not permitted"
+      },
+      "inAOut": {
+        "rc": 126,
+        "ran": false,
+        "eperm": true,
+        "eacces": false,
+        "stderr": "sh: 1: /output/x-enf-out.sh: Operation not permitted"
+      },
+      "inAm": {
+        "rc": 126,
+        "ran": false,
+        "eperm": true,
+        "eacces": false,
+        "stderr": "sh: 1: /connection/x-enf.sh: Operation not permitted"
+      },
+      "canA": {
+        "rc": 255,
+        "eperm": true,
+        "stderr": "exec /usr/bin/arch: operation not permitted"
+      },
+      "canAm": {
+        "rc": 255,
+        "eperm": true,
+        "stderr": "exec /usr/bin/arch: operation not permitted"
+      },
+      "inB": {
+        "rc": 0,
+        "ran": true,
+        "eperm": false,
+        "eacces": false,
+        "stderr": ""
+      },
+      "inC": {
+        "rc": 0,
+        "ran": true,
+        "eperm": false,
+        "eacces": false,
+        "stderr": ""
+      },
+      "canB": {
+        "rc": 0,
+        "eperm": false,
+        "stderr": ""
+      },
+      "canC": {
+        "rc": 0,
+        "eperm": false,
+        "stderr": ""
+      },
+      "overrideEvent": {
+        "process": {
+          "exec_id": "YmI3YzFjZWQwOWU1OjkwODQ2NDIxMTEyNjk6NTE2Njk=",
+          "pid": 51669,
+          "uid": 20001,
+          "cwd": "/work",
+          "binary": "/usr/bin/sh",
+          "flags": "execve",
+          "start_time": "2026-11-26T16:00:53.081692425Z",
+          "auid": 4294967295,
+          "docker": "ff4b20133778a7b15704d45de46fc23",
+          "parent_exec_id": "YmI3YzFjZWQwOWU1OjkwODQ2MzkzNDgyMjc6NTE2NjE=",
+          "refcnt": 1,
+          "ns": {
+            "uts": {
+              "inum": 4026533384
+            },
+            "ipc": {
+              "inum": 4026533385
+            },
+            "mnt": {
+              "inum": 4026533383
+            },
+            "pid": {
+              "inum": 4026533386
+            },
+            "pid_for_children": {
+              "inum": 4026533386
+            },
+            "net": {
+              "inum": 4026533388
+            },
+            "time": {
+              "inum": 4026533516
+            },
+            "time_for_children": {
+              "inum": 4026533516
+            },
+            "cgroup": {
+              "inum": 4026533387
+            },
+            "user": {
+              "inum": 4026531837,
+              "is_host": true
+            }
+          },
+          "tid": 51669,
+          "in_init_tree": false
+        },
+        "parent": {
+          "exec_id": "YmI3YzFjZWQwOWU1OjkwODQ2MzkzNDgyMjc6NTE2NjE=",
+          "pid": 51661,
+          "uid": 20001,
+          "cwd": "/work",
+          "binary": "/usr/bin/sh",
+          "flags": "execve clone",
+          "start_time": "2026-11-26T16:00:53.078929507Z",
+          "auid": 4294967295,
+          "docker": "ff4b20133778a7b15704d45de46fc23",
+          "parent_exec_id": "YmI3YzFjZWQwOWU1OjkwNjY3NTAwMDAwMDA6NDQwODQ=",
+          "ns": {
+            "uts": {
+              "inum": 4026533384
+            },
+            "ipc": {
+              "inum": 4026533385
+            },
+            "mnt": {
+              "inum": 4026533383
+            },
+            "pid": {
+              "inum": 4026533386
+            },
+            "pid_for_children": {
+              "inum": 4026533386
+            },
+            "net": {
+              "inum": 4026533388
+            },
+            "time": {
+              "inum": 4026533516
+            },
+            "time_for_children": {
+              "inum": 4026533516
+            },
+            "cgroup": {
+              "inum": 4026533387
+            },
+            "user": {
+              "inum": 4026531837,
+              "is_host": true
+            }
+          },
+          "tid": 51661,
+          "in_init_tree": false
+        },
+        "function_name": "bprm_check_security",
+        "policy_name": "orbit-poc-a",
+        "args": [
+          {
+            "linux_binprm_arg": {
+              "path": "/team/x-enf.sh",
+              "permission": "-rwxr-xr-x"
+            }
+          }
+        ],
+        "action": "KPROBE_ACTION_OVERRIDE"
+      }
+    },
+    "counters": {
+      "action_counters": {
+        "override": "5"
+      },
+      "selector_action_counters": [
+        {
+          "hook": "lsm:bprm_check_security",
+          "hook_index": 0,
+          "selector_index": 0,
+          "action_counters": {
+            "override": "2"
+          }
+        },
+        {
+          "hook": "lsm:bprm_check_security",
+          "hook_index": 0,
+          "selector_index": 1,
+          "action_counters": {
+            "override": "1"
+          }
+        },
+        {
+          "hook": "lsm:bprm_check_security",
+          "hook_index": 0,
+          "selector_index": 2,
+          "action_counters": {
+            "override": "2"
+          }
+        }
+      ]
+    },
+    "monitor": {
+      "inMon": {
+        "rc": 0,
+        "ran": true,
+        "eperm": false,
+        "eacces": false,
+        "stderr": ""
+      },
+      "action": "KPROBE_ACTION_OVERRIDE",
+      "mode": "TP_MODE_MONITOR",
+      "event": {
+        "process": {
+          "exec_id": "YmI3YzFjZWQwOWU1OjkwODY3NzQyOTAyNzA6NTIwMjg=",
+          "pid": 52028,
+          "uid": 20001,
+          "cwd": "/work",
+          "binary": "/usr/bin/sh",
+          "flags": "execve",
+          "start_time": "2026-11-26T16:00:55.213871342Z",
+          "auid": 4294967295,
+          "docker": "ff4b20133778a7b15704d45de46fc23",
+          "parent_exec_id": "YmI3YzFjZWQwOWU1OjkwODY3NzE5NDA1NjE6NTIwMjA=",
+          "refcnt": 1,
+          "ns": {
+            "uts": {
+              "inum": 4026533384
+            },
+            "ipc": {
+              "inum": 4026533385
+            },
+            "mnt": {
+              "inum": 4026533383
+            },
+            "pid": {
+              "inum": 4026533386
+            },
+            "pid_for_children": {
+              "inum": 4026533386
+            },
+            "net": {
+              "inum": 4026533388
+            },
+            "time": {
+              "inum": 4026533516
+            },
+            "time_for_children": {
+              "inum": 4026533516
+            },
+            "cgroup": {
+              "inum": 4026533387
+            },
+            "user": {
+              "inum": 4026531837,
+              "is_host": true
+            }
+          },
+          "tid": 52028,
+          "in_init_tree": false
+        },
+        "parent": {
+          "exec_id": "YmI3YzFjZWQwOWU1OjkwODY3NzE5NDA1NjE6NTIwMjA=",
+          "pid": 52020,
+          "uid": 20001,
+          "cwd": "/work",
+          "binary": "/usr/bin/sh",
+          "flags": "execve clone",
+          "start_time": "2026-11-26T16:00:55.211522175Z",
+          "auid": 4294967295,
+          "docker": "ff4b20133778a7b15704d45de46fc23",
+          "parent_exec_id": "YmI3YzFjZWQwOWU1OjkwNjY3NTAwMDAwMDA6NDQwODQ=",
+          "ns": {
+            "uts": {
+              "inum": 4026533384
+            },
+            "ipc": {
+              "inum": 4026533385
+            },
+            "mnt": {
+              "inum": 4026533383
+            },
+            "pid": {
+              "inum": 4026533386
+            },
+            "pid_for_children": {
+              "inum": 4026533386
+            },
+            "net": {
+              "inum": 4026533388
+            },
+            "time": {
+              "inum": 4026533516
+            },
+            "time_for_children": {
+              "inum": 4026533516
+            },
+            "cgroup": {
+              "inum": 4026533387
+            },
+            "user": {
+              "inum": 4026531837,
+              "is_host": true
+            }
+          },
+          "tid": 52020,
+          "in_init_tree": false
+        },
+        "function_name": "bprm_check_security",
+        "policy_name": "orbit-poc-a-observe",
+        "args": [
+          {
+            "linux_binprm_arg": {
+              "path": "/team/x-mon.sh",
+              "permission": "-rwxr-xr-x"
+            }
+          }
+        ],
+        "action": "KPROBE_ACTION_OVERRIDE"
+      }
+    },
+    "inodeReuse": {
+      "oldMnt": "4026533383",
+      "newMnt": "4026533383",
+      "reused": true,
+      "underStale": {
+        "rc": 126,
+        "ran": false,
+        "eperm": true,
+        "eacces": false,
+        "stderr": "sh: 1: /team/x-stale.sh: Operation not permitted"
+      }
+    },
+    "refusedPolicy": {
+      "stderr": "Error: failed to add tracing policy: rpc error: code = Unknown desc = policy handler 'tracing' failed loading policy 'orbit-poc-bad': lsm validation failed: error in spec.lsmHooks[0]: lsm hook \"no_such_hook_at_all\" not found in BTF (looked up \"bpf_lsm_no_such_hook_at_all\"): not found, please check if the hook exists or if your kernel supports BTF for lsm hooks, as an alternative, consider switching to kprobes",
+      "listed": {
+        "id": "2",
+        "name": "orbit-poc-bad",
+        "error": "policy handler 'tracing' failed loading policy 'orbit-poc-bad': lsm validation failed: error in spec.lsmHooks[0]: lsm hook \"no_such_hook_at_all\" not found in BTF (looked up \"bpf_lsm_no_such_hook_at_all\"): not found, please check if the hook exists or if your kernel supports BTF for lsm hooks, as an alternative, consider switching to kprobes",
+        "state": "TP_STATE_LOAD_ERROR",
+        "domain": "grpc"
+      }
+    }
+  },
+  "workloads": [
+    {
+      "key": "a-tool",
+      "id": "ff4b20133778a7b15704d45de46fc234da28205a86f80e40b9a8b1ff0c819382",
+      "account": "acct-a",
+      "plane": "tool-plane",
+      "mnt": "4026533383"
+    },
+    {
+      "key": "a-model",
+      "id": "1b44922873a650f6d4b68c5d4c6226663f57e32015df63878da2258a6b6fa821",
+      "account": "acct-a",
+      "plane": "model-plane",
+      "mnt": "4026533517"
+    },
+    {
+      "key": "b-tool",
+      "id": "d78e3c197aa7cd40de55955f2e1d4e6913322f5e8cf09c2fb9db40de2cc6a35a",
+      "account": "acct-b",
+      "plane": "tool-plane",
+      "mnt": "4026533651"
+    },
+    {
+      "key": "c-tool",
+      "id": "63de2b054433ba2a176ac32e17854f11a29e786a09d0174dbac6d797de9412d0",
+      "account": "acct-c",
+      "plane": "tool-plane",
+      "mnt": "4026533785"
+    }
+  ]
+}

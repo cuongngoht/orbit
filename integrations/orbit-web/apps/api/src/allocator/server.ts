@@ -48,6 +48,8 @@ async function dispatch(api: AllocatorApi, op: Operation, a: Record<string, unkn
       return api.cleanDesk(a.ids as never, a.order as never, n("expectedDeskVersion"));
     case "startAttempt":
       return api.startAttempt(a.spec as never);
+    case "openAttempt":
+      return api.openAttempt(s("dispatchKey"));
     case "findAttempt":
       return api.findAttempt(s("dispatchKey"));
     case "attest":
@@ -76,6 +78,8 @@ async function dispatch(api: AllocatorApi, op: Operation, a: Record<string, unkn
       return api.removeSession(s("dispatchKey"));
     case "sweepSessions":
       return api.sweepSessions();
+    case "runtimeSecurityPull":
+      return api.runtimeSecurityPull(a.cursor as never, n("max"));
   }
 }
 

@@ -76,6 +76,7 @@ import { AppointmentStateBadge } from "./AppointmentDialogs";
 import { AssignDialog } from "./AssignDialog";
 import { AvatarCustomizer } from "./AvatarCustomizer";
 import { AccessTab } from "./EmployeeAccessTab";
+import { EmployeeRuntimeSecurityTab } from "./EmployeeRuntimeSecurityTab";
 import { useFloorPrefs } from "./floorPrefs";
 import { useConnections } from "../connections/AiConnectionsSection";
 import { useExecutiveState } from "../executive/api";
@@ -88,20 +89,24 @@ import { RunDetails } from "./RunDetails";
 
 type Go = (page: OfficePage, item?: string | null, tab?: string | null) => void;
 
-export const EMPLOYEE_TABS = ["profile", "work", "access", "resources", "employment"] as const;
+export const EMPLOYEE_TABS = ["profile", "work", "access", "resources", "employment", "security"] as const;
 type EmployeeTab = (typeof EMPLOYEE_TABS)[number];
 const PRIMARY_EMPLOYEE_TABS: readonly EmployeeTab[] = ["profile", "work", "access"];
-const ADVANCED_EMPLOYEE_TABS: readonly ("resources" | "employment")[] = ["resources", "employment"];
+type AdvancedTab = "resources" | "employment" | "security";
+const ADVANCED_EMPLOYEE_TABS: readonly AdvancedTab[] = ["resources", "employment", "security"];
+const isAdvanced = (tab: EmployeeTab): tab is AdvancedTab => (ADVANCED_EMPLOYEE_TABS as readonly string[]).includes(tab);
 const TAB_KEYS: Record<EmployeeTab, MessageKey> = {
   profile: "office.employee.tab.profile",
   work: "office.employee.tab.work",
   access: "office.employee.tab.access",
   resources: "office.employee.tab.resources",
   employment: "office.employee.tab.employment",
+  security: "office.employee.tab.security",
 };
-const ADVANCED_EMP_TAB_DESC: Record<"resources" | "employment", MessageKey> = {
+const ADVANCED_EMP_TAB_DESC: Record<AdvancedTab, MessageKey> = {
   resources: "office.employee.tab.resourcesDesc",
   employment: "office.employee.tab.employmentDesc",
+  security: "office.employee.tab.securityDesc",
 };
 
 const TAB_ICON: Record<EmployeeTab, ReactElement> = {
@@ -110,6 +115,7 @@ const TAB_ICON: Record<EmployeeTab, ReactElement> = {
   access: <Key16Regular />,
   resources: <Box16Regular />,
   employment: <Briefcase16Regular />,
+  security: <Shield16Regular />,
 };
 
 const EMPLOYMENT_KEYS: Record<Employment, MessageKey> = {
@@ -1647,7 +1653,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
 
       <div className={`${o.tabStrip} orbit-hscroll`}>
         <div className={s.tabBarRow}>
-          <TabList selectedValue={current === "resources" || current === "employment" ? "" : current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label={t("office.employee.tabsAria")}>
+          <TabList selectedValue={isAdvanced(current) ? "" : current} onTabSelect={(_, d) => go("employee", id, d.value as string)} aria-label={t("office.employee.tabsAria")}>
             {PRIMARY_EMPLOYEE_TABS.map((tabKey) => (
               <Tab key={tabKey} value={tabKey} icon={TAB_ICON[tabKey]}>
                 <span className={s.tabLabel}>
@@ -1667,10 +1673,10 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
                 size="small"
                 appearance="subtle"
                 icon={<Settings16Regular />}
-                className={mergeClasses(s.advancedTabBtn, (current === "resources" || current === "employment") && s.advancedTabBtnActive)}
+                className={mergeClasses(s.advancedTabBtn, isAdvanced(current) && s.advancedTabBtnActive)}
                 aria-label={t("office.employee.tab.advancedAria")}
               >
-                {current === "resources" || current === "employment"
+                {isAdvanced(current)
                   ? t("office.employee.tab.advancedActive", { tab: t(TAB_KEYS[current]) })
                   : t("office.employee.tab.advanced")}{" "}
                 <ChevronDown16Regular aria-hidden style={{ verticalAlign: "middle", marginLeft: "2px" }} />
@@ -1700,6 +1706,7 @@ export function EmployeePage({ id, tab, go }: { id: string; tab: string | null; 
       {current === "access" && <AccessTab e={e} onChanged={() => employee.reload()} />}
       {current === "resources" && <ResourcesTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
       {current === "employment" && <EmploymentTab key={e.version} e={e} onSaved={saved} onLoadLatest={reload} />}
+      {current === "security" && <EmployeeRuntimeSecurityTab employeeId={e.id} />}
       {assigning && <AssignDialog employees={[e]} employeeId={e.id} onClose={() => setAssigning(false)} onOpenMission={(m) => go("mission", m)} />}
     </div>
   );

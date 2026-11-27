@@ -70,7 +70,7 @@ describe("the account's governance", () => {
     const go = vi.fn();
     renderLive(<GovernanceView page="overview" item={null} go={go} account={ACCOUNT} />);
     const nav = screen.getByRole("navigation", { name: "Governance" });
-    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Overview", "Policy", "Departments", "Workspaces", "Research", "Employee desks", "Approvals", "Decisions", "Audit timeline", "Security findings", "Daily reports"]);
+    expect(within(nav).getAllByRole("button").map((b) => b.textContent)).toEqual(["Overview", "Policy", "Departments", "Workspaces", "Research", "Employee desks", "Approvals", "Decisions", "Audit timeline", "Security findings", "Runtime security", "Daily reports"]);
     await userEvent.click(await screen.findByRole("button", { name: /Research workspaces/ }));
     expect(go).toHaveBeenCalledWith("research");
   });

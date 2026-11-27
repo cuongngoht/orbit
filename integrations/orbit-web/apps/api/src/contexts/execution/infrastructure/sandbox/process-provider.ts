@@ -329,6 +329,15 @@ export class ProcessSandboxProvider implements SandboxProvider {
     return { attestation: { provider: "process", state: "not_isolated", shell: false, detail: NOT_ISOLATED, checks: [{ name: "isolation", ok: false, detail: NOT_ISOLATED }], checkedAt }, applied: null, observed: null };
   }
 
+  // No container: nothing for runtime security to hold (an attempt that requires it is refused before it starts).
+  open(): Promise<{ protection: null }> {
+    return Promise.resolve({ protection: null });
+  }
+
+  runtimeSecurityPull(): Promise<null> {
+    return Promise.resolve(null);
+  }
+
   modelPlane(): ProcessPort {
     return this.o.process;
   }

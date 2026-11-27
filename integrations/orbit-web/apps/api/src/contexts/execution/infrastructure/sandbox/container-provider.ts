@@ -6,15 +6,16 @@
 import { lookup } from "node:dns/promises";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { UsageView } from "@orbit-web/contracts";
+import type { ProtectionEvidence, UsageView } from "@orbit-web/contracts";
 import { contained } from "../../../../common/workspace-path.js";
 import type { SandboxConfig } from "../../../../config/sandbox-config.js";
 import type { ProcessPort } from "../../../../infra/process/process.port.js";
 import { RunnerProcessPort } from "../../../../infra/process/runner-port.js";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../../application/sandbox.port.js";
 import { AllocatorClient } from "./allocator-client.js";
+import type { RuntimePull } from "./runtime-security-wire.js";
 import { readSecret, type AllocatorApi, type AttemptRecord, type AttestProbes } from "./allocator-protocol.js";
-import { planeNames, runnerToken } from "./ids.js";
+import { planeNames } from "./ids.js";
 import { MODEL_PLANE } from "./layout.js";
 
 // An address on the internet (no name to resolve) and a name every public resolver answers: both must fail from a tool
@@ -39,6 +40,8 @@ export interface ContainerProviderOptions {
 export class ContainerSandboxProvider implements SandboxProvider {
   readonly kind = "container" as const;
   private readonly endpoints = new Map<string, { name: string; ip: string | null; port: number }>();
+  // Each opened attempt's runner credential, as the allocator released it: in this process's memory only, never stored.
+  private readonly credentials = new Map<string, { credential: string; validUntil: number | null }>();
 
   constructor(
     private readonly allocator: AllocatorApi,
@@ -101,6 +104,7 @@ export class ContainerSandboxProvider implements SandboxProvider {
       modelPlaneHome: r.modelPlaneHome,
       modelPlaneCwd: r.modelPlaneCwd,
       bridgeCommand: { command: r.bridgeCommand.command, args: [...r.bridgeCommand.args] },
+      protection: r.protection ?? null,
     };
   }
 
@@ -120,11 +124,27 @@ export class ContainerSandboxProvider implements SandboxProvider {
     return this.allocator.attest(handle.dispatchKey, { spec: rest, probes: this.o.probes, acceptSoftStorage: this.o.acceptSoftStorage });
   }
 
+  async open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }> {
+    const opened = await this.allocator.openAttempt(handle.dispatchKey);
+    this.credentials.set(handle.dispatchKey, { credential: opened.runnerCredential, validUntil: opened.validUntil === null ? null : Date.parse(opened.validUntil) });
+    return { protection: opened.protection };
+  }
+
+  runtimeSecurityPull(cursor: { epoch: string | null; seq: number }, max: number): Promise<RuntimePull | null> {
+    return this.allocator.runtimeSecurityPull(cursor, max);
+  }
+
   modelPlane(handle: AttemptHandle): ProcessPort {
     const known = this.endpoints.get(handle.dispatchKey);
     const host = this.o.modelPlaneAddress === "ip" ? (known?.ip ?? null) : (known?.name ?? planeNames(this.o.prefix, handle.dispatchKey).model);
     if (host === null) throw new Error("the model plane's address is not known to this process yet: find the attempt first");
-    return new RunnerProcessPort(host, known?.port ?? MODEL_PLANE.runnerPort, runnerToken(this.o.secret, handle.dispatchKey));
+    const opened = this.credentials.get(handle.dispatchKey);
+    if (opened === undefined) throw new Error("runtime_protection_not_established: the attempt has not been opened, and only the allocator's gate releases its runner credential");
+    if (opened.validUntil !== null && opened.validUntil <= Date.now()) {
+      this.credentials.delete(handle.dispatchKey);
+      throw new Error("runtime_protection_not_established: the attempt's opening expired with the proof it was released on -- open it again, through the gate");
+    }
+    return new RunnerProcessPort(host, known?.port ?? MODEL_PLANE.runnerPort, opened.credential);
   }
 
   exec(handle: AttemptHandle, req: ExecRequest): Promise<ExecResult> {
@@ -154,6 +174,7 @@ export class ContainerSandboxProvider implements SandboxProvider {
   async remove(handle: AttemptHandle): Promise<{ gone: boolean; detail: string }> {
     const r = await this.allocator.remove(handle.dispatchKey);
     if (r.gone) this.endpoints.delete(handle.dispatchKey);
+    this.credentials.delete(handle.dispatchKey);
     return r;
   }
 }

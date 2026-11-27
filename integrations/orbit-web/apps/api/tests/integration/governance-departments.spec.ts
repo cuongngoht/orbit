@@ -135,4 +135,17 @@ describe("a department's policy: delegated by the company, published by its owne
     const o = await overview(dept.Research as string);
     assert.ok(o.revisions.length >= 3);
   });
+  test("runtime security: a department may only raise it; the page reads the company's and what holds its employees", async () => {
+    const sec = ((await b.send("POST", "/api/office/departments", { name: "Security" })).body as Department).id;
+    await publishCompany((c) => ({ ...c, runtimeSecurity: { mode: "observe", controls: ["exec.shared-areas"] } }));
+    assert.deepEqual((await overview(sec)).runtimeSecurity, { company: { mode: "observe", controls: ["exec.shared-areas"] }, effective: { mode: "observe", controls: ["exec.shared-areas"], floor: "disabled", from: { mode: "company" } } });
+    const lower = await draft(sec, doc(sec, { runtimeSecurity: { mode: "disabled" } }));
+    assert.equal((await b.send("POST", `${path(sec)}/revisions/${lower.id}/validate`, {})).status, 422);
+    const raise = await draft(sec, doc(sec, { runtimeSecurity: { mode: "enforce" } }));
+    assert.equal((await b.send("POST", `${path(sec)}/revisions/${raise.id}/validate`, {})).status, 200);
+    const read = (await b.get(`${path(sec)}/revisions/${raise.id}`)).body as DepartmentRevisionView;
+    const published = await b.send("POST", `${path(sec)}/revisions/${raise.id}/publish`, { digest: read.digest, base: null, companyBase: read.companyBase, acknowledgedRisk: read.impact?.risk ?? null });
+    assert.equal(published.status, 200, JSON.stringify(published.body));
+    assert.deepEqual((await overview(sec)).runtimeSecurity?.effective, { mode: "enforce", controls: ["exec.shared-areas"], floor: "disabled", from: { mode: "department" } });
+  });
 });

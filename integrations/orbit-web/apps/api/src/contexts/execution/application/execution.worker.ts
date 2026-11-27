@@ -21,7 +21,7 @@ import { CONVERSATION_DISPATCH, type ConversationDispatch } from "./conversation
 import { WorkerSignals } from "./worker-signals.js";
 import { ConversationRunRepository } from "../infrastructure/conversation-runs.repository.js";
 import { Inject, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
-import { RUNTIME_LABELS, type ExecutionProfile, type ResourceEvidence, type ResourceProfile, type RunState, type SandboxAttestation } from "@orbit-web/contracts";
+import { RUNTIME_LABELS, type ExecutionProfile, type ProtectionEvidence, type ResourceEvidence, type ResourceProfile, type RunState, type SandboxAttestation } from "@orbit-web/contracts";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import type { AppConfig } from "../../../config/config.js";
@@ -56,7 +56,7 @@ type Json = Record<string, unknown>;
 const isRecord = (v: unknown): v is Json => typeof v === "object" && v !== null && !Array.isArray(v);
 
 // Why Orbit stops an attempt it is running.
-type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" | "timeout" | "lost_lease" | "shutdown";
+type StopWhy = "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "security" | "handed_over" | "timeout" | "lost_lease" | "shutdown";
 
 export interface WorkerTimings {
   tickMs: number;
@@ -108,6 +108,9 @@ export const CONNECTION_GONE = "disconnected";
 // What a stop request written by the access watch asks for: something the attempt was given to read is no longer its.
 export const ACCESS_REVOKED = "access_revoked";
 
+// What a stop request written by runtime security asks for (ADR 0063): an incident's deterministic response.
+export const SECURITY_STOP = "security";
+
 // What an attempt that ended its work BY DESIGN was asked to stop for (ADR 0061 §8): it gave its work to its team, asked a
 // question and waits for the answer, answered or moved up its team's questions, or waits for its team. Such an attempt
 // SUCCEEDED -- its compute goes back at once instead of when its CLI happens to exit -- and says why.
@@ -120,10 +123,10 @@ const BY_DESIGN: Record<string, string> = {
 };
 
 // What a stop request written by Work (`stop_requested`) asks for.
-const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "handed_over" => {
+const stopOf = (requested: string): "pause" | "cancel" | "accepted" | "replaced" | "disconnected" | "access_revoked" | "security" | "handed_over" => {
   if (requested.startsWith("pause")) return "pause";
   if (Object.hasOwn(BY_DESIGN, requested)) return "handed_over";
-  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE || requested === ACCESS_REVOKED) return requested;
+  if (requested === "accepted" || requested === "replaced" || requested === CONNECTION_GONE || requested === ACCESS_REVOKED || requested === SECURITY_STOP) return requested;
   return "cancel";
 };
 
@@ -303,6 +306,19 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
   }
 
+  // Why this host cannot hold an attempt to ENFORCED runtime security, from the allocator's last probe (null: it proved
+  // it can prevent -- the canary refused where its policy names it, and ran where it does not).
+  private async runtimeSecurityUnavailable(provider: SandboxProvider): Promise<string | null> {
+    if (provider.kind === "process") return "the development provider runs attempts without a container: runtime security cannot hold them";
+    const caps = await provider.probe(false).catch(() => null);
+    const rs = caps?.runtimeSecurity;
+    if (rs === undefined) return "the allocator reported no runtime security probe";
+    if (rs.backend === "disabled") return "this host runs no runtime security backend (ORBIT_WEB_RUNTIME_SECURITY=off)";
+    const prevent = rs.capabilities.find((c) => c.capability === "prevent.exec");
+    if (prevent?.state !== "SUPPORTED") return `this host has not proven it can prevent (prevent.exec ${prevent?.state ?? "UNKNOWN"}: ${prevent?.detail ?? "never probed"})`;
+    return null;
+  }
+
   private async attempt(entry: Active): Promise<void> {
     const run = await this.runs.get(entry.orbitId, entry.runId);
     if (run === null || run.state !== "starting" || run.leaseOwner !== this.owner || this.provider === null) return;
@@ -344,7 +360,17 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
       // Every file of /input is named by the ATTEMPT (its manifest, below): the reader serves only what it may read.
       inputs: [],
       teamRoom: room === null ? null : { id: room.id, quotaMiB: room.quotaMiB },
+      runtimeSecurity: { mode: prep.runtimeSecurity.mode, controls: prep.runtimeSecurity.controls },
     };
+    // Runtime security (ADR 0063): an attempt the policy holds to ENFORCE is never started on a host that has not proven it
+    // can prevent -- refused here, before any container, and never quietly observed instead.
+    if (prep.runtimeSecurity.mode === "enforce") {
+      const unavailable = await this.runtimeSecurityUnavailable(provider);
+      if (unavailable !== null) {
+        await this.audit.record(actor.governance, { type: "runtime_security.admission.refused", outcome: "refused", runId: run.id, data: { runId: run.id, mode: "enforce", cause: unavailable } }).catch(() => undefined);
+        return this.unstarted(run, actor, prep.plan, { state: "failed", detail: `runtime_protection_unavailable: the policy requires enforced runtime security (${prep.runtimeSecurity.from.mode}), and ${unavailable}`, stoppedFor: "refused" });
+      }
+    }
 
     // The workspace, then both planes (written down at once: a crash after this point is recovered by its dispatch key).
     // The desk first holds everything the employee had accepted (its next work starts from that, toolbox included).
@@ -383,6 +409,22 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     }
     if (prep.isolationRequired && attestation.state !== "attested") return this.settle(entry, run, actor, prep.plan, null, { state: "failed", detail: `The account's policy requires the agent to run isolated, and this attempt's sandbox was not attested: ${attestation.detail}`, stoppedFor: "refused" });
     if (attestation.shell && !prep.plan.execute) attestation = { ...attestation, shell: false, detail: "The account's policy does not allow running commands in the workspace (workspace.execute): file tools only." };
+    // What the allocator proved before anything the employee runs may start, and the gate that opens the attempt.
+    const protection = handle.protection ?? null;
+    if (prep.runtimeSecurity.mode === "enforce" && protection?.state !== "VERIFIED") {
+      const cause = protection?.detail ?? "the sandbox established no runtime protection";
+      await this.audit.record(actor.governance, { type: "runtime_security.admission.refused", outcome: "refused", runId: run.id, data: { runId: run.id, mode: "enforce", cause } }).catch(() => undefined);
+      return this.settle(entry, run, actor, prep.plan, null, { state: "failed", detail: `runtime_protection_not_established: the policy requires enforced runtime security, and this attempt's protection was not proven: ${cause}`, stoppedFor: "refused" });
+    }
+    let opened: { protection: ProtectionEvidence | null };
+    try {
+      opened = await provider.open(handle);
+    } catch (err) {
+      return this.settle(entry, run, actor, prep.plan, null, { state: "failed", detail: `The attempt could not be opened: ${this.messageOf(err)}`, stoppedFor: "refused" });
+    }
+    const proven = opened.protection ?? protection;
+    if (proven !== null && (proven.state === "PROTECTED" || proven.state === "OBSERVING")) await this.audit.record(actor.governance, { type: "runtime_security.protection.verified", outcome: proven.state.toLowerCase(), runId: run.id, data: { runId: run.id, mode: proven.mode, policy: proven.policy, digest: proven.digest, backend: proven.backend, controls: proven.controls.join(",") || null, checks: proven.checks.length } }).catch(() => undefined);
+    attestation = { ...attestation, protection: proven };
     if (entry.stopFor !== null) return this.settle(entry, run, actor, prep.plan, null, this.stoppedEnd(entry.stopFor, profile, entry.byDesign));
 
     const startedAt = new Date().toISOString();
@@ -577,6 +619,7 @@ export class ExecutionWorker implements OnApplicationBootstrap, OnModuleDestroy 
     if (why === "accepted") return { state: "succeeded", detail: "Ended after its hand-in was accepted.", stoppedFor: "cancel" };
     if (why === "replaced") return { state: "cancelled", detail: "Stopped: a newer attempt of the assignment replaced it.", stoppedFor: "cancel" };
     if (why === "disconnected") return { state: "failed", detail: "Stopped: the AI connection it ran on was disconnected. Connect it again in Settings → AI Connections, then retry.", stoppedFor: null };
+    if (why === "security") return { state: "failed", detail: "Stopped by runtime security: an incident's response required it (Governance → Runtime security). It is held for a person's review before it may run again.", stoppedFor: null };
     if (why === "access_revoked") return { state: "failed", detail: "Stopped: something it was given to read is no longer its to read (a share revoked, or its employee moved to another department). Nothing it did after is handed in; retry once access is settled.", stoppedFor: null };
     if (why === "timeout") return { state: "failed", detail: `It ran past its limit of ${profile.timeoutMinutes} minutes and was stopped.`, stoppedFor: "timeout" };
     if (why === "shutdown") return { state: "interrupted", detail: "Orbit Web was shut down while this attempt ran: it was stopped. Retry it when Orbit Web is back.", stoppedFor: null };

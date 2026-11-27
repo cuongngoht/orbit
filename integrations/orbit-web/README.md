@@ -1,4 +1,4 @@
-# Orbit Web 0.8.0
+# Orbit Web 0.8.1-beta1
 
 Orbit's **Governed Agentic Workplace** ([what it is](../../README.md)), self-hosted in Docker: a **virtual office of AI
 employees**, each working in containers of its own under the account's policy, approvals and audit record -- and,
@@ -37,7 +37,7 @@ files run the pinned `pgvector/pgvector:0.8.1-pg17` image beside it). The image 
 | git | 2.39 (Debian 12) | the base image's digest |
 | Node.js | 24 | the base image's digest (`node:24-bookworm`) |
 | Orbit plugin | the commit the image is built from (0.6.0 today) | `git archive` of that commit |
-| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.0 | `package-lock.json`, exact versions |
+| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.1-beta1 | `package-lock.json`, exact versions |
 | tini | 0.19.0 | release binary, SHA-256 per architecture |
 
 `GET /api/setup/status` (and Settings → System) reports every one of these versions, the Orbit commit included.
@@ -47,6 +47,8 @@ or built by Orbit Web itself: **workstation**, the tool plane -- the same pinned
 pinned CPython with pip and venv, Node and npm, and jq, as one non-root user with no sudo --, **model-plane** -- the CLI
 that holds a connection's login (Claude Code as pinned above) with Orbit Web's runner and tool bridge, and no
 `/etc/claude-code` -- and **storage-helper**, the filesystem tools the allocator uses for the employees' storage quotas.
+With [runtime security](#runtime-security) on, one more container runs beside them, pulled and never built: the pinned
+Tetragon sensor (`quay.io/cilium/tetragon:v1.8.0`, by digest; [THIRD_PARTY.md](THIRD_PARTY.md)).
 
 ## Run it
 
@@ -55,7 +57,7 @@ cd integrations/orbit-web/docker
 printf 'ORBIT_WEB_DB_PASSWORD=%s\nORBIT_WEB_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > .env
 (umask 027 && openssl rand -hex 32 > allocator.secret) && sudo chown 0:10001 allocator.secret
 (cd ../../.. && for t in workstation model-plane storage-helper; do
-  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.0" . ; done)
+  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.1-beta1" . ; done)
 docker compose up -d --build        # builds from the repository root; the plugin is `git archive HEAD`
 docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code
 open http://localhost:3000          # "Set up Orbit Web", with the code printed above
@@ -90,7 +92,7 @@ public origin, no Secure cookie setting -- and names the condition that failed. 
 person can reach.
 
 **The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
-one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.0` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.1-beta1` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
 Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
 makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
 `docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
@@ -106,7 +108,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.0
+  ghcr.io/cuongngoht/orbit-web:0.8.1-beta1
 ```
 
 | what | command |
@@ -133,7 +135,8 @@ in the data volume until you remove them), and not the Claude CLI's sign-in in `
 own CLIs). A database a development build or release candidate of 0.8.0 migrated under another initial schema --
 0.8.0-rc01's included: the schema changed in place before the release (appointments, department policies, data shares,
 questions) -- is refused at start, with the command that empties it (`db.js reset --confirm=<database name>
---with-data`, above), or remove the volumes. Nothing is migrated from a release candidate.
+--with-data`, above), or remove the volumes. Nothing is migrated from a release candidate. 0.8.1 adds migrations 2
+(artifact provenance) and 3 (runtime security), additive and applied at start: a 0.8.0 database is migrated in place.
 
 Build the image yourself: `node scripts/build-image.mjs [--tag=…] [--target=…] [--ref=<commit>] [--ca-file=<pem>]` (from
 this directory; it runs `docker build -f integrations/orbit-web/docker/Dockerfile .` at the repository root; the
@@ -200,6 +203,12 @@ moves by hand (the Azure CLI's hashed lock, Antigravity's manifest, the base ima
 | `ORBIT_WEB_MODEL_EGRESS_HOSTS` | unset | more hosts a model plane may reach, comma-separated (a provider's endpoint of your own) |
 | `ORBIT_WEB_EGRESS_MAX_CONNECTIONS_PER_RUN` | `256` | the proxy's own cap on one run's connections at once, always on |
 | `ORBIT_WEB_AGING_MINUTES` / `ORBIT_WEB_STARVATION_GUARD_MINUTES` | `30` / `60` | admission: how fast waiting work gains priority, and how long a large attempt may be passed by smaller ones before freed capacity is kept for it |
+| `ORBIT_WEB_RUNTIME_SECURITY` | `off` | [Runtime security](#runtime-security): `tetragon` turns the security plane on in the allocator and Orbit Web (`compose.runtime-security.yaml` sets it in both) |
+| `ORBIT_WEB_RUNTIME_SECURITY_FLOOR` | `disabled` (`observe` with the override) | the least every account's employee attempts are held to -- `disabled`, `observe` or `enforce`; an account's policy may only go higher. Read by Orbit Web and again by the allocator |
+| `ORBIT_WEB_RUNTIME_SECURITY_SENSOR` / `_EVENTS_DIR` | `orbit-tetragon` / `/run/orbit-runtime-security/events` | the allocator's: the sensor's container, and where the sensor's export is mounted (read-only) |
+| `ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS` / `_FRESH_MS` | `15000` / `60000` | the allocator's: how long an enforced attempt whose protection is lost has to be proven again before both its containers are stopped (1 s-10 min), and how long a proof stays fresh |
+| `ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS` / `_MAX_EVENTS_PER_RUN` | `14` / `20000` | how long runtime events are kept, and how many of one attempt (information and notable events each; the rest is counted, not kept) |
+| `ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU` / `_MEMORY` | `1000m` / `1g` | what the sensor takes of the host, taken from what employees may use (keep equal to its limits, `ORBIT_WEB_RUNTIME_SECURITY_CPUS` / `_MEMORY` in the override) |
 
 **Telemetry.** With a collector named, every Claude Code process Orbit Web starts exports as a person's own Claude
 Code would with the same settings, and only Claude Code gets the variables (never git, gh, az or Orbit's own commands):
@@ -920,7 +929,79 @@ account owns and nothing of another account's.
   to the next connection of a running attempt. Private and internal addresses are never reachable in either mode.
 - **From a terminal**: `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js status |
   verify-audit [--account=<id> | --deployment] | owner setup-code | owner reset-password --username=<name> | owner
-  revoke-sessions [--username=<name>] | revoke-sessions --account=<id> | --all`.
+  revoke-sessions [--username=<name>] | revoke-sessions --account=<id> | --all | runtime-security status`.
+
+## Runtime security
+
+Orbit Web 0.8.1 can watch what an AI employee's programs actually do inside its attempt's two containers, prevent
+what the account's policy forbids, and say only what it proved ([ADR 0063](../../docs/adr/0063-orbit-web-0-8-1-runtime-security.md),
+[threat model](docs/runtime-security-threat-model.md)). It is off unless the operator turns it on, and an account's
+policy decides how much of it holds that account's employees.
+
+**Turn it on.** Add the override, which runs ONE pinned [Tetragon](THIRD_PARTY.md) sensor for the host (privileged,
+with no network and no Docker socket; only the allocator talks to it) and sets an `observe` floor:
+
+```bash
+cd integrations/orbit-web/docker
+docker compose -f compose.yaml -f compose.runtime-security.yaml up -d   # or COMPOSE_FILE=compose.yaml:compose.runtime-security.yaml in .env
+```
+
+Then **Governance → Runtime security** shows what this host proved -- the sensor, and each capability with the probe
+that decided it: `observe.process`, `observe.fileless`, `prevent.exec`, `scope.workload`. A capability is SUPPORTED
+only when its probe held on this host (the scope canaries are proven again every 30 s); nothing is assumed from a
+kernel version.
+
+**Observe or enforce.** In **Governance → Policy**, *Runtime security* sets the account's mode and its controls (a
+department may only raise them; lowering one is a high-risk change you acknowledge):
+
+- **Disabled** -- 0.8.0's behaviour.
+- **Observe** -- each attempt's programs are recorded (every exec and exit, its parent, its binary; never its
+  arguments, its environment or a file's contents), and a match of a control is reported as *detected*: the operation
+  ran. Observation is not prevention.
+- **Enforce** -- before anything the employee runs may start, the attempt's own policy is installed and read back and
+  a canary program is refused in both of its containers; only then is the attempt opened (the AI CLI and the shell
+  wait for it). A control's match is refused by the kernel (*prevented*). If the proof is lost while it runs -- the
+  sensor stops or restarts, the policy goes, a container restarts -- the attempt opens no new connection from then
+  on, and both its containers are stopped within 15 s unless the proof returns. On a host that has not proven it can
+  prevent, an enforced attempt is refused before any container (`runtime_protection_unavailable`), never quietly
+  observed.
+
+The one control that prevents is **No program runs from a shared area** (`exec.shared-areas`: the team room,
+`/output`, `/input`, and the model plane's connection home). It does not prevent an interpreter reading a script
+(`sh /team/x.sh`), a copy run from `/work`, or a program run from memory -- the last is detected. In every mode but
+disabled, a program run from memory and a shell or interpreter started in the model plane are detections of their own;
+under enforce they stop the attempt. They are recognised by the program's name -- a renamed shell, `ld.so /bin/sh`, or a
+link of the workload's own naming a memory file is not -- and only what the workload itself started is judged (the
+allocator's own checks never are).
+
+**Incidents.** A detection that matters opens an incident (one per cause per attempt; a repeat is counted). Under
+enforce its response is deterministic: the attempt's run token ends, exactly its two containers are stopped and read
+back stopped, and the assignment's Retry is refused until you review the incident -- *Investigate*, *Resolve*, or
+*Authorize retry* with a reason. Nothing is deleted, and no policy changes by itself. An employee's own **Runtime
+security** tab shows what its attempts are held to and, while one runs, its containers' identities and checks.
+
+**Support.** Verified on Docker Desktop 29.9.3 (kernel 7.0.14-linuxkit, arm64): observation, scoping, prevention,
+the gate, containment on policy drift, sensor restart and sensor down. Prevention needs the BPF LSM in the kernel's
+active list (`cat /sys/kernel/security/lsm` shows `bpf`) and BTF; a host without them can observe and refuses enforce.
+Not run: native Linux, x86_64, a cloud VM, rootless Docker -- the page's probe says what each host proves. The
+governed deployment's shared agent container is not covered, and chats, research and CEO Chat are observed only.
+
+**Upgrade, restart, disable.** 0.8.1 adds migration 3 (`security.*`); nothing is converted. Restarting the sensor
+drops every policy: enforced attempts are contained, observed ones get their policy back. To disable, remove the
+override -- but an account whose policy (or a floor) requires enforce then has its attempts refused, never run
+unprotected: lower those policies first if that is what you mean.
+
+**Troubleshooting.** `docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js runtime-security
+status` says, from the server, what this host proved, how the sensor stands as Orbit Web last pulled it, the telemetry's
+loss counters, and how many running attempts each protection state holds -- counts, never an account's evidence.
+
+- *`prevent.exec` UNSUPPORTED*: the kernel's LSM list has no `bpf`, or its config lacks `CONFIG_BPF_LSM`; the detail
+  names which. Use observe here, or a host whose kernel has it.
+- *Sensor not healthy*: `docker compose logs orbit-tetragon`; it needs `/sys/kernel` and a privileged container.
+- *`runtime_protection_not_established`*: the attempt's proof did not hold before it opened -- the run's details and
+  the incident say which check failed (identity, policy read back, canary).
+- *Events lost / unattributed* on the page: the allocator's ring overflowed before Orbit Web read it (said, never
+  hidden), or a container Orbit did not make was seen (expected: only Orbit's containers belong to an account).
 
 ## Connectors: GitHub and Azure DevOps
 
@@ -1333,4 +1414,7 @@ the images with (`scripts/release.mjs verify`), builds and smoke-tests Orbit Web
 (`scripts/build-image.mjs --target=…`) for linux/amd64 and, unless switched off, linux/arm64, pushes
 `ghcr.io/<owner>/orbit-web*:<version>` as one manifest per image (and `latest` only when asked), records each digest
 and writes the release notes from `CHANGELOG.md` (`## Orbit Web <version>`), with how to run `docker/compose.published.yaml`.
+A version is a release (`x.y.z`) or a prerelease (`x.y.z-beta1`, SemVer's identifiers, no `+` build metadata): a
+prerelease is published as a GitHub prerelease and never moves `latest` (`release.mjs verify --latest=true` refuses it;
+`release.mjs kind` tells the workflow which), so the release before it stays the latest.
 Both call scripts that run the same without GitHub.

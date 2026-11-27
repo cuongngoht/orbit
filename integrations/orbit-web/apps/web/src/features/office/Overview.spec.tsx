@@ -403,7 +403,7 @@ describe("the office: who leads it, and what its employees run on by default", (
     await userEvent.click(within(screen.getByRole("dialog", { name: "Assign work" })).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    await userEvent.click(within(directorRoom).getByRole("button", { name: "Actions for Director's Office" }));
+    await userEvent.click(await within(directorRoom).findByRole("button", { name: "Actions for Director's Office" }));
     expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Replace", "Suspend", "Revoke"]);
     await userEvent.click(screen.getByRole("menuitem", { name: "Suspend" }));
     const dialog = await screen.findByRole("dialog", { name: "Suspend the CEO" });

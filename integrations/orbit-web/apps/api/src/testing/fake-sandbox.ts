@@ -3,9 +3,10 @@
 // employee below calls Orbit Web's real tool endpoint over HTTP with its run's token, as the real bridge would). What it
 // attests is what the test sets (a shell by default). It isolates nothing: it is the logic's stand-in, never evidence of
 // isolation (the container provider's own tests are).
-import type { DeskEntry, EnforcementLevel, UsageView } from "@orbit-web/contracts";
+import type { DeskEntry, EnforcementLevel, ProtectionEvidence, UsageView } from "@orbit-web/contracts";
 import type { AreaState, AttemptEvidence, AttemptHandle, AttemptSpec, AttemptStatus, DeskCleaned, DeskCleanOrder, DeskListing, DeskRead, ExecRequest, ExecResult, FileEntry, HostCapabilities, ProvisionResult, SandboxIds, SandboxProvider } from "../contexts/execution/application/sandbox.port.js";
 import { AllocatorError, checkToolPath } from "../contexts/execution/infrastructure/sandbox/allocator-protocol.js";
+import type { RuntimePull } from "../contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
 import { FakeProcessPort, type Call, type FakeChild, type SpawnScript } from "./fake-process.js";
 
 interface Attempt {
@@ -41,13 +42,25 @@ export class FakeSandboxProvider implements SandboxProvider {
   readonly execs: { dispatchKey: string; argv: string[]; cwd: string | undefined }[] = [];
   // What the test controls.
   shell = true;
+  // Runtime security (ADR 0063), as a test sets it: the host's prevention (probe), whether an enforced attempt's
+  // protection is proven, and whether the gate refuses. Its evidence says backend "test": never production evidence.
+  runtimePrevention: "SUPPORTED" | "UNSUPPORTED" | "UNKNOWN" = "SUPPORTED";
+  protectionHolds = true;
+  refuseOpen = false;
+  readonly opened = new Set<string>();
+  // What the allocator's security plane would report: a test sets it, the security context pulls it (once each).
+  runtimePulls: RuntimePull[] = [];
+  stopped: string[] = [];
   // What the probe says the host has (a test resizes it).
   host = { cpuMillis: 4000, memoryMiB: 16384, storageMiB: 200_000 };
   provisionFailures = 0;
   findFails = false;
+  // Attempts whose planes the allocator still reads back running after a stop (a stop that did not take).
+  readsBackRunning = new Set<string>();
   // How the provider reads an input's bytes from Orbit Web's own store (bound by the test to the real reader).
   readInput: ((storePath: string) => Promise<Buffer>) | null = null;
-  exec_: (req: ExecRequest) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
+  // The handle is the attempt the command runs in: a test acts on THAT attempt (attemptOf), never on whichever runs first.
+  exec_: (req: ExecRequest, handle: AttemptHandle) => ExecResult = (req) => ({ code: 0, signal: null, stdout: `ran: ${req.argv.slice(2).join(" ")}`, stderr: "", timedOut: false, truncated: false });
 
   async probe(): Promise<HostCapabilities> {
     return {
@@ -57,6 +70,7 @@ export class FakeSandboxProvider implements SandboxProvider {
       storage: { mechanism: "none", areas: [], hostDiskProtection: HARD, evidence: "fake", probedAt: new Date().toISOString() } as never,
       host: { ...this.host },
       shellPossible: true,
+      runtimeSecurity: { backend: "tetragon", backendVersion: "test", backendImage: "test", hostKind: "unknown", kernel: null, arch: null, floor: "disabled", sensor: { state: "HEALTHY", generation: "test", since: null, version: "test", image: "test", detail: "fake" }, capabilities: [{ capability: "prevent.exec", state: this.runtimePrevention, detail: "fake", checkedAt: null }], resources: { cpuPercent: null, memoryMiB: null }, probedAt: new Date().toISOString() },
       probedAt: new Date().toISOString(),
     };
   }
@@ -199,6 +213,7 @@ export class FakeSandboxProvider implements SandboxProvider {
       modelPlaneHome: "/connection",
       modelPlaneCwd: "/run",
       bridgeCommand: { command: "node", args: ["/opt/orbit-web/bridge/main.js"] },
+      protection: this.protectionOf(spec),
     };
     this.attempts.set(spec.dispatchKey, { handle, spec, running: true, removed: false, oom: { modelPlane: false, toolPlane: false } });
     const files = this.files(handle);
@@ -212,6 +227,7 @@ export class FakeSandboxProvider implements SandboxProvider {
   async find(dispatchKey: string): Promise<AttemptStatus | null> {
     if (this.findFails) throw new Error("the fake allocator does not answer");
     const a = this.attempts.get(dispatchKey);
+    if (a !== undefined && this.readsBackRunning.has(dispatchKey)) return { handle: a.handle, toolPlaneRunning: true, modelPlaneRunning: true, oomKilled: a.oom };
     if (a === undefined || a.removed) return null;
     return { handle: a.handle, toolPlaneRunning: a.running, modelPlaneRunning: a.running, oomKilled: a.oom };
   }
@@ -226,13 +242,37 @@ export class FakeSandboxProvider implements SandboxProvider {
     };
   }
 
+  protectionOf(spec: AttemptSpec): ProtectionEvidence {
+    const mode = spec.runtimeSecurity?.mode ?? "disabled";
+    const state = mode === "disabled" ? "UNREGISTERED" : mode === "observe" ? "OBSERVING" : this.protectionHolds ? "VERIFIED" : "UNKNOWN";
+    const at = new Date().toISOString();
+    return { backend: "test", backendVersion: "test", hostKind: "unknown", hostId: null, bootId: null, requestedMode: mode, mode, controls: spec.runtimeSecurity?.controls ?? [], policy: mode === "disabled" ? null : `orbit-a-test-${spec.dispatchKey}`, digest: null, planes: [], checks: [{ name: "fake", ok: state !== "UNKNOWN", detail: null }], state, detail: state === "UNKNOWN" ? "the fake's protection does not hold" : "fake", verifiedAt: state === "VERIFIED" ? at : null, freshUntil: state === "VERIFIED" ? new Date(Date.now() + 60_000).toISOString() : null, sensorGeneration: "test" };
+  }
+
+  async runtimeSecurityPull(): Promise<RuntimePull | null> {
+    return this.runtimePulls.shift() ?? null;
+  }
+
+  async open(handle: AttemptHandle): Promise<{ protection: ProtectionEvidence | null }> {
+    if (this.refuseOpen) throw new AllocatorError("conflict", "runtime_protection_not_established: the fake's gate refuses");
+    this.opened.add(handle.dispatchKey);
+    const p = handle.protection ?? null;
+    return { protection: p === null ? null : { ...p, state: p.state === "VERIFIED" ? "PROTECTED" : p.state } };
+  }
+
   modelPlane(): FakeProcessPort {
     return this.cli;
   }
 
+  // The attempt a scripted CLI belongs to, by the run token its bridge was given (ToolCaller.bridge.token): attempts of
+  // different employees may run side by side, so "the first one running" is not this one.
+  attemptOfRun(runToken: string): Attempt | undefined {
+    return [...this.attempts.values()].find((a) => a.spec.bridge.runToken === runToken);
+  }
+
   async exec(handle: AttemptHandle, req: ExecRequest): Promise<ExecResult> {
     this.execs.push({ dispatchKey: handle.dispatchKey, argv: req.argv, cwd: req.cwd });
-    return this.exec_(req);
+    return this.exec_(req, handle);
   }
 
   // The file tools are held to the areas the real providers hold them to (one declaration): what a real tool plane

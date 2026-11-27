@@ -43,6 +43,9 @@ import { Db, jsonParam, type Row } from "../../../infra/db/db.js";
 import { refused, stale, unprocessable } from "../../shared/domain.js";
 import { loadSandboxConfig, MODEL_PLANE_DEFAULTS, type Reserve, type SandboxConfig } from "../../../config/sandbox-config.js";
 import { infrastructureCapacity, reserveOf } from "../infrastructure/sandbox/capacity.js";
+import type { RuntimeHostProbe } from "../infrastructure/sandbox/runtime-security-wire.js";
+import { systemContext } from "../../../modules/auth/principal.js";
+import { AuditService } from "../../../modules/governance/audit.service.js";
 import { SANDBOX_PROVIDER, type HostCapabilities, type SandboxIds, type SandboxProvider } from "./sandbox.port.js";
 
 const sandboxConfigOrNull = (env: AppConfig["sourceEnv"]): SandboxConfig | null => {
@@ -137,6 +140,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(Db) private readonly db: Db,
     @Optional() @Inject(SANDBOX_PROVIDER) private readonly provider: SandboxProvider | null = null,
+    @Optional() @Inject(AuditService) private readonly audit: AuditService | null = null,
   ) {}
 
   private planes: Record<RuntimeKind, { cpuMillis: number; memoryMiB: number }> | null = null;
@@ -174,7 +178,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
   private async remeasure(): Promise<InfrastructureCapacity | null> {
     for (let attempt = 1; attempt <= START_TRIES && !this.closing; attempt += 1) {
       const probe = await this.probe();
-      if (probe !== null || this.provider === null) return this.keepCapacity(this.measure(probe));
+      if (probe !== null || this.provider === null) return this.keepCapacity(this.measure(probe), probe);
       await pause(START_PAUSE_MS);
     }
     if (!this.closing) this.logger.warn("the sandbox provider did not answer at start: the host's capacity stays as it was last read");
@@ -210,7 +214,7 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
   private async recheck(): Promise<{ capacity: InfrastructureCapacity; moved: number }> {
     const probe = await this.probe();
     if (probe === null && this.provider !== null) throw unprocessable("capacity_unreadable", "The sandbox provider (the allocator) did not answer: the host's capacity is left as it was last read. Try again in a moment.");
-    const capacity = await this.keepCapacity(this.measure(probe));
+    const capacity = await this.keepCapacity(this.measure(probe), probe);
     return { capacity, moved: await this.followCapacity(capacity) };
   }
 
@@ -222,7 +226,8 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
 
   // The capacity, read again from the host (provider probe, or this process's host) and kept as the system row.
   async refreshCapacity(): Promise<InfrastructureCapacity> {
-    return this.keepCapacity(this.measure(await this.probe()));
+    const probe = await this.probe();
+    return this.keepCapacity(this.measure(probe), probe);
   }
 
   // What the host gives employees, from a probe (null: this process's own host) and the operator's settings -- read in
@@ -253,14 +258,27 @@ export class ResourcesService implements OnApplicationBootstrap, OnModuleDestroy
     return { source: anyConfigured ? "configured" : probe !== null || detected.cpuMillis > 0 ? "detected" : "unknown", total, headroom, usable, storage, checkedAt: new Date().toISOString() };
   }
 
-  private async keepCapacity(capacity: InfrastructureCapacity): Promise<InfrastructureCapacity> {
+  // The host's runtime security probe (ADR 0063) is kept beside its capacity: the same reading, never a second discovery.
+  private async keepCapacity(capacity: InfrastructureCapacity, probe: HostCapabilities | null = null): Promise<InfrastructureCapacity> {
     const { total, headroom, usable, storage } = capacity;
+    const before = probe?.runtimeSecurity === undefined ? undefined : ((await this.db.one("SELECT runtime_security FROM workforce.capacity WHERE account_id = $1", [SYSTEM_ACCOUNT]))?.runtime_security ?? null);
     await this.db.query(
-      `INSERT INTO workforce.capacity (account_id, source, total, headroom, usable, storage, checked_at) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7)
-       ON CONFLICT (account_id) DO UPDATE SET source = excluded.source, total = excluded.total, headroom = excluded.headroom, usable = excluded.usable, storage = excluded.storage, checked_at = excluded.checked_at, version = workforce.capacity.version + 1`,
-      [SYSTEM_ACCOUNT, capacity.source, jsonParam(total), jsonParam(headroom), jsonParam(usable), jsonParam(storage), capacity.checkedAt ?? new Date().toISOString()],
+      `INSERT INTO workforce.capacity (account_id, source, total, headroom, usable, storage, checked_at, runtime_security) VALUES ($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8::jsonb)
+       ON CONFLICT (account_id) DO UPDATE SET source = excluded.source, total = excluded.total, headroom = excluded.headroom, usable = excluded.usable, storage = excluded.storage, checked_at = excluded.checked_at, runtime_security = COALESCE(excluded.runtime_security, workforce.capacity.runtime_security), version = workforce.capacity.version + 1`,
+      [SYSTEM_ACCOUNT, capacity.source, jsonParam(total), jsonParam(headroom), jsonParam(usable), jsonParam(storage), capacity.checkedAt ?? new Date().toISOString(), probe?.runtimeSecurity === undefined ? null : jsonParam(probe.runtimeSecurity)],
     );
+    if (probe?.runtimeSecurity !== undefined) await this.probed(before as RuntimeHostProbe | null, probe.runtimeSecurity);
     return capacity;
+  }
+
+  // What this host's runtime security can do, as a probe decided it, recorded on the deployment's chain when the answer
+  // changed (a backend, its version, or a capability's word) -- never each probe.
+  private async probed(before: RuntimeHostProbe | null, now: RuntimeHostProbe): Promise<void> {
+    const words = (p: RuntimeHostProbe | null): Record<string, string> => Object.fromEntries((p?.capabilities ?? []).map((c) => [c.capability, c.state]));
+    const same = before !== null && before.backend === now.backend && before.backendVersion === now.backendVersion && JSON.stringify(words(before)) === JSON.stringify(words(now));
+    if (same || this.audit === null) return;
+    const w = words(now);
+    await this.audit.record(systemContext("runtime-security", null), { type: "runtime_security.capability.probed", outcome: (w["prevent.exec"] ?? "unknown").toLowerCase(), accountId: null, data: { backend: now.backend, version: now.backendVersion, observation: w["observe.process"] ?? null, prevention: w["prevent.exec"] ?? null, scope: w["scope.workload"] ?? null, hostKind: now.hostKind } });
   }
 
   async capacity(lock = false): Promise<InfrastructureCapacity> {

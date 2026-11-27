@@ -652,4 +652,4 @@ The decisions behind the code are the ADRs in [docs/adr/](adr/), by subject:
 | the store, learning and context | [0024](adr/0024-the-store-is-the-home-of-test-data.md), [0025](adr/0025-learning-on-by-default.md), [0058](adr/0058-a-task-knows-enough-by-levels-on-its-own-work.md) |
 | activation, follow-through and self-improvement | [0045](adr/0045-autonomous-self-improvement-on-independent-evidence.md), [0050](adr/0050-the-host-activates-orbit-by-capability-and-orbit-verifies-what-happened.md), [0059](adr/0059-proactive-execution-from-facts-said-once-and-explained.md) |
 | measuring a release | [0057](adr/0057-an-independent-evaluator-measures-a-release.md) (0046-0056 are the in-repo benchmark it replaced, kept as the record) |
-| Orbit Web | [0060](adr/0060-orbit-web-a-browser-host-around-the-official-clis.md), [0061](adr/0061-orbit-web-0-8-0.md) |
+| Orbit Web | [0060](adr/0060-orbit-web-a-browser-host-around-the-official-clis.md), [0061](adr/0061-orbit-web-0-8-0.md), [0062](adr/0062-orbit-web-ceo-chat.md), [0063](adr/0063-orbit-web-0-8-1-runtime-security.md) |

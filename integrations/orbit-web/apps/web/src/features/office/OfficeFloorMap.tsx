@@ -1241,6 +1241,7 @@ export function OfficeFloorMap({
   ceo = null,
   ceoEmployee = null,
   filter,
+  filtered = false,
   account,
   inboxCount = 0,
   canHire = false,
@@ -1271,6 +1272,7 @@ export function OfficeFloorMap({
   ceo?: AppointmentSummary | null;
   ceoEmployee?: EmployeeCard | null;
   filter: string;
+  filtered?: boolean;
   account: AuthAccount | null;
   inboxCount?: number;
   canHire?: boolean;
@@ -1972,10 +1974,10 @@ export function OfficeFloorMap({
                       <div className={o.row} style={{ gap: "12px" }}>
                         <PixelEmptyDeskClusterSvg />
                         <Text size={200} className={s.muted}>
-                          {t("office.floor.noEmployeeHere", { suffix: filter === "all" ? t("office.floor.noEmployeeYet") : t("office.floor.noEmployeeMatches") })}
+                          {t("office.floor.noEmployeeHere", { suffix: !filtered && filter === "all" ? t("office.floor.noEmployeeYet") : t("office.floor.noEmployeeMatches") })}
                         </Text>
                       </div>
-                      {filter === "all" && canHire && g.department && onHireInDepartment && (
+                      {!filtered && filter === "all" && canHire && g.department && onHireInDepartment && (
                         <Button size="small" appearance="outline" icon={<Add16Regular />} onClick={() => g.department && onHireInDepartment(g.department.id)}>
                           {t("office.floor.hireInDept", { name: g.department.name })}
                         </Button>

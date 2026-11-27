@@ -11,7 +11,7 @@
 //                 in using ChatGPT"): so a ChatGPT sign-in is named by the CLI's own app server, `account/read`
 //                 (`codex app-server`, its JSON-RPC: the account's email, its workspace and the workspace's id)
 //   Antigravity   `agy --version`; it documents no status command: its connections are not offered (methods.ts)
-import { CLAUDE_ACCOUNT_METHOD, type AuthMethod, type AuthState, type Capability, type InstallationState, type RuntimeCapabilities, type RuntimeKind } from "@orbit-web/contracts";
+import { CLAUDE_ACCOUNT_METHOD, ORBIT_WEB_VERSION, type AuthMethod, type AuthState, type Capability, type InstallationState, type RuntimeCapabilities, type RuntimeKind } from "@orbit-web/contracts";
 import { endedHow, type RunResult } from "../../infra/process/process.port.js";
 import { redactSecrets, tail } from "../../infra/security/redact.js";
 import { sha256 } from "../../infra/accounts/stores.js";
@@ -126,7 +126,7 @@ export const chatgptUnnamed = (r: RunResult): boolean => /logged in using chatgp
 // What `codex app-server` is asked (one line each, JSON-RPC over stdio): initialize, initialized, then account/read
 // without refreshing a token. It answers only while its input stays open (probe.ts keeps it open until the answer).
 export const CODEX_ACCOUNT_REQUEST = `${[
-  { method: "initialize", id: 0, params: { clientInfo: { name: "orbit_web", title: "Orbit Web", version: "0.8.0" } } },
+  { method: "initialize", id: 0, params: { clientInfo: { name: "orbit_web", title: "Orbit Web", version: ORBIT_WEB_VERSION } } },
   { method: "initialized" },
   { method: "account/read", id: 1, params: { refreshToken: false } },
 ]

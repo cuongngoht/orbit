@@ -1,0 +1,92 @@
+# RUNTIME SECURITY (Orbit Web 0.8.1, ADR 0063): an override of compose.yaml (or compose.published.yaml) that adds ONE
+# Tetragon sensor for this host -- never one per employee -- and turns the security plane on in the allocator and in
+# Orbit Web. Without this file nothing changes: Orbit Web 0.8.0's behaviour.
+#
+#   cd integrations/orbit-web/docker
+#   docker compose -f compose.yaml -f compose.runtime-security.yaml up -d
+#   (or COMPOSE_FILE=compose.yaml:compose.runtime-security.yaml in .env)
+#
+# What the sensor is, said plainly -- it is part of the host's trusted computing base, beside the allocator:
+#   - privileged, in the host's PID and cgroup namespaces, /sys/kernel mounted: it loads eBPF programs into the kernel
+#     every container on this host shares. It needs no Docker socket and gets none.
+#   - NO network at all (network_mode: none): its policy API is a unix socket inside its own container, reached only by
+#     the allocator (the one holder of the Docker socket) through `docker exec`. No employee, no Orbit Web, no page can
+#     reach it.
+#   - its JSON export (rotated: 10 MiB x 3, a process's arguments never exported) is on a volume only it and the
+#     allocator mount -- the allocator read-only.
+#   - pinned by digest; health is `tetra status`.
+#
+# ORBIT_WEB_RUNTIME_SECURITY_FLOOR is the least every account's employee attempts are held to (default observe here:
+# turning this file on is the operator's choice to observe). `enforce` refuses every employee attempt on a host that has
+# not proven it can prevent (Governance → Runtime security shows what this host proved). An account may raise its own
+# mode in its policy; nothing an account says goes below the floor. Removing this file while the floor in an account's
+# policy says enforce does not bypass it: those attempts are refused, never run unprotected.
+services:
+  orbit-tetragon:
+    image: quay.io/cilium/tetragon:v1.8.0@sha256:5ed9088a1582131d71b06c98e0d549a37a71ae63ab13aabefc7a47553c822a9d
+    container_name: orbit-tetragon
+    command:
+      - /usr/bin/tetragon
+      - --server-address
+      - unix:///var/run/tetragon/tetragon.sock
+      - --health-server-address
+      - ""
+      - --export-filename
+      - /var/log/tetragon/tetragon.log
+      - --export-file-max-size-mb
+      - "10"
+      - --export-file-max-backups
+      - "3"
+      - --export-file-perm
+      - "644"
+      - --enable-process-ns
+      - --field-filters
+      - '{"fields":"process.arguments,parent.arguments","action":"EXCLUDE"}'
+    privileged: true
+    pid: host
+    cgroup: host
+    network_mode: none
+    volumes:
+      - /sys/kernel:/sys/kernel
+      - orbit-web-runtime-security:/var/log/tetragon
+    labels:
+      orbit-web.runtime-security: sensor
+    healthcheck:
+      test: ["CMD", "tetra", "--server-address", "unix:///var/run/tetragon/tetragon.sock", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    cpus: ${ORBIT_WEB_RUNTIME_SECURITY_CPUS:-1.0}
+    mem_limit: ${ORBIT_WEB_RUNTIME_SECURITY_MEMORY:-1g}
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  orbit-allocator:
+    environment:
+      ORBIT_WEB_RUNTIME_SECURITY: tetragon
+      ORBIT_WEB_RUNTIME_SECURITY_FLOOR: ${ORBIT_WEB_RUNTIME_SECURITY_FLOOR:-observe}
+      ORBIT_WEB_RUNTIME_SECURITY_SENSOR: orbit-tetragon
+      ORBIT_WEB_RUNTIME_SECURITY_EVENTS_DIR: /run/orbit-runtime-security/events
+      ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS: ${ORBIT_WEB_RUNTIME_SECURITY_CONTAIN_AFTER_MS:-15000}
+    volumes:
+      - orbit-web-runtime-security:/run/orbit-runtime-security/events:ro
+    depends_on:
+      # Healthy, not merely started: the allocator's first proof of the host runs against a sensor that answers.
+      orbit-tetragon:
+        condition: service_healthy
+    # The allocator now also reads the sensor's export and watches every protected attempt.
+    cpus: ${ORBIT_WEB_ALLOCATOR_CPUS:-0.5}
+    mem_limit: ${ORBIT_WEB_ALLOCATOR_MEMORY:-512m}
+
+  orbit-web:
+    environment:
+      ORBIT_WEB_RUNTIME_SECURITY: tetragon
+      ORBIT_WEB_RUNTIME_SECURITY_FLOOR: ${ORBIT_WEB_RUNTIME_SECURITY_FLOOR:-observe}
+      ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS: ${ORBIT_WEB_RUNTIME_SECURITY_RETENTION_DAYS:-14}
+      # What the sensor takes of the host, taken from what employees may use (keep equal to its cpus / mem_limit).
+      ORBIT_WEB_RUNTIME_SECURITY_RESERVE_CPU: ${ORBIT_WEB_RUNTIME_SECURITY_CPUS:-1.0}
+      ORBIT_WEB_RUNTIME_SECURITY_RESERVE_MEMORY: ${ORBIT_WEB_RUNTIME_SECURITY_MEMORY:-1g}
+
+volumes:
+  orbit-web-runtime-security:

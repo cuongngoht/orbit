@@ -14,6 +14,11 @@
 //   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js budget set (--account=<id> | --all)
 //       [--from-capacity] [--cpu=<vCPU>] [--memory=<GiB>] [--storage=<GiB>] [--max-concurrent=<n>]
 //       [--employee-cpu=<vCPU>] [--employee-memory=<GiB>] [--employee-desk=<GiB>] [--employee-scratch=<GiB>] [--employee-cache=<GiB>]
+//   docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js runtime-security status
+//
+// `runtime-security status` (ADR 0063) says what this host's runtime security proved and how its sensor stands, as
+// Orbit Web last read them (the probe kept with the capacity, the feed's last pull), and how many attempts each
+// protection state holds and how many incidents are open -- counts, never an account's evidence.
 //
 // `budget set` is the operator's AUTHORIZATION of an account: what its owner may raise the budget up to (Settings →
 // Compute & storage). With numbers it is the operator's own, kept until the operator changes it; `--from-capacity`
@@ -37,6 +42,7 @@ import { authorizationFrom, ResourcesService, type BudgetLimits } from "../conte
 import { SEARCH_PATH } from "../core/core.module.js";
 import { AccountStore, BrowserSessionStore, SetupCodeStore, SYSTEM_ACCOUNT_ID, UserStore, type EndedSession } from "../infra/accounts/stores.js";
 import { Db } from "../infra/db/db.js";
+import type { RuntimeHostProbe, WireSensor } from "../contexts/execution/infrastructure/sandbox/runtime-security-wire.js";
 import { verifySchema } from "../infra/db/migrate.js";
 import { AuditStore, sha256 } from "../infra/governance/stores.js";
 import { newSetupCode } from "../modules/auth/setup-codes.js";
@@ -361,6 +367,39 @@ async function budgetSet(s: Opened): Promise<number> {
 
 const BUDGET: Record<string, (s: Opened) => Promise<number>> = { show: budgetShow, set: budgetSet };
 
+async function runtimeStatus(s: Opened): Promise<number> {
+  const probe = (await s.db.one("SELECT runtime_security FROM workforce.capacity WHERE account_id = $1", [SYSTEM_ACCOUNT_ID]))?.runtime_security as RuntimeHostProbe | null | undefined;
+  if (probe === null || probe === undefined) say("runtime security: no probe recorded -- it is off here (ORBIT_WEB_RUNTIME_SECURITY), or Orbit Web has not read the host since it started");
+  else {
+    say(`runtime security: ${probe.backend} ${probe.backendVersion ?? "?"} · floor ${probe.floor} · ${probe.hostKind} · kernel ${probe.kernel ?? "?"} (${probe.arch ?? "?"}) · probed ${probe.probedAt}`);
+    for (const c of probe.capabilities) say(`  ${c.capability} ${c.state} -- ${c.detail}`);
+  }
+  const feed = await s.db.one("SELECT * FROM security.feed WHERE id = 1");
+  if (feed === null) say("sensor: never pulled -- Orbit Web pulls the allocator's reports only while runtime security is on");
+  else {
+    const sensor = feed.sensor as WireSensor | null;
+    say(`sensor: ${sensor?.state ?? "unknown"} · generation ${sensor?.generation ?? "none"} · ${sensor?.detail ?? ""} (as last pulled, ${String(feed.updated_at)})`);
+    say(`telemetry: lost ${String(feed.lost)} · unattributed ${String(feed.unattributed)} · gaps ${String(feed.gaps)} · last event ${feed.last_event_at === null ? "none" : String(feed.last_event_at)} · canary proven ${feed.canary_proven_at === null ? "never" : String(feed.canary_proven_at)}`);
+  }
+  const held = await s.db.query(
+    `SELECT COALESCE(p.state, r.sandbox->'protection'->>'state', 'no evidence') AS state, count(*)::int AS n FROM workforce.runs r
+       LEFT JOIN security.protections p ON p.account_id = r.account_id AND p.run_id = r.id WHERE r.state IN ('starting', 'running') GROUP BY 1 ORDER BY 1`,
+  );
+  const running = held.reduce((sum, r) => sum + Number(r.n), 0);
+  say(`attempts running: ${running}${held.length > 0 ? ` (${held.map((r) => `${String(r.state)} ${String(r.n)}`).join(", ")})` : ""}`);
+  const incidents = await s.db.one("SELECT count(*) FILTER (WHERE state <> 'RESOLVED')::int AS open, count(*) FILTER (WHERE blocks_retry)::int AS holding FROM security.incidents");
+  say(`incidents open: ${String(incidents?.open ?? 0)} · holding a retry: ${String(incidents?.holding ?? 0)}`);
+  return 0;
+}
+
+const RUNTIME: Record<string, (s: Opened) => Promise<number>> = { status: runtimeStatus };
+
+async function runtimeSecurity(s: Opened): Promise<number> {
+  const command = RUNTIME[process.argv[3] ?? ""];
+  if (command === undefined) throw new Refusal(`usage: governance.js runtime-security ${Object.keys(RUNTIME).join(" | ")}`, 1);
+  return command(s);
+}
+
 async function budget(s: Opened): Promise<number> {
   const command = BUDGET[process.argv[3] ?? ""];
   if (command === undefined) throw new Refusal(`usage: governance.js budget ${Object.keys(BUDGET).join(" | ")}`, 1);
@@ -373,13 +412,14 @@ async function owner(s: Opened): Promise<number> {
   return command(s);
 }
 
-const COMMANDS: Record<string, (s: Opened) => Promise<number>> = { status, "verify-audit": verifyAudit, "revoke-sessions": revokeSessions, owner, budget };
+const COMMANDS: Record<string, (s: Opened) => Promise<number>> = { status, "verify-audit": verifyAudit, "revoke-sessions": revokeSessions, owner, budget, "runtime-security": runtimeSecurity };
 
 async function main(): Promise<number> {
   const command = COMMANDS[process.argv[2] ?? ""];
   if (command === undefined) throw new Refusal(`usage: governance.js ${Object.keys(COMMANDS).join(" | ")}`, 1);
   if (command === owner && OWNER[process.argv[3] ?? ""] === undefined) throw new Refusal(`usage: governance.js owner ${Object.keys(OWNER).join(" | ")}`, 1);
   if (command === budget && BUDGET[process.argv[3] ?? ""] === undefined) throw new Refusal(`usage: governance.js budget ${Object.keys(BUDGET).join(" | ")}`, 1);
+  if (command === runtimeSecurity && RUNTIME[process.argv[3] ?? ""] === undefined) throw new Refusal(`usage: governance.js runtime-security ${Object.keys(RUNTIME).join(" | ")}`, 1);
   const s = await open();
   try {
     return await command(s);

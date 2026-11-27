@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // What the release workflow asks before and after it publishes, runnable anywhere:
 //
-//   node scripts/release.mjs verify --version=0.8.0
-//     the version asked is integrations/orbit-web/package.json's (and every workspace's), CHANGELOG.md has a
-//     "## Orbit Web <version>" section, and every published image the compose files and the README name is tagged with
-//     that version (a compose file that still names a release candidate would pull it); exits 1 naming what does not hold.
-//   node scripts/release.mjs notes --version=0.8.0 --registry=ghcr.io/<owner> --repository=<owner>/<repo> --commit=<sha>
+//   node scripts/release.mjs verify --version=0.8.1 [--latest=true]
+//     the version asked is a release (x.y.z) or a prerelease (x.y.z-beta1, which never moves `latest`); it is
+//     integrations/orbit-web/package.json's (and every workspace's, each workspace's pins of the others, and the lock
+//     file's), the image's WEB_VERSION, CHANGELOG.md has a "## Orbit Web <version>" section, and
+//     every published image the compose files, the README and the code's own defaults name is tagged with that version
+//     (a compose file that still names a release candidate would pull it); exits 1 naming what does not hold.
+//   node scripts/release.mjs notes --version=0.8.1 --registry=ghcr.io/<owner> --repository=<owner>/<repo> --commit=<sha>
 //       --digests=orbit-web=sha256:…,orbit-web-workstation=sha256:…,orbit-web-model-plane=sha256:…,orbit-web-storage-helper=sha256:…
 //       [--latest=true]
 //     the release notes: that changelog section, the four images by digest, how to run them, and the plugin it bundles.
+//   node scripts/release.mjs kind --version=0.8.1-beta1
+//     prints `release` or `prerelease` (the workflow marks a prerelease as one on GitHub); exits 1 for neither.
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +28,58 @@ const MANIFESTS = ["package.json", "packages/contracts/package.json", "packages/
 // AI employee's attempt is started from (its workstation, model-plane and storage-helper targets).
 export const IMAGES = ["orbit-web", "orbit-web-workstation", "orbit-web-model-plane", "orbit-web-storage-helper"];
 
-// The files that tell a person which images to run, by tag.
-const RUN_FILES = ["docker/compose.yaml", "docker/compose.published.yaml", "docker/compose.governed.yaml", "README.md"];
+// The files that tell a person which images to run, by tag -- and the ones that run them by default: the allocator's
+// configuration and the real-container test tier.
+const RUN_FILES = ["docker/compose.yaml", "docker/compose.published.yaml", "docker/compose.governed.yaml", "README.md", "apps/api/src/config/sandbox-config.ts", "apps/api/tests/sandbox/harness.ts"];
+
+// What a version is: `release` (x.y.z), `prerelease` (x.y.z-<identifiers>, SemVer's: 0.8.1-beta1, 1.0.0-rc.2) or null.
+// Build metadata (`+…`) is refused: a Docker tag cannot hold a `+`, and every image is tagged with the version.
+export function versionKind(version) {
+  if (/^\d+\.\d+\.\d+$/.test(version ?? "")) return "release";
+  if (/^\d+\.\d+\.\d+-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$/.test(version ?? "")) return "prerelease";
+  return null;
+}
+
+// What the version asked cannot be published as: not a version at all, or a prerelease asked to move `latest` (a
+// prerelease is tried by whoever names it; `latest` stays on the release before it).
+export function versionProblems(version, latest) {
+  const kind = versionKind(version);
+  if (kind === null) return [`--version must be a release (x.y.z) or a prerelease (x.y.z-beta1), not ${JSON.stringify(version)}`];
+  if (kind === "prerelease" && latest === "true") return [`${version} is a prerelease: it never moves latest (run it with latest off)`];
+  return [];
+}
+
+// Every `@orbit-web/*` dependency a manifest (or a lock entry) pins at another version than the release's.
+export function internalPins(manifest, version) {
+  const deps = { ...(manifest.dependencies ?? {}), ...(manifest.devDependencies ?? {}) };
+  return Object.entries(deps)
+    .filter(([name, spec]) => name.startsWith("@orbit-web/") && spec !== version)
+    .map(([name, spec]) => `${name} ${spec}`);
+}
+
+// What the lock file says that is not the release: its own version, the root's and each workspace's (an entry outside
+// node_modules), and each workspace's pins of the others. A third-party package is never asked.
+export function lockProblems(lock, version) {
+  const problems = lock.version === version ? [] : [`package-lock.json says ${lock.version}`];
+  for (const [path, entry] of Object.entries(lock.packages ?? {})) {
+    if (path.includes("node_modules")) continue;
+    const name = path === "" ? "(root)" : path;
+    if (entry.version !== version) problems.push(`package-lock.json ${name} says ${entry.version}`);
+    for (const pin of internalPins(entry, version)) problems.push(`package-lock.json ${name} pins ${pin}`);
+  }
+  return problems;
+}
+
+// The version the tool bridge tells the AI CLI it serves (its MCP serverInfo): the bridge runs alone in the model plane
+// and imports nothing of Orbit Web's, so it says the version itself -- held here to the release's.
+export function bridgeVersion(text) {
+  return /serverInfo: \{ name: "orbit_tools", version: "([^"]+)" \}/.exec(text)?.[1] ?? null;
+}
+
+// The version Orbit Web's image says it is (the Dockerfile's WEB_VERSION argument), or null.
+export function webVersionArg(text) {
+  return /^ARG WEB_VERSION=(\S+)$/m.exec(text)?.[1] ?? null;
+}
 
 export function changelogSection(text, version) {
   const lines = text.split("\n");
@@ -42,13 +96,18 @@ export function otherTags(text, version) {
   return [...new Set(named.map((m) => m[1]).filter((tag) => tag !== version))];
 }
 
-function verify(version) {
-  const problems = [];
-  if (!/^\d+\.\d+\.\d+$/.test(version ?? "")) problems.push(`--version must be a release version (x.y.z), not ${JSON.stringify(version)}`);
+function verify(version, latest) {
+  const problems = versionProblems(version, latest);
   for (const m of MANIFESTS) {
-    const v = json(join(WEB, m)).version;
-    if (v !== version) problems.push(`${m} says ${v}, not ${version}`);
+    const manifest = json(join(WEB, m));
+    if (manifest.version !== version) problems.push(`${m} says ${manifest.version}, not ${version}`);
+    for (const pin of internalPins(manifest, version)) problems.push(`${m} pins ${pin}, not ${version}`);
   }
+  for (const p of lockProblems(json(join(WEB, "package-lock.json")), version)) problems.push(`${p}, not ${version}`);
+  const arg = webVersionArg(readFileSync(join(WEB, "docker/Dockerfile"), "utf8"));
+  if (arg !== version) problems.push(`docker/Dockerfile says ARG WEB_VERSION=${arg}, not ${version}`);
+  const bridge = bridgeVersion(readFileSync(join(WEB, "apps/api/src/bridge/main.ts"), "utf8"));
+  if (bridge !== version) problems.push(`apps/api/src/bridge/main.ts says it is ${bridge}, not ${version}`);
   const contract = /ORBIT_WEB_VERSION = "([^"]+)"/.exec(readFileSync(join(WEB, "packages/contracts/src/index.ts"), "utf8"))?.[1];
   if (contract !== version) problems.push(`packages/contracts says ORBIT_WEB_VERSION ${contract}, not ${version}`);
   if (changelogSection(readFileSync(join(REPO, "CHANGELOG.md"), "utf8"), version) === null) problems.push(`CHANGELOG.md has no "## Orbit Web ${version}" section`);
@@ -68,11 +127,18 @@ export function digestsOf(list) {
   return missing.length > 0 ? { missing } : { digests: given };
 }
 
+const PRERELEASE_NOTE = [
+  "**A prerelease.** It is published to be tried: `latest` and the release before it stay where they were, and only a",
+  "compose file that names this version runs it.",
+  "",
+];
+
 export function releaseNotes({ section, version, registry, repository, commit, digests, latest, plugin }) {
   const compose = `https://raw.githubusercontent.com/${repository}/${commit}/integrations/orbit-web/docker/compose.published.yaml`;
   return [
     section,
     "",
+    ...(versionKind(version) === "prerelease" ? PRERELEASE_NOTE : []),
     "## Images",
     "",
     "Four images under one tag: Orbit Web itself, and the three its allocator starts an AI employee's attempt from.",
@@ -110,10 +176,20 @@ function notes() {
   process.stdout.write(`${releaseNotes({ section, version, registry: opt("registry"), repository: opt("repository"), commit: opt("commit"), digests: parsed.digests, latest: opt("latest") === "true", plugin })}\n`);
 }
 
+function kind(version) {
+  const found = versionKind(version);
+  if (found === null) {
+    process.stderr.write(`release: ${versionProblems(version, null)[0]}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`${found}\n`);
+}
+
 function main(command) {
-  if (command === "verify") return verify(opt("version"));
+  if (command === "verify") return verify(opt("version"), opt("latest"));
   if (command === "notes") return notes();
-  process.stderr.write("usage: release.mjs verify --version=<v> | notes --version=<v> --registry=<ghcr.io/owner> --repository=<owner/repo> --commit=<sha> --digests=<image>=sha256:…,… [--latest=true]\n");
+  if (command === "kind") return kind(opt("version"));
+  process.stderr.write("usage: release.mjs verify --version=<v> [--latest=true] | kind --version=<v> | notes --version=<v> --registry=<ghcr.io/owner> --repository=<owner/repo> --commit=<sha> --digests=<image>=sha256:…,… [--latest=true]\n");
   process.exit(2);
 }
 

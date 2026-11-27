@@ -1,5 +1,79 @@
 # Changelog
 
+## Orbit Web 0.8.1-beta1
+
+Orbit Web gains **runtime security** (ADR 0063): an independent security plane that records what an AI employee's
+programs actually do inside its attempt, prevents what the account's policy forbids, contains an attempt whose
+protection is lost, and claims nothing it did not prove on the host it runs on. It is off unless the operator adds
+`docker/compose.runtime-security.yaml`, and a new account's policy says *disabled*: without both, an attempt runs
+exactly as in 0.8.0. The plugin it bundles stays 0.6.0, unchanged. Migrations 2 and 3 are additive and applied at
+start: a 0.8.0 database is migrated in place, and nothing is converted.
+
+**A prerelease.** `0.8.1-beta1` is the first build of 0.8.1 offered to be tried. The release workflow now publishes a
+version with a prerelease part (`x.y.z-beta1`) as a GitHub prerelease and never moves `latest` for it
+(`release.mjs verify --latest=true` refuses one; `release.mjs kind` tells the workflow which it is, and the notes say
+so), so 0.8.0 stays the latest release.
+
+### Runtime security (ADR 0063)
+
+- **One policy authority.** The account's policy gains *Runtime security* -- `disabled`, `observe` or `enforce`, and
+  its controls -- composed with the department's (which may only raise it) and the deployment's floor
+  (`ORBIT_WEB_RUNTIME_SECURITY_FLOOR`, applied again by the allocator). Lowering it is a high-risk change the owner
+  acknowledges; a published change holds new attempts, never one already proven.
+- **One pinned sensor per host.** Tetragon v1.8.0 by digest (`THIRD_PARTY.md`), privileged, with no network and no
+  Docker socket; only the allocator manages it (`tetra` inside its container) and reads its export (read-only). A
+  process's arguments are filtered out at the source; no environment, file content or payload is captured.
+- **Identity bound, then proven.** Each attempt's two planes are bound by their mount namespace as the allocator AND the
+  sensor see it; its own policy is installed, read back, and proven by a canary refused (enforce) or reported (observe)
+  in both planes before anything the employee runs may start. Host canaries prove every 30 s that prevention is scoped,
+  not host-wide. A page shows *protected* only on fresh proof.
+- **A gate the worker cannot skip.** The runner credential is random, made by the allocator and released only by
+  `openAttempt` when the gate holds; the tool plane's shell is refused before it; an enforced attempt's credential
+  expires with its proof. An enforced attempt is refused before any container on a host that has not proven prevention
+  (`runtime_protection_unavailable`), never quietly observed.
+- **Contained without the API.** The allocator's watchdog (every 5 s) treats a sensor restart, a missing policy or a
+  restarted plane as protection lost: the attempt's network refuses new connections at once, and both its containers
+  are stopped and read back stopped after 15 s unless the proof returns. Observed attempts are never stopped.
+- **One control that prevents**: *No program runs from a shared area* (`exec.shared-areas`: the team room, `/output`,
+  `/input`, the model plane's connection home). A program run from memory and a shell in the model plane are detected
+  (prevention of the first is UNSUPPORTED by a path rule, said so).
+- **Incidents and review.** One rules table decides; under enforce a blocking incident ends the attempt's run token and
+  stops exactly its two containers (by dispatch key, verified, carried out again until done), and the assignment's Retry
+  waits for the owner's review naming the version read. Nothing is deleted and no policy changes by itself.
+- **Telemetry per account, bounded.** The allocator's ring gives up information first and keeps detections through a
+  flood; the API drains a backlog within a tick; events deduplicated, capped per attempt (information and notable events
+  each), what is not kept counted on a gap marker, pruned after 14 days; loss and unattributed events are said; raw
+  events never enter the audit chain -- decisions do (`runtime_security.*`). Only what the workload did is judged: the
+  container runtime's own re-exec and the allocator's own probes never raise anything (proven on the real sensor's lines).
+- **What a person sees.** *Governance → Runtime security* (the host's proof, the controls and what each does not prevent,
+  attempts, events, incidents), the policy editor's runtime section with this host's support shown before publishing, a
+  department's page (what holds its employees and from whom; its editor offers only higher modes), an employee's
+  *Runtime security* tab, and a run's protection in its details.
+- **For the operator**: `governance.js runtime-security status` from the server's terminal (what the host proved, the
+  sensor, loss counters, attempts per protection state, open incidents -- counts only). `release.mjs verify` now also
+  holds the workspaces' pins of each other, the lock file, the image's `WEB_VERSION`, the code's default image tags and
+  the tool bridge's version to the release.
+- **Verified on one host** -- Docker Desktop 29.9.3, kernel 7.0.14-linuxkit arm64: a proof of concept (45 PASS, 1
+  UNSUPPORTED) and a real-kernel tier (`apps/api/tests/sandbox/runtime-security.spec.ts`). Other hosts were not run; the
+  probe decides on each (`integrations/orbit-web/docs/0.8.1-acceptance.md`, the threat model beside it).
+
+### Also in 0.8.1 (the owner's changes after 0.8.0)
+
+- `127397bf`: research says when Claude is not connected and keeps the draft question until it is; a DOCX deliverable
+  is validated before its hand-in is recorded (plain text and incomplete or damaged archives refused, with what to do),
+  and a Word document passes from employee to manager to CEO byte for byte, its lineage kept -- migration 2,
+  `artifact_provenance`; Codex chats no longer overwrite an earlier turn's reply, and `db.js recover-codex-transcripts`
+  (a dry run unless `--apply`, idempotent) restores what earlier runs overwrote, never guessing a gap; a repository is
+  attached to a mission explicitly and reaches only an assignee permitted to use it (a URL in the brief is never
+  attached by itself); *Needs me* separates reviews from clarification requests, and queued work says what blocks it.
+- `fc09be1f`: repository selection in the assign dialog, and the office's tests.
+- Two things that made every pull request's CI fail, neither in the application: the Flutter, Xcode, CocoaPods and IDE
+  files `127397bf` committed under `integrations/orbit-mobile` leave the index (nine of them were symlinks into one
+  machine's `~/.pub-cache`, which the plugin's suite could not stat elsewhere), under the mobile app's own `.gitignore`
+  files; three integration tests read the attempt they act for -- by its run token, or the handle a command runs in --
+  instead of whichever attempt ran first, which read another employee's attempt when two ran side by side; and the
+  parallel-work test waits for the assignments' own state, which the worker writes after the run's.
+
 ## Orbit Web 0.8.0
 
 Orbit Web becomes a **virtual office of AI employees** beside its Claude Code workspace and its research (ADR 0061): an

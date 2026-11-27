@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 #
-# Orbit Web 0.8.0: one image with the official Claude Code CLI, OpenAI Codex CLI, Google Antigravity CLI (agy), GitHub
+# Orbit Web 0.8.1-beta1: one image with the official Claude Code CLI, OpenAI Codex CLI, Google Antigravity CLI (agy), GitHub
 # CLI, the Azure CLI, git, the Orbit plugin (at a pinned commit of this repository), and Orbit Web's NestJS API serving
 # its React app. Built from the REPOSITORY ROOT:
 #
-#   docker build -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.1-beta1 .
 #
 # Behind a TLS-inspecting proxy, hand its CA to the build steps that download (never kept in a layer):
 #
-#   docker build --secret id=ca,src=/path/to/ca.pem -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.0 .
+#   docker build --secret id=ca,src=/path/to/ca.pem -f integrations/orbit-web/docker/Dockerfile -t orbit-web:0.8.1-beta1 .
 #
 # Every input is pinned: the base image by digest, npm packages by package-lock.json and exact versions, the GitHub
 # CLI, tini and CPython release files by SHA-256 per architecture, the Antigravity CLI's release archive by SHA-512 per
@@ -23,7 +23,7 @@
 #   storage-helper  the allocator's storage helper: loop devices, XFS and btrfs tools (run privileged by the allocator
 #                   alone, with no network; never by an employee)
 #
-#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation -t orbit-web-workstation:0.8.0 .
+#   docker build -f integrations/orbit-web/docker/Dockerfile --target workstation -t orbit-web-workstation:0.8.1-beta1 .
 
 ARG NODE_IMAGE=node:24-bookworm@sha256:9d266751ca3d7fdbe651c878ffd5ad0a42fed49a18c283509267c97f025b7496
 ARG UBUNTU_IMAGE=ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451412543289
@@ -208,6 +208,8 @@ RUN --mount=type=secret,id=ca,required=false \
 # the pinned CPython build above with pip and venv, the base's Node and npm, and jq. One non-root user, `employee`
 # (20001), and no sudo: inside its own container the employee runs any command, and has nothing to raise itself with.
 # The root filesystem is read-only at run time: everything it writes lands in a mounted, quota'd area.
+# The runtime security CANARY (ADR 0063), here and in the model plane: a copy of /bin/true no workload runs, which every
+# enforced attempt's policy refuses -- the probe that proves, before the attempt opens, that the policy binds THIS attempt.
 FROM ${NODE_IMAGE} AS workstation
 COPY --from=python /opt/python /opt/python
 COPY --from=jq /opt/jq/bin/jq /usr/local/bin/jq
@@ -217,6 +219,7 @@ RUN set -eu; \
     mkdir -p /work /output /input /cache /team /home/employee; \
     chown employee:employee /work /output /input /cache /team /home/employee; \
     ln -s /work/toolbox /toolbox; \
+    install -D -m 0755 /bin/true /usr/local/libexec/orbit-web/runtime-canary; \
     rm -rf /etc/claude-code; \
     if command -v sudo >/dev/null 2>&1; then echo "sudo must not be in the workstation" >&2; exit 1; fi; \
     for t in python3 pip3 node npm git gcc g++ make curl wget unzip jq timeout; do \
@@ -248,6 +251,7 @@ RUN set -eu; \
     groupadd --system --gid 10001 orbit; \
     useradd --system --uid 10001 --gid orbit --home-dir /home/orbit --no-create-home --shell /usr/sbin/nologin orbit; \
     mkdir -p /connection /workdir /home/orbit; \
+    install -D -m 0755 /bin/true /usr/local/libexec/orbit-web/runtime-canary; \
     rm -rf /etc/claude-code; \
     test ! -e /etc/claude-code; \
     test -f /opt/orbit-web/apps/api/dist/runner/main.js; \
@@ -287,7 +291,7 @@ CMD ["sleep", "infinity"]
 
 # --- the image -------------------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE}
-ARG WEB_VERSION=0.8.0
+ARG WEB_VERSION=0.8.1-beta1
 LABEL org.opencontainers.image.title="Orbit Web" \
       org.opencontainers.image.description="Self-hosted, browser-based Claude Code with the Orbit plugin." \
       org.opencontainers.image.version="${WEB_VERSION}" \

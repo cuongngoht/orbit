@@ -16,7 +16,7 @@
 // saying why, a subscription connection added and its terminal command shown, Compute & storage, Employee network
 // access, and every page at 320 px without sideways scrolling (screenshots into --out).
 //
-//   node tests/docker/smoke.mjs [--image=orbit-web:0.8.0] [--build] [--ca-file=<pem>] [--keep] [--browser [--out=<dir>]]
+//   node tests/docker/smoke.mjs [--image=orbit-web:0.8.1-beta1] [--build] [--ca-file=<pem>] [--keep] [--browser [--out=<dir>]]
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";

@@ -5,14 +5,14 @@
 // called -- the CLI reads its catalog (one GET when its cache is stale) and answers. When the app server cannot answer,
 // the catalog bundled in the binary (`codex debug models --bundled`, offline) is the labelled fallback: chats may use
 // it, an employee never does (probe.ts).
-import { isEffortChoice, isModelChoice, type ModelCatalog, type ModelOption } from "@orbit-web/contracts";
+import { isEffortChoice, isModelChoice, ORBIT_WEB_VERSION, type ModelCatalog, type ModelOption } from "@orbit-web/contracts";
 import { redactSecrets } from "../../infra/security/redact.js";
 
 // The answer read is the one to this id.
 const MODELS_ID = 2;
 
 export const CODEX_MODELS_REQUEST = `${[
-  { method: "initialize", id: 0, params: { clientInfo: { name: "orbit_web", title: "Orbit Web", version: "0.8.0" } } },
+  { method: "initialize", id: 0, params: { clientInfo: { name: "orbit_web", title: "Orbit Web", version: ORBIT_WEB_VERSION } } },
   { method: "initialized" },
   { method: "model/list", id: MODELS_ID, params: { includeHidden: false } },
 ]

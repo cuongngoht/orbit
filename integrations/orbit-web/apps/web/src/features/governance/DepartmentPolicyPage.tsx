@@ -326,6 +326,21 @@ function ModelsInEffect({ models }: { models: DepartmentPolicyOverview["models"]
   );
 }
 
+// What holds the department's employees' attempts in the kernel now, and who set it (ADR 0063).
+function RuntimeInEffect({ runtime }: { runtime: DepartmentPolicyOverview["runtimeSecurity"] }) {
+  const { t } = useI18n();
+  if (runtime === null) return null;
+  const e = runtime.effective;
+  const from = e.from.mode === "deployment" ? t("governance.deptPolicy.fromDeployment") : t(SOURCE_KEYS[e.from.mode]);
+  const title = t("governance.deptPolicy.runtimeTitle");
+  return (
+    <Card label={title} title={title} description={t("governance.deptPolicy.runtimeDesc")}>
+      <Text>{t("governance.deptPolicy.runtimeMode", { mode: e.mode, from })}</Text>
+      <Text size={200}>{e.controls.length === 0 ? t("governance.deptPolicy.runtimeNoControl") : t("governance.deptPolicy.runtimeControls", { controls: e.controls.join(", ") })}</Text>
+    </Card>
+  );
+}
+
 function Header({ o }: { o: DepartmentPolicyOverview }) {
   const { t } = useI18n();
   const p = useParts();
@@ -381,6 +396,7 @@ function RevisionDetail({ o, revision, onChanged, onReload }: { o: DepartmentPol
         <DepartmentEditor
           document={document}
           rows={o.rows}
+          runtime={o.runtimeSecurity?.company ?? null}
           editable={editable}
           onChange={(next) => {
             setShown({ document: next, problem: null });
@@ -481,6 +497,7 @@ export function DepartmentPolicyPage({ departmentId, go }: { departmentId: strin
       <div className={p.bento}>
         <NetworkInEffect network={o.network} />
         <ModelsInEffect models={o.models} />
+        <RuntimeInEffect runtime={o.runtimeSecurity} />
       </div>
       <Card
         title={t("governance.deptPolicy.revisionsTitle")}

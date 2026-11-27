@@ -179,6 +179,36 @@ describe("an employee's connections, decided, logged and recorded", () => {
     assert.equal((await bindings.byToken(sha256(ended.token)))?.kind, "assignment", "the record of the run stays");
   });
 
+  // Runtime security (ADR 0063): an employee's attempt held to enforce reaches nothing while its protection is not proven
+  // and fresh -- the allocator's own gate, held again at the network edge, so a lost proof is refused at once rather than
+  // at the allocator's containment deadline. No evidence yet (nothing untrusted runs before the allocator opens an
+  // attempt), observe and a chat change nothing.
+  test("under enforce, an attempt reaches nothing while its runtime protection is not proven fresh; observe changes nothing", async () => {
+    const r = await world();
+    const protect = async (mode: string, state: string, freshUntil: string | null) => {
+      const at = new Date().toISOString();
+      await db.query(
+        `INSERT INTO security.protections (account_id, run_id, dispatch_key, fence, employee_id, mode, state, evidence, reported_at, updated_at) VALUES ($1, $2, $3, 1, $4, $5, $6, $7::jsonb, $8, $8)
+         ON CONFLICT (account_id, run_id) DO UPDATE SET mode = excluded.mode, state = excluded.state, evidence = excluded.evidence, reported_at = excluded.reported_at`,
+        [r.accountId, r.runId, `dispatch-${r.runId}`, r.employeeId, mode, state, JSON.stringify({ freshUntil }), at],
+      );
+    };
+    assert.equal((await ask("example.com", 443, r.token)).allow, true, "no evidence yet: as before");
+    await protect("enforce", "PROTECTED", new Date(Date.now() + 60_000).toISOString());
+    assert.equal((await ask("example.com", 443, r.token)).allow, true);
+    await protect("enforce", "UNKNOWN", null);
+    const lost = await ask("example.com", 443, r.token);
+    assert.deepEqual([lost.allow, lost.run], [false, { id: r.runId, accountId: r.accountId, employee: true, limits: null }]);
+    assert.match(lost.reason, /runtime protection is not established \(UNKNOWN\)/);
+    await protect("enforce", "PROTECTED", new Date(Date.now() - 1000).toISOString());
+    assert.equal((await ask("example.com", 443, r.token)).allow, false, "stale proof is no proof");
+    await protect("observe", "DEGRADED", null);
+    assert.equal((await ask("example.com", 443, r.token)).allow, true, "observe never refuses");
+    const decisions = (await audit.all(r.accountId)).filter((e) => e.eventType === "policy.decision" && e.runId === r.runId);
+    assert.deepEqual(decisions.map((e) => e.outcome), ["allow", "allow", "allow"], "a connection refused for its protection is never recorded as allowed");
+    assert.equal((await ask("api.anthropic.com", 443, r.chatToken)).allow, true, "a chat is not an attempt");
+  });
+
   describe("through the proxy", () => {
     let proxy: Server;
     let proxyPort: number;

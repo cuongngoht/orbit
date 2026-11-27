@@ -67,6 +67,11 @@ so), so 0.8.0 stays the latest release.
   attached to a mission explicitly and reaches only an assignee permitted to use it (a URL in the brief is never
   attached by itself); *Needs me* separates reviews from clarification requests, and queued work says what blocks it.
 - `fc09be1f`: repository selection in the assign dialog, and the office's tests.
+- Two things that made every pull request's CI fail, neither in the application: the Flutter, Xcode, CocoaPods and IDE
+  files `127397bf` committed under `integrations/orbit-mobile` leave the index (nine of them were symlinks into one
+  machine's `~/.pub-cache`, which the plugin's suite could not stat elsewhere), under the mobile app's own `.gitignore`
+  files; and three integration tests read the attempt they act for -- by its run token, or the handle a command runs in
+  -- instead of whichever attempt ran first, which read another employee's attempt when two ran side by side.
 
 ## Orbit Web 0.8.0
 

@@ -1,4 +1,4 @@
-# Orbit Web 0.8.1
+# Orbit Web 0.8.1-beta1
 
 Orbit's **Governed Agentic Workplace** ([what it is](../../README.md)), self-hosted in Docker: a **virtual office of AI
 employees**, each working in containers of its own under the account's policy, approvals and audit record -- and,
@@ -37,7 +37,7 @@ files run the pinned `pgvector/pgvector:0.8.1-pg17` image beside it). The image 
 | git | 2.39 (Debian 12) | the base image's digest |
 | Node.js | 24 | the base image's digest (`node:24-bookworm`) |
 | Orbit plugin | the commit the image is built from (0.6.0 today) | `git archive` of that commit |
-| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.1 | `package-lock.json`, exact versions |
+| Orbit Web (NestJS API + React/Fluent UI v9 app) | 0.8.1-beta1 | `package-lock.json`, exact versions |
 | tini | 0.19.0 | release binary, SHA-256 per architecture |
 
 `GET /api/setup/status` (and Settings → System) reports every one of these versions, the Orbit commit included.
@@ -57,7 +57,7 @@ cd integrations/orbit-web/docker
 printf 'ORBIT_WEB_DB_PASSWORD=%s\nORBIT_WEB_POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" "$(openssl rand -hex 16)" > .env
 (umask 027 && openssl rand -hex 32 > allocator.secret) && sudo chown 0:10001 allocator.secret
 (cd ../../.. && for t in workstation model-plane storage-helper; do
-  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.1" . ; done)
+  docker build -f integrations/orbit-web/docker/Dockerfile --target "$t" -t "ghcr.io/cuongngoht/orbit-web-$t:0.8.1-beta1" . ; done)
 docker compose up -d --build        # builds from the repository root; the plugin is `git archive HEAD`
 docker compose exec orbit-web node /opt/orbit-web/apps/api/dist/cli/governance.js owner setup-code
 open http://localhost:3000          # "Set up Orbit Web", with the code printed above
@@ -92,7 +92,7 @@ public origin, no Secure cookie setting -- and names the condition that failed. 
 person can reach.
 
 **The published images, without this repository.** [`docker/compose.published.yaml`](docker/compose.published.yaml) is
-one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.1` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
+one file that runs `ghcr.io/cuongngoht/orbit-web*:0.8.1-beta1` (linux/amd64 and linux/arm64: macOS, Windows with WSL2,
 Linux) with nothing built: the database's first-start script is written into it, and a one-shot `secret-init` service
 makes the allocator's secret in a volume. Copy it alone into an empty directory as `compose.yaml`, then
 `docker compose pull && docker compose up -d` and the setup code above; its header lists the settings a `.env` may give
@@ -108,7 +108,7 @@ docker run -d --name orbit-web --hostname orbit-web \
   -p 127.0.0.1:3000:3000 -v orbit-web-data:/data \
   -e ORBIT_WEB_DATABASE_URL=postgres://orbit:<password>@<host>:5432/orbit \
   --cap-drop ALL --security-opt no-new-privileges:true \
-  ghcr.io/cuongngoht/orbit-web:0.8.1
+  ghcr.io/cuongngoht/orbit-web:0.8.1-beta1
 ```
 
 | what | command |
@@ -1414,4 +1414,7 @@ the images with (`scripts/release.mjs verify`), builds and smoke-tests Orbit Web
 (`scripts/build-image.mjs --target=…`) for linux/amd64 and, unless switched off, linux/arm64, pushes
 `ghcr.io/<owner>/orbit-web*:<version>` as one manifest per image (and `latest` only when asked), records each digest
 and writes the release notes from `CHANGELOG.md` (`## Orbit Web <version>`), with how to run `docker/compose.published.yaml`.
+A version is a release (`x.y.z`) or a prerelease (`x.y.z-beta1`, SemVer's identifiers, no `+` build metadata): a
+prerelease is published as a GitHub prerelease and never moves `latest` (`release.mjs verify --latest=true` refuses it;
+`release.mjs kind` tells the workflow which), so the release before it stays the latest.
 Both call scripts that run the same without GitHub.

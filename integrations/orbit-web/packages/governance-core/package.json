@@ -1,6 +1,6 @@
 {
   "name": "@orbit-web/governance-core",
-  "version": "0.8.1",
+  "version": "0.8.1-beta1",
   "private": true,
   "description": "Orbit Web's governance rules as pure functions: the action vocabulary, the Constitution and its lifecycle, policy decisions, approvals, the audit chain and the auditor. It knows no agent runtime, no HTTP and no storage.",
   "type": "module",

@@ -3,8 +3,9 @@
 # storage-helper), under one tag -- only when a person starts it by hand, from main, with the version that
 # integrations/orbit-web/package.json holds (and every compose file names), and only after a reviewer of the
 # `orbit-web-release` environment approves it (configure that environment's required reviewers in the repository's
-# settings before the first release). It moves `latest` only when asked to. It records each image's immutable digest and
-# writes the release notes from CHANGELOG.md. It never pushes to a branch.
+# settings before the first release). It moves `latest` only when asked to, and never for a prerelease (x.y.z-beta1),
+# which GitHub then shows as a prerelease, leaving the release before it the latest. It records each image's immutable
+# digest and writes the release notes from CHANGELOG.md. It never pushes to a branch.
 name: Orbit Web release
 
 on:
@@ -15,7 +16,7 @@ on:
         required: true
         type: string
       latest:
-        description: "Also point the four images' latest tag at this release"
+        description: "Also point the four images' latest tag at this release (refused for a prerelease)"
         required: false
         type: boolean
         default: false
@@ -52,7 +53,9 @@ jobs:
         with:
           node-version: "24"
       - name: The version asked is the version in the tree and of every image it names, and the changelog has it
-        run: node integrations/orbit-web/scripts/release.mjs verify --version="$VERSION"
+        env:
+          LATEST: ${{ inputs.latest }}
+        run: node integrations/orbit-web/scripts/release.mjs verify --version="$VERSION" --latest="$LATEST"
       - name: Orbit Web checks
         run: node integrations/orbit-web/scripts/ci.mjs
       - name: Orbit's own suite and lint
@@ -169,4 +172,6 @@ jobs:
           LATEST: ${{ inputs.latest }}
         run: |
           node integrations/orbit-web/scripts/release.mjs notes --version="$VERSION" --registry="$REGISTRY" --repository="$GITHUB_REPOSITORY" --commit="$GITHUB_SHA" --digests="$DIGESTS" --latest="$LATEST" > notes.md
-          gh release create "orbit-web-v$VERSION" --target "$GITHUB_SHA" --title "Orbit Web $VERSION" --notes-file notes.md
+          flags=()
+          if [ "$(node integrations/orbit-web/scripts/release.mjs kind --version="$VERSION")" = "prerelease" ]; then flags+=(--prerelease); fi
+          gh release create "orbit-web-v$VERSION" --target "$GITHUB_SHA" --title "Orbit Web $VERSION" --notes-file notes.md "${flags[@]}"

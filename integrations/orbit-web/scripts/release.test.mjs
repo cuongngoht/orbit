@@ -4,7 +4,7 @@
 // release runs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { IMAGES, bridgeVersion, changelogSection, digestsOf, internalPins, lockProblems, otherTags, releaseNotes, webVersionArg } from "./release.mjs";
+import { IMAGES, bridgeVersion, changelogSection, digestsOf, internalPins, lockProblems, otherTags, releaseNotes, versionKind, versionProblems, webVersionArg } from "./release.mjs";
 
 const COMPOSE = `
 #   ORBIT_WEB_TAG=0.8.0-rc02                 the images' tag
@@ -81,4 +81,29 @@ test("the image's own version is its WEB_VERSION argument", () => {
 test("the tool bridge says the release's version to the AI CLI it serves", () => {
   assert.equal(bridgeVersion('return { serverInfo: { name: "orbit_tools", version: "0.8.1" } };'), "0.8.1");
   assert.equal(bridgeVersion("nothing here"), null);
+});
+
+test("a release publishes x.y.z or a prerelease x.y.z-<identifiers>, and nothing a Docker tag or npm would refuse", () => {
+  assert.equal(versionKind("0.8.1"), "release");
+  for (const v of ["0.8.1-beta1", "0.8.1-beta.1", "1.0.0-rc.2", "0.8.0-rc01"]) assert.equal(versionKind(v), "prerelease", v);
+  for (const v of ["v0.8.1", "0.8", "0.8.1-", "0.8.1-beta..1", "0.8.1+build.5", "0.8.1-beta1+build", "latest", "", null]) assert.equal(versionKind(v), null, String(v));
+});
+
+test("a prerelease never moves latest; a release may, when asked", () => {
+  assert.deepEqual(versionProblems("0.8.1", "true"), []);
+  assert.deepEqual(versionProblems("0.8.1-beta1", "false"), []);
+  assert.deepEqual(versionProblems("0.8.1-beta1", null), []);
+  assert.equal(versionProblems("0.8.1-beta1", "true").length, 1);
+  assert.match(versionProblems("0.8.1-beta1", "true")[0], /prerelease/);
+  assert.match(versionProblems("v0.8.1", "false")[0], /x\.y\.z/);
+});
+
+test("the notes of a prerelease say it is one, and that latest and the release before it stay where they were", () => {
+  const digests = Object.fromEntries(IMAGES.map((name, i) => [name, digest("abcd"[i])]));
+  const base = { section: "Runtime security.", registry: "ghcr.io/acme", repository: "acme/orbit", commit: "c0ffee", digests, latest: false, plugin: "0.6.0" };
+  const beta = releaseNotes({ ...base, version: "0.8.1-beta1" });
+  assert.ok(beta.startsWith("Runtime security.\n"), beta);
+  assert.ok(beta.includes("**A prerelease.**"), beta);
+  assert.ok(beta.includes("`ghcr.io/acme/orbit-web:0.8.1-beta1`"), beta);
+  assert.ok(!releaseNotes({ ...base, version: "0.8.1" }).includes("prerelease"));
 });

@@ -38,7 +38,7 @@ async function handle(m: Json): Promise<Json | null> {
   const id = m.id;
   const method = typeof m.method === "string" ? m.method : "";
   if (id === undefined) return null;
-  if (method === "initialize") return { jsonrpc: "2.0", id, result: { protocolVersion: PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: "orbit_tools", version: "0.8.1" } } };
+  if (method === "initialize") return { jsonrpc: "2.0", id, result: { protocolVersion: PROTOCOL, capabilities: { tools: {} }, serverInfo: { name: "orbit_tools", version: "0.8.1-beta1" } } };
   if (method === "ping") return { jsonrpc: "2.0", id, result: {} };
   if (method === "tools/list") {
     const r = await post("list", {});

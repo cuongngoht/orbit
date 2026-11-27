@@ -1,15 +1,18 @@
 # Changelog
 
-## Orbit Web 0.8.1
+## Orbit Web 0.8.1-beta1
 
 Orbit Web gains **runtime security** (ADR 0063): an independent security plane that records what an AI employee's
 programs actually do inside its attempt, prevents what the account's policy forbids, contains an attempt whose
 protection is lost, and claims nothing it did not prove on the host it runs on. It is off unless the operator adds
 `docker/compose.runtime-security.yaml`, and a new account's policy says *disabled*: without both, an attempt runs
-exactly as in 0.8.0. The plugin it bundles stays 0.6.0, unchanged. Migration 3 (`security.*`) is additive; 0.8.1 is
-deployed fresh by the owner's decision, and nothing is converted.
+exactly as in 0.8.0. The plugin it bundles stays 0.6.0, unchanged. Migrations 2 and 3 are additive and applied at
+start: a 0.8.0 database is migrated in place, and nothing is converted.
 
-Built and deployed locally; not published -- pushing, tagging and publishing images are the owner's.
+**A prerelease.** `0.8.1-beta1` is the first build of 0.8.1 offered to be tried. The release workflow now publishes a
+version with a prerelease part (`x.y.z-beta1`) as a GitHub prerelease and never moves `latest` for it
+(`release.mjs verify --latest=true` refuses one; `release.mjs kind` tells the workflow which it is, and the notes say
+so), so 0.8.0 stays the latest release.
 
 ### Runtime security (ADR 0063)
 

@@ -1,6 +1,6 @@
 {
   "name": "orbit-web",
-  "version": "0.8.1",
+  "version": "0.8.1-beta1",
   "private": true,
   "description": "Orbit Web: a self-hosted, browser-based Claude Code experience with the Orbit plugin, shipped as one Docker image.",
   "type": "module",
